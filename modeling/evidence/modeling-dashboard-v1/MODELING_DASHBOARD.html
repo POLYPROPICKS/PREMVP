@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PolyProPicks Modeling Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<script src="MODELING_DAILY_DATA.js"></script>
+<script src="LIVE_RUNTIME_DATA.js"></script>
+<style>
+  :root {
+    --bg: #0b0f14; --panel: #121821; --panel2: #161d27; --border: #26303c;
+    --text: #e7edf3; --muted: #93a1b0; --accent: #4fb0ff; --good: #33c17a;
+    --bad: #ef5b5b; --warn: #e0a93a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+  header { padding: 18px 24px 0; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .subtitle { color: var(--muted); font-size: 13px; }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; padding: 14px 24px 0; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--bg); z-index: 10; }
+  .tab-btn { background: transparent; border: none; color: var(--muted); font-size: 12.5px; font-weight: 600; letter-spacing: .03em; padding: 9px 14px; cursor: pointer; border-bottom: 2px solid transparent; }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; padding: 16px 24px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .kpi .label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .kpi .value { font-size: 20px; font-weight: 700; margin-top: 4px; }
+  .kpi .value.good { color: var(--good); }
+  .kpi .value.warn { color: var(--warn); }
+  .kpi .value.muted { color: var(--muted); font-size: 14px; }
+  section { padding: 10px 24px 28px; }
+  h2 { font-size: 16px; margin: 0 0 10px; border-left: 3px solid var(--accent); padding-left: 8px; }
+  h3 { font-size: 13px; margin: 0 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 22px; overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+  th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+  tbody tr:hover { background: var(--panel2); }
+  tr.row-primary { background: rgba(51,193,122,.06); }
+  tr.row-muted td { color: var(--muted); }
+  .status-pill { display: inline-block; font-size: 10.5px; padding: 2px 7px; border-radius: 999px; background: #1d2733; color: var(--muted); border: 1px solid var(--border); white-space: normal; }
+  .status-pill.preferred { background: rgba(51,193,122,.15); color: var(--good); border-color: var(--good); }
+  .status-pill.live { background: rgba(79,176,255,.18); color: var(--accent); border-color: var(--accent); }
+  .status-pill.reference { background: rgba(79,176,255,.15); color: var(--accent); border-color: var(--accent); }
+  .status-pill.nogo { background: rgba(239,91,91,.15); color: var(--bad); border-color: var(--bad); }
+  .status-pill.watch { background: rgba(224,169,58,.15); color: var(--warn); border-color: var(--warn); }
+  .status-pill.muted { opacity: .7; }
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; font-size: 12.5px; color: var(--muted); }
+  select { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+  .plot { width: 100%; height: 420px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .funnel { display: flex; gap: 8px; flex-wrap: wrap; align-items: stretch; }
+  .funnel-stage { flex: 1 1 120px; background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; text-align: center; }
+  .funnel-stage .n { font-size: 22px; font-weight: 700; }
+  .funnel-stage .label { color: var(--muted); font-size: 10.5px; text-transform: uppercase; margin-top: 4px; }
+  .funnel-arrow { align-self: center; color: var(--muted); font-size: 18px; }
+  @media (max-width: 900px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .note { color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 8px; }
+  .banner { background: rgba(224,169,58,.1); border: 1px solid var(--warn); color: var(--warn); border-radius: 8px; padding: 8px 12px; font-size: 12.5px; margin-bottom: 12px; }
+  .banner.info { background: rgba(79,176,255,.1); border-color: var(--accent); color: var(--accent); }
+  .provenance dt { color: var(--muted); font-size: 11px; text-transform: uppercase; margin-top: 8px; }
+  .provenance dd { margin: 2px 0 0; font-size: 13px; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+  footer { padding: 16px 24px 40px; color: var(--muted); font-size: 11px; }
+  .gap-card { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .gap-card .col { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+  .gap-card .col h3 { margin-bottom: 10px; }
+  .gap-card .row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 3px 0; }
+  .gap-card .row span:first-child { color: var(--muted); }
+  ul.diffs { margin: 8px 0 0; padding-left: 18px; font-size: 12.5px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>PolyProPicks Modeling Dashboard</h1>
+  <div class="subtitle">RESEARCH + LIVE READOUT &middot; Flat 1u backtest economics is never realized live cash P&amp;L &middot; sources: PREMVP-DB-CLONE (research) + production runtime (read-only)</div>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<div id="tab-overview" class="tab-panel">
+  <div class="kpis" id="kpis"></div>
+</div>
+
+<div id="tab-models" class="tab-panel">
+  <section>
+    <h2>Section A — Founder model table (full accepted spectrum)</h2>
+    <div class="panel"><div id="mainTable"></div></div>
+  </section>
+  <section>
+    <h2>Section D — Live vs best research</h2>
+    <div class="panel"><div id="gapCard"></div></div>
+  </section>
+  <section>
+    <h2>Section E — Research gap anatomy <span class="status-pill watch">SHADOW RESEARCH DIFFERENCE</span></h2>
+    <div class="panel"><div id="gapAnatomy"></div></div>
+  </section>
+</div>
+
+<div id="tab-live" class="tab-panel">
+  <section>
+    <h2>Section C — Sep21 PLAN funnel (current Minsk plan date)</h2>
+    <div class="panel"><div id="liveFunnel"></div></div>
+  </section>
+  <section>
+    <h2>Settlement (plan-linked)</h2>
+    <div class="panel"><div id="liveSettled"></div></div>
+  </section>
+  <section>
+    <h2>Calendar-day executor telemetry <span class="status-pill watch">NOT IDENTICAL TO PLAN FUNNEL</span></h2>
+    <div class="panel"><div id="liveTelemetry"></div></div>
+  </section>
+</div>
+
+<div id="tab-capacity" class="tab-panel">
+  <section>
+    <div class="grid2">
+      <div class="panel">
+        <h2>Plot 1 — P&amp;L by daily cap</h2>
+        <div class="controls">
+          <label>Metric:
+            <select id="plot1Metric">
+              <option value="pnl_u">Total P&amp;L</option>
+              <option value="proj30d_u">30-day projected P&amp;L</option>
+            </select>
+          </label>
+        </div>
+        <div id="plot1" class="plot"></div>
+      </div>
+      <div class="panel">
+        <h2>Plot 2 — Marginal P&amp;L by capacity layer</h2>
+        <div id="plot2" class="plot"></div>
+      </div>
+    </div>
+  </section>
+  <section>
+    <div class="panel">
+      <h2>Plot 3 — P&amp;L / Fill frontier (Founder decision plot)</h2>
+      <div id="plot3" class="plot"></div>
+    </div>
+  </section>
+  <section>
+    <div class="panel">
+      <h2>Plot 5 — Aug vs Sep-through-Sep20 regime (cap 50)</h2>
+      <div id="plot5" class="plot"></div>
+    </div>
+  </section>
+  <section>
+    <div class="panel">
+      <h2>Plot 6 — Daily history (grows every refresh)</h2>
+      <div class="controls">
+        <label>Model: <select id="plot6Model"></select></label>
+        <label>Cap:
+          <select id="plot6Cap">
+            <option value="30">30</option>
+            <option value="40">40</option>
+            <option value="50" selected>50</option>
+          </select>
+        </label>
+      </div>
+      <div id="plot6" class="plot"></div>
+      <div class="note" id="plot6Note"></div>
+    </div>
+  </section>
+</div>
+
+<div id="tab-score" class="tab-panel">
+  <section>
+    <h2>Section F — Signal score</h2>
+    <div class="panel">
+      <div id="plot4" class="plot"></div>
+      <div class="note" id="plot4Note"></div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <h3>Score × price (MAIN cells, N≥100)</h3>
+        <table id="scoreByPriceTable"></table>
+      </div>
+      <div class="panel">
+        <h3>Score × sport (MAIN cells, N≥100)</h3>
+        <table id="scoreBySportTable"></table>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="controls">
+        <label>Metric:
+          <select id="scoreHeatMetric">
+            <option value="n">N</option>
+            <option value="pnl_u">P&amp;L</option>
+            <option value="roi_pct" selected>ROI</option>
+          </select>
+        </label>
+      </div>
+      <div id="scoreHeat" class="plot" style="height:320px"></div>
+    </div>
+  </section>
+</div>
+
+<div id="tab-sports" class="tab-panel">
+  <section>
+    <h2>Section G — Sports panel</h2>
+    <div class="panel">
+      <table id="sportsTable"></table>
+      <div class="note" id="sportsNote"></div>
+    </div>
+  </section>
+</div>
+
+<div id="tab-markets" class="tab-panel">
+  <section>
+    <h2>Section H — Market types</h2>
+    <div class="panel">
+      <div class="banner" id="marketsBanner"></div>
+      <table id="marketsTable"></table>
+      <div class="note" id="marketsSmallSample"></div>
+    </div>
+  </section>
+</div>
+
+<div id="tab-dataquality" class="tab-panel">
+  <section>
+    <h2>Section I — Data coverage / caveats</h2>
+    <div class="panel"><table id="dataQualityTable"></table></div>
+  </section>
+</div>
+
+<div id="tab-closed" class="tab-panel">
+  <section>
+    <div class="grid2">
+      <div class="panel">
+        <h2>Closed hypotheses</h2>
+        <table id="closedTable"></table>
+      </div>
+      <div class="panel provenance">
+        <h2>Provenance</h2>
+        <dl id="provenance"></dl>
+      </div>
+    </div>
+  </section>
+</div>
+
+<footer id="footer"></footer>
+
+<script>
+(function () {
+  var D = window.POLYPROPICKS_MODELING_DATA;
+  var LIVE = window.POLYPROPICKS_LIVE_RUNTIME_DATA;
+  if (!D) {
+    document.body.innerHTML = '<p style="padding:24px;color:#ef5b5b">MODELING_DAILY_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.</p>';
+    return;
+  }
+  var meta = D.meta, models = D.models, uncappedModels = D.uncappedModels || {};
+
+  // ---- Tabs ----
+  var TABS = [
+    ["overview", "OVERVIEW"], ["models", "MODELS"], ["live", "LIVE"], ["capacity", "CAPACITY"],
+    ["score", "SCORE"], ["sports", "SPORTS"], ["markets", "MARKETS"], ["dataquality", "DATA QUALITY"],
+    ["closed", "CLOSED HYPOTHESES"],
+  ];
+  var tabsEl = document.getElementById("tabs");
+  TABS.forEach(function (t, i) {
+    var btn = document.createElement("button");
+    btn.className = "tab-btn" + (i === 0 ? " active" : "");
+    btn.textContent = t[1];
+    btn.dataset.tab = t[0];
+    btn.addEventListener("click", function () { activateTab(t[0]); });
+    tabsEl.appendChild(btn);
+  });
+  function activateTab(id) {
+    document.querySelectorAll(".tab-panel").forEach(function (p) { p.classList.toggle("active", p.id === "tab-" + id); });
+    document.querySelectorAll(".tab-btn").forEach(function (b) { b.classList.toggle("active", b.dataset.tab === id); });
+    window.dispatchEvent(new Event("resize")); // let Plotly resize newly-visible charts
+  }
+  document.getElementById("tab-overview").classList.add("active");
+
+  var MODEL_ORDER = ["QUALITY_FILL_A", "QUALITY_FILL_D", "QUALITY_FILL_B", "QUALITY_FILL_C", "P50_52", "PORTFOLIO_BROAD", "P50_54", "C5", "C0", "TENNIS_P50_52"];
+  var UNCAPPED_MODEL_ORDER = ["C0_ONLY_NOT_C1", "SCORE63_64", "C1", "C4_CURRENT", "TENNIS_LEAD18_24", "LEGACY_C4_HISTORICAL"];
+  var COLORS = {
+    QUALITY_FILL_A: "#33c17a", QUALITY_FILL_D: "#4fb0ff", QUALITY_FILL_B: "#2dd4bf", QUALITY_FILL_C: "#a3e635",
+    P50_52: "#e0a93a", PORTFOLIO_BROAD: "#c084fc", P50_54: "#f472b6", C5: "#60a5fa", C0: "#94a3b8",
+    TENNIS_P50_52: "#fb923c",
+  };
+  var PLOTLY_LAYOUT_BASE = {
+    paper_bgcolor: "#121821", plot_bgcolor: "#121821",
+    font: { color: "#e7edf3", size: 11 },
+    legend: { orientation: "h", y: -0.2 },
+    margin: { t: 30, r: 20, l: 55, b: 40 },
+    xaxis: { gridcolor: "#26303c" }, yaxis: { gridcolor: "#26303c" },
+  };
+  var PLOTLY_CONFIG = { responsive: true, displaylogo: false };
+  function fmtU(v) { return v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + v.toFixed(2) + "u"; }
+  function fmtPct(v) { return v === null || v === undefined ? "—" : v.toFixed(2) + "%"; }
+  function fmtPctFrac(v) { return v === null || v === undefined ? "—" : (v * 100).toFixed(2) + "%"; }
+  function fmtN(v) { return v === null || v === undefined ? "—" : String(v); }
+  function fmtUsd(v) { return v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + "$" + v.toFixed(2); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+
+  // ==================== OVERVIEW ====================
+  var pref = models[meta.preferredModel];
+  var liveModel = models[meta.livePolicyModel];
+  var latestLiveDay = LIVE && LIVE.days && LIVE.days.length ? LIVE.days[LIVE.days.length - 1] : null;
+  var kpis = [
+    ["Canonical period", meta.frozenPeriodStart + " → " + meta.frozenPeriodEnd],
+    ["Preferred (research)", meta.preferredModel],
+    ["Frozen cap50 P&L", fmtU(pref.caps[50].pnl_u), "good"],
+    ["30-day projection", fmtU(pref.caps[50].proj30d_u), "good"],
+    ["Fill30 / Fill50", fmtPctFrac(pref.fill.fill30) + " / " + fmtPctFrac(pref.fill.fill50)],
+    ["Current live policy", meta.livePolicyModel, "warn"],
+    ["Latest live plan date", latestLiveDay ? latestLiveDay.minskDate : (LIVE ? "PENDING" : "NOT_REFRESHED_YET"), "muted"],
+    ["Reservations (latest)", latestLiveDay ? fmtN(latestLiveDay.planFunnel.reservations.total) : "—"],
+    ["Queue (latest)", latestLiveDay ? fmtN(latestLiveDay.planFunnel.queue.total) : "—"],
+    ["Plan-linked orders (latest)", latestLiveDay ? fmtN(latestLiveDay.planFunnel.orders.total) : "—"],
+    ["Settled count", latestLiveDay ? (latestLiveDay.planFunnel.settled.status === "AVAILABLE" ? fmtN(latestLiveDay.planFunnel.settled.count) : "PENDING") : "PENDING", "muted"],
+    ["Realized live P&L", latestLiveDay && latestLiveDay.planFunnel.settled.realized_pnl_usd != null ? fmtUsd(latestLiveDay.planFunnel.settled.realized_pnl_usd) : "PENDING / NOT SETTLED", "muted"],
+  ];
+  document.getElementById("kpis").innerHTML = kpis.map(function (k) {
+    return '<div class="kpi"><div class="label">' + esc(k[0]) + '</div><div class="value' + (k[2] ? " " + k[2] : "") + '">' + esc(k[1]) + '</div></div>';
+  }).join("");
+
+  // ==================== SECTION A — founder model table ====================
+  var statusClass = {
+    PREFERRED_RESEARCH_PORTFOLIO: "preferred",
+    FILL_REFERENCE: "reference",
+    STRONG_SIMPLE_BASELINE: "reference",
+    CURRENT_LIVE_POLICY_REFERENCE: "live",
+    STRONG_RESEARCH_BASELINE: "reference",
+    TRACKED_REFERENCE_PRICE_ANCHOR_BAND: "",
+    STRONG_HIGH_QUALITY_SATELLITE_SPARSE_SUPPLY: "reference",
+    REFERENCE_QUALITY_FILL_VARIANT: "muted",
+    REFERENCE_DIAGNOSTIC: "muted",
+    SMALL_SAMPLE_DIAGNOSTIC: "watch",
+    REFERENCE_ISOLATED_NOT_IN_AUG_SEP_DENOMINATOR: "muted",
+  };
+  var PRIMARY_MODELS = { QUALITY_FILL_A: 1, QUALITY_FILL_D: 1, P50_52: 1, PORTFOLIO_BROAD: 1 };
+  var caps = [30, 40, 50];
+
+  function gapNote(id) {
+    if (id === meta.livePolicyModel) return "LIVE reference — see Section D.";
+    if (id === meta.preferredModel) return "Preferred research — see Section D.";
+    return "";
+  }
+
+  var rowsHtml = "";
+  MODEL_ORDER.forEach(function (id) {
+    var m = models[id];
+    var rowClass = PRIMARY_MODELS[id] ? "row-primary" : "";
+    caps.forEach(function (cap, i) {
+      var c = m.caps[cap];
+      rowsHtml += '<tr class="' + rowClass + '">';
+      if (i === 0) {
+        rowsHtml += '<td rowspan="3"><span class="status-pill ' + (statusClass[m.status] || "") + '">' + esc(m.status.replace(/_/g, " ")) + "</span></td>";
+        rowsHtml += '<td rowspan="3"><b>' + esc(m.label) + "</b></td>";
+        rowsHtml += '<td rowspan="3">Aug04–Sep20 (48d)</td>';
+        var proc = m.uncapped ? (m.uncapped.bet_n + " / " + m.uncapped.processed_n) : "—";
+        rowsHtml += '<td rowspan="3">' + esc(proc) + "</td>";
+      }
+      rowsHtml += "<td>" + cap + "</td>";
+      rowsHtml += "<td>" + fmtN(c && c.selected_n) + "</td>";
+      rowsHtml += "<td>" + (c ? (Math.round((c.selected_n / meta.closedDays) * 100) / 100) : "—") + "</td>";
+      if (i === 0) rowsHtml += '<td rowspan="3">' + esc(m.sportMixNote) + "</td>";
+      rowsHtml += "<td>" + fmtPct(c && c.roi_pct) + "</td>";
+      rowsHtml += "<td>" + fmtU(c && c.pnl_u) + "</td>";
+      rowsHtml += "<td>" + fmtU(c && c.maxdd_u) + "</td>";
+      rowsHtml += "<td>" + fmtU(c && c.proj30d_u) + "</td>";
+      rowsHtml += "<td>" + fmtPctFrac(m.fill.fill30) + "</td>";
+      rowsHtml += "<td>" + fmtPctFrac(m.fill.fill40) + "</td>";
+      rowsHtml += "<td>" + fmtPctFrac(m.fill.fill50) + "</td>";
+      if (i === 0) {
+        rowsHtml += '<td rowspan="3" style="text-align:left;max-width:230px;white-space:normal">' + esc(m.mainRules) + "</td>";
+        rowsHtml += '<td rowspan="3" style="text-align:left;max-width:170px;white-space:normal">' + esc(gapNote(id)) + "</td>";
+      }
+      rowsHtml += "</tr>";
+    });
+  });
+  // Uncapped-only reference/diagnostic models: single row each, CAP/FILL columns N/A (never fabricated).
+  UNCAPPED_MODEL_ORDER.forEach(function (id) {
+    var m = uncappedModels[id];
+    var u = m.uncapped;
+    var proc = u.processed_n != null ? (u.bet_n + " / " + u.processed_n) : (u.bet_n + " (" + (u.datasetLabel || "isolated dataset") + ")");
+    rowsHtml += '<tr class="row-muted">' +
+      '<td><span class="status-pill muted">' + esc(m.status.replace(/_/g, " ")) + "</span></td>" +
+      "<td><b>" + esc(m.label) + "</b></td>" +
+      "<td>" + esc(u.datasetLabel || "Aug04–Sep20 (48d)") + "</td>" +
+      "<td>" + esc(proc) + "</td>" +
+      "<td>N/A</td><td>N/A</td>" +
+      "<td>" + (u.bet_pct != null ? Math.round((u.bet_n / meta.closedDays) * 100) / 100 : "—") + "</td>" +
+      "<td>" + esc(m.sportMixNote) + "</td>" +
+      "<td>" + fmtPct(u.roi_pct) + "</td>" +
+      "<td>" + fmtU(u.pnl_u) + "</td>" +
+      "<td>" + fmtU(u.maxdd_u) + "</td>" +
+      "<td>N/A</td><td>N/A</td><td>N/A</td><td>N/A</td>" +
+      '<td style="text-align:left;max-width:230px;white-space:normal">' + esc(m.mainRules) + "</td>" +
+      "<td>No daily-cap engine run in accepted evidence — uncapped only.</td>" +
+      "</tr>";
+  });
+  document.getElementById("mainTable").innerHTML =
+    "<table><thead><tr><th>Status</th><th>Model</th><th>Dataset</th><th>Processed→Bet</th><th>Cap</th><th>Selected N</th><th>Bets/day</th><th>Sports</th>" +
+    "<th>ROI</th><th>P&amp;L</th><th>Max DD</th><th>30D P&amp;L</th><th>Fill30</th><th>Fill40</th><th>Fill50</th><th>Rules</th><th>Live/research gap</th></tr></thead><tbody>" +
+    rowsHtml + "</tbody></table>";
+
+  // ==================== SECTION D — live vs best research ====================
+  (function () {
+    var g = D.liveVsResearch;
+    var live = models[g.liveModel].caps[g.cap];
+    var res = models[g.researchModel].caps[g.cap];
+    var liveM = models[g.liveModel], resM = models[g.researchModel];
+    function col(title, tag, m, c) {
+      return '<div class="col"><h3>' + esc(title) + '</h3>' +
+        '<div class="row"><span>Model</span><span>' + esc(tag) + '</span></div>' +
+        '<div class="row"><span>P&amp;L</span><span>' + fmtU(c.pnl_u) + '</span></div>' +
+        '<div class="row"><span>ROI</span><span>' + fmtPct(c.roi_pct) + '</span></div>' +
+        '<div class="row"><span>MaxDD</span><span>' + fmtU(c.maxdd_u) + '</span></div>' +
+        '<div class="row"><span>30D P&amp;L</span><span>' + fmtU(c.proj30d_u) + '</span></div>' +
+        '<div class="row"><span>Fill30</span><span>' + fmtPctFrac(m.fill.fill30) + '</span></div>' +
+        '<div class="row"><span>Fill50</span><span>' + fmtPctFrac(m.fill.fill50) + '</span></div></div>';
+    }
+    var d = g.delta;
+    var deltaCol = '<div class="col"><h3>A minus Broad</h3>' +
+      '<div class="row"><span>P&amp;L</span><span>' + fmtU(d.pnl_u) + '</span></div>' +
+      '<div class="row"><span>ROI</span><span>' + (d.roi_pct_points >= 0 ? "+" : "") + d.roi_pct_points.toFixed(2) + ' pp</span></div>' +
+      '<div class="row"><span>MaxDD</span><span>' + d.maxdd_u_better.toFixed(2) + 'u better</span></div>' +
+      '<div class="row"><span>30D P&amp;L</span><span>' + fmtU(d.proj30d_u) + '</span></div>' +
+      '<div class="row"><span>Fill30</span><span>' + d.fill30_pct_points.toFixed(2) + ' pp</span></div>' +
+      '<div class="row"><span>Fill50</span><span>' + d.fill50_pct_points.toFixed(2) + ' pp</span></div></div>';
+    document.getElementById("gapCard").innerHTML =
+      '<div class="banner info">CURRENT LIVE RESEARCH REFERENCE: <b>' + esc(g.liveModel) + '</b> &nbsp;|&nbsp; PREFERRED RESEARCH CANDIDATE: <b>' + esc(g.researchModel) + '</b> (cap ' + g.cap + ')</div>' +
+      '<div class="gap-card">' + col("LIVE (Broad)", g.liveModel, liveM, live) + col("Preferred research", g.researchModel, resM, res) + deltaCol + '</div>' +
+      '<div class="note"><b>' + esc(g.interpretation) + '</b> ' + esc(g.researchModel) + ' is NOT promoted to production by this dashboard.</div>';
+  })();
+
+  // ==================== SECTION E — gap anatomy ====================
+  (function () {
+    var g = D.gapAnatomy;
+    document.getElementById("gapAnatomy").innerHTML =
+      '<div class="grid2">' +
+      '<div><h3>LIVE Broad rules</h3><ul class="diffs">' + g.liveBroadRules.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + '</ul></div>' +
+      '<div><h3>' + esc(D.liveVsResearch.researchModel) + ' rules</h3><ul class="diffs">' + g.qualityFillARules.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + '</ul></div>' +
+      '</div><h3 style="margin-top:16px">Structural differences</h3><ul class="diffs">' +
+      g.differences.map(function (d) { return "<li>" + esc(d) + "</li>"; }).join("") + '</ul>' +
+      '<div class="note">' + esc(g.note) + '</div>';
+  })();
+
+  // ==================== LIVE tab (Section C) ====================
+  (function () {
+    var day = latestLiveDay;
+    function stage(label, n) {
+      return '<div class="funnel-stage"><div class="n">' + (n == null ? "—" : n) + '</div><div class="label">' + esc(label) + '</div></div>';
+    }
+    function arrow() { return '<div class="funnel-arrow">→</div>'; }
+
+    var html = '<div class="note">Current policy: <b>' + esc(meta.livePolicyModel) + '</b></div>';
+    if ((!LIVE || LIVE.status === "STOPPED") && !day) {
+      html += '<div class="banner">' + esc((LIVE && LIVE.stopReason) || "LIVE_RUNTIME_DATA.js has not been generated yet") +
+        '. Run <code>npm run research-live:modeling-dashboard-refresh</code> from an environment with approved production SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (must resolve to project ref <code>nbnldzfsxffztsfrrxqy</code>) to populate this panel. Fail-closed by design — never silently falls back to another project, including the research clone.</div>';
+      document.getElementById("liveFunnel").innerHTML = html;
+      document.getElementById("liveSettled").innerHTML = '<div class="banner">PENDING / NOT SETTLED — no live plan-date captured yet.</div>';
+      document.getElementById("liveTelemetry").innerHTML = '<div class="note">No calendar-day telemetry captured yet.</div>';
+      return;
+    }
+
+    var pf = day.planFunnel, ct = day.calendarDayTelemetry;
+    if (LIVE.status === "STOPPED" && LIVE.lastRefreshAttempt) {
+      html += '<div class="banner">Most recent refresh attempt could not reach production: ' + esc(LIVE.lastRefreshAttempt.stopReason) +
+        ' (at ' + esc(LIVE.lastRefreshAttempt.at) + '). The snapshot below is preserved, not overwritten.</div>';
+    }
+    var prov = day.provenance;
+    html += '<div class="note">Plan date: <b>' + esc(day.minskDate) + '</b>' +
+      (prov ? ' &middot; source: <b>' + esc(prov.source) + '</b> &middot; production ref: <code>' + esc(prov.productionProjectRef) + '</code> &middot; production writes: ' + prov.productionWrites : '') +
+      ' &middot; generated ' + esc(day.generatedAt) + '</div>';
+    html += '<h3 style="margin-top:14px">SEP21 PLAN FUNNEL</h3>';
+    html += '<div class="funnel" style="margin-top:10px">' +
+      stage("Reservations", pf.reservations.total) + arrow() +
+      stage("RESERVED", pf.reservations.reserved) + arrow() +
+      stage("QUEUED", pf.reservations.queued) + arrow() +
+      stage("Queue rows", pf.queue.total) + arrow() +
+      stage("READY", pf.queue.ready) + arrow() +
+      stage("EXECUTED", pf.queue.executed) + arrow() +
+      stage("EXPIRED", pf.queue.expired) +
+      '</div>';
+    html += '<div class="funnel" style="margin-top:8px">' +
+      stage("Plan-linked orders", pf.orders.total) + arrow() +
+      stage("Plan-linked CLOB", pf.orders.clobOrderN) + arrow() +
+      stage("Plan-linked accepted_open", pf.orders.acceptedOpenN) + arrow() +
+      stage("Plan-linked submitted stake USD", pf.orders.submittedStakeUsd != null ? "$" + pf.orders.submittedStakeUsd.toFixed(2) : "—") +
+      '</div>';
+    html += '<div class="note">Orders linked via <code>event_execution_queue.idempotency_key = executor_order_events.idempotency_key</code> for this plan\'s own reservations/queue — never a calendar-day guess.</div>';
+    document.getElementById("liveFunnel").innerHTML = html;
+
+    var settledHtml;
+    if (pf.settled.status === "AVAILABLE") {
+      settledHtml = '<div class="note">Settled N (settled_at IS NOT NULL, joined via plan-linked clob_order_id → exchange_order_id): <b>' + fmtN(pf.settled.count) + '</b> (source: ' + esc(pf.settled.source) + ')</div>' +
+        '<div class="note">Realized live P&amp;L (sum real_pnl, matched settled rows only): <b>' + (pf.settled.realized_pnl_usd != null ? fmtUsd(pf.settled.realized_pnl_usd) : "PENDING") + '</b></div>' +
+        '<div class="note">' + esc(pf.settled.note) + '</div>';
+    } else {
+      settledHtml = '<div class="banner">Settlement status: <b>PENDING / NOT SETTLED</b> — ' + esc(pf.settled.note) + '</div>';
+    }
+    document.getElementById("liveSettled").innerHTML = settledHtml;
+
+    var telemetryHtml = '<div class="banner">This is calendar-day executor activity for ' + esc(day.minskDate) + ' (created_at within the Minsk day) — <b>' + esc(ct.label.replace(/_/g, " ")) + '</b>. One calendar-day executor event does not necessarily map to this plan\'s own queue path; never substitute these figures for the PLAN FUNNEL above.</div>' +
+      '<div class="funnel">' +
+      stage("Orders", ct.orders.total) + arrow() +
+      stage("CLOB orders", ct.orders.clobOrderN) + arrow() +
+      stage("accepted_open", ct.orders.acceptedOpenN) + arrow() +
+      stage("Submitted stake USD", ct.orders.submittedStakeUsd != null ? "$" + ct.orders.submittedStakeUsd.toFixed(2) : "—") +
+      '</div>';
+    document.getElementById("liveTelemetry").innerHTML = telemetryHtml;
+  })();
+
+  // ==================== Plot 1: P&L by daily cap ====================
+  var PLOT1_CAPS = [15, 20, 30, 40, 50];
+  var PLOT1_MODELS = ["QUALITY_FILL_A", "QUALITY_FILL_D", "P50_52", "PORTFOLIO_BROAD", "P50_54"];
+  function renderPlot1(metricKey) {
+    var traces = PLOT1_MODELS.map(function (id) {
+      var m = models[id];
+      return {
+        x: PLOT1_CAPS, name: id, mode: "lines+markers", line: { color: COLORS[id] },
+        y: PLOT1_CAPS.map(function (cap) { var c = m.caps[cap]; return c ? c[metricKey] : null; }),
+        connectgaps: false,
+      };
+    });
+    Plotly.newPlot("plot1", traces, Object.assign({}, PLOTLY_LAYOUT_BASE, {
+      xaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.xaxis, { title: "Daily cap", dtick: 5 }),
+      yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: "P&L (u)" }),
+    }), PLOTLY_CONFIG);
+  }
+  renderPlot1("pnl_u");
+  document.getElementById("plot1Metric").addEventListener("change", function (e) { renderPlot1(e.target.value); });
+
+  // ==================== Plot 2: Marginal P&L ====================
+  (function () {
+    var LAYERS = ["1_15", "16_20", "21_30", "31_40", "41_50"];
+    var LAYER_LABELS = ["1–15", "16–20", "21–30", "31–40", "41–50"];
+    var PLOT2_MODELS = ["QUALITY_FILL_A", "P50_52", "PORTFOLIO_BROAD"];
+    var traces = PLOT2_MODELS.map(function (id) {
+      var m = models[id];
+      return {
+        x: LAYER_LABELS, name: id, type: "bar", marker: { color: COLORS[id] },
+        y: LAYERS.map(function (l) { return m.marginal[l] ? m.marginal[l].incr_pnl_u : null; }),
+        customdata: LAYERS.map(function (l) { return m.marginal[l] || {}; }),
+        hovertemplate: "%{x}<br>Incr N: %{customdata.incr_n}<br>Incr P&L: %{y}u<br>Incr ROI: %{customdata.incr_roi_pct}%<extra>" + id + "</extra>",
+      };
+    });
+    Plotly.newPlot("plot2", traces, Object.assign({}, PLOTLY_LAYOUT_BASE, {
+      barmode: "group",
+      xaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.xaxis, { title: "Capacity layer" }),
+      yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: "Incremental P&L (u)" }),
+    }), PLOTLY_CONFIG);
+  })();
+
+  // ==================== Plot 3: Fill / P&L frontier ====================
+  (function () {
+    var PLOT3_MODELS = ["QUALITY_FILL_A", "QUALITY_FILL_D", "P50_52", "PORTFOLIO_BROAD", "P50_54"];
+    var trace = {
+      x: PLOT3_MODELS.map(function (id) { return models[id].fill.fill50; }),
+      y: PLOT3_MODELS.map(function (id) { return models[id].caps[50].proj30d_u; }),
+      text: PLOT3_MODELS, mode: "markers+text", textposition: "top center", type: "scatter",
+      marker: { size: 16, color: PLOT3_MODELS.map(function (id) { return COLORS[id]; }) },
+      customdata: PLOT3_MODELS.map(function (id) {
+        var m = models[id], c = m.caps[50];
+        return [c.pnl_u, c.roi_pct, c.maxdd_u, m.fill.fill30, m.fill.fill40, m.fill.fill50];
+      }),
+      hovertemplate: "<b>%{text}</b><br>P&L: %{customdata[0]}u<br>ROI: %{customdata[1]}%<br>MaxDD: %{customdata[2]}u" +
+        "<br>Fill30: %{customdata[3]}<br>Fill40: %{customdata[4]}<br>Fill50: %{customdata[5]}<extra></extra>",
+    };
+    Plotly.newPlot("plot3", [trace], Object.assign({}, PLOTLY_LAYOUT_BASE, {
+      xaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.xaxis, { title: "Fill50", tickformat: ".0%" }),
+      yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: "30-day projected P&L (u)" }),
+    }), PLOTLY_CONFIG);
+  })();
+
+  // ==================== SECTION F — Plot 4 + score tables/heatmap ====================
+  (function () {
+    var s = D.signalScore;
+    if (s.dataAvailable) {
+      var trace = {
+        x: s.byBucket.map(function (b) { return b.bucket; }),
+        y: s.byBucket.map(function (b) { return b.pnl_u; }),
+        customdata: s.byBucket.map(function (b) { return [b.n, b.roi_pct, b.maxdd_u]; }),
+        hovertemplate: "%{x}<br>N: %{customdata[0]}<br>P&L: %{y}u<br>ROI: %{customdata[1]}%<br>MaxDD: %{customdata[2]}u<extra></extra>",
+        type: "bar", marker: { color: s.byBucket.map(function (b) { return b.pnl_u >= 0 ? "#33c17a" : "#ef5b5b"; }) },
+      };
+      Plotly.newPlot("plot4", [trace], Object.assign({}, PLOTLY_LAYOUT_BASE, {
+        xaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.xaxis, { title: "Score bucket" }),
+        yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: "P&L (u)" }),
+      }), PLOTLY_CONFIG);
+    }
+    document.getElementById("plot4Note").textContent = s.note;
+
+    function tbl(id, rows, cols) {
+      var head = "<thead><tr>" + cols.map(function (c) { return "<th>" + esc(c[1]) + "</th>"; }).join("") + "</tr></thead>";
+      var body = "<tbody>" + rows.map(function (r) {
+        return "<tr>" + cols.map(function (c) { return "<td>" + esc(typeof r[c[0]] === "number" ? (c[2] ? c[2](r[c[0]]) : r[c[0]]) : r[c[0]]) + "</td>"; }).join("") + "</tr>";
+      }).join("") + "</tbody>";
+      document.getElementById(id).innerHTML = head + body;
+    }
+    tbl("scoreByPriceTable", s.scoreByPrice, [["score", "Score"], ["price", "Price"], ["n", "N"], ["pnl_u", "P&L", fmtU], ["roi_pct", "ROI", fmtPct]]);
+    tbl("scoreBySportTable", s.scoreBySport, [["score", "Score"], ["sport", "Sport"], ["n", "N"], ["pnl_u", "P&L", fmtU], ["roi_pct", "ROI", fmtPct]]);
+
+    function renderHeat(metric) {
+      var scores = Array.from(new Set(s.scoreByPrice.map(function (r) { return r.score; })));
+      var prices = Array.from(new Set(s.scoreByPrice.map(function (r) { return r.price; })));
+      var z = scores.map(function (sc) {
+        return prices.map(function (pr) {
+          var cell = s.scoreByPrice.find(function (r) { return r.score === sc && r.price === pr; });
+          return cell ? cell[metric] : null;
+        });
+      });
+      Plotly.newPlot("scoreHeat", [{ z: z, x: prices, y: scores, type: "heatmap", colorscale: "Viridis", hoverongaps: false }],
+        Object.assign({}, PLOTLY_LAYOUT_BASE, { xaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.xaxis, { title: "Price" }), yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: "Score" }) }),
+        PLOTLY_CONFIG);
+    }
+    renderHeat("roi_pct");
+    document.getElementById("scoreHeatMetric").addEventListener("change", function (e) { renderHeat(e.target.value); });
+  })();
+
+  // ==================== SECTION G — sports ====================
+  (function () {
+    var sp = D.sports;
+    document.getElementById("sportsTable").innerHTML =
+      "<thead><tr><th>Price</th><th>Sport</th><th>N</th><th>W/L</th><th>P&amp;L</th><th>ROI</th><th>MaxDD</th></tr></thead><tbody>" +
+      sp.priceBySport.map(function (r) {
+        return '<tr class="' + (r.highlight ? "row-primary" : "") + '"><td>' + esc(r.price) + "</td><td>" + esc(r.sport) + "</td><td>" + r.n + "</td><td>" + r.wins + "/" + r.losses + "</td><td>" + fmtU(r.pnl_u) + "</td><td>" + fmtPct(r.roi_pct) + "</td><td>" + fmtU(r.maxdd_u) + "</td></tr>";
+      }).join("") + "</tbody>";
+    document.getElementById("sportsNote").textContent = sp.note;
+  })();
+
+  // ==================== SECTION H — market types ====================
+  (function () {
+    var mt = D.marketTypes;
+    document.getElementById("marketsBanner").textContent =
+      "ATTRIBUTION COVERAGE = " + mt.attributionCoverageN.toLocaleString() + " / " + mt.attributionCoverageDenominator.toLocaleString() +
+      " — this section does NOT explain the full processed population.";
+    document.getElementById("marketsTable").innerHTML =
+      "<thead><tr><th>Market type</th><th>Status</th><th>N</th><th>P&amp;L</th><th>ROI</th><th>MaxDD</th><th>Aug N / P&amp;L</th><th>Sep N / P&amp;L</th></tr></thead><tbody>" +
+      mt.rows.map(function (r) {
+        return "<tr><td>" + esc(r.marketType) + '</td><td><span class="status-pill">' + esc(r.status) + "</span></td><td>" + r.n + "</td><td>" + fmtU(r.pnl_u) + "</td><td>" + fmtPct(r.roi_pct) + "</td><td>" + fmtU(r.maxdd_u) + "</td><td>" + r.aug.n + " / " + fmtU(r.aug.pnl_u) + "</td><td>" + r.sep.n + " / " + fmtU(r.sep.pnl_u) + "</td></tr>";
+      }).join("") + "</tbody>";
+    document.getElementById("marketsSmallSample").textContent = "SMALL_SAMPLE diagnostics (not promoted): " +
+      mt.smallSampleExcluded.map(function (r) { return r.marketType + " N=" + r.n + " (" + fmtU(r.pnl_u) + ")"; }).join("; ") + ". " + mt.note;
+  })();
+
+  // ==================== SECTION I — data quality ====================
+  (function () {
+    document.getElementById("dataQualityTable").innerHTML =
+      "<thead><tr><th>Item</th><th>Value</th><th>Status</th></tr></thead><tbody>" +
+      D.dataQuality.map(function (r) {
+        return "<tr><td>" + esc(r.item) + "</td><td>" + esc(r.value == null ? "—" : r.value) + '</td><td><span class="status-pill nogo">' + esc(r.status.replace(/_/g, " ")) + "</span></td></tr>";
+      }).join("") + "</tbody>";
+  })();
+
+  // ==================== Plot 5: Aug vs Sep regime ====================
+  (function () {
+    var PLOT5_MODELS = ["QUALITY_FILL_A", "QUALITY_FILL_D", "P50_52", "PORTFOLIO_BROAD"];
+    var augTrace = {
+      x: PLOT5_MODELS, name: "August (cap50 P&L)", type: "bar", marker: { color: "#4fb0ff" },
+      y: PLOT5_MODELS.map(function (id) { return models[id].augSep.aug ? models[id].augSep.aug.pnl_u : null; }),
+    };
+    var sepTrace = {
+      x: PLOT5_MODELS, name: "September-through-Sep20 (cap50 P&L)", type: "bar", marker: { color: "#33c17a" },
+      y: PLOT5_MODELS.map(function (id) { return models[id].augSep.sep ? models[id].augSep.sep.pnl_u : null; }),
+    };
+    Plotly.newPlot("plot5", [augTrace, sepTrace], Object.assign({}, PLOTLY_LAYOUT_BASE, {
+      barmode: "group",
+      xaxis: PLOTLY_LAYOUT_BASE.xaxis,
+      yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: "P&L (u) at cap 50" }),
+    }), PLOTLY_CONFIG);
+  })();
+
+  // ==================== Plot 6: Daily history ====================
+  var plot6ModelSel = document.getElementById("plot6Model");
+  var plot6CapSel = document.getElementById("plot6Cap");
+  ["QUALITY_FILL_A", "QUALITY_FILL_D", "P50_52", "PORTFOLIO_BROAD"].forEach(function (id) {
+    var opt = document.createElement("option"); opt.value = id; opt.textContent = id;
+    plot6ModelSel.appendChild(opt);
+  });
+  function renderPlot6() {
+    var modelId = plot6ModelSel.value, cap = plot6CapSel.value;
+    var rows = (D.daily || []).filter(function (r) { return r.model === modelId; }).sort(function (a, b) { return a.date < b.date ? -1 : 1; });
+    var dates = rows.map(function (r) { return r.date; });
+    var n = rows.map(function (r) { return r["cap" + cap] ? r["cap" + cap].n : null; });
+    var pnl = rows.map(function (r) { return r["cap" + cap] ? r["cap" + cap].pnl_u : null; });
+    var traceN = { x: dates, y: n, name: "Selected N (cap" + cap + ")", type: "bar", marker: { color: "#26303c" }, yaxis: "y" };
+    var tracePnl = { x: dates, y: pnl, name: "Daily P&L (cap" + cap + ")", type: "scatter", mode: "lines+markers", line: { color: COLORS[modelId] || "#4fb0ff" }, yaxis: "y2" };
+    Plotly.newPlot("plot6", [traceN, tracePnl], Object.assign({}, PLOTLY_LAYOUT_BASE, {
+      xaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.xaxis, { title: "Closed model_date" }),
+      yaxis: Object.assign({}, PLOTLY_LAYOUT_BASE.yaxis, { title: "Selected N" }),
+      yaxis2: { title: "Daily P&L (u)", overlaying: "y", side: "right", gridcolor: "#26303c" },
+    }), PLOTLY_CONFIG);
+    document.getElementById("plot6Note").textContent = dates.length
+      ? dates.length + " appended day(s) for " + modelId + "."
+      : "No appended days yet. The frozen Aug04–Sep20 evidence is a period aggregate, not a per-day series, so no historical point is fabricated here — this chart starts filling from the first day appended by `npm run research-clone:modeling-dashboard-refresh` after " + meta.latestDashboardDate + ".";
+  }
+  plot6ModelSel.value = meta.preferredModel;
+  plot6ModelSel.addEventListener("change", renderPlot6);
+  plot6CapSel.addEventListener("change", renderPlot6);
+  renderPlot6();
+
+  // ==================== Closed hypotheses + provenance ====================
+  document.getElementById("closedTable").innerHTML =
+    "<thead><tr><th>Rule</th><th>Status</th></tr></thead><tbody>" +
+    D.closedHypotheses.map(function (h) {
+      return "<tr><td style='text-align:left'>" + esc(h.rule) + "</td><td><span class='status-pill nogo'>" + esc(h.status.replace(/_/g, " ")) + "</span></td></tr>";
+    }).join("") + "</tbody>";
+
+  var p = meta.provenance;
+  document.getElementById("provenance").innerHTML =
+    "<dt>Research disclaimer</dt><dd>RESEARCH ONLY — flat 1u backtest economics, not realized live cash P&amp;L</dd>" +
+    "<dt>Initial frozen period</dt><dd>" + esc(meta.frozenPeriodStart) + " → " + esc(meta.frozenPeriodEnd) + "</dd>" +
+    "<dt>Research source</dt><dd>" + esc(p.source) + "</dd>" +
+    "<dt>Live source (read-only)</dt><dd>" + esc(p.liveSource) + "</dd>" +
+    "<dt>Production DB writes</dt><dd>" + p.productionWrites + "</dd>" +
+    "<dt>Sep21 freeze commit</dt><dd>current PR " + esc(p.sep21FreezeCommitPr) + " commit after this mission</dd>" +
+    "<dt>Volume source</dt><dd>" + esc(p.volumeSource) + "</dd>" +
+    "<dt>Research refresh command</dt><dd><code>" + esc(p.refreshCommand) + "</code></dd>" +
+    "<dt>Live refresh command</dt><dd><code>" + esc(p.liveRefreshCommand) + "</code></dd>" +
+    "<dt>Combined refresh command</dt><dd><code>" + esc(p.combinedRefreshCommand) + "</code></dd>";
+
+  document.getElementById("footer").textContent =
+    "Generated " + D.GENERATED_AT + " · " + D.ARTIFACT + (LIVE ? " · live snapshot " + LIVE.GENERATED_AT : "") + " · Aggregate metrics only, no raw event rows.";
+})();
+</script>
+</body>
+</html>
