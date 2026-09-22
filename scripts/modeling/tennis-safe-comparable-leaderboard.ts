@@ -82,13 +82,14 @@ import { QUALITY_PORTFOLIOS } from "./quality-fill-portfolio-test";
 
 const DEFAULT_START = "2026-08-04";
 const DEFAULT_END = "2026-09-20";
-const PAGE = 1000;
 const DISPLAY_CAPS = [30, 40, 50] as const;
 const EVIDENCE_OUT_DIR = "modeling/evidence/tennis-safe-comparable-leaderboard-v1";
 const EXPECTED_CLONE_PROJECT_REF = "nppznoujvnyjargjkmnv";
 const TENNIS_FAMILY = "tennis";
 /** Chunk size for the .in("condition_id", ...) identity join, mirroring the established CID_CHUNK pattern. */
 const CID_CHUNK = 200;
+/** Explicitly page every Supabase read; never rely on its default max-row limit. */
+const READ_PAGE = 1000;
 
 /** Production live-mix configs, per this mission (LIVE_RESERVATION_MIX_GUARD_V1-shaped). */
 export const QUALITY_FILL_A_SAFE_MIX_CONFIGS: Record<30 | 40 | 50, LiveReservationMixGuardConfig> = {
@@ -131,24 +132,24 @@ async function resolveDb() {
 async function fetchRows(): Promise<ScorecardReadyRow[]> {
   const db = await resolveDb();
   const rows: ScorecardReadyRow[] = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await db
-      .from("research_model_ready_rows")
-      .select("canonical_row")
-      .gte("model_date", START)
-      .lte("model_date", END)
-      .order("model_date")
-      .order("population_id")
-      .order("condition_id")
-      .order("selected_token_id")
-      .order("decision_at")
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`FETCH_ROWS:${error.code ?? error.message}`);
-    if (!data || data.length === 0) break;
-    for (const r of data as Array<{ canonical_row: ScorecardReadyRow }>) rows.push(r.canonical_row);
-    if (data.length < PAGE) break;
-    from += PAGE;
+  // Keep offsets bounded to one model date. A growing full-range OFFSET is
+  // both slow on the clone and vulnerable to PostgreSQL statement timeout.
+  for (const modelDate of enumerateMinskDates(START, END)) {
+    for (let from = 0;; from += READ_PAGE) {
+      const { data, error } = await db
+        .from("research_model_ready_rows")
+        .select("canonical_row")
+        .eq("model_date", modelDate)
+        .order("population_id")
+        .order("condition_id")
+        .order("selected_token_id")
+        .order("decision_at")
+        .range(from, from + READ_PAGE - 1);
+      if (error) throw new Error(`FETCH_ROWS:${error.code ?? error.message}`);
+      if (!data || data.length === 0) break;
+      for (const r of data as Array<{ canonical_row: ScorecardReadyRow }>) rows.push(r.canonical_row);
+      if (data.length < READ_PAGE) break;
+    }
   }
   return rows;
 }
@@ -191,32 +192,43 @@ async function fetchTennisIdentityLookup(db: any, conditionIds: string[]): Promi
   const unique = [...new Set(conditionIds)].filter(Boolean);
   for (let i = 0; i < unique.length; i += CID_CHUNK) {
     const slice = unique.slice(i, i + CID_CHUNK);
-    const { data, error } = await db
-      .from("generated_signal_pairs")
-      .select("condition_id,selected_token_id,created_at,event_slug,market_slug,diagnostics")
-      .in("condition_id", slice);
-    if (error) throw new Error(`FETCH_TENNIS_IDENTITY:${error.code ?? error.message}`);
-    for (const r of (data ?? []) as Array<Record<string, unknown>>) {
-      const conditionId = String(r.condition_id ?? "");
-      const selectedTokenId = String(r.selected_token_id ?? "");
-      if (!conditionId || !selectedTokenId) continue;
-      const diag = (r.diagnostics ?? {}) as Record<string, unknown>;
-      // Tennis GSP rows nest their identity under diagnostics.providerEventContext
-      // (eventTitle/marketQuestion/marketType); some other sources carry a flat
-      // diagnostics.marketTitle/marketType instead. Check both, flat first.
-      const ctx = (diag.providerEventContext ?? {}) as Record<string, unknown>;
-      const structuredMarketType = (typeof diag.marketType === "string" ? diag.marketType : null) ?? (typeof ctx.marketType === "string" ? ctx.marketType : null);
-      const marketSlug = typeof r.market_slug === "string" ? r.market_slug : null;
-      const eventSlug = typeof r.event_slug === "string" ? r.event_slug : null;
-      const marketText =
-        (typeof diag.marketTitle === "string" ? diag.marketTitle : null) ?? (typeof ctx.marketQuestion === "string" ? ctx.marketQuestion : null) ?? marketSlug;
-      const eventIdentityText =
-        (typeof diag.eventTitle === "string" ? diag.eventTitle : null) ?? (typeof ctx.eventTitle === "string" ? ctx.eventTitle : null) ?? eventSlug ?? marketSlug;
-      const key = `${conditionId}::${selectedTokenId}`;
-      const list = rowsByPair.get(key);
-      const candidate: IdentityCandidate = { createdAt: String(r.created_at ?? ""), structuredMarketType, marketText, eventIdentityText };
-      if (list) list.push(candidate);
-      else rowsByPair.set(key, [candidate]);
+    // A 200-condition slice can contain thousands of rows. Order by a total
+    // key and page exhaustively so every decision-time identity is visible.
+    for (let from = 0;; from += READ_PAGE) {
+      const { data, error } = await db
+        .from("generated_signal_pairs")
+        .select("id,condition_id,selected_token_id,created_at,event_slug,market_slug,diagnostics")
+        .in("condition_id", slice)
+        .order("condition_id")
+        .order("selected_token_id")
+        .order("created_at")
+        .order("id")
+        .range(from, from + READ_PAGE - 1);
+      if (error) throw new Error(`FETCH_TENNIS_IDENTITY:${error.code ?? error.message}`);
+      if (!data || data.length === 0) break;
+      for (const r of data as Array<Record<string, unknown>>) {
+        const conditionId = String(r.condition_id ?? "");
+        const selectedTokenId = String(r.selected_token_id ?? "");
+        if (!conditionId || !selectedTokenId) continue;
+        const diag = (r.diagnostics ?? {}) as Record<string, unknown>;
+        // Tennis GSP rows nest their identity under diagnostics.providerEventContext
+        // (eventTitle/marketQuestion/marketType); some other sources carry a flat
+        // diagnostics.marketTitle/marketType instead. Check both, flat first.
+        const ctx = (diag.providerEventContext ?? {}) as Record<string, unknown>;
+        const structuredMarketType = (typeof diag.marketType === "string" ? diag.marketType : null) ?? (typeof ctx.marketType === "string" ? ctx.marketType : null);
+        const marketSlug = typeof r.market_slug === "string" ? r.market_slug : null;
+        const eventSlug = typeof r.event_slug === "string" ? r.event_slug : null;
+        const marketText =
+          (typeof diag.marketTitle === "string" ? diag.marketTitle : null) ?? (typeof ctx.marketQuestion === "string" ? ctx.marketQuestion : null) ?? marketSlug;
+        const eventIdentityText =
+          (typeof diag.eventTitle === "string" ? diag.eventTitle : null) ?? (typeof ctx.eventTitle === "string" ? ctx.eventTitle : null) ?? eventSlug ?? marketSlug;
+        const key = `${conditionId}::${selectedTokenId}`;
+        const list = rowsByPair.get(key);
+        const candidate: IdentityCandidate = { createdAt: String(r.created_at ?? ""), structuredMarketType, marketText, eventIdentityText };
+        if (list) list.push(candidate);
+        else rowsByPair.set(key, [candidate]);
+      }
+      if (data.length < READ_PAGE) break;
     }
   }
   return buildIdentityLookup(rowsByPair);
