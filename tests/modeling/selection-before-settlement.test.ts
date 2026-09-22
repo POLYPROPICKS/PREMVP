@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import type { RollingCompactRow } from "../../lib/modeling/research-corpus/rollingCorpus";
-import { toDecisionTimeCandidates, toAtlasInput } from "../../scripts/modeling/factor-atlas";
+import { toDecisionTimeSelectionInput, toAtlasInput } from "../../scripts/modeling/factor-atlas";
 import {
   runStandaloneStrict,
   runPortfolioStrict,
@@ -33,7 +33,7 @@ function row(over: Partial<RollingCompactRow> & { conditionId: string; decisionA
 }
 
 // Minimal ScorecardReadyRow-shaped adapter carrying only the fields
-// toAtlasInput()/toDecisionTimeCandidates() read.
+// toAtlasInput()/toDecisionTimeSelectionInput() read.
 function toScorecardRow(r: RollingCompactRow) {
   return {
     populationId: r.populationId,
@@ -56,6 +56,22 @@ function toScorecardRow(r: RollingCompactRow) {
 
 const c0Predicate = (e: { entryPrice: number }) => e.entryPrice >= 0.5 && e.entryPrice < 0.6;
 
+test("FIX 1 FOCUSED REGRESSION: settlement is not present on the candidate object a predicate receives", () => {
+  // Type-level: DecisionTimeCandidate has no `labelAsOf`/`outcome` field to
+  // read in the first place (see factor-atlas.ts). Runtime: assert directly
+  // on the object instance passed into the predicate that neither key exists.
+  const rows = [row({ conditionId: "K1", providerEventId: "evt-key", decisionAt: "2026-08-04T09:00:00.000Z", label: "OPEN" })];
+  const { candidates } = toDecisionTimeSelectionInput(rows.map((r) => toScorecardRow(r)));
+  let sawCandidate = false;
+  runStandaloneStrict(candidates, (e) => {
+    sawCandidate = true;
+    assert.equal("labelAsOf" in e, false, "labelAsOf must not exist on the predicate's typed input object");
+    assert.equal("outcome" in e, false, "outcome must not exist on the predicate's typed input object");
+    return c0Predicate(e);
+  });
+  assert.equal(sawCandidate, true, "the predicate must actually have been invoked for this assertion to be meaningful");
+});
+
 test("FOCUSED REGRESSION: chronologically-first OPEN candidate must be selected over a later WIN candidate", () => {
   // Same physicalEventKey, both candidate rows qualify C0. The FIRST
   // (chronologically) is still OPEN at decision time; the SECOND has since
@@ -65,12 +81,12 @@ test("FOCUSED REGRESSION: chronologically-first OPEN candidate must be selected 
     row({ conditionId: "O1", providerEventId: "evt-open-first", decisionAt: "2026-08-04T09:00:00.000Z", label: "OPEN" }),
     row({ conditionId: "O2", providerEventId: "evt-open-first", decisionAt: "2026-08-04T09:05:00.000Z", label: "WIN" }),
   ];
-  const input = toDecisionTimeCandidates(rows.map((r) => toScorecardRow(r)));
-  const selected = runStandaloneStrict(input, c0Predicate);
+  const { candidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rows.map((r) => toScorecardRow(r)));
+  const selected = runStandaloneStrict(candidates, c0Predicate);
   assert.equal(selected.length, 1);
   assert.equal(selected[0].candidateRef, "tok", "identity check only distinguishes by conditionId (ref) here");
   assert.equal(selected[0].decisionTimestamp, "2026-08-04T09:00:00.000Z", "the chronologically-first qualifying row (OPEN) must win");
-  assert.equal(selected[0].labelAsOf, "OPEN", "settlement status is read AFTER selection, and it is OPEN here");
+  assert.equal(settlementByCandidateIdentity.get(selected[0].candidateIdentity), "OPEN", "settlement is read from the SEPARATE lookup, AFTER selection, and it is OPEN here");
 });
 
 test("FOCUSED REGRESSION: changing the winning candidate's settlement label does not change which candidate is selected", () => {
@@ -78,13 +94,15 @@ test("FOCUSED REGRESSION: changing the winning candidate's settlement label does
     row({ conditionId: "L1", providerEventId: "evt-label-stable", decisionAt: "2026-08-04T09:00:00.000Z", label }),
     row({ conditionId: "L2", providerEventId: "evt-label-stable", decisionAt: "2026-08-04T09:05:00.000Z", label: "WIN" }),
   ];
-  const openCase = runStandaloneStrict(toDecisionTimeCandidates(baseRows("OPEN").map((r) => toScorecardRow(r))), c0Predicate);
-  const winCase = runStandaloneStrict(toDecisionTimeCandidates(baseRows("WIN").map((r) => toScorecardRow(r))), c0Predicate);
+  const openInput = toDecisionTimeSelectionInput(baseRows("OPEN").map((r) => toScorecardRow(r)));
+  const winInput = toDecisionTimeSelectionInput(baseRows("WIN").map((r) => toScorecardRow(r)));
+  const openCase = runStandaloneStrict(openInput.candidates, c0Predicate);
+  const winCase = runStandaloneStrict(winInput.candidates, c0Predicate);
   assert.equal(openCase.length, 1);
   assert.equal(winCase.length, 1);
   assert.equal(openCase[0].decisionTimestamp, winCase[0].decisionTimestamp, "same candidate (by decisionTimestamp/ref) selected regardless of its settlement label");
-  assert.equal(openCase[0].labelAsOf, "OPEN");
-  assert.equal(winCase[0].labelAsOf, "WIN");
+  assert.equal(openInput.settlementByCandidateIdentity.get(openCase[0].candidateIdentity), "OPEN");
+  assert.equal(winInput.settlementByCandidateIdentity.get(winCase[0].candidateIdentity), "WIN");
 });
 
 test("OPEN/nonterminal candidates still occupy their selected AND cap slot — never replaced by a later-settled candidate", () => {
@@ -94,11 +112,11 @@ test("OPEN/nonterminal candidates still occupy their selected AND cap slot — n
     row({ conditionId: "P3", providerEventId: "evt-p3", decisionAt: "2026-08-04T09:02:00.000Z", label: "LOSS" }),
     row({ conditionId: "P4", providerEventId: "evt-p4", decisionAt: "2026-08-04T09:03:00.000Z", label: "VOID" }),
   ];
-  const input = toDecisionTimeCandidates(rows.map((r) => toScorecardRow(r)));
-  const selected = runStandaloneStrict(input, c0Predicate);
+  const { candidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rows.map((r) => toScorecardRow(r)));
+  const selected = runStandaloneStrict(candidates, c0Predicate);
   const capped = applyDailyCap(selected, 50);
   assert.equal(capped.length, 4, "cap never drops an OPEN/nonterminal candidate that qualified and fits under the cap");
-  const settlement = partialMetricsFor(capped);
+  const settlement = partialMetricsFor(capped, settlementByCandidateIdentity);
   assert.equal(settlement.SELECTED_N, 4);
   assert.equal(settlement.SETTLED_N, 2);
   assert.equal(settlement.OPEN_N, 1);
@@ -112,13 +130,13 @@ test("PORTFOLIO_BROAD tiering: an OPEN chronologically-first row still wins its 
     row({ conditionId: "T1", providerEventId: "evt-tier", decisionAt: "2026-08-04T09:00:00.000Z", entryPrice: 0.51, sportFamily: "tennis", label: "OPEN" }),
     row({ conditionId: "T2", providerEventId: "evt-tier", decisionAt: "2026-08-04T09:05:00.000Z", entryPrice: 0.51, sportFamily: "tennis", label: "WIN" }),
   ];
-  const input = toDecisionTimeCandidates(rows.map((r) => toScorecardRow(r)));
+  const { candidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rows.map((r) => toScorecardRow(r)));
   const broad = PORTFOLIOS.find((p) => p.id === "PORTFOLIO_BROAD")!;
-  const selected = runPortfolioStrict(input, broad.tiers as Parameters<typeof runPortfolioStrict>[1]);
+  const selected = runPortfolioStrict(candidates, broad.tiers as Parameters<typeof runPortfolioStrict>[1]);
   assert.equal(selected.length, 1);
   assert.equal(selected[0].tier, 1);
   assert.equal(selected[0].decisionTimestamp, "2026-08-04T09:00:00.000Z");
-  assert.equal(selected[0].labelAsOf, "OPEN");
+  assert.equal(settlementByCandidateIdentity.get(selected[0].candidateIdentity), "OPEN");
 });
 
 test("SELECTION PARITY: the fixed decision-time-only path and the legacy WIN/LOSS-first path select the SAME candidate when every candidate row is already settled", () => {
@@ -132,7 +150,8 @@ test("SELECTION PARITY: the fixed decision-time-only path and the legacy WIN/LOS
   const scoreBucket = (e: { entryPrice: number; scoreLevel: number | null }) => c0Predicate(e) && typeof e.scoreLevel === "number" && e.scoreLevel >= 63 && e.scoreLevel < 65;
 
   const legacyBets = runStandalone(toAtlasInput(scorecardRows), scoreBucket);
-  const fixedCandidates = runStandaloneStrict(toDecisionTimeCandidates(scorecardRows), scoreBucket);
+  const { candidates } = toDecisionTimeSelectionInput(scorecardRows);
+  const fixedCandidates = runStandaloneStrict(candidates, scoreBucket);
 
   assert.equal(legacyBets.length, 1);
   assert.equal(fixedCandidates.length, 1);

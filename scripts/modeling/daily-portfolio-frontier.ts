@@ -198,6 +198,12 @@ export function runPortfolio(input: AtlasInputEvent[], tiers: Array<(e: AtlasEva
 
 type StrictEvaluatedCandidate = ReturnType<typeof evaluateEvent> & DecisionTimeCandidate;
 
+/**
+ * Output of selection+cap. Deliberately has NO settlement field — there is
+ * nothing named labelAsOf/outcome for a predicate, the comparator, or
+ * applyDailyCap() to read even by accident. `candidateIdentity` is carried
+ * through only so a caller can join settlement back in AFTER this point.
+ */
 export interface SelectedCandidate {
   physicalEventKey: string;
   decisionTimestamp: string;
@@ -209,8 +215,7 @@ export interface SelectedCandidate {
   candidateRef?: string;
   tier: number;
   day: string;
-  /** Settlement status of the SELECTED candidate — read only, never re-queried for a swap. */
-  labelAsOf: CorpusLabel;
+  candidateIdentity: string;
 }
 
 function toSelectedCandidate(event: StrictEvaluatedCandidate, tier: number): SelectedCandidate {
@@ -225,7 +230,7 @@ function toSelectedCandidate(event: StrictEvaluatedCandidate, tier: number): Sel
     candidateRef: event.candidateRef,
     tier,
     day: minskDate(event.decisionTimestamp),
-    labelAsOf: event.labelAsOf,
+    candidateIdentity: event.candidateIdentity,
   };
 }
 
@@ -283,6 +288,58 @@ export function classifySettlement(labelAsOf: CorpusLabel): SettlementBucket {
   return "OTHER_NONTERMINAL"; // VOID, NO_MATCH, AMBIGUOUS
 }
 
+export interface SettledBetsSplit {
+  /** TieredBet[] (carries tier/day too) so a caller can feed legacy TieredBet-shaped reporting (supplyStats, computeCapacity, ...) the settled-only subset of a fixed-path selection. */
+  settledBets: TieredBet[];
+  openN: number;
+  otherNonterminalN: number;
+}
+
+/**
+ * THE post-selection/post-cap settlement join: looks up each already-selected
+ * candidate's settlement by `candidateIdentity` in the separate
+ * `settlementByCandidateIdentity` map (from `toDecisionTimeSelectionInput()`,
+ * factor-atlas.ts) — settlement is never carried on the candidate object
+ * itself. Only WIN/LOSS candidates are converted into a `TieredBet` and
+ * reach settleBetU() (imported verbatim — no duplicated settlement math).
+ * OPEN/other-nonterminal candidates still occupy their selected/cap slot;
+ * they are counted here, never dropped and never replaced by a
+ * later-settled candidate.
+ */
+export function settledBetsOnly(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>): SettledBetsSplit {
+  const settledBets: TieredBet[] = [];
+  let openN = 0;
+  let otherNonterminalN = 0;
+  for (const c of candidates) {
+    const labelAsOf = settlementByCandidateIdentity.get(c.candidateIdentity);
+    if (labelAsOf === undefined) {
+      throw new Error(`SETTLEMENT_JOIN_MISS: no settlement entry for candidateIdentity=${c.candidateIdentity}`);
+    }
+    const bucket = classifySettlement(labelAsOf);
+    if (bucket === "SETTLED") {
+      settledBets.push({
+        physicalEventKey: c.physicalEventKey,
+        decisionTimestamp: c.decisionTimestamp,
+        eventStart: c.eventStart,
+        leadTimeHours: c.leadTimeHours,
+        entryPrice: c.entryPrice,
+        sportFamily: c.sportFamily,
+        outcome: labelAsOf as Outcome,
+        pnlU: settleBetU(labelAsOf as Outcome, c.entryPrice),
+        ...(c.ref === undefined ? {} : { ref: c.ref }),
+        ...(c.candidateRef === undefined ? {} : { candidateRef: c.candidateRef }),
+        tier: c.tier,
+        day: c.day,
+      });
+    } else if (bucket === "OPEN") {
+      openN += 1;
+    } else {
+      otherNonterminalN += 1;
+    }
+  }
+  return { settledBets, openN, otherNonterminalN };
+}
+
 export interface PartialSettlementMetrics {
   SELECTED_N: number;
   SETTLED_N: number;
@@ -293,48 +350,76 @@ export interface PartialSettlementMetrics {
   SETTLEMENT_COVERAGE_PCT: number;
 }
 
-/**
- * Post-selection/post-cap settlement join. Only WIN/LOSS candidates ever
- * reach settleBetU()/aggregateMetrics() (imported verbatim — no duplicated
- * settlement math). OPEN/other-nonterminal candidates still occupy their
- * selected/cap slot; they are counted, never dropped and never replaced by a
- * later-settled candidate.
- */
-export function partialMetricsFor(candidates: SelectedCandidate[]): PartialSettlementMetrics {
-  const settledBets: SelectedBet[] = [];
-  let openN = 0;
-  let otherN = 0;
-  for (const c of candidates) {
-    const bucket = classifySettlement(c.labelAsOf);
-    if (bucket === "SETTLED") {
-      settledBets.push({
-        physicalEventKey: c.physicalEventKey,
-        decisionTimestamp: c.decisionTimestamp,
-        eventStart: c.eventStart,
-        leadTimeHours: c.leadTimeHours,
-        entryPrice: c.entryPrice,
-        sportFamily: c.sportFamily,
-        outcome: c.labelAsOf as Outcome,
-        pnlU: settleBetU(c.labelAsOf as Outcome, c.entryPrice),
-        ...(c.ref === undefined ? {} : { ref: c.ref }),
-        ...(c.candidateRef === undefined ? {} : { candidateRef: c.candidateRef }),
-      });
-    } else if (bucket === "OPEN") {
-      openN += 1;
-    } else {
-      otherN += 1;
-    }
-  }
+export function partialMetricsFor(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>): PartialSettlementMetrics {
+  const { settledBets, openN, otherNonterminalN } = settledBetsOnly(candidates, settlementByCandidateIdentity);
   const settled = metricsFor(settledBets);
   const selectedN = candidates.length;
   return {
     SELECTED_N: selectedN,
     SETTLED_N: settledBets.length,
     OPEN_N: openN,
-    OTHER_NONTERMINAL_N: otherN,
+    OTHER_NONTERMINAL_N: otherNonterminalN,
     SETTLED_PNL_U_PARTIAL: settled.pnl_u,
     SETTLED_ROI_PCT_PARTIAL: settled.roi_pct,
     SETTLEMENT_COVERAGE_PCT: selectedN ? round((settledBets.length / selectedN) * 100, 4) : 0,
+  };
+}
+
+export interface PartialDailyResultRow {
+  date: string;
+  event_n: number;
+  settled_n: number;
+  open_n: number;
+  other_nonterminal_n: number;
+  settled_pnl_u_partial: number;
+}
+
+/** Every day in the requested range, whether or not the strategy fired — decision-time-only counterpart of computeDailyResults(). */
+export function partialDailyResults(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>, allDates: string[]): PartialDailyResultRow[] {
+  const byDay = new Map<string, SelectedCandidate[]>();
+  for (const c of candidates) {
+    const list = byDay.get(c.day);
+    if (list) list.push(c);
+    else byDay.set(c.day, [c]);
+  }
+  return allDates.map((date) => {
+    const dayCandidates = byDay.get(date) ?? [];
+    const m = partialMetricsFor(dayCandidates, settlementByCandidateIdentity);
+    return {
+      date,
+      event_n: m.SELECTED_N,
+      settled_n: m.SETTLED_N,
+      open_n: m.OPEN_N,
+      other_nonterminal_n: m.OTHER_NONTERMINAL_N,
+      settled_pnl_u_partial: m.SETTLED_PNL_U_PARTIAL,
+    };
+  });
+}
+
+export interface PartialCapacityResult {
+  cap: number;
+  selected_n: number;
+  settled_n: number;
+  open_n: number;
+  other_nonterminal_n: number;
+  settled_pnl_u_partial: number;
+  settled_roi_pct_partial: number;
+  settlement_coverage_pct: number;
+}
+
+/** Decision-time-only counterpart of computeCapacity() — same applyDailyCap() capacity ordering, imported verbatim. */
+export function computePartialCapacity(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>, cap: number): PartialCapacityResult {
+  const capped = applyDailyCap(candidates, cap);
+  const m = partialMetricsFor(capped, settlementByCandidateIdentity);
+  return {
+    cap,
+    selected_n: m.SELECTED_N,
+    settled_n: m.SETTLED_N,
+    open_n: m.OPEN_N,
+    other_nonterminal_n: m.OTHER_NONTERMINAL_N,
+    settled_pnl_u_partial: m.SETTLED_PNL_U_PARTIAL,
+    settled_roi_pct_partial: m.SETTLED_ROI_PCT_PARTIAL,
+    settlement_coverage_pct: m.SETTLEMENT_COVERAGE_PCT,
   };
 }
 

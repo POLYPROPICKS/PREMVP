@@ -18,14 +18,17 @@
  *                       ONLY as the historical comparison baseline that
  *                       first proved the contamination (see git history).
  *
- *   FIXED (current)   — toDecisionTimeCandidates() (factor-atlas.ts) builds
- *                       candidates from ALL decision-time-complete rows
- *                       regardless of labelAsOf; runStandaloneStrict()/
- *                       runPortfolioStrict() (daily-portfolio-frontier.ts)
- *                       select using the same predicates/tiers and the same
- *                       chronological comparator (candidateRef tiebreak
- *                       included), never reading labelAsOf. Settlement is
- *                       attached only after applyDailyCap() via
+ *   FIXED (current)   — toDecisionTimeSelectionInput() (factor-atlas.ts)
+ *                       builds candidates (NO settlement field at all) from
+ *                       ALL decision-time-complete rows regardless of
+ *                       labelAsOf, plus a SEPARATE settlementByCandidateIdentity
+ *                       lookup; runStandaloneStrict()/runPortfolioStrict()
+ *                       (daily-portfolio-frontier.ts) select using the same
+ *                       predicates/tiers and the same chronological
+ *                       comparator (candidateRef tiebreak included) — there
+ *                       is nothing named labelAsOf/outcome on the candidate
+ *                       type for a predicate to read. Settlement is joined
+ *                       back only after applyDailyCap() via
  *                       partialMetricsFor() — also imported verbatim.
  *
  * PASS requires the FIXED arm's cap50 selection identities to equal what
@@ -45,7 +48,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import "dotenv/config";
 
 import type { ScorecardReadyRow } from "@/lib/modeling/research-corpus/rollingCorpus";
-import { toAtlasInput, toDecisionTimeCandidates, type AtlasInputEvent, type DecisionTimeCandidate } from "./factor-atlas";
+import { toAtlasInput, toDecisionTimeSelectionInput, type AtlasInputEvent } from "./factor-atlas";
 import {
   runStandalone,
   runPortfolio,
@@ -149,7 +152,7 @@ async function main() {
   const portfolioById = new Map(PORTFOLIOS.map((p) => [p.id, p]));
 
   // ── FIXED arm: selection-before-settlement path, same rows, no labelAsOf filter ──
-  const fixedInput: DecisionTimeCandidate[] = toDecisionTimeCandidates(rawRows);
+  const { candidates: fixedInput, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rawRows);
 
   const results: ModelAudit[] = [];
 
@@ -176,7 +179,7 @@ async function main() {
       fixedCandidates = runPortfolioStrict(fixedInput, QUALITY_PORTFOLIOS[modelId] as Parameters<typeof runPortfolioStrict>[1]);
     }
     const fixedCapped = applyDailyCap(fixedCandidates, CAP);
-    const fixedSettlement = partialMetricsFor(fixedCapped);
+    const fixedSettlement = partialMetricsFor(fixedCapped, settlementByCandidateIdentity);
 
     // SELECTION_ID_CHANGED_VS_LEGACY_N: physicalEventKeys whose selected
     // candidateRef differs between the two cap50 selections (including
@@ -231,7 +234,7 @@ async function main() {
     MISSION: "ANTI_SURVIVORSHIP_SELECTION_AUDIT_V1",
     NOTE: "Selection-contamination regression audit. FIXED_SETTLED_PNL_U_PARTIAL is never a replacement headline ROI while FIXED_OPEN_N > 0.",
     ENGINE_REUSE:
-      "LEGACY arm: toAtlasInput/runStandalone/runPortfolio/applyDailyCap/metricsFor imported verbatim (unchanged pre-fix path, kept only as historical baseline). FIXED arm: toDecisionTimeCandidates/runStandaloneStrict/runPortfolioStrict/applyDailyCap/partialMetricsFor imported verbatim from the shared research path (factor-atlas.ts, daily-portfolio-frontier.ts) — same predicates/tiers, same evaluateEvent/sortChronologically/compareChronologically comparator (candidateRef tiebreak included), same applyDailyCap() capacity ordering. No duplicated selection/settlement logic in this file.",
+      "LEGACY arm: toAtlasInput/runStandalone/runPortfolio/applyDailyCap/metricsFor imported verbatim (unchanged pre-fix path, kept only as historical baseline). FIXED arm: toDecisionTimeSelectionInput/runStandaloneStrict/runPortfolioStrict/applyDailyCap/partialMetricsFor imported verbatim from the shared research path (factor-atlas.ts, daily-portfolio-frontier.ts) — same predicates/tiers, same evaluateEvent/sortChronologically/compareChronologically comparator (candidateRef tiebreak included), same applyDailyCap() capacity ordering. Settlement lives only in a separate settlementByCandidateIdentity map, joined after selection+cap. No duplicated selection/settlement logic in this file.",
     DATASET_RANGE: { start: START, end: END },
     SOURCE_ROW_N: rawRows.length,
     CAP: CAP,
