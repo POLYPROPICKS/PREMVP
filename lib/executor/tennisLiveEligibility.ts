@@ -1,0 +1,89 @@
+// lib/executor/tennisLiveEligibility.ts
+//
+// R0-TENNIS — the shared live-money TENNIS eligibility gate.
+//
+// TENNIS is money-eligible only when every one of the following holds:
+//   1. the market's structured type is exactly "tennis_completed_match"
+//      (the provider's own market_type field). A text-fallback match on the
+//      "Completed Match" wording is accepted ONLY when no structured market
+//      type is present at all -- a structured type that names something else
+//      always wins over any text guess.
+//   2. a visible event identity exists (an event title, or failing that an
+//      event slug) -- a candidate with no human-readable identity can never
+//      become money-eligible, structured type notwithstanding.
+//   3. the event identity + market text do not name a lower-tier ITF level
+//      (M15/M25/W15/W35/W50), a Juniors draw, or an explicit Qualifying
+//      draw -- those are excluded outright even from an otherwise-valid
+//      Completed Match market.
+//
+// Pure text/field checks only -- no DB, no network, no clock. Applied
+// upstream of Reservation (see resolveUpstreamMarketPolicy in
+// buildFireModelCandidates.ts) so every live model inherits the same rule.
+
+const TENNIS_STRUCTURED_COMPLETED_MATCH = "tennis_completed_match";
+
+const TENNIS_COMPLETED_MATCH_TEXT_RE = /completed\s*match/i;
+
+// ITF lower-tier levels (M15/M25/W15/W35/W50), Juniors and explicit
+// Qualifying draws are excluded even when the market itself is an otherwise
+// eligible completed-match moneyline.
+const TENNIS_EXCLUDED_LEVEL_RE = /\b(?:m15|m25|w15|w35|w50)\b|\bjuniors?\b|\bqualifying\b/i;
+
+export type TennisMoneyEligibilityReasonCode =
+  | "TENNIS_MARKET_TYPE_NOT_COMPLETED_MATCH"
+  | "TENNIS_NO_EVENT_IDENTITY"
+  | "TENNIS_EXCLUDED_TOURNAMENT_LEVEL"
+  | "TENNIS_MONEY_ELIGIBLE";
+
+export interface TennisMoneyEligibilityInput {
+  /** The provider's own structured market_type field, when present. */
+  structuredMarketType?: string | null;
+  /** The market's display text -- used ONLY as a fallback when structuredMarketType is absent. */
+  marketText?: string | null;
+  /** Visible event identity: event title, or failing that, an event slug. */
+  eventIdentityText?: string | null;
+}
+
+export interface TennisMoneyEligibilityDecision {
+  eligible: boolean;
+  reasonCode: TennisMoneyEligibilityReasonCode;
+}
+
+function trimmedOrNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const t = value.trim();
+  return t === "" ? null : t;
+}
+
+function isStructuredTennisCompletedMatch(value: string): boolean {
+  return value.trim().toLowerCase() === TENNIS_STRUCTURED_COMPLETED_MATCH;
+}
+
+/**
+ * The shared TENNIS live-money gate. Applied before Reservation so every live
+ * model (Contract A Planning, PORTFOLIO_BROAD, ...) inherits the same rule.
+ */
+export function resolveTennisMoneyEligibility(
+  input: TennisMoneyEligibilityInput,
+): TennisMoneyEligibilityDecision {
+  const structuredType = trimmedOrNull(input.structuredMarketType);
+  const marketText = trimmedOrNull(input.marketText);
+  const eventIdentityText = trimmedOrNull(input.eventIdentityText);
+
+  const isCompletedMatch =
+    structuredType !== null
+      ? isStructuredTennisCompletedMatch(structuredType)
+      : marketText !== null && TENNIS_COMPLETED_MATCH_TEXT_RE.test(marketText);
+
+  if (!isCompletedMatch) {
+    return { eligible: false, reasonCode: "TENNIS_MARKET_TYPE_NOT_COMPLETED_MATCH" };
+  }
+  if (eventIdentityText === null) {
+    return { eligible: false, reasonCode: "TENNIS_NO_EVENT_IDENTITY" };
+  }
+  const combinedText = `${eventIdentityText} ${marketText ?? ""}`;
+  if (TENNIS_EXCLUDED_LEVEL_RE.test(combinedText)) {
+    return { eligible: false, reasonCode: "TENNIS_EXCLUDED_TOURNAMENT_LEVEL" };
+  }
+  return { eligible: true, reasonCode: "TENNIS_MONEY_ELIGIBLE" };
+}

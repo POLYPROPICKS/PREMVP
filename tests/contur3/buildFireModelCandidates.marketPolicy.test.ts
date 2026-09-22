@@ -140,12 +140,21 @@ const ESPORTS_NON_POLICY = sourceRow({
   shadowScope: "esports",
 });
 
-const TENNIS_COMPLETED_MATCH = sourceRow({
-  id: "tennis-completed-match",
+const TENNIS_COMPLETED_MATCH_BLOCKED_LEVEL = sourceRow({
+  id: "tennis-completed-match-w35",
   event_slug: "itf-llorca1-yesypc1-2026-07-27-completed-match",
   market_slug: "W35 Reus, Main Draw: Completed Match: Lucia Cortez Llorca vs Daria Yesypchuk",
   eventTitle: "W35 Reus: Lucia Cortez Llorca vs Daria Yesypchuk",
   marketTitle: "W35 Reus, Main Draw: Completed Match: Lucia Cortez Llorca vs Daria Yesypchuk",
+  shadowScope: "tennis",
+});
+
+const TENNIS_COMPLETED_MATCH_ELIGIBLE = sourceRow({
+  id: "tennis-completed-match-atp",
+  event_slug: "atp-alcaraz-sinner-2026-07-27-completed-match",
+  market_slug: "ATP Rome, Main Draw: Completed Match: Carlos Alcaraz vs Jannik Sinner",
+  eventTitle: "ATP Rome: Carlos Alcaraz vs Jannik Sinner",
+  marketTitle: "ATP Rome, Main Draw: Completed Match: Carlos Alcaraz vs Jannik Sinner",
   shadowScope: "tennis",
 });
 
@@ -190,12 +199,21 @@ test("MP-1b: every blocked class is rejected with a structured upstream reason",
   }
 });
 
-test("MP-1b1: tennis Completed Match never becomes a Contract A planning candidate", async () => {
-  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH]);
+test("MP-1b1: a lower-tier ITF level (W35) Completed Match never becomes a planning candidate", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH_BLOCKED_LEVEL]);
   assert.equal(candidates.length, 0);
   assert.equal(rawDiagnostics?.market_policy_eligible, 0);
   assert.equal(rawDiagnostics?.market_policy_rejected, 1);
-  assert.equal(rawDiagnostics?.market_policy_rejected_by_reason.UNKNOWN_MARKET_CLASS, 1);
+  assert.equal(rawDiagnostics?.market_policy_rejected_by_reason.TENNIS_EXCLUDED_TOURNAMENT_LEVEL, 1);
+});
+
+test("MP-1b2: a top-tier tennis Completed Match becomes a planning candidate via the dedicated tennis gate", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH_ELIGIBLE]);
+  assert.equal(candidates.length, 1);
+  assert.equal(rawDiagnostics?.market_policy_eligible, 1);
+  assert.equal(rawDiagnostics?.market_policy_rejected, 0);
+  assert.equal(candidates[0].diagnostics.market_policy?.anchor_kind, "TENNIS_COMPLETED_MATCH_EVENT");
+  assert.equal(candidates[0].diagnostics.market_policy?.reason_code, "TENNIS_MONEY_ELIGIBLE");
 });
 
 // ── TEST 1c — the production arithmetic can no longer happen ────────────────

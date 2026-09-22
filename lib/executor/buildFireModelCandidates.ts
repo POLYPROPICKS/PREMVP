@@ -10,6 +10,7 @@ import {
   resolvePlanningAnchorDecision,
   type PlanningAnchorKind,
 } from "./planningAnchor";
+import { resolveTennisMoneyEligibility } from "./tennisLiveEligibility";
 import { sanitizeSchedulerErrorMessage } from "./schedulerJobEvidence";
 import {
   produceFrozenModelV2ShadowDecisions,
@@ -364,6 +365,37 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
   }
   if (isForbiddenAnchorMarket(candidate)) {
     return { ...base, allowed: false, reason_code: "FORBIDDEN_ANCHOR_MARKET", anchor_kind: "REJECTED" };
+  }
+
+  // R0-TENNIS — TENNIS is governed entirely by its own dedicated gate, never
+  // by the generic moneyline/spread/total classifier: a tennis "match winner"
+  // market must never slip in through the generic ALLOWED_MONEYLINE_SQ path.
+  if (probe.inferred_sport === "tennis") {
+    const marketText =
+      probe.providerMarketQuestion ??
+      (typeof diag.marketTitle === "string" ? diag.marketTitle : null) ??
+      probe.market_slug ??
+      null;
+    const eventIdentityText =
+      probe.providerEventTitle ??
+      (typeof diag.eventTitle === "string" ? diag.eventTitle : null) ??
+      probe.event_slug ??
+      probe.market_slug ??
+      null;
+    const tennis = resolveTennisMoneyEligibility({
+      structuredMarketType: probe.providerMarketType ?? null,
+      marketText,
+      eventIdentityText,
+    });
+    if (!tennis.eligible) {
+      return { ...base, allowed: false, reason_code: tennis.reasonCode, anchor_kind: "REJECTED" };
+    }
+    return {
+      ...base,
+      allowed: true,
+      reason_code: tennis.reasonCode,
+      anchor_kind: "TENNIS_COMPLETED_MATCH_EVENT",
+    };
   }
 
   const planning = resolvePlanningAnchorDecision({

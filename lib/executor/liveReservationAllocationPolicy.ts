@@ -424,6 +424,98 @@ export function resolvePortfolioBroadPhysicalEventAllocations(
   return { qualified, notQualifiedPhysicalEventIds };
 }
 
+// ── LIVE MIX GUARD (RESERVATION_MIX_GUARD_V1) ───────────────────────────────
+//
+// Reservation capacity is filled in stages, not by cross-sport ratios. When
+// football supply reaches 20, reserve exactly its top 20 before up to seven
+// eligible tennis and then other qualified sports. Under 20 football, all
+// football comes first and tennis is the unrestricted first fallback.
+
+export interface LiveReservationMixGuardConfig {
+  /** Hard ceiling on the final reservation count N. */
+  readonly cap: number;
+  /** Football slots reserved first when the qualified football pool is sufficient. */
+  readonly footballFirstSlots: number;
+  /** Tennis cap only in the sufficient-football branch. */
+  readonly tennisMaxWhenFootballSufficient: number;
+}
+
+/** Production default: 20 football first, then at most 7 tennis, cap 30. */
+export const LIVE_RESERVATION_MIX_GUARD_V1: LiveReservationMixGuardConfig = Object.freeze({
+  cap: 30,
+  footballFirstSlots: 20,
+  tennisMaxWhenFootballSufficient: 7,
+});
+
+export interface LiveReservationMixGuardResult<T> {
+  selected: T[];
+  footballCount: number;
+  tennisCount: number;
+  otherCount: number;
+  finalN: number;
+}
+
+/**
+ * Pure staged slot selector. Its inputs are already deterministically ranked
+ * within their respective buckets. It never reduces N merely for a ratio.
+ */
+export function selectLiveReservationMix<T>(
+  footballRanked: readonly T[],
+  eligibleTennisRanked: readonly T[],
+  otherQualifiedRanked: readonly T[],
+  config: LiveReservationMixGuardConfig = LIVE_RESERVATION_MIX_GUARD_V1,
+): LiveReservationMixGuardResult<T> {
+  const cap = Math.max(0, Math.floor(config.cap));
+  const footballSufficient = footballRanked.length >= config.footballFirstSlots;
+  const footballCount = Math.min(
+    footballRanked.length,
+    footballSufficient ? config.footballFirstSlots : cap,
+  );
+  const remainingAfterFootball = cap - footballCount;
+  const tennisCount = Math.min(
+    eligibleTennisRanked.length,
+    remainingAfterFootball,
+    footballSufficient ? config.tennisMaxWhenFootballSufficient : remainingAfterFootball,
+  );
+  const otherCount = Math.min(
+    otherQualifiedRanked.length,
+    remainingAfterFootball - tennisCount,
+  );
+  const selected = [
+    ...footballRanked.slice(0, footballCount),
+    ...eligibleTennisRanked.slice(0, tennisCount),
+    ...otherQualifiedRanked.slice(0, otherCount),
+  ];
+  return { selected, footballCount, tennisCount, otherCount, finalN: selected.length };
+}
+
+function isFootballScope(scope: string): boolean {
+  return scope === "SOCCER" || scope === "WC";
+}
+
+/**
+ * Apply the staged selector to an already fully-ranked candidate list. Bucket
+ * order is the Reservation allocation order; relative rank is preserved inside
+ * each bucket.
+ */
+export function applyLiveReservationMixGuard(
+  rankedDistinct: readonly LiveReservationAllocationCandidate[],
+  config: LiveReservationMixGuardConfig = LIVE_RESERVATION_MIX_GUARD_V1,
+): LiveReservationAllocationCandidate[] {
+  const football: LiveReservationAllocationCandidate[] = [];
+  const tennis: LiveReservationAllocationCandidate[] = [];
+  const other: LiveReservationAllocationCandidate[] = [];
+  for (const candidate of rankedDistinct) {
+    const scope = candidate.decision.strategic_scope;
+    if (isFootballScope(scope)) football.push(candidate);
+    else if (scope === "TENNIS") tennis.push(candidate);
+    else other.push(candidate);
+  }
+
+  const { selected } = selectLiveReservationMix(football, tennis, other, config);
+  return selected;
+}
+
 export function resultsToAcceptedDecisions(
   results: readonly ContractADecisionResult<ContractAPlanningDecision>[],
 ): ContractAPlanningDecision[] {

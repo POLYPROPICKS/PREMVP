@@ -73,6 +73,9 @@ function row(overrides: {
   createdAt?: string;
   sportFamily?: string;
   metricFormulaVersion?: string;
+  marketSlug?: string;
+  marketTitle?: string;
+  eventTitle?: string;
 } = {}): Record<string, unknown> {
   const gameStartIso = overrides.gameStartIso ?? KICKOFF_FAR;
   const conditionId = overrides.conditionId ?? "cond-nyy-phi";
@@ -98,7 +101,7 @@ function row(overrides: {
     expires_at: "2026-07-28T04:00:00.000Z",
     signal_result: null,
     event_slug: eventSlug,
-    market_slug: "New York Yankees vs. Philadelphia Phillies - Moneyline",
+    market_slug: overrides.marketSlug ?? "New York Yankees vs. Philadelphia Phillies - Moneyline",
     diagnostics: {
       gameStartIso,
       providerEventContext: {
@@ -116,8 +119,8 @@ function row(overrides: {
       // tests/contur3/contractAMinEntryPrice050.test.ts for the same choice).
       dataCoverage: 90,
       shadowScope: sportFamily,
-      eventTitle: "New York Yankees vs Philadelphia Phillies",
-      marketTitle: "Yankees vs Phillies moneyline",
+      eventTitle: overrides.eventTitle ?? "New York Yankees vs Philadelphia Phillies",
+      marketTitle: overrides.marketTitle ?? "Yankees vs Phillies moneyline",
     },
   };
 }
@@ -216,7 +219,20 @@ test("B2-3: an eSports event never produces an accepted planning decision before
 test("B2-3c: non-eSports sport diversity (soccer/tennis/baseball/other) all pass subject to price only", async () => {
   const results = await planningOf([
     row({ conditionId: "cond-soccer", tokenId: "tok-soccer", eventSlug: "soccer-a-b-2026-07-27", sportFamily: "soccer" }),
-    row({ conditionId: "cond-tennis", tokenId: "tok-tennis", eventSlug: "tennis-a-b-2026-07-27", sportFamily: "tennis" }),
+    // TENNIS additionally requires the dedicated tennis-completed-match gate
+    // (R0-TENNIS, this mission) -- a real Completed Match market/identity, no
+    // excluded ITF level -- since a bare "Moneyline" tennis market is not a
+    // real, money-eligible product. This fixture is shaped to satisfy that
+    // gate so this test still exercises "no sport-only hard gate at B2".
+    row({
+      conditionId: "cond-tennis",
+      tokenId: "tok-tennis",
+      eventSlug: "atp-a-b-2026-07-27-completed-match",
+      sportFamily: "tennis",
+      marketSlug: "ATP Rome, Main Draw: Completed Match: Player A vs Player B",
+      marketTitle: "ATP Rome, Main Draw: Completed Match: Player A vs Player B",
+      eventTitle: "ATP Rome: Player A vs Player B",
+    }),
     row({ conditionId: "cond-baseball", tokenId: "tok-baseball", eventSlug: "mlb-a-b-2026-07-27", sportFamily: "baseball" }),
     row({ conditionId: "cond-basketball", tokenId: "tok-basketball", eventSlug: "nba-a-b-2026-07-27", sportFamily: "basketball" }),
   ]);
