@@ -49,6 +49,7 @@ import { resolveContractAProviderPhysicalEventIdentity } from "./contractADecisi
 import {
   LIVE_RESERVATION_ALLOCATION_V1,
   LIVE_RESERVATION_PORTFOLIO_BROAD_V2,
+  applyLiveReservationMixGuard,
   rankAllocatableApprovedPhysicalEvents,
   resolvePortfolioBroadPhysicalEventAllocations,
   type LiveReservationAllocationPolicy,
@@ -2204,12 +2205,24 @@ export function buildReservationsFromPlanningDecisions(
     reject("DUPLICATE_PHYSICAL_EVENT", decision.physical_event_id, decision.decision_version);
   }
 
-  const targeted =
+  const leadFiltered =
     opts.restrictToOccurrenceIds === undefined
       ? allocation.rankedDistinct
       : allocation.rankedDistinct.filter((candidate) =>
           opts.restrictToOccurrenceIds!.has(candidate.decision.physical_event_id)
         );
+
+  // RESERVATION_MIX_GUARD_V1 — cap 30, football (SOCCER/WC) > 65% share,
+  // TENNIS < 25% share, priority football -> eligible tennis -> other
+  // qualified sports. Only applied under the active PORTFOLIO_BROAD policy;
+  // legacy LIVE_RESERVATION_ALLOCATION_V1 keeps its unmixed ranking.
+  const targeted = isPortfolioBroadPolicy
+    ? applyLiveReservationMixGuard(leadFiltered, {
+        cap: allocationPolicy.targetReservationSlots,
+        footballMinShareExclusive: 0.65,
+        tennisMaxShareExclusive: 0.25,
+      })
+    : leadFiltered;
 
   // 4. Active duplicate protection. A TERMINAL reservation (SKIPPED / EXPIRED /
   //    CANCELLED) holds no occurrence, so it never blocks a new one.

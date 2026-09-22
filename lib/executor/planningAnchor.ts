@@ -39,7 +39,11 @@ import type { MarketAnchorDecision, MarketAnchorInput } from "../contur3/taxonom
  * text predicate below is retained only as an exported classifier and is not
  * called by the active admission function.
  */
-export type PlanningAnchorKind = "EXECUTABLE_MARKET" | "STRUCTURED_FULLMATCH_EVENT" | "REJECTED";
+export type PlanningAnchorKind =
+  | "EXECUTABLE_MARKET"
+  | "STRUCTURED_FULLMATCH_EVENT"
+  | "TENNIS_COMPLETED_MATCH_EVENT"
+  | "REJECTED";
 
 export interface PlanningAnchorDecision {
   allowed_for_planning: boolean;
