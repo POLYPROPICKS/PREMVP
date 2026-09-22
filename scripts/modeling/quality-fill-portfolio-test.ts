@@ -143,7 +143,7 @@ const REQUIRED_MODELS = [
 ] as const;
 
 // P50_52 / PORTFOLIO_BROAD tier definitions reused verbatim (same predicates as daily-portfolio-frontier.ts).
-const TIER_PREFERRED = (e: Ev & { scoreLevel?: number }) =>
+const TIER_PREFERRED = (e: Ev & { scoreLevel?: number | null }) =>
   (inP5052(e) && e.sportFamily === "tennis") ||
   (inP5052(e) && typeof e.scoreLevel === "number" && e.scoreLevel >= 63 && e.scoreLevel < 65);
 const TIER_P50_52 = (e: Ev) => inP5052(e);
