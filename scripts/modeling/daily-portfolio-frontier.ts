@@ -131,6 +131,7 @@ function toSelectedBet(event: AtlasEvaluatedEvent): SelectedBet {
     outcome: event.outcome,
     pnlU: settleBetU(event.outcome, event.entryPrice),
     ...(event.ref === undefined ? {} : { ref: event.ref }),
+    ...(event.candidateRef === undefined ? {} : { candidateRef: event.candidateRef }),
   };
 }
 
