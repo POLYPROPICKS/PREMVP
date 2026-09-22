@@ -2212,15 +2212,14 @@ export function buildReservationsFromPlanningDecisions(
           opts.restrictToOccurrenceIds!.has(candidate.decision.physical_event_id)
         );
 
-  // RESERVATION_MIX_GUARD_V1 — cap 30, football (SOCCER/WC) > 65% share,
-  // TENNIS < 25% share, priority football -> eligible tennis -> other
-  // qualified sports. Only applied under the active PORTFOLIO_BROAD policy;
+  // RESERVATION_MIX_GUARD_V1 — staged 20 football -> tennis -> other fill.
+  // Only applied under the active PORTFOLIO_BROAD policy;
   // legacy LIVE_RESERVATION_ALLOCATION_V1 keeps its unmixed ranking.
   const targeted = isPortfolioBroadPolicy
     ? applyLiveReservationMixGuard(leadFiltered, {
-        cap: allocationPolicy.targetReservationSlots,
-        footballMinShareExclusive: 0.65,
-        tennisMaxShareExclusive: 0.25,
+      cap: allocationPolicy.targetReservationSlots,
+      footballFirstSlots: 20,
+      tennisMaxWhenFootballSufficient: 7,
       })
     : leadFiltered;
 

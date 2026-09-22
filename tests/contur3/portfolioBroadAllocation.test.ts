@@ -245,18 +245,10 @@ test("physical-event dedupe: one physical event produces at most one Reservation
 // ordering across physical events is Signal Score DESC -> football
 // preference -> freshest source -> provider volume -> physical event id ────
 
-// RESERVATION_MIX_GUARD_V1 (this mission): TENNIS's presence now activates
-// the football/tennis share guard. With only 2 total physical events in a
-// TENNIS+football pool, no split of {0,1,2} tennis reservations out of N can
-// keep TENNIS strictly under 25% of N while also keeping football strictly
-// over 65% of N except N=1, football-only -- so the guard shrinks to that,
-// dropping TENNIS even though it out-ranks football on Signal Score alone.
-// The underlying SIGNAL_SCORE_DESC -> football-preference ranking used
-// WITHIN and ACROSS the football/tennis/other pools is otherwise unchanged
-// (see liveReservationMixGuard.test.ts for the guard's own capacity math at
-// realistic, well-supplied N).
+// RESERVATION_MIX_GUARD_V1 applies the Founder-staged fill: below 20 football,
+// all football comes first and tennis is the unrestricted first fallback.
 
-test("capacity-1: score 74 tennis vs score 76 football -> the mix guard admits only football at this scale", () => {
+test("capacity-1: football shortage retains the eligible tennis fallback", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-74:2026-08-11", generatedSignalPairId: "t74", conditionId: "ct74", tokenId: "tt74", sport: "TENNIS", planningScore: 74 }),
     acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-76:2026-08-11", generatedSignalPairId: "s76", conditionId: "cs76", tokenId: "ts76", sport: "SOCCER", planningScore: 76 }),
@@ -268,10 +260,11 @@ test("capacity-1: score 74 tennis vs score 76 football -> the mix guard admits o
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
     "provider:polymarket:evt-soccer-76:2026-08-11",
+    "provider:polymarket:evt-tennis-74:2026-08-11",
   ]);
 });
 
-test("capacity-2: score 74 football vs score 74 tennis, equal score -> the mix guard admits only football at this scale", () => {
+test("capacity-2: football is staged before tennis when football is short", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-74b:2026-08-11", generatedSignalPairId: "t74b", conditionId: "ct74b", tokenId: "tt74b", sport: "TENNIS", planningScore: 74 }),
     acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-74b:2026-08-11", generatedSignalPairId: "s74b", conditionId: "cs74b", tokenId: "ts74b", sport: "SOCCER", planningScore: 74 }),
@@ -283,10 +276,11 @@ test("capacity-2: score 74 football vs score 74 tennis, equal score -> the mix g
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
     "provider:polymarket:evt-soccer-74b:2026-08-11",
+    "provider:polymarket:evt-tennis-74b:2026-08-11",
   ]);
 });
 
-test("capacity-3: score 75 tennis vs score 70 football -> the mix guard still admits only football, overriding raw Signal Score at this scale", () => {
+test("capacity-3: football stage precedes a higher-score tennis fallback", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-75:2026-08-11", generatedSignalPairId: "t75", conditionId: "ct75", tokenId: "tt75", sport: "TENNIS", planningScore: 75 }),
     acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-70:2026-08-11", generatedSignalPairId: "s70", conditionId: "cs70", tokenId: "ts70", sport: "SOCCER", planningScore: 70 }),
@@ -298,6 +292,7 @@ test("capacity-3: score 75 tennis vs score 70 football -> the mix guard still ad
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
     "provider:polymarket:evt-soccer-70:2026-08-11",
+    "provider:polymarket:evt-tennis-75:2026-08-11",
   ]);
 });
 
@@ -356,9 +351,9 @@ test("capacity-6: equal score, equal football-preference tier, equal freshness -
   ]);
 });
 
-// ── Capacity cap: 31 qualifying events -> 30 reserved, 1 cap-excluded (unchanged) ──
+// ── Capacity cap: staged selector returns no more than 30 ──────────────────
 
-test("cap: 31 qualifying physical events -> 30 Reservations, 1 CAP_EXCLUDED", () => {
+test("cap: 31 qualifying physical events -> 30 Reservations", () => {
   const results: ContractADecisionResult<ContractAPlanningDecision>[] = [];
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < 31; i++) {
@@ -369,8 +364,8 @@ test("cap: 31 qualifying physical events -> 30 Reservations, 1 CAP_EXCLUDED", ()
   }
   const result = build(results, rows);
   assert.equal(result.reservations.length, 30);
-  assert.equal(result.capExcluded, 1);
-  assert.equal(result.rejections.filter((r) => r.reason_code === "CAP_EXCLUDED").length, 1);
+  assert.equal(result.capExcluded, 0);
+  assert.equal(result.rejections.filter((r) => r.reason_code === "CAP_EXCLUDED").length, 0);
 });
 
 // ── Policy invariant ──────────────────────────────────────────────────────
@@ -460,7 +455,7 @@ test("W6: out-of-window Broad events cannot consume Reservation capacity", () =>
   assert.equal(r.capExcluded, 0);
 });
 
-test("W7: in-window Broad events -- the mix guard still admits only football at this scale, football preference intact", () => {
+test("W7: in-window Broad events retain the tennis fallback after football", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:z-tennis-70:2026-08-11", generatedSignalPairId: "z3", conditionId: "cz3", tokenId: "tz3", sport: "TENNIS", planningScore: 70, start: "2026-08-11T16:00:00.000Z" }),
     acceptedFor({ physicalEventId: "provider:polymarket:a-soccer-76:2026-08-11", generatedSignalPairId: "a1", conditionId: "ca1", tokenId: "ta1", sport: "SOCCER", planningScore: 76, start: "2026-08-11T16:00:00.000Z" }),
@@ -472,5 +467,6 @@ test("W7: in-window Broad events -- the mix guard still admits only football at 
   const r = buildReservationsFromPlanningDecisions(results, { planRunId: buildPlanRunId(ANCHOR_MS), window: W_WINDOW, nowMs: W_NOW }, [], { allocationPolicy: LIVE_RESERVATION_PORTFOLIO_BROAD_V2, sourceRowsForCandidateManifest: rows });
   assert.deepEqual(r.reservations.map((x) => x.physical_event_id), [
     "provider:polymarket:a-soccer-76:2026-08-11",
+    "provider:polymarket:z-tennis-70:2026-08-11",
   ]);
 });

@@ -426,27 +426,25 @@ export function resolvePortfolioBroadPhysicalEventAllocations(
 
 // ── LIVE MIX GUARD (RESERVATION_MIX_GUARD_V1) ───────────────────────────────
 //
-// Reservation allocation must keep football (SOCCER/WC) the dominant share of
-// live money while capping TENNIS's share, without ever letting either bound
-// widen the cap. Priority order when filling slots is always
-// football -> eligible tennis -> other qualified sports; when the available
-// candidates cannot fill the cap while respecting both ratios, the final
-// reservation count N shrinks rather than violating either bound.
+// Reservation capacity is filled in stages, not by cross-sport ratios. When
+// football supply reaches 20, reserve exactly its top 20 before up to seven
+// eligible tennis and then other qualified sports. Under 20 football, all
+// football comes first and tennis is the unrestricted first fallback.
 
 export interface LiveReservationMixGuardConfig {
   /** Hard ceiling on the final reservation count N. */
   readonly cap: number;
-  /** football share of N must be STRICTLY GREATER than this fraction. */
-  readonly footballMinShareExclusive: number;
-  /** tennis share of N must be STRICTLY LESS than this fraction. */
-  readonly tennisMaxShareExclusive: number;
+  /** Football slots reserved first when the qualified football pool is sufficient. */
+  readonly footballFirstSlots: number;
+  /** Tennis cap only in the sufficient-football branch. */
+  readonly tennisMaxWhenFootballSufficient: number;
 }
 
-/** Production default: cap 30, football > 65%, tennis < 25%. */
+/** Production default: 20 football first, then at most 7 tennis, cap 30. */
 export const LIVE_RESERVATION_MIX_GUARD_V1: LiveReservationMixGuardConfig = Object.freeze({
   cap: 30,
-  footballMinShareExclusive: 0.65,
-  tennisMaxShareExclusive: 0.25,
+  footballFirstSlots: 20,
+  tennisMaxWhenFootballSufficient: 7,
 });
 
 export interface LiveReservationMixGuardResult<T> {
@@ -457,28 +455,9 @@ export interface LiveReservationMixGuardResult<T> {
   finalN: number;
 }
 
-/** Smallest football count strictly greater than footballMinShareExclusive * n. */
-function minFootballForN(n: number, footballMinShareExclusive: number): number {
-  if (n <= 0) return 0;
-  return Math.floor(n * footballMinShareExclusive) + 1;
-}
-
-/** Largest tennis count strictly less than tennisMaxShareExclusive * n. */
-function maxTennisForN(n: number, tennisMaxShareExclusive: number): number {
-  if (n <= 0) return 0;
-  return Math.max(0, Math.ceil(n * tennisMaxShareExclusive) - 1);
-}
-
 /**
- * Pure slot-mix selector. Operates on three already-ranked pools (highest
- * priority first within each pool) and returns the largest N <= cap for
- * which a valid football/tennis/other split exists -- football maximized
- * first (priority + it can only help the football-share floor), then
- * tennis up to its share ceiling, then other filling any remainder.
- *
- * football has no upper bound (more football only strengthens its own
- * floor), tennis is bounded above by maxTennisForN, and N shrinks from the
- * cap downward until a feasible split is found (or N=0).
+ * Pure staged slot selector. Its inputs are already deterministically ranked
+ * within their respective buckets. It never reduces N merely for a ratio.
  */
 export function selectLiveReservationMix<T>(
   footballRanked: readonly T[],
@@ -487,36 +466,27 @@ export function selectLiveReservationMix<T>(
   config: LiveReservationMixGuardConfig = LIVE_RESERVATION_MIX_GUARD_V1,
 ): LiveReservationMixGuardResult<T> {
   const cap = Math.max(0, Math.floor(config.cap));
-  const maxPossibleN = Math.min(
-    cap,
-    footballRanked.length + eligibleTennisRanked.length + otherQualifiedRanked.length,
+  const footballSufficient = footballRanked.length >= config.footballFirstSlots;
+  const footballCount = Math.min(
+    footballRanked.length,
+    footballSufficient ? config.footballFirstSlots : cap,
   );
-
-  for (let n = maxPossibleN; n > 0; n--) {
-    const footballCount = Math.min(footballRanked.length, n);
-    const remainingAfterFootball = n - footballCount;
-    const tennisCap = maxTennisForN(n, config.tennisMaxShareExclusive);
-    const tennisCount = Math.min(eligibleTennisRanked.length, tennisCap, remainingAfterFootball);
-    const remainingAfterTennis = remainingAfterFootball - tennisCount;
-    const otherCount = Math.min(otherQualifiedRanked.length, remainingAfterTennis);
-
-    if (footballCount + tennisCount + otherCount !== n) continue;
-    if (footballCount < minFootballForN(n, config.footballMinShareExclusive)) continue;
-
-    return {
-      selected: [
-        ...footballRanked.slice(0, footballCount),
-        ...eligibleTennisRanked.slice(0, tennisCount),
-        ...otherQualifiedRanked.slice(0, otherCount),
-      ],
-      footballCount,
-      tennisCount,
-      otherCount,
-      finalN: n,
-    };
-  }
-
-  return { selected: [], footballCount: 0, tennisCount: 0, otherCount: 0, finalN: 0 };
+  const remainingAfterFootball = cap - footballCount;
+  const tennisCount = Math.min(
+    eligibleTennisRanked.length,
+    remainingAfterFootball,
+    footballSufficient ? config.tennisMaxWhenFootballSufficient : remainingAfterFootball,
+  );
+  const otherCount = Math.min(
+    otherQualifiedRanked.length,
+    remainingAfterFootball - tennisCount,
+  );
+  const selected = [
+    ...footballRanked.slice(0, footballCount),
+    ...eligibleTennisRanked.slice(0, tennisCount),
+    ...otherQualifiedRanked.slice(0, otherCount),
+  ];
+  return { selected, footballCount, tennisCount, otherCount, finalN: selected.length };
 }
 
 function isFootballScope(scope: string): boolean {
@@ -524,14 +494,9 @@ function isFootballScope(scope: string): boolean {
 }
 
 /**
- * Apply the mix guard to an already fully-ranked candidate list (e.g.
- * rankAllocatableApprovedPhysicalEvents's rankedDistinct), preserving the
- * original relative rank order of whichever candidates survive the guard.
- *
- * A no-op when no TENNIS candidate is present: the guard exists to bound
- * TENNIS's share against football, so a football/other-only night (the
- * overwhelming majority of nights before TENNIS went money-eligible) keeps
- * its existing unmixed top-N-by-score behavior exactly, cap included.
+ * Apply the staged selector to an already fully-ranked candidate list. Bucket
+ * order is the Reservation allocation order; relative rank is preserved inside
+ * each bucket.
  */
 export function applyLiveReservationMixGuard(
   rankedDistinct: readonly LiveReservationAllocationCandidate[],
@@ -547,13 +512,8 @@ export function applyLiveReservationMixGuard(
     else other.push(candidate);
   }
 
-  if (tennis.length === 0) {
-    return rankedDistinct.slice();
-  }
-
   const { selected } = selectLiveReservationMix(football, tennis, other, config);
-  const selectedSet = new Set(selected);
-  return rankedDistinct.filter((candidate) => selectedSet.has(candidate));
+  return selected;
 }
 
 export function resultsToAcceptedDecisions(
