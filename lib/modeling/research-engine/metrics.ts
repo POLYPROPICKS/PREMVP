@@ -41,6 +41,11 @@ export function compareChronologically(
   if (aRef !== bRef) {
     return aRef < bRef ? -1 : 1;
   }
+  const aCandidateRef = a.candidateRef ?? "";
+  const bCandidateRef = b.candidateRef ?? "";
+  if (aCandidateRef !== bCandidateRef) {
+    return aCandidateRef < bCandidateRef ? -1 : 1;
+  }
   return 0;
 }
 

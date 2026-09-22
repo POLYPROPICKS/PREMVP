@@ -123,6 +123,7 @@ export function toAtlasInput(rows: ScorecardReadyRow[]): AtlasInputEvent[] {
       sportFamily: resolveSportFamily(r) ?? "",
       outcome: r.labelAsOf as "WIN" | "LOSS",
       ref: r.conditionId,
+      candidateRef: r.selectedTokenId,
       scoreLevel: typeof r.scoreLevel === "number" ? r.scoreLevel : null,
       score: r.score,
       selectedPrice: r.selectedPrice,
@@ -143,6 +144,7 @@ function toSelectedBet(event: AtlasEvaluatedEvent): SelectedBet {
     outcome: event.outcome,
     pnlU: settleBetU(event.outcome, event.entryPrice),
     ...(event.ref === undefined ? {} : { ref: event.ref }),
+    ...(event.candidateRef === undefined ? {} : { candidateRef: event.candidateRef }),
   };
 }
 

@@ -47,6 +47,15 @@ export interface ResearchEngineInputEvent {
 
   /** Optional opaque passthrough retained on selected membership rows. */
   ref?: string;
+
+  /**
+   * Immutable candidate-level identity (ScorecardReadyRow.selectedTokenId).
+   * Distinct from `ref` (=conditionId, shared across opposite-selected-token
+   * candidate rows for the same physical event). Used only as the final
+   * total-order tiebreak in `compareChronologically` so two candidate rows
+   * that are otherwise identical (including `ref`) never compare equal.
+   */
+  candidateRef?: string;
 }
 
 /** Input row augmented with the derived time semantic. */
@@ -70,6 +79,8 @@ export interface SelectedBet {
   /** Settlement in units for a flat 1u stake. */
   pnlU: number;
   ref?: string;
+  /** See `ResearchEngineInputEvent.candidateRef`. */
+  candidateRef?: string;
 }
 
 /** Deterministic per-model result. */
