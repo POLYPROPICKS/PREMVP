@@ -19,6 +19,7 @@ import { pathToFileURL } from "node:url";
 import {
   buildExplicitDateRangeRowView,
   enumerateMinskDates,
+  type CorpusLabel,
   type DerivedSeries,
   type LoadedPartition,
   type ScorecardReadyRow,
@@ -131,6 +132,85 @@ export function toAtlasInput(rows: ScorecardReadyRow[]): AtlasInputEvent[] {
       rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
       marketTypeRaw: typeof (r as ScorecardReadyRowWithMarketType).marketTypeRaw === "string" ? ((r as ScorecardReadyRowWithMarketType).marketTypeRaw as string) : null,
     }));
+}
+
+/**
+ * SELECTION_BEFORE_SETTLEMENT_V1 — decision-time-only candidate input.
+ *
+ * Identical qualification to `toAtlasInput()` above MINUS the
+ * `labelAsOf === WIN/LOSS` filter. Settlement status is NOT a field on this
+ * type at all — `DecisionTimeCandidate` carries only decision-time-available
+ * data, so a qualification predicate or the chronological comparator has no
+ * way to read labelAsOf/outcome even by accident (no such field exists to
+ * read). `candidateIdentity` is an immutable, decision-time-computable key
+ * (conditionId + selectedTokenId + decisionAt) — it identifies WHICH
+ * candidate, not what happened to it.
+ *
+ * `toDecisionTimeSelectionInput()` returns candidates alongside a SEPARATE
+ * `settlementByCandidateIdentity` lookup. A caller joins the two only AFTER
+ * a candidate has already been selected and capped (see
+ * `runStandaloneStrict`/`runPortfolioStrict`/`partialMetricsFor` in
+ * scripts/modeling/daily-portfolio-frontier.ts).
+ */
+export interface DecisionTimeCandidate {
+  physicalEventKey: string;
+  decisionTimestamp: string;
+  eventStart: string;
+  entryPrice: number;
+  sportFamily: string;
+  ref: string;
+  candidateRef: string;
+  scoreLevel: number | null;
+  score: DerivedSeries;
+  selectedPrice: DerivedSeries;
+  volumeUsd: number | null;
+  rowLeadTimeHours: number | null;
+  marketTypeRaw: string | null;
+  /** Immutable candidate identity — for the post-selection settlement join only. NOT settlement itself. */
+  candidateIdentity: string;
+}
+
+export interface DecisionTimeSelectionInput {
+  candidates: DecisionTimeCandidate[];
+  /** Keyed by the same `candidateIdentity` carried on each candidate above. */
+  settlementByCandidateIdentity: Map<string, CorpusLabel>;
+}
+
+/** conditionId + selectedTokenId + decisionAt — immutable per candidate row, decision-time-computable. */
+function candidateIdentityKey(r: ScorecardReadyRow): string {
+  return `${r.conditionId}::${r.selectedTokenId}::${r.decisionAt}`;
+}
+
+export function toDecisionTimeSelectionInput(rows: ScorecardReadyRow[]): DecisionTimeSelectionInput {
+  const qualifying = rows.filter(
+    (r) =>
+      r.providerEventId &&
+      r.eventStart &&
+      r.entryPrice !== null &&
+      r.entryPrice > 0 &&
+      r.entryPrice < 1,
+  );
+  const candidates: DecisionTimeCandidate[] = qualifying.map((r) => ({
+    physicalEventKey: r.providerEventId!,
+    decisionTimestamp: r.decisionAt,
+    eventStart: r.eventStart!,
+    entryPrice: r.entryPrice!,
+    sportFamily: resolveSportFamily(r) ?? "",
+    ref: r.conditionId,
+    candidateRef: r.selectedTokenId,
+    scoreLevel: typeof r.scoreLevel === "number" ? r.scoreLevel : null,
+    score: r.score,
+    selectedPrice: r.selectedPrice,
+    volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
+    rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
+    marketTypeRaw: typeof (r as ScorecardReadyRowWithMarketType).marketTypeRaw === "string" ? ((r as ScorecardReadyRowWithMarketType).marketTypeRaw as string) : null,
+    candidateIdentity: candidateIdentityKey(r),
+  }));
+  const settlementByCandidateIdentity = new Map<string, CorpusLabel>();
+  for (const r of qualifying) {
+    settlementByCandidateIdentity.set(candidateIdentityKey(r), r.labelAsOf);
+  }
+  return { candidates, settlementByCandidateIdentity };
 }
 
 function toSelectedBet(event: AtlasEvaluatedEvent): SelectedBet {

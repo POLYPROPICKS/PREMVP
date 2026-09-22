@@ -25,12 +25,13 @@ import { pathToFileURL } from "node:url";
 import {
   buildExplicitDateRangeRowView,
   enumerateMinskDates,
+  type CorpusLabel,
   type LoadedPartition,
   type ScorecardReadyRow,
 } from "@/lib/modeling/research-corpus/rollingCorpus";
 import { evaluateRows } from "@/lib/research-clone/modelReady";
-import { evaluateEvent, sortChronologically, aggregateMetrics, settleBetU, type SelectedBet } from "@/lib/modeling/research-engine";
-import { toAtlasInput, canonicalJson, sha256, type AtlasInputEvent } from "./factor-atlas";
+import { evaluateEvent, sortChronologically, aggregateMetrics, settleBetU, type Outcome, type SelectedBet } from "@/lib/modeling/research-engine";
+import { toAtlasInput, canonicalJson, sha256, type AtlasInputEvent, type DecisionTimeCandidate } from "./factor-atlas";
 import { loadPartition } from "./rolling-research-corpus";
 
 export const FRONTIER_OUT_DIR = "modeling/evidence/daily-portfolio-frontier-v1";
@@ -185,6 +186,243 @@ export function runPortfolio(input: AtlasInputEvent[], tiers: Array<(e: AtlasEva
   return bets;
 }
 
+// ── SELECTION_BEFORE_SETTLEMENT_V1 — decision-time-only selection ──────────
+// Same shape/rules as runStandalone()/runPortfolio() above (same predicate
+// reuse, same sortChronologically()/compareChronologically() comparator
+// including the candidateRef tiebreak, same claimed-physicalEventKey /
+// tier-priority loop) but over `DecisionTimeCandidate[]` — which carries
+// every settled AND non-settled row alike — so outcome/labelAsOf is never
+// available to a qualification predicate or to the comparator. Settlement is
+// attached only after selection (and, downstream, after the daily cap) via
+// `classifySettlement`/`partialMetricsFor`.
+
+type StrictEvaluatedCandidate = ReturnType<typeof evaluateEvent> & DecisionTimeCandidate;
+
+/**
+ * Output of selection+cap. Deliberately has NO settlement field — there is
+ * nothing named labelAsOf/outcome for a predicate, the comparator, or
+ * applyDailyCap() to read even by accident. `candidateIdentity` is carried
+ * through only so a caller can join settlement back in AFTER this point.
+ */
+export interface SelectedCandidate {
+  physicalEventKey: string;
+  decisionTimestamp: string;
+  eventStart: string;
+  leadTimeHours: number;
+  entryPrice: number;
+  sportFamily: string;
+  ref?: string;
+  candidateRef?: string;
+  tier: number;
+  day: string;
+  candidateIdentity: string;
+}
+
+function toSelectedCandidate(event: StrictEvaluatedCandidate, tier: number): SelectedCandidate {
+  return {
+    physicalEventKey: event.physicalEventKey,
+    decisionTimestamp: event.decisionTimestamp,
+    eventStart: event.eventStart,
+    leadTimeHours: event.leadTimeHours,
+    entryPrice: event.entryPrice,
+    sportFamily: event.sportFamily,
+    ref: event.ref,
+    candidateRef: event.candidateRef,
+    tier,
+    day: minskDate(event.decisionTimestamp),
+    candidateIdentity: event.candidateIdentity,
+  };
+}
+
+/** Decision-time-only counterpart of runStandalone() — see file-header note above. */
+export function runStandaloneStrict(
+  input: DecisionTimeCandidate[],
+  predicate: (e: StrictEvaluatedCandidate) => boolean,
+): SelectedCandidate[] {
+  const ordered = sortChronologically(
+    input.map((e) => evaluateEvent(e as unknown as Parameters<typeof evaluateEvent>[0]) as unknown as StrictEvaluatedCandidate),
+  ) as StrictEvaluatedCandidate[];
+  const claimed = new Set<string>();
+  const out: SelectedCandidate[] = [];
+  for (const event of ordered) {
+    if (claimed.has(event.physicalEventKey)) continue;
+    if (!predicate(event)) continue;
+    claimed.add(event.physicalEventKey);
+    out.push(toSelectedCandidate(event, 1));
+  }
+  return out;
+}
+
+/** Decision-time-only counterpart of runPortfolio() — see file-header note above. */
+export function runPortfolioStrict(
+  input: DecisionTimeCandidate[],
+  tiers: Array<(e: StrictEvaluatedCandidate) => boolean>,
+): SelectedCandidate[] {
+  const evaluated = input.map((e) => evaluateEvent(e as unknown as Parameters<typeof evaluateEvent>[0]) as unknown as StrictEvaluatedCandidate);
+  const grouped = new Map<string, StrictEvaluatedCandidate[]>();
+  for (const event of evaluated) {
+    const list = grouped.get(event.physicalEventKey);
+    if (list) list.push(event);
+    else grouped.set(event.physicalEventKey, [event]);
+  }
+  const out: SelectedCandidate[] = [];
+  for (const group of grouped.values()) {
+    const sorted = sortChronologically(group) as StrictEvaluatedCandidate[];
+    for (let tierIndex = 0; tierIndex < tiers.length; tierIndex++) {
+      const winner = sorted.find(tiers[tierIndex]);
+      if (winner) {
+        out.push(toSelectedCandidate(winner, tierIndex + 1));
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+export type SettlementBucket = "SETTLED" | "OPEN" | "OTHER_NONTERMINAL";
+
+/** Read only AFTER selection+cap. Never used to qualify, order, or re-pick a candidate. */
+export function classifySettlement(labelAsOf: CorpusLabel): SettlementBucket {
+  if (labelAsOf === "WIN" || labelAsOf === "LOSS") return "SETTLED";
+  if (labelAsOf === "OPEN") return "OPEN";
+  return "OTHER_NONTERMINAL"; // VOID, NO_MATCH, AMBIGUOUS
+}
+
+export interface SettledBetsSplit {
+  /** TieredBet[] (carries tier/day too) so a caller can feed legacy TieredBet-shaped reporting (supplyStats, computeCapacity, ...) the settled-only subset of a fixed-path selection. */
+  settledBets: TieredBet[];
+  openN: number;
+  otherNonterminalN: number;
+}
+
+/**
+ * THE post-selection/post-cap settlement join: looks up each already-selected
+ * candidate's settlement by `candidateIdentity` in the separate
+ * `settlementByCandidateIdentity` map (from `toDecisionTimeSelectionInput()`,
+ * factor-atlas.ts) — settlement is never carried on the candidate object
+ * itself. Only WIN/LOSS candidates are converted into a `TieredBet` and
+ * reach settleBetU() (imported verbatim — no duplicated settlement math).
+ * OPEN/other-nonterminal candidates still occupy their selected/cap slot;
+ * they are counted here, never dropped and never replaced by a
+ * later-settled candidate.
+ */
+export function settledBetsOnly(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>): SettledBetsSplit {
+  const settledBets: TieredBet[] = [];
+  let openN = 0;
+  let otherNonterminalN = 0;
+  for (const c of candidates) {
+    const labelAsOf = settlementByCandidateIdentity.get(c.candidateIdentity);
+    if (labelAsOf === undefined) {
+      throw new Error(`SETTLEMENT_JOIN_MISS: no settlement entry for candidateIdentity=${c.candidateIdentity}`);
+    }
+    const bucket = classifySettlement(labelAsOf);
+    if (bucket === "SETTLED") {
+      settledBets.push({
+        physicalEventKey: c.physicalEventKey,
+        decisionTimestamp: c.decisionTimestamp,
+        eventStart: c.eventStart,
+        leadTimeHours: c.leadTimeHours,
+        entryPrice: c.entryPrice,
+        sportFamily: c.sportFamily,
+        outcome: labelAsOf as Outcome,
+        pnlU: settleBetU(labelAsOf as Outcome, c.entryPrice),
+        ...(c.ref === undefined ? {} : { ref: c.ref }),
+        ...(c.candidateRef === undefined ? {} : { candidateRef: c.candidateRef }),
+        tier: c.tier,
+        day: c.day,
+      });
+    } else if (bucket === "OPEN") {
+      openN += 1;
+    } else {
+      otherNonterminalN += 1;
+    }
+  }
+  return { settledBets, openN, otherNonterminalN };
+}
+
+export interface PartialSettlementMetrics {
+  SELECTED_N: number;
+  SETTLED_N: number;
+  OPEN_N: number;
+  OTHER_NONTERMINAL_N: number;
+  SETTLED_PNL_U_PARTIAL: number;
+  SETTLED_ROI_PCT_PARTIAL: number;
+  SETTLEMENT_COVERAGE_PCT: number;
+}
+
+export function partialMetricsFor(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>): PartialSettlementMetrics {
+  const { settledBets, openN, otherNonterminalN } = settledBetsOnly(candidates, settlementByCandidateIdentity);
+  const settled = metricsFor(settledBets);
+  const selectedN = candidates.length;
+  return {
+    SELECTED_N: selectedN,
+    SETTLED_N: settledBets.length,
+    OPEN_N: openN,
+    OTHER_NONTERMINAL_N: otherNonterminalN,
+    SETTLED_PNL_U_PARTIAL: settled.pnl_u,
+    SETTLED_ROI_PCT_PARTIAL: settled.roi_pct,
+    SETTLEMENT_COVERAGE_PCT: selectedN ? round((settledBets.length / selectedN) * 100, 4) : 0,
+  };
+}
+
+export interface PartialDailyResultRow {
+  date: string;
+  event_n: number;
+  settled_n: number;
+  open_n: number;
+  other_nonterminal_n: number;
+  settled_pnl_u_partial: number;
+}
+
+/** Every day in the requested range, whether or not the strategy fired — decision-time-only counterpart of computeDailyResults(). */
+export function partialDailyResults(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>, allDates: string[]): PartialDailyResultRow[] {
+  const byDay = new Map<string, SelectedCandidate[]>();
+  for (const c of candidates) {
+    const list = byDay.get(c.day);
+    if (list) list.push(c);
+    else byDay.set(c.day, [c]);
+  }
+  return allDates.map((date) => {
+    const dayCandidates = byDay.get(date) ?? [];
+    const m = partialMetricsFor(dayCandidates, settlementByCandidateIdentity);
+    return {
+      date,
+      event_n: m.SELECTED_N,
+      settled_n: m.SETTLED_N,
+      open_n: m.OPEN_N,
+      other_nonterminal_n: m.OTHER_NONTERMINAL_N,
+      settled_pnl_u_partial: m.SETTLED_PNL_U_PARTIAL,
+    };
+  });
+}
+
+export interface PartialCapacityResult {
+  cap: number;
+  selected_n: number;
+  settled_n: number;
+  open_n: number;
+  other_nonterminal_n: number;
+  settled_pnl_u_partial: number;
+  settled_roi_pct_partial: number;
+  settlement_coverage_pct: number;
+}
+
+/** Decision-time-only counterpart of computeCapacity() — same applyDailyCap() capacity ordering, imported verbatim. */
+export function computePartialCapacity(candidates: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>, cap: number): PartialCapacityResult {
+  const capped = applyDailyCap(candidates, cap);
+  const m = partialMetricsFor(capped, settlementByCandidateIdentity);
+  return {
+    cap,
+    selected_n: m.SELECTED_N,
+    settled_n: m.SETTLED_N,
+    open_n: m.OPEN_N,
+    other_nonterminal_n: m.OTHER_NONTERMINAL_N,
+    settled_pnl_u_partial: m.SETTLED_PNL_U_PARTIAL,
+    settled_roi_pct_partial: m.SETTLED_ROI_PCT_PARTIAL,
+    settlement_coverage_pct: m.SETTLEMENT_COVERAGE_PCT,
+  };
+}
+
 // ── Aggregation helpers ──────────────────────────────────────────────────────
 
 const round = (v: number, dp: number) => {
@@ -315,19 +553,34 @@ export function computeUncapped(bets: TieredBet[], allDates: string[]): Uncapped
   };
 }
 
+/** Minimal shape `applyDailyCap` needs to order/cap — deliberately excludes outcome/pnl. */
+export interface CapacityOrderable {
+  tier: number;
+  decisionTimestamp: string;
+  physicalEventKey: string;
+  day: string;
+}
+
 /** Deterministic, feature-neutral capacity ordering: tier ASC, decisionAt ASC, providerEventId ASC. Never uses outcome/pnl. */
-function compareCapacityOrder(a: TieredBet, b: TieredBet): number {
+function compareCapacityOrder(a: CapacityOrderable, b: CapacityOrderable): number {
   return a.tier - b.tier || a.decisionTimestamp.localeCompare(b.decisionTimestamp) || a.physicalEventKey.localeCompare(b.physicalEventKey);
 }
 
-export function applyDailyCap(bets: TieredBet[], cap: number): TieredBet[] {
-  const byDay = new Map<string, TieredBet[]>();
+/**
+ * Generic over any candidate/bet shape carrying only {tier, decisionTimestamp,
+ * physicalEventKey, day} — same one capacity-selection authority for both the
+ * settled `TieredBet` (CURRENT/legacy) and the pre-settlement `SelectedCandidate`
+ * (selection-before-settlement) shapes below. Ordering never reads outcome/pnl
+ * either way.
+ */
+export function applyDailyCap<T extends CapacityOrderable>(bets: T[], cap: number): T[] {
+  const byDay = new Map<string, T[]>();
   for (const bet of bets) {
     const list = byDay.get(bet.day);
     if (list) list.push(bet);
     else byDay.set(bet.day, [bet]);
   }
-  const kept: TieredBet[] = [];
+  const kept: T[] = [];
   for (const dayBets of byDay.values()) {
     const ordered = [...dayBets].sort(compareCapacityOrder);
     kept.push(...ordered.slice(0, cap));
