@@ -16,10 +16,14 @@ export const LIVE_RESERVATION_ALLOCATION_V1 = Object.freeze({
 /**
  * PORTFOLIO_BROAD — the proven research Decision Policy for live Reservation.
  * Event-level: one physical event may qualify through many accepted
- * identities, but its authoritative tier is the HIGHEST-priority qualifying
- * tier (1 before 2 before 3), and capacity across physical events is ordered
- * strictly by tier, then decision time, then physical event id — never by
- * score, sport preference or provider volume.
+ * identities via PORTFOLIO_TIER price/score band qualification (see
+ * classifyPortfolioBroadTier + resolvePortfolioBroadPhysicalEventAllocations)
+ * -- qualification/tier remains diagnostic evidence on the winning identity,
+ * but capacity across physical events is ordered by Signal Score first
+ * (RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1): highest
+ * planning Signal Score wins, football (SOCCER/WC) is preferred at equal
+ * score, then freshest source evidence, then provider volume, then physical
+ * event id. Portfolio tier never overrides a higher Signal Score here.
  *
  * targetReservationSlots (30) is the ACTIVE cap for this release.
  * hardReservationCeiling (50) is the policy invariant ceiling for the next
@@ -30,10 +34,12 @@ export const LIVE_RESERVATION_PORTFOLIO_BROAD_V2 = Object.freeze({
   minStartLeadMinutes: 30,
   targetReservationSlots: 30,
   hardReservationCeiling: 50,
-  preferredStrategicScopes: [] as const,
+  preferredStrategicScopes: ["SOCCER", "WC"] as const,
   rankingOrder: [
-    "PORTFOLIO_TIER_ASC",
-    "PORTFOLIO_DECISION_AT_ASC",
+    "SIGNAL_SCORE_DESC",
+    "FOOTBALL_PRIORITY",
+    "FRESHEST_SOURCE_EVIDENCE_DESC",
+    "PROVIDER_MARKET_VOLUME_DESC",
     "PHYSICAL_EVENT_ID_ASC",
   ] as const,
 });
@@ -59,7 +65,13 @@ export type LiveReservationRankingOrder =
       "PROVIDER_MARKET_VOLUME_DESC",
       "PHYSICAL_EVENT_ID_ASC",
     ]
-  | readonly ["PORTFOLIO_TIER_ASC", "PORTFOLIO_DECISION_AT_ASC", "PHYSICAL_EVENT_ID_ASC"];
+  | readonly [
+      "SIGNAL_SCORE_DESC",
+      "FOOTBALL_PRIORITY",
+      "FRESHEST_SOURCE_EVIDENCE_DESC",
+      "PROVIDER_MARKET_VOLUME_DESC",
+      "PHYSICAL_EVENT_ID_ASC",
+    ];
 
 export interface LiveReservationAllocationPolicy {
   readonly policyId: string;
@@ -104,22 +116,43 @@ function finiteVolumeOrBottom(value: number | null): number {
     : Number.NEGATIVE_INFINITY;
 }
 
-function isPortfolioBroadRankingOrder(policy: LiveReservationAllocationPolicy): boolean {
-  return policy.rankingOrder[0] === "PORTFOLIO_TIER_ASC";
+function isPortfolioBroadPolicyId(policy: LiveReservationAllocationPolicy): boolean {
+  return policy.policyId === LIVE_RESERVATION_PORTFOLIO_BROAD_V2.policyId;
 }
 
+/**
+ * PORTFOLIO_BROAD capacity ranking across physical events
+ * (RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1): Signal Score
+ * first, football preference second, then freshest-source, provider volume
+ * and physical event id as deterministic tie-breaks. Portfolio tier is
+ * qualification/diagnostic evidence only here -- it never overrides a higher
+ * Signal Score.
+ */
 function comparePortfolioBroadCandidates(
   left: LiveReservationAllocationCandidate,
   right: LiveReservationAllocationCandidate,
+  policy: LiveReservationAllocationPolicy,
 ): number {
-  const leftTier = left.portfolioTier ?? Number.POSITIVE_INFINITY;
-  const rightTier = right.portfolioTier ?? Number.POSITIVE_INFINITY;
-  if (leftTier !== rightTier) return leftTier - rightTier;
+  const scoreDiff = right.decision.planning_score - left.decision.planning_score;
+  if (scoreDiff !== 0) return scoreDiff;
+
+  const sportDiff =
+    sportPriority(left.decision.strategic_scope, policy) -
+    sportPriority(right.decision.strategic_scope, policy);
+  if (sportDiff !== 0) return sportDiff;
 
   const leftAt = left.portfolioDecisionAt ?? "";
   const rightAt = right.portfolioDecisionAt ?? "";
-  const atDiff = leftAt.localeCompare(rightAt);
+  const atDiff = rightAt.localeCompare(leftAt);
   if (atDiff !== 0) return atDiff;
+
+  const leftVolume = finiteVolumeOrBottom(left.providerMarketVolume);
+  const rightVolume = finiteVolumeOrBottom(right.providerMarketVolume);
+  if (leftVolume !== rightVolume) {
+    if (leftVolume === Number.NEGATIVE_INFINITY) return 1;
+    if (rightVolume === Number.NEGATIVE_INFINITY) return -1;
+    return rightVolume > leftVolume ? 1 : -1;
+  }
 
   return left.decision.physical_event_id.localeCompare(right.decision.physical_event_id);
 }
@@ -129,8 +162,8 @@ export function compareLiveReservationAllocationCandidates(
   right: LiveReservationAllocationCandidate,
   policy: LiveReservationAllocationPolicy = LIVE_RESERVATION_ALLOCATION_V1,
 ): number {
-  if (isPortfolioBroadRankingOrder(policy)) {
-    return comparePortfolioBroadCandidates(left, right);
+  if (isPortfolioBroadPolicyId(policy)) {
+    return comparePortfolioBroadCandidates(left, right, policy);
   }
 
   const scoreDiff = right.decision.planning_score - left.decision.planning_score;
@@ -206,8 +239,11 @@ const PORTFOLIO_BROAD_TIER1_SCORE_MAX_EXCLUSIVE = 65;
 
 /**
  * Exact PORTFOLIO_BROAD tier classification for ONE identity. Never invents a
- * missing pre_event_score_num — a missing score still permits Tier 1 for
- * TENNIS, and otherwise falls through to Tier 2 (price alone qualifies it).
+ * missing pre_event_score_num — a missing score falls through to Tier 2
+ * (price alone qualifies it), for every strategic scope including TENNIS
+ * (RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1 removes the
+ * prior TENNIS-only automatic Tier 1 special case; tennis now qualifies Tier
+ * 1 only via the same score band every other sport uses, never automatically).
  * Returns null when the identity does not qualify at all (price >= 0.54 or
  * price < 0.50).
  */
@@ -224,7 +260,7 @@ export function classifyPortfolioBroadTier(
       preEventScoreNum != null &&
       preEventScoreNum >= PORTFOLIO_BROAD_TIER1_SCORE_MIN &&
       preEventScoreNum < PORTFOLIO_BROAD_TIER1_SCORE_MAX_EXCLUSIVE;
-    if (strategicScope === "TENNIS" || scoreQualifiesTier1) return 1;
+    if (scoreQualifiesTier1) return 1;
     return 2;
   }
   if (
