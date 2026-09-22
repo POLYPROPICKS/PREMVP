@@ -58,6 +58,23 @@ function candidateFor(eventSlug: string, identityIndex: number, startDate = "202
   };
 }
 
+function reservationRelevantCandidateFor(
+  eventSlug: string,
+  identityIndex: number,
+  marketType: "moneyline" | "spread" | "totals" = "moneyline",
+  price = 0.5,
+): CandidateMarket {
+  const candidate = candidateFor(eventSlug, identityIndex);
+  ((candidate.market as unknown as Record<string, unknown>)._parentMeta as Record<string, unknown>).sportsMarketType = marketType;
+  candidate.forcedOutcome = {
+    selectedTokenId: `tok-${eventSlug}-${identityIndex}`,
+    selectedOutcomeName: "Selected",
+    selectedOutcomeIndex: 0,
+    selectedPriceNum: price,
+  };
+  return candidate;
+}
+
 /** No _parentMeta at all -> computeCandidateProviderEventKey() returns null. */
 function unkeyedCandidate(tag: string): CandidateMarket {
   return {
@@ -90,6 +107,42 @@ test("orderPrimaryCandidatesEventFair: first breadth pass is exactly A1,B1,C1,D1
   const fair = orderPrimaryCandidatesEventFair(input);
   const firstFour = fair.slice(0, 4).map((c) => conditionIdOf(c));
   assert.deepEqual(firstFour, ["cond-evt-a-1", "cond-evt-b-1", "cond-evt-c-1", "cond-evt-d-1"]);
+});
+
+test("Reservation-relevant moneyline identity opens its event before an earlier draw identity", () => {
+  const draw = candidateFor("evt-a", 1);
+  const moneyline = reservationRelevantCandidateFor("evt-a", 2);
+  const other = candidateFor("evt-b", 1);
+  const fair = orderPrimaryCandidatesEventFair([draw, moneyline, other]);
+  assert.deepEqual(fair.slice(0, 2).map(conditionIdOf), ["cond-evt-a-2", "cond-evt-b-1"]);
+});
+
+test("Reservation-relevant spread and total identities receive the same first opportunity", () => {
+  const fair = orderPrimaryCandidatesEventFair([
+    candidateFor("evt-spread", 1), reservationRelevantCandidateFor("evt-spread", 2, "spread", 0.53),
+    candidateFor("evt-total", 1), reservationRelevantCandidateFor("evt-total", 2, "totals", 0.5),
+  ]);
+  assert.deepEqual(fair.slice(0, 2).map(conditionIdOf), ["cond-evt-spread-2", "cond-evt-total-2"]);
+});
+
+test("halftime, corners, and props are never promoted by Reservation identity coverage", () => {
+  const input = [
+    candidateFor("evt-corners", 1), reservationRelevantCandidateFor("evt-corners", 2, "moneyline", 0.5),
+  ];
+  for (const type of ["total_corners", "soccer_halftime_result", "btts"] as const) {
+    const candidate = input[1];
+    ((candidate.market as unknown as Record<string, unknown>)._parentMeta as Record<string, unknown>).sportsMarketType = type;
+    const fair = orderPrimaryCandidatesEventFair(input);
+    assert.equal(conditionIdOf(fair[0]), "cond-evt-corners-1", type);
+  }
+});
+
+test("events without a Reservation-relevant identity keep their existing first-event order", () => {
+  const input = [...group("evt-a", 2), ...group("evt-b", 2)];
+  assert.deepEqual(
+    orderPrimaryCandidatesEventFair(input).map(conditionIdOf),
+    ["cond-evt-a-1", "cond-evt-b-1", "cond-evt-a-2", "cond-evt-b-2"],
+  );
 });
 
 test("orderPrimaryCandidatesEventFair: identity order inside event A is preserved across every round-robin pass", () => {
@@ -214,10 +267,14 @@ const sum = (r: Record<string, number>) => Object.values(r).reduce((a, b) => a +
 test("event-fair ordering lets 4 distinct physical events (A,B,C,D) each open before a deep-fanout event consumes the remaining budget", async () => {
   // Production current order for a high-fanout leader is identity-major:
   // A's 5 identities, then B, C, D's single identities each.
-  const currentOrder = [...group("evt-a", 5), ...group("evt-b", 1), ...group("evt-c", 1), ...group("evt-d", 1)];
+  const currentOrder = [
+    candidateFor("evt-a", 1), reservationRelevantCandidateFor("evt-a", 2), ...group("evt-a", 3),
+    candidateFor("evt-b", 1), reservationRelevantCandidateFor("evt-b", 2),
+    ...group("evt-c", 1), ...group("evt-d", 1),
+  ];
   const fairOrder = orderPrimaryCandidatesEventFair(currentOrder);
   // Sanity: fair order opens A1,B1,C1,D1 before A2..A5.
-  assert.deepEqual(fairOrder.slice(0, 4).map(conditionIdOf), ["cond-evt-a-1", "cond-evt-b-1", "cond-evt-c-1", "cond-evt-d-1"]);
+  assert.deepEqual(fairOrder.slice(0, 4).map(conditionIdOf), ["cond-evt-a-2", "cond-evt-b-2", "cond-evt-c-1", "cond-evt-d-1"]);
 
   const clock = fakeClock();
   const perCandidateLatencyMs = 5_000;
@@ -270,6 +327,9 @@ test("event-fair ordering lets 4 distinct physical events (A,B,C,D) each open be
   // 13: distinct physical events actually opened -- all four (A,B,C,D), not
   // just A as identity-major current ordering would have produced.
   assert.equal(r.primaryDistinctPhysicalEventsOpened, 4);
+  assert.equal(r.relevantEventsPresent, 2);
+  assert.equal(r.relevantEventsOpened, 2);
+  assert.equal(r.relevantEventsBudgetMissed, 0);
   // 10 & 11: already-opened candidates complete and qualify; the remainder is
   // attributed to the budget-exhausted terminal reason, never interrupted mid-flight.
   assert.equal(r.primaryTerminalReasonCounts.PRIMARY_QUALIFIED, 4);
