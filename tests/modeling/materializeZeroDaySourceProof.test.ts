@@ -23,6 +23,17 @@ function recordingClient() {
   const client = {
     from(table: string) {
       return {
+        select() {
+          // MONOTONIC_SETTLEMENT_GUARD_V1: writeDayRows reads existing terminal
+          // rows for the date before upserting; no pre-existing rows here.
+          return this;
+        },
+        eq() {
+          return this;
+        },
+        in() {
+          return Promise.resolve({ data: [], error: null });
+        },
         upsert(rows: Record<string, unknown> | Record<string, unknown>[], opts?: { onConflict?: string }) {
           writes.push({ table, rows: Array.isArray(rows) ? rows : [rows], onConflict: opts?.onConflict });
           return Promise.resolve({ error: null });
