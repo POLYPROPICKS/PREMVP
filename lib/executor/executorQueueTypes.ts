@@ -38,6 +38,13 @@ export const QUEUE_DEFAULT_STAKE_USD = 2.5 as const;
 export const QUEUE_MAX_STAKE_USD = 4.0 as const;
 export const QUEUE_MAX_ENTRY_PRICE = 0.62 as const;
 export const EXECUTABLE_TIER = "TIER1" as const;
+
+// ALIGN_B2_LIVE_ORDERBOOK_GUARD_WITH_EXISTING_EXECUTION_POLICY_V1 — the ONE
+// canonical live max-spread authority. Every live execution path (the
+// candidate policy built by buildFireModelCandidates.ts and the B2 final
+// live-orderbook guard in eventExecutionQueue.ts) must read this single
+// constant -- never a second, path-local spread ceiling.
+export const LIVE_EXECUTION_MAX_SPREAD = 0.03 as const;
 /** The ordinary stake written to every normal Queue row -- never the exceptional ceiling. */
 export const EXECUTABLE_STAKE_USD = QUEUE_DEFAULT_STAKE_USD;
 export const QUEUE_SCHEMA_VERSION = "executor-queue-v1" as const;

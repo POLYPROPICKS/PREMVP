@@ -36,6 +36,7 @@ import {
   EXECUTABLE_STAKE_USD,
   QUEUE_MAX_STAKE_USD,
   QUEUE_MAX_ENTRY_PRICE,
+  LIVE_EXECUTION_MAX_SPREAD,
   queueMoneyEnvelopeViolation,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
@@ -54,7 +55,7 @@ import {
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { fetchOrderBook } from "@/lib/liquidity/polymarketClient";
-import { computeBuyableUsdAtSlippage, computeSpread, getBestBidAsk } from "@/lib/liquidity/orderbookMath";
+import { computeSpread, getBestBidAsk } from "@/lib/liquidity/orderbookMath";
 import type { FetchOrderBookResult } from "@/lib/liquidity/types";
 
 const PLAN_POOL = 200;
@@ -1349,10 +1350,24 @@ type LiveOrderbookGuardResult =
   | { pass: true; evidence: LiveOrderbookGuardEvidence; trace: string[] }
   | { pass: false; reason: string };
 
-/** Absolute best-ask/best-bid spread above which a fill is not trusted as executable. */
-const B2_LIVE_ORDERBOOK_MAX_SPREAD = 0.08 as const;
-/** Slippage band used to size executable depth around the current best ask. */
-const B2_LIVE_ORDERBOOK_DEPTH_SLIPPAGE_PCT = 0.02 as const;
+/**
+ * USD notional resting in the ask book at a price the selected limit order
+ * can actually pay: strictly <= maxEntryPrice. A level priced above
+ * maxEntryPrice is liquidity the real limit order can never consume and
+ * contributes ZERO to executable depth, however close it sits to bestAsk.
+ */
+function computeBuyableUsdAtOrBelowPrice(
+  asks: { price: number; size: number }[] | null | undefined,
+  maxEntryPrice: number,
+): number {
+  if (!asks || asks.length === 0 || !(maxEntryPrice > 0)) return 0;
+  let usd = 0;
+  for (const lvl of asks) {
+    if (lvl.price > maxEntryPrice) continue;
+    usd += lvl.price * lvl.size;
+  }
+  return usd;
+}
 
 /**
  * Fetch and evaluate the CURRENT live orderbook for one exact selected token
@@ -1387,10 +1402,10 @@ async function evaluateLiveOrderbookGuard(
     return { pass: false, reason: `B2_PRICE_ABOVE_MAX_ENTRY_PRICE: price=${bestAsk} max=${selected.maxEntryPrice}` };
   }
   const spread = computeSpread(book);
-  if (spread === null || spread > B2_LIVE_ORDERBOOK_MAX_SPREAD) {
-    return { pass: false, reason: `B2_SPREAD_TOO_WIDE: spread=${spread ?? "null"} max=${B2_LIVE_ORDERBOOK_MAX_SPREAD}` };
+  if (spread === null || spread > LIVE_EXECUTION_MAX_SPREAD) {
+    return { pass: false, reason: `B2_SPREAD_TOO_WIDE: spread=${spread ?? "null"} max=${LIVE_EXECUTION_MAX_SPREAD}` };
   }
-  const executableDepthUsd = computeBuyableUsdAtSlippage(book.asks, B2_LIVE_ORDERBOOK_DEPTH_SLIPPAGE_PCT, bestAsk) ?? 0;
+  const executableDepthUsd = computeBuyableUsdAtOrBelowPrice(book.asks, selected.maxEntryPrice);
   if (executableDepthUsd < selected.stakeUsd) {
     return { pass: false, reason: `B2_INSUFFICIENT_EXECUTABLE_DEPTH: depth_usd=${executableDepthUsd} required_usd=${selected.stakeUsd}` };
   }
