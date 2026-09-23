@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildKeysetFilter,
   compareWatermarks,
+  repairQueueParentsBeforeChildren,
   resolveInitialWatermark,
   runAppendSync,
   runReconcileSweep,
@@ -162,4 +163,130 @@ test("reconcile sweep ends cleanly (not pending) when the recent window is fully
   const sweep = await runReconcileSweep(FIELDS, window, 5, 4, port);
   assert.equal(sweep.pending, false);
   assert.equal(sweep.updatedRows, 3);
+});
+
+test("reconcile queue pages run parent guard before child write and cursor advance", async () => {
+  const calls: string[] = [];
+  const cursor: Watermark = { created_at: "2026-09-10T00:00:00.000Z", id: ZERO_ID };
+  const row: SyncRow = {
+    created_at: "2026-09-10T00:00:01.000Z",
+    id: "queue-reconcile",
+    reservation_id: "reservation-reconcile",
+  };
+  const result = await runReconcileSweep(["created_at", "id"], cursor, 10, 1, {
+    async readCursor() { return null; },
+    async fetchSourcePage() { return [row]; },
+    async beforeApplyRows(rows) {
+      await repairQueueParentsBeforeChildren(rows, {
+        async readExistingReservationIds() { calls.push("clone-read"); return []; },
+        async fetchSourceReservations(ids) {
+          calls.push("source-read");
+          return ids.map((id) => ({ id }));
+        },
+        async upsertTargetReservations() { calls.push("parent-write"); },
+      });
+    },
+    async applyRows() { calls.push("child-write"); return { updatedRows: 1 }; },
+    async writeCursor() { calls.push("reconcile-cursor"); },
+  });
+
+  assert.deepEqual(calls, ["clone-read", "source-read", "parent-write", "child-write", "reconcile-cursor"]);
+  assert.equal(result.pages, 1);
+});
+
+test("queue pages skip reservation repair when the parent already exists in the clone", async () => {
+  const calls: string[] = [];
+  await repairQueueParentsBeforeChildren(
+    [{ id: "queue-1", reservation_id: "reservation-existing" }],
+    {
+      async readExistingReservationIds(ids) {
+        calls.push(`clone:${ids.join(",")}`);
+        return ids;
+      },
+      async fetchSourceReservations() {
+        calls.push("source");
+        return [];
+      },
+      async upsertTargetReservations() { calls.push("parent-write"); },
+    },
+  );
+
+  assert.deepEqual(calls, ["clone:reservation-existing"]);
+});
+
+test("late queue parent is upserted before its child and checkpoint semantics stay ordered", async () => {
+  const calls: string[] = [];
+  const child = { queued_at: "2026-09-10T14:05:19.223735Z", id: "queue-late", reservation_id: "reservation-late" };
+  const parent = { id: "reservation-late", plan_date_minsk: "2026-09-10" };
+  let checkpoint: Watermark | null = null;
+  const result = await runAppendSync(["queued_at", "id"], 1, {
+    async sourceMaxWatermark() { return { queued_at: child.queued_at, id: child.id }; },
+    async targetMaxWatermark() { return checkpoint; },
+    async readCheckpoint() { return null; },
+    async fetchSourcePage() { return [child]; },
+    async beforeUpsertTargetRows(rows) {
+      await repairQueueParentsBeforeChildren(rows, {
+        async readExistingReservationIds() { calls.push("clone-read"); return []; },
+        async fetchSourceReservations(ids) { calls.push("source-read"); return ids.map(() => parent); },
+        async upsertTargetReservations() { calls.push("parent-write"); },
+      });
+    },
+    async upsertTargetRows() { calls.push("child-write"); return { newRows: 1, updatedRows: 0, duplicateN: 0 }; },
+    async writeCheckpoint(next) { calls.push("checkpoint"); checkpoint = next; },
+  });
+
+  assert.deepEqual(calls, ["clone-read", "source-read", "parent-write", "child-write", "checkpoint"]);
+  assert.deepEqual(checkpoint, { queued_at: child.queued_at, id: child.id });
+  assert.equal(result.pages, 1);
+});
+
+test("queue parent missing from production fails closed before child write or checkpoint", async () => {
+  let childWrites = 0;
+  let checkpointWrites = 0;
+  const child = { queued_at: "2026-09-10T14:05:19.223735Z", id: "queue-orphan", reservation_id: "reservation-absent" };
+
+  await assert.rejects(
+    runAppendSync(["queued_at", "id"], 1, {
+      async sourceMaxWatermark() { return { queued_at: child.queued_at, id: child.id }; },
+      async targetMaxWatermark() { return null; },
+      async readCheckpoint() { return null; },
+      async fetchSourcePage() { return [child]; },
+      async beforeUpsertTargetRows(rows) {
+        await repairQueueParentsBeforeChildren(rows, {
+          async readExistingReservationIds() { return []; },
+          async fetchSourceReservations() { return []; },
+          async upsertTargetReservations() { throw new Error("must not write incomplete parents"); },
+        });
+      },
+      async upsertTargetRows() { childWrites += 1; return { newRows: 1, updatedRows: 0, duplicateN: 0 }; },
+      async writeCheckpoint() { checkpointWrites += 1; },
+    }),
+    /RESEARCH_CLONE_QUEUE_PARENT_MISSING_FROM_SOURCE:reservation-absent/,
+  );
+
+  assert.equal(childWrites, 0);
+  assert.equal(checkpointWrites, 0);
+});
+
+test("queue parent repair deduplicates ids and bounds clone and source reads to 200", async () => {
+  const ids = Array.from({ length: 205 }, (_, index) => `reservation-${index}`);
+  const rows = [...ids, ...ids].map((reservation_id, index) => ({ id: `queue-${index}`, reservation_id }));
+  const cloneReadSizes: number[] = [];
+  const sourceReadSizes: number[] = [];
+  const parentWriteSizes: number[] = [];
+
+  await repairQueueParentsBeforeChildren(rows, {
+    async readExistingReservationIds(chunk) { cloneReadSizes.push(chunk.length); return []; },
+    async fetchSourceReservations(chunk) {
+      sourceReadSizes.push(chunk.length);
+      return chunk.map((id) => ({ id }));
+    },
+    async upsertTargetReservations(parents) { parentWriteSizes.push(parents.length); },
+  });
+
+  assert.deepEqual(cloneReadSizes, [200, 5]);
+  assert.deepEqual(sourceReadSizes, [200, 5]);
+  assert.deepEqual(parentWriteSizes, [200, 5]);
+  assert.ok([...cloneReadSizes, ...sourceReadSizes].every((size) => size <= 200));
+  assert.equal(parentWriteSizes.reduce((total, size) => total + size, 0), 205);
 });

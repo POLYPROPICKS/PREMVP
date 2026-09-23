@@ -35,6 +35,7 @@ test("classifyCausalErrorClass: read-shaped codes", () => {
     "RESEARCH_CLONE_DUPLICATE_SOURCE_ID_primary_evidence_outbox",
     "RESEARCH_CLONE_APPEND_ONLY_CONFLICT_generated_signal_research_snapshots",
     "RESEARCH_CLONE_INITIAL_WATERMARK_REQUIRED_night_event_reservations",
+    "RESEARCH_CLONE_QUEUE_PARENT_MISSING_FROM_SOURCE:reservation-absent",
   ]) {
     assert.equal(classifyCausalErrorClass(code), "SYNC_READ_FAILURE", code);
   }
