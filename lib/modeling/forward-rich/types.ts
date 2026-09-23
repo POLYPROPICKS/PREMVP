@@ -93,6 +93,10 @@ export interface ForwardRichSignalPair {
 
   eventStartIso?: string | null;
   providerEventId?: string | null;
+  /** Persisted providerEventContext.eventTitle; no fallback derivation. */
+  eventTitle?: string | null;
+  /** Persisted providerEventContext.marketQuestion; no fallback derivation. */
+  marketQuestion?: string | null;
 
   /** Exact signal-side classification — reused verbatim, never re-derived. */
   marketTypeRaw?: string | null;

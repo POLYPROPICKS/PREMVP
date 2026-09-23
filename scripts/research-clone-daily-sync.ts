@@ -358,7 +358,7 @@ export function resolveBootstrapSinceArg(argv: readonly string[]): string | null
 }
 
 // ── Bounded narrow research-evidence transport (v3, item-level cursor) ───────
-// production primary_evidence_outbox -> research_evidence_page_v3() RPC (max 500
+// production primary_evidence_outbox -> research_evidence_page_v4() RPC (max 500
 // FLATTENED rows/call, 5s statement timeout, explicit p_until, item-level
 // (observed_at, observation_id, item_observation_id) cursor, never returns
 // evidence_rows) -> clone research_evidence_page_rows.
@@ -564,8 +564,8 @@ export async function syncResearchEvidencePage(
   let drained = false;
   while (pages < maxPages) {
     const args = buildEvidencePageV3Args(cursor, until, RESEARCH_EVIDENCE_V3_MAX_ROWS);
-    const { data, error } = await source.rpc("research_evidence_page_v3", args);
-    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v3:${safeError(error)}`);
+    const { data, error } = await source.rpc("research_evidence_page_v4", args);
+    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v4:${safeError(error)}`);
     const rows = (data ?? []) as NarrowEvidenceRow[];
     pages++;
     if (rows.length === 0) {
