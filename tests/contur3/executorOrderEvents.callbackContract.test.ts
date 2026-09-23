@@ -133,6 +133,21 @@ function makeFakePort(
       eventsById.set(row.id, row);
       return { ok: true, row };
     },
+    async updateOrderEventProgression(id, record): Promise<StoredOrderEvent> {
+      const existing = eventsById.get(id);
+      if (!existing) throw new Error(`updateOrderEventProgression: no row for id ${id}`);
+      const canonical = projectCanonicalOrderEventPayload(record);
+      const updated: StoredOrderEvent = {
+        ...existing,
+        // Immutable identity columns are never mutated by progression.
+        submitted_size: canonical.submitted_size,
+        submitted_price: canonical.submitted_price,
+      };
+      eventsById.set(updated.id, updated);
+      if (updated.idempotency_key) eventsByIdemKey.set(updated.idempotency_key, updated);
+      if (updated.clob_order_id) eventsByClob.set(updated.clob_order_id, updated);
+      return updated;
+    },
   };
 }
 
@@ -225,12 +240,82 @@ test("4c: an order event with no clob_order_id (order was never placed) never ma
   assert.equal(port.queueByIdemKey.get("idem-1")?.status, "READY");
 });
 
-test("6: a conflicting duplicate (same idempotency_key, different economic payload) is rejected", async () => {
+test("6: a terminal/fill progression of the same already-accepted CLOB order (same idempotency_key/condition_id/token_id/side/clob_order_id, different submitted_price) is accepted and updates the existing row -- not a conflict, not a second insert", async () => {
   const port = makeFakePort();
   const first = await handleOrderEventSubmission(port, validSubmissionRaw());
   assert.equal(first.kind, "INSERTED");
-  const conflicting = await handleOrderEventSubmission(port, validSubmissionRaw({ submitted_price: 0.5, clob_order_id: "clob-1" }));
+  const progressed = await handleOrderEventSubmission(port, validSubmissionRaw({ submitted_price: 0.5, clob_order_id: "clob-1" }));
+  assert.equal(progressed.kind, "PROGRESSED");
+  if (first.kind === "INSERTED" && progressed.kind === "PROGRESSED") {
+    assert.equal(progressed.row.id, first.row.id, "progression updates the existing row, never inserts a new one");
+    assert.equal(progressed.row.submitted_price, 0.5);
+  }
+  assert.equal(port.eventsById.size, 1, "no second row inserted");
+});
+
+test("6a: a conflicting resubmission with no clob_order_id anchor yet (ambiguous re-submission of an order intent, not a progression of a placed order) is still rejected as a conflict", async () => {
+  const port = makeFakePort();
+  const first = await handleOrderEventSubmission(port, validSubmissionRaw({ clob_order_id: undefined }));
+  assert.equal(first.kind, "INSERTED");
+  const conflicting = await handleOrderEventSubmission(port, validSubmissionRaw({ submitted_price: 0.5, clob_order_id: undefined }));
   assert.equal(conflicting.kind, "CONFLICT_IDEMPOTENCY");
+  assert.equal(port.eventsById.size, 1);
+});
+
+test("6b: identity mismatch (wrong clob_order_id under the same idempotency_key) fails closed as a conflict, never treated as progression", async () => {
+  const port = makeFakePort();
+  const first = await handleOrderEventSubmission(port, validSubmissionRaw());
+  assert.equal(first.kind, "INSERTED");
+  const mismatched = await handleOrderEventSubmission(port, validSubmissionRaw({ clob_order_id: "clob-DIFFERENT" }));
+  assert.equal(mismatched.kind, "CONFLICT_IDEMPOTENCY");
+  assert.equal(port.eventsById.size, 1);
+});
+
+test("6c: identity mismatch (wrong condition_id/token_id/side under the same idempotency_key) fails closed -- either rejected against the authoritative queue row's identity, or (when it clears that check) as an idempotency conflict, but never accepted/progressed", async () => {
+  for (const overrides of [
+    { condition_id: "cond-DIFFERENT" },
+    { token_id: "token-DIFFERENT" },
+    { side: "SIDE-DIFFERENT" },
+  ]) {
+    const port = makeFakePort();
+    const first = await handleOrderEventSubmission(port, validSubmissionRaw());
+    assert.equal(first.kind, "INSERTED");
+    const mismatched = await handleOrderEventSubmission(port, validSubmissionRaw(overrides));
+    assert.ok(
+      mismatched.kind === "CONFLICT_IDEMPOTENCY" || mismatched.kind === "REJECTED_QUEUE_POLICY_MISMATCH",
+      `expected a fail-closed outcome for ${JSON.stringify(overrides)}, got ${mismatched.kind}`,
+    );
+    assert.equal(port.eventsById.size, 1);
+  }
+});
+
+test("6d: a terminal UNFILLED/EXPIRED progression of an already-accepted order is accepted, not treated as a conflict or a rejection", async () => {
+  for (const order_status of ["UNFILLED", "EXPIRED"]) {
+    const port = makeFakePort();
+    const first = await handleOrderEventSubmission(port, validSubmissionRaw());
+    assert.equal(first.kind, "INSERTED");
+    const progressed = await handleOrderEventSubmission(
+      port,
+      validSubmissionRaw({ clob_order_id: "clob-1", order_status, submitted_price: 0.592 }),
+    );
+    assert.equal(progressed.kind, "PROGRESSED", order_status);
+    if (progressed.kind === "PROGRESSED") assert.equal(progressed.queueMark.kind, "ALREADY_EXECUTED");
+    assert.equal(port.eventsById.size, 1);
+  }
+});
+
+test("6e: repeated identical terminal/fill progression is idempotent -- no further row change, no second insert", async () => {
+  const port = makeFakePort();
+  const first = await handleOrderEventSubmission(port, validSubmissionRaw());
+  assert.equal(first.kind, "INSERTED");
+  const progressed = await handleOrderEventSubmission(port, validSubmissionRaw({ submitted_price: 0.592, clob_order_id: "clob-1" }));
+  assert.equal(progressed.kind, "PROGRESSED");
+  const repeated = await handleOrderEventSubmission(port, validSubmissionRaw({ submitted_price: 0.592, clob_order_id: "clob-1" }));
+  assert.equal(repeated.kind, "DUPLICATE", "once persisted, the identical progression payload is a plain duplicate");
+  if (progressed.kind === "PROGRESSED" && repeated.kind === "DUPLICATE") {
+    assert.equal(repeated.row.id, progressed.row.id);
+    assert.equal(repeated.row.submitted_price, 0.592);
+  }
   assert.equal(port.eventsById.size, 1);
 });
 

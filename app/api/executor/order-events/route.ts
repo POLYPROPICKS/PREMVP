@@ -315,95 +315,7 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
     },
     async insertOrderEvent(raw, _queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
       const s = sanitize(raw) as Record<string, unknown>;
-      // Fill/cost derivation runs against the already-sanitized payload `s`,
-      // never against raw -- response_json_sanitized must never carry an
-      // unredacted secret through the nested raw_response fallback.
-      const fill = deriveOrderEventFillFields(s);
-      const persistence = deriveOrderEventPersistenceFields(s);
-      // Structured wallet observation carried by accepted Ireland/Polymarket
-      // callbacks (EXECUTOR_WALLET_STATE_V1). Persisted as queryable columns;
-      // raw_event_json still keeps the full payload for forensic lineage.
-      const wallet = deriveWalletObservationFields(s);
-      const record: Record<string, unknown> = {
-        // identity / routing
-        event_type: str(s.event_type),
-        source: str(s.source),
-        environment: str(s.environment),
-
-        // dedup keys
-        idempotency_key: str(s.idempotency_key),
-        clob_order_id: persistence.clob_order_id,
-        transaction_hashes: s.transaction_hashes ?? null,
-
-        // NOTE: executor_order_events.queue_id, match_family_key, and
-        // reservation_id are NOT real live columns (confirmed by a live
-        // 42703 error and a full founder-provided information_schema
-        // column dump of the exact 43-column live table) and are never
-        // written here. queueRow is still loaded and validated above for
-        // idempotency/policy cross-checks before this insert runs.
-
-        // signal linkage
-        signal_id: str(s.signal_id),
-        candidate_id: str(s.candidate_id),
-        run_id: str(s.run_id),
-
-        // market
-        market_slug: str(s.market_slug),
-        condition_id: str(s.condition_id),
-        token_id: str(s.token_id),
-        selected_side: str(s.selected_side),
-        side: str(s.side),
-
-        // order outcome
-        order_status: str(s.order_status ?? s.status),
-        success: bool(s.success),
-        dry_run: bool(s.dry_run),
-        live_confirm: bool(s.live_confirm),
-
-        // pricing
-        submitted_price: fill.submitted_price,
-        submitted_size: fill.submitted_size,
-        stake_usd: persistence.stake_usd,
-        making_amount: fill.making_amount,
-        taking_amount: fill.taking_amount,
-        observed_best_bid: num(s.observed_best_bid),
-        observed_best_ask: num(s.observed_best_ask),
-        observed_price: num(s.observed_price),
-        observed_spread: num(s.observed_spread),
-        max_entry_price: num(s.max_entry_price),
-
-        // cost
-        fee_usd: num(s.fee_usd),
-        slippage_usd: num(s.slippage_usd),
-        cost_model_version: str(s.cost_model_version),
-        fee_notes: str(s.fee_notes),
-
-        // executor metadata
-        executor_host_country: str(s.executor_host_country),
-        executor_version: str(s.executor_version),
-        model_rule_id: str(s.model_rule_id),
-        strategic_scope: str(s.strategic_scope),
-
-        // JSON blobs (sanitised before storage)
-        candidate_snapshot_json: s.candidate_snapshot_json ?? null,
-        response_json_sanitized: fill.response_json_sanitized,
-        executor_meta: s.executor_meta ?? null,
-        raw_event_json: s, // full sanitised payload
-
-        // wallet observation (EXECUTOR_WALLET_STATE_V1)
-        spendable_balance_usd: wallet.spendable_balance_usd,
-        collateral_balance_usd: wallet.collateral_balance_usd,
-        allowance_usd: wallet.allowance_usd,
-        wallet_observed_at: wallet.wallet_observed_at,
-        wallet_observation_lifecycle_point: wallet.wallet_observation_lifecycle_point,
-
-        // error
-        error_message: str(s.error_message),
-      };
-
-      for (const k of Object.keys(record)) {
-        if (record[k] === null || record[k] === undefined) delete record[k];
-      }
+      const record = buildOrderEventRecord(s);
 
       let { data, error } = await supabaseAdmin
         .from("executor_order_events")
@@ -438,7 +350,155 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       }
       return { ok: true, row: toStoredOrderEvent(data as Record<string, unknown>) };
     },
+    async updateOrderEventProgression(id, raw): Promise<StoredOrderEvent> {
+      const s = sanitize(raw) as Record<string, unknown>;
+      const record = buildOrderEventRecord(s);
+      // Never mutate the immutable identity of the already-accepted order --
+      // only mutable progression facts (price/size/status/fill diagnostics)
+      // are persisted onto the existing row.
+      for (const identityKey of [
+        "idempotency_key",
+        "clob_order_id",
+        "condition_id",
+        "token_id",
+        "side",
+        "selected_side",
+        "event_type",
+        "source",
+        "environment",
+        "signal_id",
+        "candidate_id",
+        "run_id",
+        "market_slug",
+      ]) {
+        delete record[identityKey];
+      }
+
+      let { data, error } = await supabaseAdmin
+        .from("executor_order_events")
+        .update(record)
+        .eq("id", id)
+        .select("*")
+        .single();
+
+      if (error && (error.code === "PGRST204" || error.code === "42703")) {
+        const walletColumnNamed = WALLET_OBSERVATION_COLUMN_NAMES.some((c) => error!.message.includes(c));
+        const anyWalletColumnInRecord = WALLET_OBSERVATION_COLUMN_NAMES.some((c) => c in record);
+        if (walletColumnNamed || anyWalletColumnInRecord) {
+          for (const c of WALLET_OBSERVATION_COLUMN_NAMES) delete record[c];
+          ({ data, error } = await supabaseAdmin
+            .from("executor_order_events")
+            .update(record)
+            .eq("id", id)
+            .select("*")
+            .single());
+        }
+      }
+
+      if (error) throw new Error(error.message);
+      return toStoredOrderEvent(data as Record<string, unknown>);
+    },
   };
+}
+
+/**
+ * Builds the executor_order_events persistence record from an already-
+ * sanitized callback payload. Shared by insert (new order event) and
+ * updateOrderEventProgression (terminal/fill progression of an already-
+ * accepted order) so both paths derive fill/cost/wallet fields identically.
+ */
+function buildOrderEventRecord(s: Record<string, unknown>): Record<string, unknown> {
+    // Fill/cost derivation runs against the already-sanitized payload `s`,
+    // never against raw -- response_json_sanitized must never carry an
+    // unredacted secret through the nested raw_response fallback.
+    const fill = deriveOrderEventFillFields(s);
+    const persistence = deriveOrderEventPersistenceFields(s);
+    // Structured wallet observation carried by accepted Ireland/Polymarket
+    // callbacks (EXECUTOR_WALLET_STATE_V1). Persisted as queryable columns;
+    // raw_event_json still keeps the full payload for forensic lineage.
+    const wallet = deriveWalletObservationFields(s);
+    const record: Record<string, unknown> = {
+      // identity / routing
+      event_type: str(s.event_type),
+      source: str(s.source),
+      environment: str(s.environment),
+
+      // dedup keys
+      idempotency_key: str(s.idempotency_key),
+      clob_order_id: persistence.clob_order_id,
+      transaction_hashes: s.transaction_hashes ?? null,
+
+      // NOTE: executor_order_events.queue_id, match_family_key, and
+      // reservation_id are NOT real live columns (confirmed by a live
+      // 42703 error and a full founder-provided information_schema
+      // column dump of the exact 43-column live table) and are never
+      // written here. queueRow is still loaded and validated above for
+      // idempotency/policy cross-checks before this insert runs.
+
+      // signal linkage
+      signal_id: str(s.signal_id),
+      candidate_id: str(s.candidate_id),
+      run_id: str(s.run_id),
+
+      // market
+      market_slug: str(s.market_slug),
+      condition_id: str(s.condition_id),
+      token_id: str(s.token_id),
+      selected_side: str(s.selected_side),
+      side: str(s.side),
+
+      // order outcome
+      order_status: str(s.order_status ?? s.status),
+      success: bool(s.success),
+      dry_run: bool(s.dry_run),
+      live_confirm: bool(s.live_confirm),
+
+      // pricing
+      submitted_price: fill.submitted_price,
+      submitted_size: fill.submitted_size,
+      stake_usd: persistence.stake_usd,
+      making_amount: fill.making_amount,
+      taking_amount: fill.taking_amount,
+      observed_best_bid: num(s.observed_best_bid),
+      observed_best_ask: num(s.observed_best_ask),
+      observed_price: num(s.observed_price),
+      observed_spread: num(s.observed_spread),
+      max_entry_price: num(s.max_entry_price),
+
+      // cost
+      fee_usd: num(s.fee_usd),
+      slippage_usd: num(s.slippage_usd),
+      cost_model_version: str(s.cost_model_version),
+      fee_notes: str(s.fee_notes),
+
+      // executor metadata
+      executor_host_country: str(s.executor_host_country),
+      executor_version: str(s.executor_version),
+      model_rule_id: str(s.model_rule_id),
+      strategic_scope: str(s.strategic_scope),
+
+      // JSON blobs (sanitised before storage)
+      candidate_snapshot_json: s.candidate_snapshot_json ?? null,
+      response_json_sanitized: fill.response_json_sanitized,
+      executor_meta: s.executor_meta ?? null,
+      raw_event_json: s, // full sanitised payload
+
+      // wallet observation (EXECUTOR_WALLET_STATE_V1)
+      spendable_balance_usd: wallet.spendable_balance_usd,
+      collateral_balance_usd: wallet.collateral_balance_usd,
+      allowance_usd: wallet.allowance_usd,
+      wallet_observed_at: wallet.wallet_observed_at,
+      wallet_observation_lifecycle_point: wallet.wallet_observation_lifecycle_point,
+
+      // error
+      error_message: str(s.error_message),
+    };
+
+  for (const k of Object.keys(record)) {
+    if (record[k] === null || record[k] === undefined) delete record[k];
+  }
+
+  return record;
 }
 
 export async function POST(request: NextRequest) {
@@ -473,7 +533,7 @@ export async function POST(request: NextRequest) {
   let economicTelemetry: EconomicTelemetryV1 | null = null;
   let reconciliation: ExecutionReconciliationV1 | null = null;
   if (
-    (outcome.kind === "INSERTED" || outcome.kind === "DUPLICATE") &&
+    (outcome.kind === "INSERTED" || outcome.kind === "DUPLICATE" || outcome.kind === "PROGRESSED") &&
     (outcome.queueMark.kind === "EXECUTED" || outcome.queueMark.kind === "ALREADY_EXECUTED")
   ) {
     try {
@@ -523,6 +583,25 @@ export async function POST(request: NextRequest) {
         {
           success: true,
           duplicate: false,
+          event_id: outcome.row.id,
+          idempotency_key: outcome.row.idempotency_key,
+          id: outcome.row.id,
+          created_at: outcome.row.created_at,
+          queue_mark: outcome.queueMark,
+          economic_telemetry: economicTelemetry,
+          reconciliation,
+        },
+        { status: 200 },
+      );
+    case "PROGRESSED":
+      // A terminal/fill progression of an already-accepted order (immutable
+      // identity unchanged, mutable facts such as actual fill price/size
+      // updated onto the existing row) -- never a new order event.
+      return NextResponse.json(
+        {
+          success: true,
+          duplicate: false,
+          progressed: true,
           event_id: outcome.row.id,
           idempotency_key: outcome.row.idempotency_key,
           id: outcome.row.id,

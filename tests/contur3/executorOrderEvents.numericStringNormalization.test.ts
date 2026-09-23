@@ -134,6 +134,20 @@ function makeFakePort(
       eventsById.set(row.id, row);
       return { ok: true, row };
     },
+    async updateOrderEventProgression(id, record): Promise<StoredOrderEvent> {
+      const existing = eventsById.get(id);
+      if (!existing) throw new Error(`updateOrderEventProgression: no row for id ${id}`);
+      const canonical = projectCanonicalOrderEventPayload(record);
+      const updated: StoredOrderEvent = {
+        ...existing,
+        submitted_size: canonical.submitted_size,
+        submitted_price: canonical.submitted_price,
+      };
+      eventsById.set(updated.id, updated);
+      if (updated.idempotency_key) eventsByIdemKey.set(updated.idempotency_key, updated);
+      if (updated.clob_order_id) eventsByClob.set(updated.clob_order_id, updated);
+      return updated;
+    },
   };
 }
 
