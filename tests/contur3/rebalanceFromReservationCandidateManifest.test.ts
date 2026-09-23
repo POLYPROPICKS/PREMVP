@@ -433,3 +433,65 @@ test("RFM-12: an excessive spread on the exact selected token SKIPS the reservat
   assert.equal(repo.queueRows.length, 0);
   assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_SPREAD_TOO_WIDE/);
 });
+
+// ── ALIGN_B2_LIVE_ORDERBOOK_GUARD_WITH_EXISTING_EXECUTION_POLICY_V1 ─────────
+//
+// PR #390 regression: the B2 guard used its OWN 0.08 max-spread ceiling
+// (wider than the existing 0.03 live-candidate-policy authority) and sized
+// executable depth by a 2% slippage band off bestAsk -- which could count
+// ask liquidity priced ABOVE the selected candidate's own max_entry_price
+// (QUEUE_MAX_ENTRY_PRICE = 0.62), liquidity the real limit order can never
+// actually consume. These two regressions pin the fix: ONE canonical
+// max_spread (0.03) on every live path, and executable depth counting ONLY
+// ask liquidity at or below max_entry_price.
+
+test("RFM-13: executable depth counts ONLY ask liquidity at or below max_entry_price (0.62) -- large ask liquidity just above the cap contributes ZERO and insufficient below-cap depth SKIPS", async () => {
+  const repo = makeInstrumentedRepo([b2Reservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => ({
+      ok: true,
+      tokenId,
+      latencyMs: 20,
+      book: {
+        tokenId,
+        // Tight spread (0.025 <= 0.03) so this fixture isolates the depth guard.
+        bids: [{ price: 0.59, size: 100 }],
+        asks: [
+          // <= 0.62 (QUEUE_MAX_ENTRY_PRICE), but together well short of the $2.50 stake.
+          { price: 0.615, size: 2 }, // $1.23
+          { price: 0.62, size: 1 }, // $0.62 -> $1.85 total eligible depth, < $2.50 stake
+          // Above max_entry_price=0.62, and within the OLD (bug) 2%-of-bestAsk
+          // slippage band (0.615 * 1.02 = 0.6273) that used to wrongly count it.
+          { price: 0.625, size: 1000 }, // must contribute ZERO
+        ],
+      },
+    }),
+  });
+
+  assert.equal(result.queued_count, 0, "insufficient below-cap depth must SKIP even with abundant above-cap liquidity");
+  assert.equal(repo.queueRows.length, 0, "no Queue row -- the selected identity is never replaced by another candidate");
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_INSUFFICIENT_EXECUTABLE_DEPTH: depth_usd=1\.85/);
+});
+
+test("RFM-14: a spread of 0.04 (above the canonical 0.03 max-spread authority, but under the old B2-only 0.08 ceiling) SKIPS the reservation", async () => {
+  const repo = makeInstrumentedRepo([b2Reservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => ({
+      ok: true,
+      tokenId,
+      latencyMs: 20,
+      book: {
+        tokenId,
+        bids: [{ price: 0.56, size: 100 }],
+        // Ample below-cap depth, so this fixture isolates the spread guard.
+        asks: [{ price: 0.6, size: 100 }],
+      },
+    }),
+  });
+
+  assert.equal(result.queued_count, 0, "spread=0.04 must SKIP under the canonical 0.03 authority");
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_SPREAD_TOO_WIDE: spread=0\.03999\d* max=0\.03/);
+});

@@ -21,7 +21,7 @@ import {
   getStrictDedupKeyForExportRow,
   type ExportRow,
 } from "@/lib/modeling/generatedSignalPairsExportContract";
-import { EXECUTABLE_STAKE_USD, QUEUE_MAX_ENTRY_PRICE } from "./executorQueueTypes";
+import { EXECUTABLE_STAKE_USD, LIVE_EXECUTION_MAX_SPREAD, QUEUE_MAX_ENTRY_PRICE } from "./executorQueueTypes";
 import {
   candidateAnchorInput,
   fullMatchAnchorDecision,
@@ -1516,7 +1516,7 @@ async function buildContractAV1Candidates(
       max_entry_price: decision.entryPrice,
       stake_usd: EXECUTABLE_STAKE_USD,
       max_order_usd: EXECUTABLE_STAKE_USD,
-      max_spread: 0.03,
+      max_spread: LIVE_EXECUTION_MAX_SPREAD,
       one_order_only: true,
       executor_mode_allowed: "dry_run_only",
       first_live_test_allowed: true,
@@ -2466,7 +2466,7 @@ export async function buildFireModelCandidates(
       max_entry_price: maxEntryPrice,
       stake_usd: stakeUsd,
       max_order_usd: 5,
-      max_spread: 0.03,
+      max_spread: LIVE_EXECUTION_MAX_SPREAD,
       one_order_only: true,
       executor_mode_allowed: "dry_run_only",
       first_live_test_allowed: true,
