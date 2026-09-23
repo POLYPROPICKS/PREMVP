@@ -1,6 +1,8 @@
 /**
  * REFRESH_MODELING_DASHBOARD_V1 — Git-owned INCREMENTAL daily refresh for the
- * frozen Sep21 modeling dashboard. This is a FREEZE / DAILY APPEND mission
+ * frozen Sep21 modeling dashboard. This is a LEGACY / DIAGNOSTIC daily-history
+ * refresh only: it MUST NOT write CURRENT_MODELING_AUTHORITY.js, which is the
+ * separate immutable current SAFE authority. This is a FREEZE / DAILY APPEND mission
  * script, not another modeling/search mission: it runs the already-accepted,
  * FROZEN model set through the existing capacity/economics engine for newly
  * closed MODEL_READY days only, and appends their aggregate results.

@@ -6,6 +6,7 @@ const ALLOWED_FILES: Record<string, string> = {
   "MODELING_DASHBOARD.html": "text/html; charset=utf-8",
   "MODELING_DAILY_DATA.js": "application/javascript; charset=utf-8",
   "LIVE_RUNTIME_DATA.js": "application/javascript; charset=utf-8",
+  "CURRENT_MODELING_AUTHORITY.js": "application/javascript; charset=utf-8",
 };
 
 const ASSET_DIR = path.join(process.cwd(), "modeling", "evidence", "modeling-dashboard-v1");

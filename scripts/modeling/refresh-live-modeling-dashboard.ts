@@ -66,6 +66,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import vm from "node:vm";
 import "dotenv/config";
 import { selectCurrentSpendableWalletState, type WalletObservationRow } from "@/lib/executor/executorWalletState";
@@ -449,6 +450,22 @@ async function fetchWalletState(db: SupabaseClient) {
   };
 }
 
+/** Request-time, production-read-only counterpart of the committed snapshot
+ * writer. Shared by the Founder API route; it hard-refuses the research clone. */
+export async function readLiveModelingRuntime(): Promise<Record<string, unknown>> {
+  const resolved = await resolveProductionDb();
+  if (!resolved.db) return { ARTIFACT: "LIVE_RUNTIME_DATA_V1", status: "STOPPED", stopReason: resolved.stopReason, days: [] };
+  const currentMinskDate = minskDateNow();
+  const plan = await resolveLatestPlanDate(resolved.db, currentMinskDate);
+  if (plan.status !== "OK" || !plan.date) {
+    return { ARTIFACT: "LIVE_RUNTIME_DATA_V1", status: "STOPPED", stopReason: plan.status === "NO_PLAN_FOUND" ? `NO_PLAN_FOUND: no night_event_reservations row with plan_date_minsk <= ${currentMinskDate}.` : `MEASUREMENT_MISSING: failed to resolve latest plan date${plan.error ? ` (${plan.error})` : ""}.`, days: [] };
+  }
+  const aggregate = await collectPlanDateAggregate(resolved.db, plan.date, currentMinskDate);
+  const today = await collectTodayCalendarActivity(resolved.db, currentMinskDate);
+  const wallet = await fetchWalletState(resolved.db);
+  return { ARTIFACT: "LIVE_RUNTIME_DATA_V1", GENERATED_AT: new Date().toISOString(), status: "OK", productionProjectRef: resolved.ref, currentMinskDate, latestMinskDate: plan.date, today: { ...today, wallet }, days: [aggregate] };
+}
+
 function writeBody(path: string, body: unknown): void {
   const header = `/**
  * LIVE_RUNTIME_DATA_V1 -- production runtime aggregate for MODELING_DASHBOARD.html's
@@ -530,7 +547,9 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({ STATUS: "OK", CURRENT_MINSK_DATE: currentMinskDate, LATEST_PLAN_MINSK_DATE: minskDate, TODAY: today, WALLET: wallet, AGGREGATE: aggregate }, null, 2));
 }
 
-main().catch((err) => {
-  console.error(JSON.stringify({ STATUS: "FAILED", ERROR: err instanceof Error ? err.message : String(err) }));
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(JSON.stringify({ STATUS: "FAILED", ERROR: err instanceof Error ? err.message : String(err) }));
+    process.exitCode = 1;
+  });
+}
