@@ -126,7 +126,7 @@
       <h2>FORWARD SHADOW — EXACT PROSPECTIVE SELECTION</h2>
       <div class="banner" id="forwardShadowFreshness"></div>
       <div id="forwardShadowTable"></div>
-      <div class="note">Forward shadow uses a single $100 starting balance per model across Sep 21–22. UNQUERIED selections remain locked at principal; no mark-to-market or realized forward PnL is included.</div>
+      <div class="note">Forward shadow is isolated from the historical CAPITAL approximation above. FIXED and PRV2 protected balances replay only selected candidates and confirmed provider settlements; UNQUERIED principal remains locked at cost.</div>
     </div>
     <div class="panel">
       <h2>What this evidence supports</h2>
@@ -296,6 +296,7 @@
   var AUTH = window.POLYPROPICKS_CURRENT_MODELING_AUTHORITY;
   var CAPITAL = window.POLYPROPICKS_CAPITAL_MODELING_DATA;
   var SHADOW = window.POLYPROPICKS_FORWARD_SHADOW_DATA;
+  var SHADOW_RUNTIME = null;
   if (!D) {
     document.body.innerHTML = '<p style="padding:24px;color:#ef5b5b">MODELING_DAILY_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.</p>';
     return;
@@ -313,6 +314,17 @@
     LIVE.staticFallback = true;
     LIVE.staticFallbackReason = String(liveError && liveError.message ? liveError.message : liveError);
     LIVE.lastObservedAt = LIVE.GENERATED_AT || null;
+  }
+  // Production clone snapshot is authoritative when available. The checked-in
+  // FORWARD_SHADOW_DATA.js remains an explicit static fallback only.
+  try {
+    var shadowResponse = await fetch("/api/founder/modeling/shadow", { cache: "no-store" });
+    if (!shadowResponse.ok) throw new Error("HTTP_" + shadowResponse.status);
+    var shadowBody = await shadowResponse.json();
+    if (!shadowBody || shadowBody.status !== "OK" || !shadowBody.snapshot) throw new Error("SHADOW_SNAPSHOT_UNAVAILABLE");
+    SHADOW_RUNTIME = shadowBody.snapshot;
+  } catch (shadowError) {
+    SHADOW_RUNTIME = null;
   }
   var meta = D.meta, models = D.models, uncappedModels = D.uncappedModels || {};
 
@@ -405,8 +417,21 @@
   // ==================== FORWARD SHADOW — exact prospective selections ====================
   var shadowFreshness = document.getElementById("forwardShadowFreshness");
   var shadowTable = document.getElementById("forwardShadowTable");
-  if (SHADOW && shadowFreshness && shadowTable) {
-    shadowFreshness.textContent = "EXACT SELECTION · SETTLEMENT UNQUERIED · NO REALIZED FORWARD PNL YET · SELECTION FRESH THROUGH " + SHADOW.freshness.selectionFreshThrough + " · SETTLEMENT FRESH THROUGH " + SHADOW.freshness.settlementFreshThrough + " · PNL FRESH THROUGH " + SHADOW.freshness.pnlFreshThrough;
+  if (SHADOW_RUNTIME && shadowFreshness && shadowTable) {
+    var runtimeFreshness = SHADOW_RUNTIME.freshness || {};
+    shadowFreshness.textContent = "LIVE SHADOW · LAST REFRESH " + (SHADOW_RUNTIME.lastSuccessfulRefresh || "UNKNOWN") +
+      " · SELECTION FRESH THROUGH " + (runtimeFreshness.selectionFreshThrough || "UNKNOWN") +
+      " · SETTLEMENT FRESH THROUGH " + (runtimeFreshness.settlementFreshThrough || "UNKNOWN") +
+      " · PNL FRESH THROUGH " + (runtimeFreshness.pnlFreshThrough || "UNKNOWN") +
+      (SHADOW_RUNTIME.settlement && SHADOW_RUNTIME.settlement.providerBatchComplete === false ? " · SETTLEMENT CHECK PARTIAL" : "");
+    var runtimeRows = Array.isArray(SHADOW_RUNTIME.models) ? SHADOW_RUNTIME.models : [];
+    var liveShadowHtml = '<table><thead><tr><th>Model</th><th>Date</th><th>Selected today</th><th>Football</th><th>Tennis</th><th>Other</th><th>Settled</th><th>UNQUERIED</th><th>Wins</th><th>Losses</th><th>FIXED Free $</th><th>FIXED Locked $</th><th>FIXED Realized PnL $</th><th>FIXED Total $</th><th>FIXED Skips</th><th>PROTECTED Free $</th><th>PROTECTED Locked $</th><th>Vault $</th><th>PROTECTED Realized PnL $</th><th>PROTECTED Total $</th><th>PROTECTED Skips</th></tr></thead><tbody>';
+    runtimeRows.forEach(function (row) {
+      liveShadowHtml += '<tr><td>' + esc(row.model) + '</td><td>' + esc(row.date) + '</td><td>' + Number(row.selectedToday || 0) + '</td><td>' + Number(row.football || 0) + '</td><td>' + Number(row.tennis || 0) + '</td><td>' + Number(row.other || 0) + '</td><td>' + Number(row.settled || 0) + '</td><td>' + Number(row.unqueried || 0) + '</td><td>' + Number(row.wins || 0) + '</td><td>' + Number(row.losses || 0) + '</td><td>' + fmtCapitalUsd(row.fixed.freeUsd) + '</td><td>' + fmtCapitalUsd(row.fixed.lockedUsd) + '</td><td>' + fmtCapitalUsd(row.fixed.realizedPnlUsd) + '</td><td>' + fmtCapitalUsd(row.fixed.totalUsd) + '</td><td>' + Number(row.fixed.capitalSkips || 0) + '</td><td>' + fmtCapitalUsd(row.protected.freeUsd) + '</td><td>' + fmtCapitalUsd(row.protected.lockedUsd) + '</td><td>' + fmtCapitalUsd(row.protected.vaultUsd) + '</td><td>' + fmtCapitalUsd(row.protected.realizedPnlUsd) + '</td><td>' + fmtCapitalUsd(row.protected.totalUsd) + '</td><td>' + Number(row.protected.capitalSkips || 0) + '</td></tr>';
+    });
+    shadowTable.innerHTML = liveShadowHtml + '</tbody></table>';
+  } else if (SHADOW && shadowFreshness && shadowTable) {
+    shadowFreshness.textContent = "STATIC FALLBACK ONLY — live shadow API unavailable · EXACT SELECTION · SETTLEMENT UNQUERIED · NO LIVE SHADOW FRESHNESS CLAIM · last static selection through " + SHADOW.freshness.selectionFreshThrough;
     var fixedByKey = new Map(SHADOW.fixedShadow.map(function (row) { return [row.model + "|" + row.date, row]; }));
     var protectedByKey = new Map(SHADOW.protectedShadow.map(function (row) { return [row.model + "|" + row.date, row]; }));
     var shadowDates = ["2026-09-21", "2026-09-22"];

@@ -15,15 +15,15 @@ import { QUALITY_PORTFOLIOS } from "./quality-fill-portfolio-test";
 import { applyLiveMixAllocation, buildSafeUniverse, QUALITY_FILL_A_SAFE_MIX_CONFIGS, type IdentityCandidate, type IdentityLookup } from "./tennis-safe-comparable-leaderboard";
 
 const DATES = ["2026-09-21", "2026-09-22"] as const;
-const CAP = 30;
+export const CAP = 30;
 const CLONE_REF = "nppznoujvnyjargjkmnv";
 const CAPITAL_CUTOFF = "2026-09-20T21:00:00.000Z";
-const MODEL_IDS = ["P50_52_SAFE", "PORTFOLIO_BROAD_SAFE", "QUALITY_FILL_A_SAFE", "QUALITY_FILL_D_SAFE", "TENNIS_P50_52_SAFE"] as const;
+export const MODEL_IDS = ["P50_52_SAFE", "PORTFOLIO_BROAD_SAFE", "QUALITY_FILL_A_SAFE", "QUALITY_FILL_D_SAFE", "TENNIS_P50_52_SAFE"] as const;
 const EMPTY_SERIES = { observationCount: 0, firstEligibleValue: null, firstEligibleObservedAt: null, lastEligibleValue: null, lastEligibleObservedAt: null, delta: null };
 const OUTPUT_DIR = "modeling/evidence/prospective-selection-shadow-v1";
 const DASHBOARD_DATA_PATH = "modeling/evidence/modeling-dashboard-v1/FORWARD_SHADOW_DATA.js";
 
-type V4EvidenceRow = {
+export type V4EvidenceRow = {
   observation_id: string;
   observed_at: string;
   item_observation_id: string;
@@ -40,7 +40,7 @@ type V4EvidenceRow = {
   data_coverage: number | string | null;
 };
 
-type LedgerRow = {
+export type LedgerRow = {
   date: string;
   model: (typeof MODEL_IDS)[number];
   candidateIdentity: string;
@@ -49,7 +49,9 @@ type LedgerRow = {
   eventStart: string;
   entryPrice: number;
   sportFamily: string;
-  settlementState: "UNQUERIED";
+  settlementState: "UNQUERIED" | "WIN" | "LOSS";
+  settledAt?: string | null;
+  result?: "WIN" | "LOSS" | null;
 };
 type ShadowRow = {
   model: (typeof MODEL_IDS)[number];
@@ -65,7 +67,7 @@ type ShadowRow = {
   total_usd: number;
 };
 
-function numberOrNull(value: number | string | null): number | null {
+export function numberOrNull(value: number | string | null): number | null {
   if (value === null || value === "") return null;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
@@ -94,7 +96,7 @@ function resolveClone() {
  * and all settlement columns. Complete 1,000-row pages are processed locally; no input rows
  * are printed or persisted, only the selected capped ledger and aggregate shadow states.
  */
-async function readV4DateRows(db: ReturnType<typeof resolveClone>, date: string): Promise<V4EvidenceRow[]> {
+export async function readV4DateRows(db: ReturnType<typeof resolveClone>, date: string): Promise<V4EvidenceRow[]> {
   const from = utcStartOfMinskDate(date);
   const until = new Date(Date.parse(from) + 24 * 60 * 60_000).toISOString();
   const rows: V4EvidenceRow[] = [];
@@ -175,7 +177,7 @@ function applyLiveMixAllocationForDate(bets: SelectedCandidate[], date: string):
   return applyLiveMixAllocation(bets, [date], QUALITY_FILL_A_SAFE_MIX_CONFIGS[CAP]);
 }
 
-function selectedByModel(rows: readonly V4EvidenceRow[], date: string) {
+export function selectedByModel(rows: readonly V4EvidenceRow[], date: string) {
   const scorecardRows = rows.map(toScorecardRow);
   const decisionCandidates = toSettlementFreeDecisionTimeCandidates(scorecardRows);
   const { safeUniverse } = buildSafeUniverse(decisionCandidates, identityLookupFor(rows));
@@ -212,19 +214,21 @@ function usd(units: number): number {
   return Math.round((units * 2 + Number.EPSILON) * 100) / 100;
 }
 
-function capitalRowsForModel(model: (typeof MODEL_IDS)[number], ledgerRows: LedgerRow[], metadata: Map<string, { scoreLevel: number; dataCoverage: number }>, mode: "FIXED_1U" | "DYNAMIC_ACTIVE_3PCT"): ShadowRow[] {
+export function capitalRowsForModel(model: (typeof MODEL_IDS)[number], ledgerRows: LedgerRow[], metadata: Map<string, { scoreLevel: number; dataCoverage: number }>, mode: "FIXED_1U" | "DYNAMIC_ACTIVE_3PCT", dates: readonly string[] = DATES, cutoffAtIso = CAPITAL_CUTOFF): ShadowRow[] {
   const selected = ledgerRows.filter((row) => row.model === model);
   const executionCandidates: DynamicExecutionCandidate[] = selected.map((row) => {
     const feature = metadata.get(row.candidateIdentity);
     if (!feature) throw new Error(`CAPITAL_FEATURE_MISSING:${row.candidateIdentity}`);
-    return {
+    const base = {
       observationId: row.candidateIdentity,
       decisionAtIso: row.decisionTimestamp,
-      settlementState: "UNQUERIED",
       finalScore: feature.scoreLevel,
       dataCoverage: feature.dataCoverage,
       entryPrice: row.entryPrice,
     };
+    return row.settlementState === "UNQUERIED"
+      ? { ...base, settlementState: "UNQUERIED" as const }
+      : { ...base, resolvedAtIso: row.settledAt!, row: { signal_result: row.result === "WIN" ? "won" : "lost" } };
   });
   const policy = mode === "FIXED_1U"
     ? { family: "NO_VAULT" as const, id: "DYNAMIC_NO_VAULT" as const }
@@ -232,11 +236,11 @@ function capitalRowsForModel(model: (typeof MODEL_IDS)[number], ledgerRows: Ledg
   if (!policy) throw new Error("PRV2_T25_P50_R1_S0.05_C0.1 policy missing");
   const replay = replayDynamicHarvest(executionCandidates, policy, {
     finalizationMode: "KEEP_OPEN_AT_CUTOFF",
-    cutoffAtIso: CAPITAL_CUTOFF,
+    cutoffAtIso,
     stakeMode: mode,
   });
   const byIdentity = new Map(replay.ledger.map((row) => [row.observationId, row]));
-  return DATES.map((date) => {
+  return dates.map((date) => {
     const dateSelections = selected.filter((row) => row.date === date);
     const dateExecutions = dateSelections.map((row) => byIdentity.get(row.candidateIdentity)!).filter(Boolean);
     const candidates = dateSelections.length;
@@ -339,7 +343,10 @@ async function main() {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main().catch((error) => {
+  if (!process.argv.includes("--regression")) {
+    console.error("PROSPECTIVE_SELECTION_REGRESSION_ONLY: use npm run modeling:shadow-cycle for runtime data.");
+    process.exitCode = 2;
+  } else main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
   });

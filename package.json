@@ -15,6 +15,8 @@
     "research-clone:scoreboard": "tsx scripts/modeling/unified-core-scoreboard.ts",
     "research-clone:modeling-dashboard-refresh": "tsx scripts/modeling/refresh-modeling-dashboard.ts",
     "research-live:modeling-dashboard-refresh": "tsx scripts/modeling/refresh-live-modeling-dashboard.ts",
+    "modeling:shadow-cycle": "tsx scripts/modeling/live-shadow-cycle.ts",
+    "modeling:shadow-regression": "tsx scripts/modeling/prospective-selection-shadow.ts --regression",
     "modeling-dashboard:refresh": "npm run research-clone:modeling-dashboard-refresh && npm run research-live:modeling-dashboard-refresh",
     "test:research-clone-sync": "node --import tsx --test tests/research-clone/*.test.ts",
     "current-serving:backfill": "tsx scripts/current-serving-backfill-runner.ts",
