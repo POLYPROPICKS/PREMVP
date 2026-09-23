@@ -1164,7 +1164,8 @@ function buildQueueRowFromExactCandidate(
   physicalEventId: string,
   eventStartIso: string,
   selected: SelectedExactCandidate,
-  provenance: { sourceAuthority: string; mechanicalGuardTrace: string[] }
+  provenance: { sourceAuthority: string; mechanicalGuardTrace: string[] },
+  liveOrderbookEvidence?: LiveOrderbookGuardEvidence
 ): EventExecutionQueueRow {
   const { orderKey, idempotencyKey } = queueIdentityKeys(reservation, {
     condition_id: selected.conditionId, token_id: selected.tokenId, side: selected.side,
@@ -1192,6 +1193,15 @@ function buildQueueRowFromExactCandidate(
       max_stake_usd: QUEUE_MAX_STAKE_USD,
       source_authority: provenance.sourceAuthority,
       mechanical_guard_trace: provenance.mechanicalGuardTrace,
+      ...(liveOrderbookEvidence
+        ? {
+            current_executable_price: liveOrderbookEvidence.executablePrice,
+            current_executable_depth_usd: liveOrderbookEvidence.executableDepthUsd,
+            current_spread: liveOrderbookEvidence.spread,
+            orderbook_refresh_at: liveOrderbookEvidence.refreshedAtIso,
+            orderbook_refresh_latency_ms: liveOrderbookEvidence.latencyMs,
+          }
+        : {}),
     },
   };
 }
@@ -1316,22 +1326,111 @@ function resolveReservationCandidateManifest(
   return { kind: "SUPPORTED", candidates };
 }
 
+// ── RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1 ────────────────────────────
+//
+// A frozen B2 candidate_manifest identity is only a CANDIDATE for the Queue --
+// it proves the market was the right one at plan time, never that it is
+// executable right now. Before a B2 selection may enter READY it must pass a
+// live mechanical guard against the CURRENT orderbook for that EXACT
+// condition_id/token_id/side. A failing guard SKIPS the reservation this
+// cycle (fail closed) -- it never substitutes a different manifest entry and
+// never widens the candidate universe.
+
+/** Live orderbook evidence persisted onto a Queue row once the guard passes. */
+interface LiveOrderbookGuardEvidence {
+  executablePrice: number;
+  executableDepthUsd: number;
+  spread: number;
+  refreshedAtIso: string;
+  latencyMs: number;
+}
+
+type LiveOrderbookGuardResult =
+  | { pass: true; evidence: LiveOrderbookGuardEvidence; trace: string[] }
+  | { pass: false; reason: string };
+
+/** Absolute best-ask/best-bid spread above which a fill is not trusted as executable. */
+const B2_LIVE_ORDERBOOK_MAX_SPREAD = 0.08 as const;
+/** Slippage band used to size executable depth around the current best ask. */
+const B2_LIVE_ORDERBOOK_DEPTH_SLIPPAGE_PCT = 0.02 as const;
+
+/**
+ * Fetch and evaluate the CURRENT live orderbook for one exact selected token
+ * against the mechanical execution guards: price available, price <= the
+ * candidate's own max_entry_price, sufficient executable depth for its own
+ * stake, and an acceptable spread. Never re-ranks or substitutes -- a failing
+ * guard is reported as a specific reason and the caller must fail closed.
+ */
+async function evaluateLiveOrderbookGuard(
+  selected: Pick<SelectedExactCandidate, "tokenId" | "maxEntryPrice" | "stakeUsd">,
+  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>
+): Promise<LiveOrderbookGuardResult> {
+  let fetchResult: FetchOrderBookResult;
+  try {
+    fetchResult = await fetchExactTokenOrderbook(selected.tokenId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { pass: false, reason: `B2_ORDERBOOK_FETCH_FAILED: ${message}` };
+  }
+  if (!fetchResult.ok || !fetchResult.book) {
+    return { pass: false, reason: `B2_ORDERBOOK_UNAVAILABLE: ${fetchResult.errorCode ?? "UNKNOWN"}` };
+  }
+  if (!Number.isFinite(fetchResult.latencyMs) || fetchResult.latencyMs < 0) {
+    return { pass: false, reason: "B2_ORDERBOOK_REFRESH_NOT_FRESH" };
+  }
+  const book = fetchResult.book;
+  const { bestAsk } = getBestBidAsk(book);
+  if (bestAsk === null) {
+    return { pass: false, reason: "B2_NO_EXECUTABLE_ASK" };
+  }
+  if (bestAsk > selected.maxEntryPrice) {
+    return { pass: false, reason: `B2_PRICE_ABOVE_MAX_ENTRY_PRICE: price=${bestAsk} max=${selected.maxEntryPrice}` };
+  }
+  const spread = computeSpread(book);
+  if (spread === null || spread > B2_LIVE_ORDERBOOK_MAX_SPREAD) {
+    return { pass: false, reason: `B2_SPREAD_TOO_WIDE: spread=${spread ?? "null"} max=${B2_LIVE_ORDERBOOK_MAX_SPREAD}` };
+  }
+  const executableDepthUsd = computeBuyableUsdAtSlippage(book.asks, B2_LIVE_ORDERBOOK_DEPTH_SLIPPAGE_PCT, bestAsk) ?? 0;
+  if (executableDepthUsd < selected.stakeUsd) {
+    return { pass: false, reason: `B2_INSUFFICIENT_EXECUTABLE_DEPTH: depth_usd=${executableDepthUsd} required_usd=${selected.stakeUsd}` };
+  }
+  return {
+    pass: true,
+    evidence: {
+      executablePrice: bestAsk,
+      executableDepthUsd,
+      spread,
+      refreshedAtIso: new Date().toISOString(),
+      latencyMs: fetchResult.latencyMs,
+    },
+    trace: ["ORDERBOOK_AVAILABLE", "PRICE_CAP_OK", "SPREAD_OK", "DEPTH_OK"],
+  };
+}
+
 /**
  * B3: final market selection for a B2 Reservation, sourced ENTIRELY from its
  * already-persisted diagnostics.candidate_manifest — zero generated_signal_pairs
- * reads, zero current_signal_pair_serving reads. PURE (no DB, no I/O): the
- * manifest IS the complete bounded candidate universe for this Reservation: no
- * query ever widens or rediscovers it here.
+ * reads, zero current_signal_pair_serving reads. The manifest IS the complete
+ * bounded candidate universe for this Reservation: no query ever widens or
+ * rediscovers it here.
  *
  * Multiple manifest entries for the same physical event (different markets)
  * remain distinct candidates under this ONE Reservation's selection — exactly
  * one queue row is ever produced, same as every other selection path.
+ *
+ * RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1: after the exact
+ * condition_id/token_id/side is selected (deterministic max-signal-score,
+ * unchanged), the LIVE orderbook for that exact token is refreshed and must
+ * pass the mechanical execution guard before this Reservation may enter
+ * READY. A guard failure SKIPS this reservation this cycle -- it never
+ * substitutes another manifest entry.
  */
-function selectQueueRowFromReservationCandidateManifest(
+async function selectQueueRowFromReservationCandidateManifest(
   reservation: NightEventReservationRow,
   candidates: readonly ManifestExactSignalPair[],
-  rebalanceRunId: string
-): DueReservationSelection {
+  rebalanceRunId: string,
+  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>
+): Promise<DueReservationSelection> {
   const eventStartIso = reservation.event_start_iso;
   const physicalEventId = reservation.physical_event_id;
   if (!eventStartIso || !Number.isFinite(Date.parse(eventStartIso)) || !physicalEventId) {
@@ -1339,10 +1438,27 @@ function selectQueueRowFromReservationCandidateManifest(
   }
   const selected = [...candidates].sort(compareManifestExactSignalPairs)[0];
   if (!selected) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
-  const row = buildQueueRowFromExactCandidate(reservation, rebalanceRunId, physicalEventId, eventStartIso, selected, {
-    sourceAuthority: "B2_CANDIDATE_MANIFEST",
-    mechanicalGuardTrace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "B2_CANDIDATE_MANIFEST", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE"],
-  });
+
+  const guard = await evaluateLiveOrderbookGuard(selected, fetchExactTokenOrderbook);
+  if (!guard.pass) {
+    return { outcome: "SKIPPED", reason: `B2_LIVE_ORDERBOOK_GUARD_FAILED: ${guard.reason}`, queueRow: null };
+  }
+
+  const row = buildQueueRowFromExactCandidate(
+    reservation,
+    rebalanceRunId,
+    physicalEventId,
+    eventStartIso,
+    selected,
+    {
+      sourceAuthority: "B2_CANDIDATE_MANIFEST",
+      mechanicalGuardTrace: [
+        "RESERVATION_ACTIVE", "DUE_WINDOW", "B2_CANDIDATE_MANIFEST", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE",
+        ...guard.trace,
+      ],
+    },
+    guard.evidence
+  );
   return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1", queueRow: row };
 }
 
@@ -1579,6 +1695,7 @@ export async function runEventRebalance(
     (repo.loadFinalIdentitySourceRows
       ? (reservation: NightEventReservationRow) => repo.loadFinalIdentitySourceRows!(reservation)
       : null);
+  const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? ((tokenId: string) => fetchOrderBook(tokenId));
 
   // Due reservations: active status + start within the rebalance window.
   const all = await repo.loadActiveReservations();
@@ -1732,7 +1849,12 @@ export async function runEventRebalance(
         : null;
     const selection =
       manifestResolution?.kind === "SUPPORTED"
-        ? selectQueueRowFromReservationCandidateManifest(reservation, manifestResolution.candidates, rebalanceRunId)
+        ? await selectQueueRowFromReservationCandidateManifest(
+            reservation,
+            manifestResolution.candidates,
+            rebalanceRunId,
+            fetchExactTokenOrderbook
+          )
         : manifestResolution?.kind === "UNSUPPORTED"
           ? { outcome: "SKIPPED" as const, reason: manifestResolution.reason, queueRow: null }
           : requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING"
@@ -2022,6 +2144,7 @@ export async function runControlledLiveIntent(
     (repo.loadFinalIdentitySourceRows
       ? (reservation: NightEventReservationRow) => repo.loadFinalIdentitySourceRows!(reservation)
       : null);
+  const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? ((tokenId: string) => fetchOrderBook(tokenId));
 
   if (!repo.findQueueRowsByRebalanceRunId) {
     throw new Error(
@@ -2086,7 +2209,12 @@ export async function runControlledLiveIntent(
     }
     const selection =
       manifestResolution?.kind === "SUPPORTED"
-        ? selectQueueRowFromReservationCandidateManifest(reservation, manifestResolution.candidates, rebalanceRunId)
+        ? await selectQueueRowFromReservationCandidateManifest(
+            reservation,
+            manifestResolution.candidates,
+            rebalanceRunId,
+            fetchExactTokenOrderbook
+          )
         : requireContractAFinalIdentity
           ? await selectQueueRowFromContractAReservation(
               reservation,
