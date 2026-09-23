@@ -181,16 +181,14 @@ function candidateIdentityKey(r: ScorecardReadyRow): string {
   return `${r.conditionId}::${r.selectedTokenId}::${r.decisionAt}`;
 }
 
-export function toDecisionTimeSelectionInput(rows: ScorecardReadyRow[]): DecisionTimeSelectionInput {
-  const qualifying = rows.filter(
-    (r) =>
-      r.providerEventId &&
-      r.eventStart &&
-      r.entryPrice !== null &&
-      r.entryPrice > 0 &&
-      r.entryPrice < 1,
+function qualifyingDecisionTimeRows(rows: ScorecardReadyRow[]): ScorecardReadyRow[] {
+  return rows.filter(
+    (r) => r.providerEventId && r.eventStart && r.entryPrice !== null && r.entryPrice > 0 && r.entryPrice < 1,
   );
-  const candidates: DecisionTimeCandidate[] = qualifying.map((r) => ({
+}
+
+function toDecisionTimeCandidate(r: ScorecardReadyRow): DecisionTimeCandidate {
+  return {
     physicalEventKey: r.providerEventId!,
     decisionTimestamp: r.decisionAt,
     eventStart: r.eventStart!,
@@ -205,7 +203,17 @@ export function toDecisionTimeSelectionInput(rows: ScorecardReadyRow[]): Decisio
     rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
     marketTypeRaw: typeof (r as ScorecardReadyRowWithMarketType).marketTypeRaw === "string" ? ((r as ScorecardReadyRowWithMarketType).marketTypeRaw as string) : null,
     candidateIdentity: candidateIdentityKey(r),
-  }));
+  };
+}
+
+/** Settlement-free production selection input; unlike the reconciliation helper below, never touches either label field. */
+export function toSettlementFreeDecisionTimeCandidates(rows: ScorecardReadyRow[]): DecisionTimeCandidate[] {
+  return qualifyingDecisionTimeRows(rows).map(toDecisionTimeCandidate);
+}
+
+export function toDecisionTimeSelectionInput(rows: ScorecardReadyRow[]): DecisionTimeSelectionInput {
+  const qualifying = qualifyingDecisionTimeRows(rows);
+  const candidates = qualifying.map(toDecisionTimeCandidate);
   const settlementByCandidateIdentity = new Map<string, CorpusLabel>();
   for (const r of qualifying) {
     settlementByCandidateIdentity.set(candidateIdentityKey(r), r.labelAsOf);

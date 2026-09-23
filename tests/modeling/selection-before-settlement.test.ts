@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import type { RollingCompactRow } from "../../lib/modeling/research-corpus/rollingCorpus";
-import { toDecisionTimeSelectionInput, toAtlasInput } from "../../scripts/modeling/factor-atlas";
+import { toDecisionTimeSelectionInput, toSettlementFreeDecisionTimeCandidates, toAtlasInput } from "../../scripts/modeling/factor-atlas";
 import {
   runStandaloneStrict,
   runPortfolioStrict,
@@ -55,6 +55,20 @@ function toScorecardRow(r: RollingCompactRow) {
 }
 
 const c0Predicate = (e: { entryPrice: number }) => e.entryPrice >= 0.5 && e.entryPrice < 0.6;
+
+test("settlement-free adapter never accesses either settlement label", () => {
+  const source = toScorecardRow(row({ conditionId: "NO-LABEL", decisionAt: "2026-08-04T09:00:00.000Z" }));
+  const guarded = new Proxy(source, {
+    get(target, property, receiver) {
+      if (property === "labelAsOf" || property === "frozenLabel") throw new Error(`SETTLEMENT_READ:${String(property)}`);
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  const candidates = toSettlementFreeDecisionTimeCandidates([guarded]);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].candidateIdentity, "NO-LABEL::tok::2026-08-04T09:00:00.000Z");
+  assert.equal("labelAsOf" in candidates[0], false);
+});
 
 test("FIX 1 FOCUSED REGRESSION: settlement is not present on the candidate object a predicate receives", () => {
   // Type-level: DecisionTimeCandidate has no `labelAsOf`/`outcome` field to

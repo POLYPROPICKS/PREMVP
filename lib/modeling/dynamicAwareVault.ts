@@ -3,15 +3,17 @@ import { createStakeReferenceSchedule, minskNightKey } from "./stakeReferenceSch
 import { stableHash } from "./scientificCapitalArchitecture";
 import { principalRecoveryTarget, type PrincipalRecoveryPolicy } from "./dynamicPrincipalRecoveryVault";
 
-export interface DynamicExecutionCandidate {
+interface DynamicExecutionCandidateBase {
     observationId: string;
     decisionAtIso: string;
-    resolvedAtIso: string;
     finalScore: number;
     dataCoverage: number;
     entryPrice: number;
-    row: unknown;
 }
+export type DynamicExecutionCandidate = DynamicExecutionCandidateBase & (
+    | { settlementState?: never; resolvedAtIso: string; row: unknown }
+    | { settlementState: "UNQUERIED"; resolvedAtIso?: never; row?: never }
+);
 export interface BufferedProfitPolicy {
     family: "DYNAMIC_BUFFERED_PROFIT_HARVEST_V1";
     id: string;
@@ -89,9 +91,10 @@ export interface DynamicTransfer {
 export interface DynamicLedger {
     observationId: string;
     decisionAtIso: string;
-    resolvedAtIso: string;
+    resolvedAtIso: string | null;
+    settlementState?: "UNQUERIED";
     stake: number;
-    result: "win" | "loss";
+    result: "win" | "loss" | "UNQUERIED";
     netPnl: number;
     terminalReason: "EXECUTED_FULL" | "POSITION_LIMIT" | "EXPOSURE_LIMIT" | "INSUFFICIENT_ACTIVE_CAPACITY";
 }
@@ -143,10 +146,10 @@ export interface DynamicHarvestReplay {
 }
 export function replayDynamicHarvest(candidates: readonly DynamicExecutionCandidate[], policy: Exclude<DynamicAwarePolicy, {
     family: "ONE_WAY_RATCHETED_CPPI";
-}>, options: { finalizationMode?: "SETTLE_ALL" | "KEEP_OPEN_AT_CUTOFF"; cutoffAtIso?: string } = {}): DynamicHarvestReplay { const finalizationMode = options.finalizationMode ?? "SETTLE_ALL"; const cutoff = finalizationMode === "KEEP_OPEN_AT_CUTOFF" ? Date.parse(options.cutoffAtIso ?? "") : Infinity; if (finalizationMode === "KEEP_OPEN_AT_CUTOFF" && !Number.isFinite(cutoff)) throw new Error("cutoffAtIso is required for KEEP_OPEN_AT_CUTOFF"); if (policy.family === "DYNAMIC_VOLATILITY_TARGETED_RESERVE_V1" && (!policy.targetVol || !Number.isFinite(policy.targetVol) || policy.targetVol <= 0))
+}>, options: { finalizationMode?: "SETTLE_ALL" | "KEEP_OPEN_AT_CUTOFF"; cutoffAtIso?: string; stakeMode?: "DYNAMIC_ACTIVE_3PCT" | "FIXED_1U" } = {}): DynamicHarvestReplay { const finalizationMode = options.finalizationMode ?? "SETTLE_ALL"; const cutoff = finalizationMode === "KEEP_OPEN_AT_CUTOFF" ? Date.parse(options.cutoffAtIso ?? "") : Infinity; if (finalizationMode === "KEEP_OPEN_AT_CUTOFF" && !Number.isFinite(cutoff)) throw new Error("cutoffAtIso is required for KEEP_OPEN_AT_CUTOFF"); if (options.stakeMode !== undefined && options.stakeMode !== "DYNAMIC_ACTIVE_3PCT" && options.stakeMode !== "FIXED_1U") throw new Error("invalid stake mode"); if (policy.family === "DYNAMIC_VOLATILITY_TARGETED_RESERVE_V1" && (!policy.targetVol || !Number.isFinite(policy.targetVol) || policy.targetVol <= 0))
     throw new Error("invalid locked volatility target"); const ordered = [...candidates].sort((a, b) => Date.parse(a.decisionAtIso) - Date.parse(b.decisionAtIso) || b.finalScore - a.finalScore || b.dataCoverage - a.dataCoverage || a.entryPrice - b.entryPrice || a.observationId.localeCompare(b.observationId)); const schedule = createStakeReferenceSchedule("MINSK_NIGHT_FIXED_MAX3_V1", 50); let free = 50, vault = 0, settledHigh = 50, totalPeak = 50, activePeak = 50, minTotal = 50, minActive = 50, minFree = 50, maxFall = 0, maxActiveFall = 0, maxConcurrent = 0, maxLocked = 0, invalid = 0, previousSettledTotal = 50; const open: Array<{
     candidate: DynamicExecutionCandidate;
-    resolved: number;
+    resolved: number | null;
     stake: number;
 }> = [], ledger: DynamicLedger[] = [], curve: DynamicCurve[] = [], transfers: DynamicTransfer[] = [], blockPnl: Record<string, number> = {}, cycleTransferred = new Map<string, number>(), settledReturns: number[] = []; const point = (atIso: string) => { const principal = round(open.reduce((sum, item) => sum + item.stake, 0)), active = round(free + principal), total = round(active + vault); totalPeak = Math.max(totalPeak, total); activePeak = Math.max(activePeak, active); minTotal = Math.min(minTotal, total); minActive = Math.min(minActive, active); minFree = Math.min(minFree, free); maxFall = Math.max(maxFall, totalPeak - total); maxActiveFall = Math.max(maxActiveFall, activePeak - active); maxConcurrent = Math.max(maxConcurrent, open.length); maxLocked = Math.max(maxLocked, principal); if (free < -.0000001 || vault < -.0000001 || Math.abs(active + vault - total) > .000001)
     invalid++; curve.push({ atIso, freeActive: round(free), openPrincipal: principal, active, vault: round(vault), total, fallFromTotalPeak: round(totalPeak - total), fallFromActivePeak: round(activePeak - active) }); }; point("INITIAL"); const applyHarvest = (at: number) => { const principal = open.reduce((sum, item) => sum + item.stake, 0), active = free + principal, total = active + vault; settledHigh = Math.max(settledHigh, total); const settledReturn = previousSettledTotal ? total / previousSettledTotal - 1 : 0; settledReturns.push(settledReturn); previousSettledTotal = total; if (policy.family === "NO_VAULT")
@@ -161,8 +164,8 @@ export function replayDynamicHarvest(candidates: readonly DynamicExecutionCandid
     vault = round(vault + amount);
     cycleTransferred.set(cycleId, round(used + amount));
     transfers.push({ atIso: new Date(at).toISOString(), cycleId, amount, cycleReference: round(cycleReference), targetVault: round(vault), reason: policy.family === "DYNAMIC_BUFFERED_PROFIT_HARVEST_V1" ? "BUFFERED_PROFIT" : policy.family === "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2" ? "PRINCIPAL_RECOVERY" : "VOLATILITY_TARGET" });
-} }; const settle = (through: number) => { const due = open.filter(item => item.resolved <= through).sort((a, b) => a.resolved - b.resolved || a.candidate.observationId.localeCompare(b.candidate.observationId)); for (let index = 0; index < due.length;) {
-    const resolved = due[index].resolved, batch: typeof due = [];
+} }; const settle = (through: number) => { const due = open.filter(item => item.resolved !== null && item.resolved <= through).sort((a, b) => a.resolved! - b.resolved! || a.candidate.observationId.localeCompare(b.candidate.observationId)); for (let index = 0; index < due.length;) {
+    const resolved = due[index].resolved!, batch: typeof due = [];
     while (index < due.length && due[index].resolved === resolved)
         batch.push(due[index++]);
     for (const item of batch) {
@@ -183,7 +186,7 @@ export function replayDynamicHarvest(candidates: readonly DynamicExecutionCandid
     while (index < ordered.length && Date.parse(ordered[index].decisionAtIso) === at)
         batch.push(ordered[index++]);
     for (const candidate of batch) {
-        const active = free + open.reduce((sum, item) => sum + item.stake, 0), reference = schedule.referenceFor(at, active), stake = round(.03 * reference), exposure = open.reduce((sum, item) => sum + item.stake, 0);
+        const active = free + open.reduce((sum, item) => sum + item.stake, 0), reference = schedule.referenceFor(at, active), stake = options.stakeMode === "FIXED_1U" ? 1 : round(.03 * reference), exposure = open.reduce((sum, item) => sum + item.stake, 0);
         let reason: DynamicLedger["terminalReason"] = "EXECUTED_FULL";
         if (open.length >= 36)
             reason = "POSITION_LIMIT";
@@ -191,13 +194,15 @@ export function replayDynamicHarvest(candidates: readonly DynamicExecutionCandid
             reason = "EXPOSURE_LIMIT";
         else if (free + 1e-8 < stake)
             reason = "INSUFFICIENT_ACTIVE_CAPACITY";
-        const result = classifyResolvedOutcome(candidate.row).label;
-        if ((result !== "win" && result !== "loss") || !Number.isFinite(Date.parse(candidate.resolvedAtIso)))
+        const unqueried = candidate.settlementState === "UNQUERIED";
+        const resolved = candidate.resolvedAtIso ? Date.parse(candidate.resolvedAtIso) : NaN;
+        const result = unqueried ? "UNQUERIED" : classifyResolvedOutcome(candidate.row).label;
+        if ((unqueried && (finalizationMode !== "KEEP_OPEN_AT_CUTOFF" || candidate.resolvedAtIso !== undefined || Object.prototype.hasOwnProperty.call(candidate, "row"))) || (!unqueried && ((result !== "win" && result !== "loss") || !Number.isFinite(resolved))))
             throw new Error("invalid candidate");
-        ledger.push({ observationId: candidate.observationId, decisionAtIso: candidate.decisionAtIso, resolvedAtIso: candidate.resolvedAtIso, stake: reason === "EXECUTED_FULL" ? stake : 0, result, netPnl: 0, terminalReason: reason });
+        ledger.push({ observationId: candidate.observationId, decisionAtIso: candidate.decisionAtIso, resolvedAtIso: unqueried ? null : candidate.resolvedAtIso!, ...(unqueried ? { settlementState: "UNQUERIED" as const } : {}), stake: reason === "EXECUTED_FULL" ? stake : 0, result: result as DynamicLedger["result"], netPnl: 0, terminalReason: reason });
         if (reason === "EXECUTED_FULL") {
             free = round(free - stake);
-            open.push({ candidate, resolved: Date.parse(candidate.resolvedAtIso), stake });
+            open.push({ candidate, resolved: unqueried ? null : resolved, stake });
         }
     }
     point(new Date(at).toISOString());
