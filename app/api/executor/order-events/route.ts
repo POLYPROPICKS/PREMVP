@@ -353,9 +353,14 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
     async updateOrderEventProgression(id, raw): Promise<StoredOrderEvent> {
       const s = sanitize(raw) as Record<string, unknown>;
       const record = buildOrderEventRecord(s);
-      // Never mutate the immutable identity of the already-accepted order --
-      // only mutable progression facts (price/size/status/fill diagnostics)
-      // are persisted onto the existing row.
+      // Never mutate the immutable identity of the already-accepted order,
+      // and never overwrite the originally requested/submitted order facts
+      // (submitted_price, submitted_size, stake_usd) with a later fill's
+      // actual price/size -- those remain the true request, distinct from
+      // the actual fill facts (making_amount/taking_amount/order_status/
+      // raw_event_json/executor_meta, including the reconciliation module's
+      // separate actual_fill_price/executed_shares) that progression does
+      // persist onto this row.
       for (const identityKey of [
         "idempotency_key",
         "clob_order_id",
@@ -370,6 +375,9 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
         "candidate_id",
         "run_id",
         "market_slug",
+        "submitted_price",
+        "submitted_size",
+        "stake_usd",
       ]) {
         delete record[identityKey];
       }

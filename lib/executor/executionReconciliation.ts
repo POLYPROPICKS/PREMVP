@@ -12,13 +12,14 @@ import type { EconomicTelemetryV1 } from "./economicTelemetry";
 
 export const EXECUTION_RECONCILIATION_VERSION = "EXECUTION_RECONCILIATION_V1" as const;
 
-export type FillStatus = "ACCEPTED_OPEN" | "MATCHED_CONFIRMED";
+export type FillStatus = "ACCEPTED_OPEN" | "MATCHED_CONFIRMED" | "TERMINAL_NO_FILL";
 export type SettlementStatus =
   | "PENDING_FILL_CONFIRMATION"
   | "PENDING_MARKET_RESOLUTION"
   | "RESOLVED_AWAITING_FILL_CONFIRMATION"
   | "RESOLVED_FEE_PENDING"
-  | "SETTLED_RECONCILED";
+  | "SETTLED_RECONCILED"
+  | "SETTLED_NO_FILL";
 export type FeeStatus = "PENDING_FILL_CONFIRMATION" | "NOT_REPORTED" | "REPORTED";
 export type ResultStatus = "PENDING" | "WON" | "LOST";
 
@@ -113,6 +114,20 @@ function isMatched(raw: Record<string, unknown>, prior?: ExecutionReconciliation
   if (prior?.fill_status === "MATCHED_CONFIRMED") return true;
   const status = String(raw.order_status ?? raw.status ?? raw.state ?? "").toLowerCase();
   return status === "matched" || status === "filled" || status === "fully_filled";
+}
+
+const TERMINAL_NO_FILL_STATUSES = new Set(["unfilled", "expired"]);
+
+/**
+ * A venue-confirmed terminal callback reporting the order finished without
+ * ever filling (e.g. expired/unfilled at the venue). This is a real,
+ * final state -- distinct from ACCEPTED_OPEN (still pending) and from a
+ * rejected order submission (the venue never accepted it at all).
+ */
+function isTerminalNoFill(raw: Record<string, unknown>, prior?: ExecutionReconciliationV1): boolean {
+  if (prior?.fill_status === "TERMINAL_NO_FILL") return true;
+  const status = String(raw.order_status ?? raw.status ?? raw.state ?? "").toLowerCase();
+  return TERMINAL_NO_FILL_STATUSES.has(status);
 }
 
 function explicitExecutedShares(
@@ -276,14 +291,34 @@ export function buildExecutionReconciliation(input: {
   if (isConfirmedTelemetry(telemetry) && prior?.executed_shares != null && telemetry.executed.executed_shares.value! < prior.executed_shares) {
     throw new Error("RECONCILIATION_TELEMETRY_FILL_DOWNGRADE");
   }
+  // isMatched is already monotonic (a prior MATCHED_CONFIRMED stays matched
+  // regardless of what a later raw callback says), so a terminal-no-fill
+  // status can never downgrade an already-confirmed fill: matched is true
+  // in that case and terminalNoFill is short-circuited to false below.
   const matched = isConfirmedTelemetry(telemetry) || isMatched(raw, prior);
-  const legacyActualFillPrice = finiteNumber(raw.average_fill_price) ?? finiteNumber(raw.actual_fill_price) ?? finiteNumber(raw.filled_price);
+  const terminalNoFill = !matched && isTerminalNoFill(raw, prior);
+  // Explicit fill-price fields always win. Failing those, a matched/filled
+  // terminal callback sometimes reports the actual fill price under the
+  // same submitted_price field name Ireland uses for the originally
+  // requested price on other message types -- trusted only when it differs
+  // from the true requested price (submittedPrice above); a callback that
+  // merely echoes the original price back is not new fill evidence.
+  // Mirrors explicitExecutedShares' precedence: an already-known prior
+  // value is preserved ahead of that ambiguous fallback, so a later
+  // callback that omits fill fields entirely never erases it. Never
+  // applies to an accepted-open (not yet matched) callback, where it would
+  // fabricate a fill that never happened (see "market resolution never
+  // invents a fill for an accepted-open order").
+  const explicitActualFillPrice = finiteNumber(raw.average_fill_price) ?? finiteNumber(raw.actual_fill_price) ?? finiteNumber(raw.filled_price);
+  const rawSubmittedPriceAsFill = finiteNumber(raw.submitted_price);
   const executedShares = isConfirmedTelemetry(telemetry)
     ? Math.max(prior?.executed_shares ?? 0, telemetry.executed.executed_shares.value!)
     : explicitExecutedShares(raw, event, matched, prior);
   const actualFillPrice = isConfirmedTelemetry(telemetry)
     ? telemetry.executed.average_fill_price.value!
-    : legacyActualFillPrice ?? prior?.actual_fill_price ?? null;
+    : explicitActualFillPrice ??
+      prior?.actual_fill_price ??
+      (matched && rawSubmittedPriceAsFill != null && rawSubmittedPriceAsFill !== submittedPrice ? rawSubmittedPriceAsFill : null);
   const executedNotional = isConfirmedTelemetry(telemetry)
     ? telemetry.executed.executed_notional_usd.value!
     : executedShares != null && actualFillPrice != null ? roundMoney(executedShares * actualFillPrice) : null;
@@ -295,6 +330,15 @@ export function buildExecutionReconciliation(input: {
     : feeUsd == null
       ? "NOT_REPORTED"
       : "REPORTED";
+
+  // A terminal no-fill order never executed -- report zero executed
+  // shares/notional and no fabricated fill price, never the pending/open
+  // economics above.
+  const finalExecutedShares = terminalNoFill ? 0 : executedShares;
+  const finalActualFillPrice = terminalNoFill ? null : actualFillPrice;
+  const finalExecutedNotional = terminalNoFill ? 0 : executedNotional;
+  const finalFeeUsd = terminalNoFill ? null : feeUsd;
+  const finalFeeStatus: FeeStatus = terminalNoFill ? "NOT_REPORTED" : feeStatus;
 
   const base: ExecutionReconciliationV1 = {
     version: EXECUTION_RECONCILIATION_VERSION,
@@ -313,17 +357,17 @@ export function buildExecutionReconciliation(input: {
     requested_shares: requestedShares,
     requested_notional_usd: roundMoney(submittedPrice * requestedShares),
     authorized_stake_ceiling_usd: queue.stake_usd,
-    fill_status: matched ? "MATCHED_CONFIRMED" : "ACCEPTED_OPEN",
-    executed_shares: executedShares,
-    actual_fill_price: actualFillPrice,
-    executed_notional_usd: executedNotional,
-    settlement_status: matched ? "PENDING_MARKET_RESOLUTION" : "PENDING_FILL_CONFIRMATION",
+    fill_status: matched ? "MATCHED_CONFIRMED" : terminalNoFill ? "TERMINAL_NO_FILL" : "ACCEPTED_OPEN",
+    executed_shares: finalExecutedShares,
+    actual_fill_price: finalActualFillPrice,
+    executed_notional_usd: finalExecutedNotional,
+    settlement_status: matched ? "PENDING_MARKET_RESOLUTION" : terminalNoFill ? "SETTLED_NO_FILL" : "PENDING_FILL_CONFIRMATION",
     result_status: prior?.result_status ?? "PENDING",
     resolved_at: prior?.resolved_at ?? null,
     winning_outcome: prior?.winning_outcome ?? null,
     winning_token_id: prior?.winning_token_id ?? null,
-    fee_status: feeStatus,
-    fee_usd: feeUsd,
+    fee_status: finalFeeStatus,
+    fee_usd: finalFeeUsd,
     gross_pnl_usd: prior?.gross_pnl_usd ?? null,
     net_pnl_usd: prior?.net_pnl_usd ?? null,
   };
