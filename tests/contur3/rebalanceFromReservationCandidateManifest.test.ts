@@ -21,9 +21,11 @@ import {
 } from "../../lib/executor/eventExecutionQueue";
 import {
   EXECUTABLE_STAKE_USD,
+  QUEUE_MAX_ENTRY_PRICE,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
 } from "../../lib/executor/executorQueueTypes";
+import type { FetchOrderBookResult } from "../../lib/liquidity/types";
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 // T-60m from a 19:00Z kickoff, inside the T-70..T-3 rebalance window.
@@ -89,6 +91,23 @@ function b2Reservation(overrides: Partial<NightEventReservationRow> = {}): Night
       ],
     },
     ...overrides,
+  };
+}
+
+// RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1: every B2 selection now refreshes
+// the live orderbook for the exact selected token before it may enter READY.
+// A passing fixture book: executable ask below QUEUE_MAX_ENTRY_PRICE, a tight
+// spread, and depth well above the $2.50 stake.
+async function passingOrderbookFetcher(tokenId: string): Promise<FetchOrderBookResult> {
+  return {
+    ok: true,
+    tokenId,
+    latencyMs: 42,
+    book: {
+      tokenId,
+      bids: [{ price: 0.4, size: 100 }],
+      asks: [{ price: 0.42, size: 100 }],
+    },
   };
 }
 
@@ -160,6 +179,7 @@ test("RFM-1: a B2 Reservation resolves its Queue row entirely from candidate_man
       // If this is ever invoked for the B2 cohort, the test fails via the counter below.
       fetchCandidates: async () => { servingCallCount += 1; return { candidates: [] }; },
       fetchContractAFinalCandidates: async () => { servingCallCount += 1; return { candidates: [] }; },
+      fetchExactTokenOrderbook: passingOrderbookFetcher,
     }
   );
 
@@ -171,11 +191,18 @@ test("RFM-1: a B2 Reservation resolves its Queue row entirely from candidate_man
 
   const row = repo.queueRows[0];
   assert.equal((row.diagnostics as Record<string, unknown>).source_authority, "B2_CANDIDATE_MANIFEST");
+  // RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1: live guard evidence persisted on the READY row.
+  const diag = row.diagnostics as Record<string, unknown>;
+  assert.equal(diag.current_executable_price, 0.42);
+  assert.equal(diag.current_executable_depth_usd, 42);
+  assert.ok(typeof diag.current_spread === "number" && Math.abs(diag.current_spread - 0.02) < 1e-9);
+  assert.ok(typeof diag.orderbook_refresh_at === "string" && diag.orderbook_refresh_at);
+  assert.ok(Array.isArray(diag.mechanical_guard_trace) && (diag.mechanical_guard_trace as string[]).includes("DEPTH_OK"));
 });
 
 test("RFM-2: multiple manifest market rows for the same physical event remain one candidate universe under ONE Queue row, and the max-confidence entry deterministically wins", async () => {
   const repo = makeInstrumentedRepo([b2Reservation()]);
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
 
   assert.equal(result.queued_count, 1, "exactly one queue row, never one per manifest entry");
   assert.equal(repo.queueRows.length, 1);
@@ -191,8 +218,8 @@ test("RFM-3: re-running the same manifest selection is deterministic (repeat run
   const repoA = makeInstrumentedRepo([{ ...reservation }]);
   const repoB = makeInstrumentedRepo([{ ...reservation }]);
   const [resultA, resultB] = await Promise.all([
-    runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoA }),
-    runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoB }),
+    runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoA, fetchExactTokenOrderbook: passingOrderbookFetcher }),
+    runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoB, fetchExactTokenOrderbook: passingOrderbookFetcher }),
   ]);
   assert.equal(resultA.queued_count, 1);
   assert.equal(resultB.queued_count, 1);
@@ -321,7 +348,7 @@ test("RFM-8: the B2 manifest path and the legacy GSP path produce byte-identical
     },
   })]);
 
-  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: b2Repo });
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: b2Repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: legacyRepo });
 
   const b2Row = b2Repo.queueRows[0];
@@ -339,4 +366,70 @@ test("RFM-8: the B2 manifest path and the legacy GSP path produce byte-identical
   assert.ok(b2Row.preferred_entry_iso && b2Row.latest_entry_iso);
   assert.equal(b2Row.preferred_entry_iso, legacyRow.preferred_entry_iso);
   assert.equal(b2Row.latest_entry_iso, legacyRow.latest_entry_iso);
+});
+
+// ── H: RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1 -- live mechanical guard ──
+
+test("RFM-9: a token no longer executable at the current price (best ask above max_entry_price) SKIPS the reservation and writes no Queue row -- never substitutes another manifest entry", async () => {
+  const repo = makeInstrumentedRepo([b2Reservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => ({
+      ok: true,
+      tokenId,
+      latencyMs: 30,
+      book: { tokenId, bids: [{ price: 0.7, size: 100 }], asks: [{ price: QUEUE_MAX_ENTRY_PRICE + 0.05, size: 100 }] },
+    }),
+  });
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0, "no Queue row -- the selected identity is never replaced by another candidate");
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_PRICE_ABOVE_MAX_ENTRY_PRICE/);
+});
+
+test("RFM-10: an unavailable live orderbook for the exact selected token SKIPS the reservation and writes no Queue row", async () => {
+  const repo = makeInstrumentedRepo([b2Reservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => ({ ok: false, tokenId, latencyMs: 15, errorCode: "HTTP_404" }),
+  });
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_ORDERBOOK_UNAVAILABLE/);
+});
+
+test("RFM-11: insufficient executable depth for the reservation's own stake SKIPS the reservation and writes no Queue row", async () => {
+  const repo = makeInstrumentedRepo([b2Reservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => ({
+      ok: true,
+      tokenId,
+      latencyMs: 20,
+      // Depth far below the $2.50 stake requirement.
+      book: { tokenId, bids: [{ price: 0.4, size: 1 }], asks: [{ price: 0.42, size: 1 }] },
+    }),
+  });
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_INSUFFICIENT_EXECUTABLE_DEPTH/);
+});
+
+test("RFM-12: an excessive spread on the exact selected token SKIPS the reservation and writes no Queue row", async () => {
+  const repo = makeInstrumentedRepo([b2Reservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => ({
+      ok: true,
+      tokenId,
+      latencyMs: 20,
+      book: { tokenId, bids: [{ price: 0.2, size: 100 }], asks: [{ price: 0.42, size: 100 }] },
+    }),
+  });
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_SPREAD_TOO_WIDE/);
 });

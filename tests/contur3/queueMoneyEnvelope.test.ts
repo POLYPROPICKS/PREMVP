@@ -31,6 +31,24 @@ import {
   type OrderEventSubmission,
 } from "../../lib/executor/executorQueueTypes";
 import { latestEntryIso, preferredEntryIso } from "../../lib/executor/nightWindow";
+import type { FetchOrderBookResult } from "../../lib/liquidity/types";
+
+// RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1: runEventRebalance now refreshes
+// the live orderbook for the exact selected token before Queue. A passing
+// fixture book keeps these pre-existing envelope tests exercising the same
+// selection/envelope behavior as before, independent of the new guard.
+async function passingOrderbookFetcher(tokenId: string): Promise<FetchOrderBookResult> {
+  return {
+    ok: true,
+    tokenId,
+    latencyMs: 30,
+    book: {
+      tokenId,
+      bids: [{ price: 0.4, size: 100 }],
+      asks: [{ price: 0.42, size: 100 }],
+    },
+  };
+}
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 const IN_WINDOW_MS = Date.parse("2026-07-19T18:00:00.000Z");
@@ -103,7 +121,7 @@ test("QME-1: constants are the corrected two-level envelope and a normal Queue r
   assert.equal(QUEUE_MAX_ENTRY_PRICE, 0.62);
   assert.equal(EXECUTABLE_STAKE_USD, 2.5, "EXECUTABLE_STAKE_USD is the ordinary default, never the exceptional ceiling");
   const repo = repoFor(reservation(0.5));
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   const row = repo.queueRows[0];
   assert.equal(row.stake_usd, 2.5, "a normal Queue row's stake_usd must be the $2.50 default, not $4.00");
@@ -116,7 +134,7 @@ test("QME-1: constants are the corrected two-level envelope and a normal Queue r
 
 test("QME-2: the Ireland projection carries stake_usd=2.50 and max_stake_usd=4.00 for a normal Queue row", async () => {
   const repo = repoFor(reservation(0.5));
-  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   const candidate = mapQueueRowToIrelandCandidate(repo.queueRows[0], IN_WINDOW_MS);
   assert.equal(candidate.stake_usd, 2.5);
   assert.equal(candidate.max_stake_usd, 4);
@@ -163,8 +181,8 @@ test("QME-4: the pure row-level envelope check fails closed above $4.00 / 0.62 a
 test("QME-5: identity, GTD/latest_entry and idempotency are unchanged by the corrected envelope", async () => {
   const repoA = repoFor(reservation(0.5));
   const repoB = repoFor(reservation(0.5));
-  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoA });
-  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoB });
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoA, fetchExactTokenOrderbook: passingOrderbookFetcher });
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: repoB, fetchExactTokenOrderbook: passingOrderbookFetcher });
   const row = repoA.queueRows[0];
   const startMs = Date.parse(KICKOFF_ISO);
   assert.equal(row.condition_id, "cond-esp-arg-ml");
@@ -178,7 +196,7 @@ test("QME-5: identity, GTD/latest_entry and idempotency are unchanged by the cor
 
 test("QME-price-ceiling: max_entry_price above 0.62 is rejected with a specific reason; nothing is written or clamped", async () => {
   const repo = repoFor(reservation(0.625));
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
   assert.ok(
@@ -189,7 +207,7 @@ test("QME-price-ceiling: max_entry_price above 0.62 is rejected with a specific 
 
 test("QME-price-bound: max_entry_price exactly 0.62 is accepted and copied unchanged (no headroom, no clamp)", async () => {
   const repo = repoFor(reservation(0.62));
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   assert.equal((repo.queueRows[0].diagnostics as Record<string, unknown>).max_entry_price, 0.62);
 });
@@ -296,7 +314,7 @@ test("QME-14: callback at 0.61 (within the 0.62 cap) is accepted", () => {
 
 test("QME-10: candidate entry_price_num=0.50 -> Queue max_entry_price=0.62 (flat cap, not the raw price)", async () => {
   const repo = repoFor(reservation(0.5));
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
   assert.equal(diag.max_entry_price, 0.62);
@@ -304,7 +322,7 @@ test("QME-10: candidate entry_price_num=0.50 -> Queue max_entry_price=0.62 (flat
 
 test("QME-11: candidate entry_price_num=0.45 -> Queue max_entry_price=0.62 (flat cap, not the raw price)", async () => {
   const repo = repoFor(reservation(0.45));
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
   assert.equal(diag.max_entry_price, 0.62);
@@ -312,7 +330,7 @@ test("QME-11: candidate entry_price_num=0.45 -> Queue max_entry_price=0.62 (flat
 
 test("QME-12: the original candidate entry_price_num is preserved separately from the execution cap", async () => {
   const repo = repoFor(reservation(0.5));
-  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
   assert.equal(diag.max_entry_price, 0.62);
   assert.equal(diag.entry_price, 0.5, "original entry_price_num must survive alongside the 0.62 execution cap");
@@ -320,7 +338,7 @@ test("QME-12: the original candidate entry_price_num is preserved separately fro
 
 test("QME-13: the Ireland projection carries price_cap=0.62 for a sub-0.62 candidate", async () => {
   const repo = repoFor(reservation(0.5));
-  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   const candidate = mapQueueRowToIrelandCandidate(repo.queueRows[0], IN_WINDOW_MS);
   assert.equal(candidate.max_entry_price, 0.62);
   assert.equal(candidate.price_cap, 0.62);
