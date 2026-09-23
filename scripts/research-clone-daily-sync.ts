@@ -4,6 +4,7 @@ import {
   buildKeysetFilter,
   compareWatermarks,
   isMissingTableError,
+  repairQueueParentsBeforeChildren,
   rowWatermark,
   runAppendSync,
   runReconcileSweep,
@@ -31,6 +32,32 @@ import {
 const EXPECTED_PRODUCTION_REF = "nbnldzfsxffztsfrrxqy";
 const EXPECTED_CLONE_REF = "nppznoujvnyjargjkmnv";
 const PAGE_SIZE = 250;
+const RESERVATION_PARENT_PROJECTION = [
+  "id",
+  "plan_run_id",
+  "plan_date_minsk",
+  "reserved_at",
+  "window_start_iso",
+  "window_end_iso",
+  "match_family_key",
+  "event_slug",
+  "event_title",
+  "sport",
+  "league",
+  "strategic_scope",
+  "game_start_iso",
+  "event_tier",
+  "event_score",
+  "best_snapshot_id",
+  "reservation_rank",
+  "status",
+  "selection_reason",
+  "diagnostics",
+  "created_at",
+  "updated_at",
+  "physical_event_id",
+  "event_start_iso",
+].join(",");
 // A finite ceiling keeps a damaged source from becoming an unbounded run. The
 // initial 2026-08-30 catch-up is expected to need more than a routine daily
 // delta, while normal daily runs finish in only a few pages.
@@ -306,11 +333,43 @@ async function applyRows(target: Client, spec: TableSpec, rows: SyncRow[]) {
   return { newRows: newRows.length, updatedRows: changedRows.length, duplicateN: 0 };
 }
 
+async function repairQueueReservationParents(
+  target: Client,
+  source: Client,
+  rows: SyncRow[],
+): Promise<void> {
+  await repairQueueParentsBeforeChildren(rows, {
+    async readExistingReservationIds(ids) {
+      const { data, error } = await target
+        .from("night_event_reservations")
+        .select("id")
+        .in("id", [...ids]);
+      if (error) throw new Error(`RESEARCH_CLONE_TARGET_READ_night_event_reservations:${safeError(error)}`);
+      return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+    },
+    async fetchSourceReservations(ids) {
+      const { data, error } = await source
+        .from("night_event_reservations")
+        .select(RESERVATION_PARENT_PROJECTION)
+        .in("id", [...ids]);
+      if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_night_event_reservations:${safeError(error)}`);
+      return (data ?? []) as SyncRow[];
+    },
+    async upsertTargetReservations(parents) {
+      const { error } = await target
+        .from("night_event_reservations")
+        .upsert([...parents], { onConflict: "id" });
+      if (error) throw new Error(`RESEARCH_CLONE_TARGET_WRITE_night_event_reservations:${safeError(error)}`);
+    },
+  });
+}
+
 async function reconcileRecent(
   target: Client,
   source: Client,
   spec: TableSpec,
   targetBefore: Watermark | null,
+  beforeQueueChildWrite?: (rows: SyncRow[]) => Promise<void>,
 ): Promise<{ updatedRows: number; pending: boolean }> {
   if (!spec.reconciliationStart || !targetBefore) return { updatedRows: 0, pending: false };
   const windowStart: Watermark = {
@@ -320,6 +379,7 @@ async function reconcileRecent(
   const sweep = await runReconcileSweep(spec.fields, windowStart, PAGE_SIZE, MAX_RECONCILIATION_PAGES, {
     readCursor: () => readCheckpoint(target, spec, reconcileCursorSource(spec)),
     fetchSourcePage: (after) => sourcePage(source, spec, after),
+    beforeApplyRows: beforeQueueChildWrite,
     applyRows: async (rows) => ({ updatedRows: (await applyRows(target, spec, rows)).updatedRows }),
     writeCursor: (watermark) => writeCheckpoint(target, spec, reconcileCursorSource(spec), watermark),
   });
@@ -615,15 +675,19 @@ async function syncTable(
   spec: TableSpec,
   bootstrapSince: string | null = null,
 ): Promise<TableEvidence> {
+  const beforeQueueChildWrite = spec.table === "event_execution_queue"
+    ? (rows: SyncRow[]) => repairQueueReservationParents(target, source, rows)
+    : undefined;
   const append = await runAppendSync(spec.fields, MAX_APPEND_PAGES, {
     sourceMaxWatermark: () => maxWatermark(source, spec),
     targetMaxWatermark: () => maxWatermark(target, spec),
     readCheckpoint: () => readCheckpoint(target, spec, checkpointSource(spec)),
     fetchSourcePage: (after) => sourcePage(source, spec, after),
+    beforeUpsertTargetRows: beforeQueueChildWrite,
     upsertTargetRows: (rows) => applyRows(target, spec, rows),
     writeCheckpoint: (watermark) => writeCheckpoint(target, spec, checkpointSource(spec), watermark),
   }, bootstrapSince);
-  const reconciliation = await reconcileRecent(target, source, spec, append.targetBefore);
+  const reconciliation = await reconcileRecent(target, source, spec, append.targetBefore, beforeQueueChildWrite);
   return {
     SOURCE_MAX_WATERMARK: append.sourceMaxWatermark,
     TARGET_BEFORE: append.targetBefore,
@@ -676,7 +740,7 @@ export function classifyCausalErrorClass(errorCode: string): SyncStage {
   if (
     /_SOURCE_READ_|_MAX_WATERMARK_|_TARGET_READ_|_CHECKPOINT_READ_|_DUPLICATE_SOURCE_ID_|_APPEND_ONLY_CONFLICT_|_INITIAL_WATERMARK_REQUIRED_/.test(
       errorCode,
-    )
+    ) || errorCode.startsWith("RESEARCH_CLONE_QUEUE_PARENT_MISSING_FROM_SOURCE:")
   ) {
     return "SYNC_READ_FAILURE";
   }

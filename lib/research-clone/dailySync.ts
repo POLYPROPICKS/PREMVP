@@ -17,8 +17,60 @@ export interface AppendSyncPort<Row extends SyncRow> {
   targetMaxWatermark(): Promise<Watermark | null>;
   readCheckpoint(): Promise<Watermark | null>;
   fetchSourcePage(after: Watermark | null): Promise<Row[]>;
+  beforeUpsertTargetRows?(rows: Row[]): Promise<void>;
   upsertTargetRows(rows: Row[]): Promise<{ newRows: number; updatedRows: number; duplicateN: number }>;
   writeCheckpoint(watermark: Watermark): Promise<void>;
+}
+
+export interface QueueParentRepairPort<Parent extends SyncRow> {
+  readExistingReservationIds(ids: readonly string[]): Promise<readonly string[]>;
+  fetchSourceReservations(ids: readonly string[]): Promise<Parent[]>;
+  upsertTargetReservations(parents: readonly Parent[]): Promise<void>;
+}
+
+const QUEUE_PARENT_REPAIR_BATCH_SIZE = 200;
+
+/** Repair only absent queue reservation parents, in bounded batches, before child writes. */
+export async function repairQueueParentsBeforeChildren<
+  Row extends SyncRow,
+  Parent extends SyncRow,
+>(rows: readonly Row[], port: QueueParentRepairPort<Parent>): Promise<void> {
+  const reservationIds = new Set<string>();
+  for (const row of rows) {
+    const reservationId = row.reservation_id;
+    if (reservationId === null || reservationId === undefined) continue;
+    if (typeof reservationId !== "string" || reservationId.length === 0) {
+      throw new Error("RESEARCH_CLONE_QUEUE_PARENT_ID_INVALID");
+    }
+    reservationIds.add(reservationId);
+  }
+  if (reservationIds.size === 0) return;
+
+  const ids = [...reservationIds];
+  const existingIds = new Set<string>();
+  for (let offset = 0; offset < ids.length; offset += QUEUE_PARENT_REPAIR_BATCH_SIZE) {
+    const batch = ids.slice(offset, offset + QUEUE_PARENT_REPAIR_BATCH_SIZE);
+    for (const existingId of await port.readExistingReservationIds(batch)) existingIds.add(existingId);
+  }
+
+  const missingIds = ids.filter((id) => !existingIds.has(id));
+  if (missingIds.length === 0) return;
+
+  const parentsById = new Map<string, Parent>();
+  for (let offset = 0; offset < missingIds.length; offset += QUEUE_PARENT_REPAIR_BATCH_SIZE) {
+    const batch = missingIds.slice(offset, offset + QUEUE_PARENT_REPAIR_BATCH_SIZE);
+    for (const parent of await port.fetchSourceReservations(batch)) {
+      if (batch.includes(parent.id)) parentsById.set(parent.id, parent);
+    }
+  }
+  for (const id of missingIds) {
+    if (!parentsById.has(id)) throw new Error(`RESEARCH_CLONE_QUEUE_PARENT_MISSING_FROM_SOURCE:${id}`);
+  }
+
+  const parents = missingIds.map((id) => parentsById.get(id)!);
+  for (let offset = 0; offset < parents.length; offset += QUEUE_PARENT_REPAIR_BATCH_SIZE) {
+    await port.upsertTargetReservations(parents.slice(offset, offset + QUEUE_PARENT_REPAIR_BATCH_SIZE));
+  }
 }
 
 export interface AppendSyncResult {
@@ -151,6 +203,7 @@ export async function runAppendSync<Row extends SyncRow>(
     if (cursor && compareWatermarks(next, cursor, fields) <= 0) {
       throw new Error("RESEARCH_CLONE_NON_ADVANCING_KEYSET_PAGE");
     }
+    await port.beforeUpsertTargetRows?.(rows);
     const applied = await port.upsertTargetRows(rows);
     await port.writeCheckpoint(next);
     cursor = next;
@@ -182,6 +235,7 @@ export interface ReconcileSweepPort<Row extends SyncRow> {
   /** Durable resume point of an interrupted sweep, or null to start fresh. */
   readCursor(): Promise<Watermark | null>;
   fetchSourcePage(after: Watermark): Promise<Row[]>;
+  beforeApplyRows?(rows: Row[]): Promise<void>;
   applyRows(rows: Row[]): Promise<{ updatedRows: number }>;
   writeCursor(watermark: Watermark): Promise<void>;
 }
@@ -218,6 +272,7 @@ export async function runReconcileSweep<Row extends SyncRow>(
   while (pages < maxPages) {
     const rows = await port.fetchSourcePage(after);
     if (rows.length === 0) return { updatedRows, pages, pending: false, cursor: after };
+    await port.beforeApplyRows?.(rows);
     const applied = await port.applyRows(rows);
     updatedRows += applied.updatedRows;
     const next = rowWatermark(rows[rows.length - 1], fields);
