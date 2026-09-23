@@ -45,6 +45,8 @@ export interface NarrowEvidenceRow {
   provider_sport_family: string | null;
   market_family: string | null;
   market_type: string | null;
+  event_title: string | null;
+  market_question: string | null;
   game_start_iso: string | null;
   /** Current: diagnostics.parentEventVolume24hr; historical fallback: diagnostics.volumeUsd. */
   volume_usd: number | null;

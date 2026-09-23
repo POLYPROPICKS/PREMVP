@@ -38,6 +38,8 @@ alter table public.research_evidence_page_rows add column if not exists data_cov
 -- Names the exact source path that supplied volume_usd
 -- (parentEventVolume24hr vs legacy volumeUsd); never conflated.
 alter table public.research_evidence_page_rows add column if not exists volume_semantic text;
+alter table public.research_evidence_page_rows add column if not exists event_title text;
+alter table public.research_evidence_page_rows add column if not exists market_question text;
 
 create index if not exists research_evidence_page_rows_window_idx
   on public.research_evidence_page_rows (observed_at, observation_id, item_observation_id);

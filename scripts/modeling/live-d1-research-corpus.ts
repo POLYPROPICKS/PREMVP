@@ -375,7 +375,7 @@ export async function readPrimaryEvidenceOutbox(
  * recomputed.
  */
 const NARROW_EVIDENCE_COLS =
-  "observation_id, observed_at, item_observation_id, condition_id, selected_token_id, entry_price_num, signal_result, formula_version, pre_event_score_num, provider_event_id, provider_sport_code, provider_sport_family, market_family, market_type, game_start_iso, volume_usd, volume_semantic, selected_outcome, data_coverage";
+  "observation_id, observed_at, item_observation_id, condition_id, selected_token_id, entry_price_num, signal_result, formula_version, pre_event_score_num, provider_event_id, provider_sport_code, provider_sport_family, market_family, market_type, event_title, market_question, game_start_iso, volume_usd, volume_semantic, selected_outcome, data_coverage";
 export const NARROW_EVIDENCE_TABLE = "research_evidence_page_rows";
 
 export async function narrowEvidenceKeysetPage(
@@ -465,6 +465,8 @@ export async function readResearchEvidencePageRows(
         eventStartIso: str(r.game_start_iso),
         providerEventId: str(r.provider_event_id),
         marketTypeRaw: str(r.market_type),
+        eventTitle: str(r.event_title),
+        marketQuestion: str(r.market_question),
         marketFamily: str(r.market_family),
         providerSportCode: str(r.provider_sport_code),
         providerSportFamily: str(r.provider_sport_family),

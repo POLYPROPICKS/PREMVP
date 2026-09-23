@@ -33,6 +33,8 @@ import {
   type NarrowEvidenceRow,
 } from "../../lib/research-clone/researchEvidenceExport";
 import { resolveBootstrapSinceArg } from "../../scripts/research-clone-daily-sync";
+import { readResearchEvidencePageRows } from "../../scripts/modeling/live-d1-research-corpus";
+import { resolveTennisMoneyEligibility } from "../../lib/executor/tennisLiveEligibility";
 
 const OUTBOX_FIELDS = ["observed_at", "observation_id"] as const;
 const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
@@ -167,6 +169,8 @@ function row(observedAt: string, envId: string, itemId: string, extra: Partial<N
     provider_sport_family: "basketball",
     market_family: "moneyline",
     market_type: "binary",
+    event_title: null,
+    market_question: null,
     game_start_iso: "2026-09-14T18:00:00.000Z",
     volume_usd: 1000,
     volume_semantic: "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr",
@@ -339,8 +343,8 @@ test("production primary_evidence_outbox is no longer a generic raw SYNC_SPECS t
   const specs = SCRIPT.slice(SCRIPT.indexOf("const SPECS"), SCRIPT.indexOf("const EMPTY_TABLE_EVIDENCE"));
   assert.equal(specs.includes('table: "primary_evidence_outbox"'), false);
   assert.equal(/\|\s*"primary_evidence_outbox"/.test(SCRIPT), false, "TableName no longer includes primary_evidence_outbox");
-  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v3", args\)/);
-  assert.equal(/source\.rpc\("research_evidence_page(?:_v2)?",/.test(SCRIPT), false, "runtime never calls v1/v2");
+  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v4", args\)/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?",/.test(SCRIPT), false, "runtime never calls v1/v2/v3");
   assert.match(SCRIPT, /syncResearchEvidencePage\(target, source, bootstrapSince\)/);
   assert.match(SCRIPT, /onConflict: CLONE_EVIDENCE_CONFLICT_KEY/);
   assert.match(SCRIPT, /source_kind: CLONE_EVIDENCE_SOURCE_KIND/);
@@ -404,6 +408,8 @@ import { resolveRepairArgs, syncResearchEvidencePage } from "../../scripts/resea
 
 const SQL_V3 = readFileSync(repoRoot + "supabase/migrations/20260919100000_research_evidence_page_v3.sql", "utf8");
 const EXEC_V3 = SQL_V3.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
+const SQL_V4 = readFileSync(repoRoot + "supabase/migrations/20260923090003_research_evidence_page_v4.sql", "utf8");
+const EXEC_V4 = SQL_V4.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
 
 test("v3 migration: new function, item cursor, 500-row bound, v1/v2 untouched, no new index", () => {
   assert.match(SQL_V3, /CREATE OR REPLACE FUNCTION public\.research_evidence_page_v3\(/);
@@ -453,6 +459,53 @@ test("v3 client contract: item cursor args, 500-row bound, explicit until", () =
   assert.deepEqual(n, { observedAt: r.observed_at, observationId: "env-a", itemObservationId: "item-2" });
   assert.equal(itemCursorAdvanced(c, n), true);
   assert.equal(compareItemCursor(n, n), 0);
+});
+
+test("v4 retains v3 cursor/bounds and projects only verbatim tennis identity text", () => {
+  assert.match(SQL_V4, /CREATE OR REPLACE FUNCTION public\.research_evidence_page_v4\(/);
+  assert.match(SQL_V4, /p_after_item_observation_id uuid/);
+  assert.match(SQL_V4, /LIMIT 20/);
+  assert.match(SQL_V4, /LIMIT LEAST\(GREATEST\(COALESCE\(p_max_rows, 500\), 1\), 500\)/);
+  assert.match(SQL_V4, /SET statement_timeout = '5s'/);
+  assert.match(EXEC_V4, /STABLE/);
+  assert.match(EXEC_V4, /SECURITY INVOKER/);
+  assert.match(SQL_V4, /requires an explicit p_until/);
+  assert.match(SQL_V4, /providerEventContext'->>'eventTitle'/);
+  assert.match(SQL_V4, /providerEventContext'->>'marketQuestion'/);
+  const returnsBlock = SQL_V4.slice(SQL_V4.indexOf("RETURNS TABLE ("), SQL_V4.indexOf("LANGUAGE plpgsql"));
+  assert.match(returnsBlock, /event_title text/);
+  assert.match(returnsBlock, /market_question text/);
+  assert.equal(returnsBlock.includes("evidence_rows"), false);
+  assert.equal(/(?:DROP|ALTER|CREATE(?: OR REPLACE)?)\s+FUNCTION(?: IF EXISTS)?\s+public\.research_evidence_page(?:_v3|_v2)?\(/.test(EXEC_V4), false);
+});
+
+test("persisted narrow identity reaches the reader and tennis gate without settlement", async () => {
+  const sourceRow = row("2026-09-21T01:00:00.000Z", "env-title", "item-title", {
+    provider_sport_family: "tennis",
+    market_type: "tennis_completed_match",
+    event_title: "ATP Example Open",
+    market_question: "Will Player A win?",
+  });
+  const chain: any = {
+    select: () => chain,
+    eq: () => chain,
+    gt: () => chain,
+    order: () => chain,
+    limit: () => Promise.resolve({ data: [sourceRow], error: null }),
+  };
+  const { pairs } = await readResearchEvidencePageRows({ from: () => chain } as any, "2026-09-21T00:00:00.000Z", "2026-09-22T00:00:00.000Z");
+  assert.equal(pairs.length, 1);
+  assert.equal(pairs[0].eventTitle, "ATP Example Open");
+  assert.equal(pairs[0].marketQuestion, "Will Player A win?");
+  assert.equal(pairs[0].gammaTerminal, null, "reader does not query or assign settlement");
+  assert.deepEqual(resolveTennisMoneyEligibility({
+    structuredMarketType: pairs[0].marketTypeRaw,
+    eventIdentityText: pairs[0].eventTitle,
+    marketText: pairs[0].marketQuestion,
+  }), { eligible: true, reasonCode: "TENNIS_MONEY_ELIGIBLE" });
+  const nullRow = { ...sourceRow, event_title: null, market_question: null };
+  assert.equal(nullRow.event_title, null);
+  assert.equal(nullRow.market_question, null);
 });
 
 // ---- in-memory simulation of research_evidence_page_v3 SQL semantics --------
@@ -562,7 +615,7 @@ test("multi-envelope boundary: a boundary that cuts an envelope leaves later env
   assert.equal(target.rows.size, SRC_TOTAL, "two-plus-page union equals the source item count");
   assert.equal(r.ROWS_WRITTEN, SRC_TOTAL);
   assert.equal(r.APPEND_PENDING, false);
-  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v3"));
+  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v4"));
   assert.ok(source.calls.every((c) => c.args.p_max_rows === 500 && typeof c.args.p_until === "string"));
   assert.equal(new Set(source.calls.map((c) => c.args.p_until)).size, 1, "one fixed p_until for the whole run");
   assert.deepEqual(r.CURSOR_AFTER, { observedAt: envC.at, observationId: envC.id, itemObservationId: envC.items[9] });
@@ -623,12 +676,12 @@ test("--repair-since overrides the forward cursor for repair ONLY, and never tou
   assert.equal(again.APPEND_PENDING, false);
 });
 
-test("repair mode is finitely bounded and resumable; runtime uses v3 only", () => {
+test("repair mode is finitely bounded and resumable; runtime uses v4 only", () => {
   const src = readFileSync(repoRoot + "scripts/research-clone-daily-sync.ts", "utf8");
   assert.match(src, /MAX_REPAIR_EVIDENCE_PAGES = 500/);
   assert.ok(500 * RESEARCH_EVIDENCE_V3_MAX_ROWS >= 194090, "repair page budget covers the measured window");
-  assert.match(src, /source\.rpc\("research_evidence_page_v3", args\)/);
-  assert.equal(/source\.rpc\("research_evidence_page(?:_v2)?",/.test(src), false);
+  assert.match(src, /source\.rpc\("research_evidence_page_v4", args\)/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?",/.test(src), false);
   assert.match(src, /checkpoint:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
   assert.match(src, /repair-cursor:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
 });
