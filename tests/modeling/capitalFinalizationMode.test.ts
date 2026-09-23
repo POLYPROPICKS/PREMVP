@@ -37,3 +37,37 @@ test("KEEP_OPEN_AT_CUTOFF retains unresolved principal at cost while SETTLE_ALL 
   assert.equal(settled.settled, 2);
   assert.notEqual(settled.pnl, kept.pnl);
 });
+
+test("UNQUERIED candidates stay open without reading or classifying an outcome", () => {
+  let unqueriedRowReadN = 0;
+  const unqueried = new Proxy({
+    observationId: "UNQUERIED",
+    decisionAtIso: "2026-09-01T10:30:00.000Z",
+    settlementState: "UNQUERIED" as const,
+    finalScore: 70,
+    dataCoverage: 90,
+    entryPrice: 0.5,
+  }, {
+    get(target, property, receiver) {
+      if (property === "row") unqueriedRowReadN += 1;
+      return Reflect.get(target, property, receiver);
+    },
+  });
+  const replay = replayDynamicHarvest([
+    candidate("RESOLVED", "2026-09-01T11:00:00.000Z", "won"),
+    unqueried as any,
+  ], policy, { finalizationMode: "KEEP_OPEN_AT_CUTOFF", cutoffAtIso: cutoff });
+  const resolved = replay.ledger.find((row) => row.observationId === "RESOLVED")!;
+  const open = replay.ledger.find((row) => row.observationId === "UNQUERIED")!;
+  assert.equal(resolved.result, "win");
+  assert.equal(resolved.netPnl, resolved.stake);
+  assert.equal(open.result, "UNQUERIED");
+  assert.equal(open.settlementState, "UNQUERIED");
+  assert.equal(open.netPnl, 0);
+  assert.equal(open.resolvedAtIso, null);
+  assert.equal(replay.open, 1);
+  assert.equal(replay.endingOpenPrincipal, open.stake);
+  assert.equal(unqueriedRowReadN, 0);
+  assert.equal(replay.endingActive, replay.endingFreeActive + replay.endingOpenPrincipal);
+  assert.equal(replay.endingTotal, replay.endingActive + replay.endingVault);
+});

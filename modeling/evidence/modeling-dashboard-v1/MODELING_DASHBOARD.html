@@ -9,6 +9,7 @@
 <script src="LIVE_RUNTIME_DATA.js"></script>
 <script src="CURRENT_MODELING_AUTHORITY.js"></script>
 <script src="CAPITAL_MODELING_DATA.js"></script>
+<script src="FORWARD_SHADOW_DATA.js"></script>
 <style>
   :root {
     --bg: #0b0f14; --panel: #121821; --panel2: #161d27; --border: #26303c;
@@ -120,6 +121,12 @@
         <label>Model: <select id="capitalModel"></select></label>
       </div>
       <div id="capitalDetail"></div>
+    </div>
+    <div class="panel">
+      <h2>FORWARD SHADOW — EXACT PROSPECTIVE SELECTION</h2>
+      <div class="banner" id="forwardShadowFreshness"></div>
+      <div id="forwardShadowTable"></div>
+      <div class="note">Forward shadow uses a single $100 starting balance per model across Sep 21–22. UNQUERIED selections remain locked at principal; no mark-to-market or realized forward PnL is included.</div>
     </div>
     <div class="panel">
       <h2>What this evidence supports</h2>
@@ -288,6 +295,7 @@
   var LIVE = window.POLYPROPICKS_LIVE_RUNTIME_DATA;
   var AUTH = window.POLYPROPICKS_CURRENT_MODELING_AUTHORITY;
   var CAPITAL = window.POLYPROPICKS_CAPITAL_MODELING_DATA;
+  var SHADOW = window.POLYPROPICKS_FORWARD_SHADOW_DATA;
   if (!D) {
     document.body.innerHTML = '<p style="padding:24px;color:#ef5b5b">MODELING_DAILY_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.</p>';
     return;
@@ -392,6 +400,31 @@
     renderCapitalDetail();
   } else {
     document.getElementById("capitalCaveat").textContent = "CAPITAL_MODELING_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.";
+  }
+
+  // ==================== FORWARD SHADOW — exact prospective selections ====================
+  var shadowFreshness = document.getElementById("forwardShadowFreshness");
+  var shadowTable = document.getElementById("forwardShadowTable");
+  if (SHADOW && shadowFreshness && shadowTable) {
+    shadowFreshness.textContent = "EXACT SELECTION · SETTLEMENT UNQUERIED · NO REALIZED FORWARD PNL YET · SELECTION FRESH THROUGH " + SHADOW.freshness.selectionFreshThrough + " · SETTLEMENT FRESH THROUGH " + SHADOW.freshness.settlementFreshThrough + " · PNL FRESH THROUGH " + SHADOW.freshness.pnlFreshThrough;
+    var fixedByKey = new Map(SHADOW.fixedShadow.map(function (row) { return [row.model + "|" + row.date, row]; }));
+    var protectedByKey = new Map(SHADOW.protectedShadow.map(function (row) { return [row.model + "|" + row.date, row]; }));
+    var shadowDates = ["2026-09-21", "2026-09-22"];
+    var shadowHtml = '<table><thead><tr><th>Model</th><th>Date</th><th>Selected</th><th>Football</th><th>Tennis</th><th>Other</th><th>FIXED FREE $</th><th>FIXED LOCKED $</th><th>PROTECTED FREE $</th><th>PROTECTED LOCKED $</th><th>Vault $</th><th>Capital skips (fixed / protected)</th><th>Settlement</th></tr></thead><tbody>';
+    shadowDates.forEach(function (date) {
+      (SHADOW.selectionSummaries[date] || []).forEach(function (selection) {
+        var key = selection.model + "|" + date;
+        var fixed = fixedByKey.get(key), protectedRow = protectedByKey.get(key);
+        var candidates = SHADOW.ledger.filter(function (row) { return row.model === selection.model && row.date === date; });
+        var detail = '<details><summary>' + candidates.length + ' selected candidates</summary><table><thead><tr><th>Time</th><th>Sport</th><th>Entry</th><th>Physical event key</th><th>Candidate identity</th><th>Settlement</th></tr></thead><tbody>' + candidates.map(function (row) {
+          return '<tr><td>' + esc(fmtMinskTime(row.decisionTimestamp)) + '</td><td>' + esc(row.sportFamily) + '</td><td>' + Number(row.entryPrice).toFixed(4) + '</td><td>' + esc(row.physicalEventKey) + '</td><td>' + esc(row.candidateIdentity) + '</td><td>UNQUERIED</td></tr>';
+        }).join("") + '</tbody></table></details>';
+        shadowHtml += '<tr><td>' + esc(selection.model) + '</td><td>' + esc(date) + '</td><td>' + selection.selected + '</td><td>' + selection.football + '</td><td>' + selection.tennis + '</td><td>' + selection.other + '</td><td>' + fmtCapitalUsd(fixed.free_active_usd) + '</td><td>' + fmtCapitalUsd(fixed.open_principal_usd) + '</td><td>' + fmtCapitalUsd(protectedRow.free_active_usd) + '</td><td>' + fmtCapitalUsd(protectedRow.open_principal_usd) + '</td><td>' + fmtCapitalUsd(protectedRow.vault_usd) + '</td><td>' + fixed.capital_skip_n + ' / ' + protectedRow.capital_skip_n + '</td><td>UNQUERIED</td></tr><tr><td colspan="13">' + detail + '</td></tr>';
+      });
+    });
+    shadowTable.innerHTML = shadowHtml + '</tbody></table>';
+  } else if (shadowFreshness && shadowTable) {
+    shadowFreshness.textContent = "FORWARD_SHADOW_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.";
   }
 
   // ==================== OVERVIEW ====================
