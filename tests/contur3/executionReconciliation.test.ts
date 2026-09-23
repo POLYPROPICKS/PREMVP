@@ -204,6 +204,90 @@ test("callback identity conflicts fail closed before reconciliation mutation", (
   }), /RECONCILIATION_IDENTITY_CONFLICT_QUEUE_ID/);
 });
 
+// PR #382 follow-up: CORRECT_ORDER_PROGRESSION_SEMANTICS_IN_PR_382_V1 --
+// Ireland's terminal/fill callback for an already-accepted order sometimes
+// reports the actual fill price/size under the SAME submitted_price/
+// submitted_size field names it used for the originally requested price/size
+// on the initial ORDER_PLACED callback. The stored order-event row's own
+// submitted_price/submitted_size are never overwritten by that later
+// callback (see app/api/executor/order-events/route.ts
+// updateOrderEventProgression) -- `event` below models that preserved row,
+// while `raw` models the callback exactly as Ireland sent it, still
+// carrying 0.592/5 under those field names.
+const requestedEvent = { ...event, submitted_price: 0.62, submitted_size: 5 };
+const requestedQueue = { ...queue, stake_usd: 3.1 };
+
+test("A/B: a terminal/fill progression reports the actual fill price/size separately from the preserved original request -- fill_status becomes MATCHED_CONFIRMED without relabelling the requested price", () => {
+  const prior = buildExecutionReconciliation({
+    queue: requestedQueue,
+    event: requestedEvent,
+    raw: { ...acceptedOpen, ...requestedEvent, stake_usd: 3.1 },
+  });
+  assert.equal(prior.submitted_price, 0.62);
+  assert.equal(prior.requested_shares, 5);
+  assert.equal(prior.fill_status, "ACCEPTED_OPEN");
+
+  const progressed = buildExecutionReconciliation({
+    queue: requestedQueue,
+    event: requestedEvent,
+    raw: { ...acceptedOpen, ...requestedEvent, order_status: "matched", submitted_price: 0.592, submitted_size: 5 },
+    prior,
+  });
+
+  assert.equal(progressed.submitted_price, 0.62, "the preserved requested price is never relabelled as the actual fill price");
+  assert.equal(progressed.requested_shares, 5);
+  assert.equal(progressed.fill_status, "MATCHED_CONFIRMED");
+  assert.equal(progressed.actual_fill_price, 0.592, "the actual fill price is captured separately");
+  assert.equal(progressed.executed_shares, 5);
+  assert.equal(progressed.executed_notional_usd, 2.96);
+});
+
+test("C: a terminal UNFILLED/EXPIRED progression is a real terminal-no-fill state, never ACCEPTED_OPEN or PENDING_FILL_CONFIRMATION, with zero executed shares/notional and no fabricated fill price", () => {
+  for (const order_status of ["unfilled", "expired"]) {
+    const prior = buildExecutionReconciliation({
+      queue: requestedQueue,
+      event: requestedEvent,
+      raw: { ...acceptedOpen, ...requestedEvent, stake_usd: 3.1 },
+    });
+    const terminal = buildExecutionReconciliation({
+      queue: requestedQueue,
+      event: requestedEvent,
+      raw: { ...acceptedOpen, ...requestedEvent, order_status },
+      prior,
+    });
+
+    assert.equal(terminal.fill_status, "TERMINAL_NO_FILL", order_status);
+    assert.notEqual(terminal.fill_status, "ACCEPTED_OPEN");
+    assert.equal(terminal.settlement_status, "SETTLED_NO_FILL");
+    assert.notEqual(terminal.settlement_status, "PENDING_FILL_CONFIRMATION");
+    assert.equal(terminal.executed_shares, 0);
+    assert.equal(terminal.executed_notional_usd, 0);
+    assert.equal(terminal.actual_fill_price, null, "no fabricated fill price");
+    assert.equal(terminal.submitted_price, 0.62, "the original request is untouched");
+  }
+});
+
+test("C2: a terminal-no-fill callback never downgrades an already-confirmed fill -- the existing monotonic matched guard keeps it MATCHED_CONFIRMED with its executed facts intact", () => {
+  const prior = buildExecutionReconciliation({
+    queue: requestedQueue,
+    event: requestedEvent,
+    raw: { ...acceptedOpen, ...requestedEvent, order_status: "matched", submitted_price: 0.592, submitted_size: 5 },
+  });
+  assert.equal(prior.fill_status, "MATCHED_CONFIRMED");
+  assert.equal(prior.executed_shares, 5);
+
+  const afterLateUnfilled = buildExecutionReconciliation({
+    queue: requestedQueue,
+    event: requestedEvent,
+    raw: { ...acceptedOpen, ...requestedEvent, order_status: "unfilled" },
+    prior,
+  });
+
+  assert.equal(afterLateUnfilled.fill_status, "MATCHED_CONFIRMED", "a stray later unfilled signal must never erase a confirmed fill");
+  assert.equal(afterLateUnfilled.executed_shares, 5);
+  assert.equal(afterLateUnfilled.actual_fill_price, 0.592);
+});
+
 test("metadata merge preserves unrelated executor metadata and is deterministic", () => {
   const reconciliation = buildExecutionReconciliation({ queue, event, raw: acceptedOpen });
   const first = mergeExecutionReconciliationMeta({ host: "ireland" }, reconciliation);

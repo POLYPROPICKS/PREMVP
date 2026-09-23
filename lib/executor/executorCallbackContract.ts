@@ -138,6 +138,98 @@ export function canonicalPayloadsEqual(a: OrderEventCanonicalPayload, b: OrderEv
   );
 }
 
+/**
+ * The immutable identity of "the same placed CLOB order" -- unlike
+ * canonicalPayloadsEqual, this deliberately excludes submitted_price/
+ * submitted_size, which are mutable progression facts (a terminal/fill
+ * callback for an already-accepted order legitimately reports an actual
+ * fill price/size that differs from the originally submitted request).
+ */
+function canonicalOrderIdentityEqual(a: OrderEventCanonicalPayload, b: OrderEventCanonicalPayload): boolean {
+  return (
+    a.idempotency_key === b.idempotency_key &&
+    a.condition_id === b.condition_id &&
+    a.token_id === b.token_id &&
+    a.side === b.side &&
+    a.clob_order_id === b.clob_order_id
+  );
+}
+
+// Status words that, on their own, constitute authoritative fill/terminal
+// evidence for an already-placed CLOB order. Deliberately excludes
+// REJECTED_ORDER_STATUSES -- a rejection is handled by the separate
+// classifyOrderEvent/markQueueTerminalFromOrderEvent path below, not as an
+// order-event progression.
+const PROGRESSION_EVIDENCE_STATUSES = new Set([
+  "matched",
+  "filled",
+  "fully_filled",
+  "partially_filled",
+  "partial",
+  "unfilled",
+  "expired",
+]);
+
+// Fields that, when present, are themselves authoritative fill evidence
+// regardless of the status string used.
+const PROGRESSION_EVIDENCE_FIELDS = [
+  "executed_size",
+  "filled_size",
+  "filled_price",
+  "average_fill_price",
+  "actual_fill_price",
+  "making_amount",
+  "taking_amount",
+] as const;
+
+/**
+ * A changed economic payload under the same idempotency_key is only ever a
+ * legitimate progression when the callback itself carries explicit fill/
+ * terminal evidence -- an authoritative matched/filled/partial/unfilled/
+ * expired status, or an explicit fill field. Merely differing price/size
+ * with no such evidence is never enough (it cannot be told apart from a
+ * client resending a mutated request under a stale idempotency_key), and
+ * stays a strict conflict.
+ */
+function hasExplicitProgressionEvidence(raw: Record<string, unknown>): boolean {
+  const statusField = raw.order_status ?? raw.status ?? raw.state;
+  const status = typeof statusField === "string" ? statusField.toLowerCase() : "";
+  if (PROGRESSION_EVIDENCE_STATUSES.has(status)) return true;
+  return PROGRESSION_EVIDENCE_FIELDS.some((field) => raw[field] !== undefined && raw[field] !== null);
+}
+
+/**
+ * Classifies an incoming callback against the order event already stored
+ * under the same idempotency_key:
+ *  - IDENTICAL: every canonical field (including submitted_price/size)
+ *    matches -- a true retry, nothing to persist.
+ *  - PROGRESSION: immutable order identity matches (idempotency_key,
+ *    condition_id, token_id, side, clob_order_id), clob_order_id is
+ *    present, AND the callback carries explicit fill/terminal evidence
+ *    (see hasExplicitProgressionEvidence) -- this is a legitimate
+ *    terminal/fill update of the same already-accepted CLOB order (e.g.
+ *    actual fill price/size differs from the originally requested
+ *    price/size). Persist the progression facts onto the existing row
+ *    (never the originally requested submitted_price/submitted_size,
+ *    which remain immutable); never insert a second row.
+ *  - CONFLICT: immutable identity does not match (wrong condition_id/
+ *    token_id/side/clob_order_id), the order has no clob_order_id yet to
+ *    anchor a progression to, or there is no explicit fill/terminal
+ *    evidence for the changed economic payload -- fail closed, same as
+ *    the original strict duplicate/conflict protection.
+ */
+export function classifyOrderEventAgainstExisting(
+  incoming: OrderEventCanonicalPayload,
+  existing: OrderEventCanonicalPayload,
+  raw: Record<string, unknown>,
+): "IDENTICAL" | "PROGRESSION" | "CONFLICT" {
+  if (canonicalPayloadsEqual(incoming, existing)) return "IDENTICAL";
+  if (!canonicalOrderIdentityEqual(incoming, existing)) return "CONFLICT";
+  if (!incoming.clob_order_id) return "CONFLICT";
+  if (!hasExplicitProgressionEvidence(raw)) return "CONFLICT";
+  return "PROGRESSION";
+}
+
 // ── fill/cost normalization ─────────────────────────────────────────────────
 //
 // Root cause (production incident, 2026-07-22): accepted live order
@@ -262,6 +354,14 @@ export interface OrderEventDbPort {
   insertOrderEvent(record: Record<string, unknown>, queueRow: EventExecutionQueueRow | null): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure>;
   /** Terminal-marks the queue row EXECUTED (accepted) or FAILED (rejected) once an order event is persisted. */
   updateQueueRowStatus(queueId: string, patch: { status: QueueStatus; diagnostics: Record<string, unknown> }): Promise<void>;
+  /**
+   * Persists a terminal/fill progression callback onto the existing order
+   * event row for the same immutable CLOB order (see
+   * classifyOrderEventAgainstExisting). Never inserts a second row and
+   * never mutates immutable identity columns (idempotency_key,
+   * condition_id, token_id, side, clob_order_id).
+   */
+  updateOrderEventProgression(id: string, record: Record<string, unknown>): Promise<StoredOrderEvent>;
 }
 
 /** Outcome of the queue terminal-marking side effect triggered by an order-event callback. */
@@ -276,6 +376,7 @@ export type OrderEventQueueMarkOutcome =
 export type OrderEventOutcome =
   | { kind: "INSERTED"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
   | { kind: "DUPLICATE"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
+  | { kind: "PROGRESSED"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
   | { kind: "CONFLICT_IDEMPOTENCY" }
   | { kind: "CONFLICT_CLOB_ORDER_ID" }
   | { kind: "REJECTED_MISSING_TOKEN_ID" }
@@ -421,8 +522,12 @@ export async function handleOrderEventSubmission(
 
   const existingByIdempotency = await port.findOrderEventByIdempotencyKey(idempotencyKey);
   if (existingByIdempotency) {
-    if (!canonicalPayloadsEqual(canonical, canonicalFromStoredEvent(existingByIdempotency))) {
-      return { kind: "CONFLICT_IDEMPOTENCY" };
+    const classification = classifyOrderEventAgainstExisting(canonical, canonicalFromStoredEvent(existingByIdempotency), raw);
+    if (classification === "CONFLICT") return { kind: "CONFLICT_IDEMPOTENCY" };
+    if (classification === "PROGRESSION") {
+      const progressedRow = await port.updateOrderEventProgression(existingByIdempotency.id, raw);
+      const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, progressedRow, raw);
+      return { kind: "PROGRESSED", row: progressedRow, queueMark };
     }
     const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, existingByIdempotency, raw);
     return { kind: "DUPLICATE", row: existingByIdempotency, queueMark };
@@ -443,8 +548,12 @@ export async function handleOrderEventSubmission(
     // Lost the race — re-read the canonical row a concurrent writer inserted.
     const canonicalRow = await port.findOrderEventByIdempotencyKey(idempotencyKey);
     if (!canonicalRow) return { kind: "DB_ERROR", message: "UNIQUE_VIOLATION_BUT_ROW_NOT_FOUND" };
-    if (!canonicalPayloadsEqual(canonical, canonicalFromStoredEvent(canonicalRow))) {
-      return { kind: "CONFLICT_IDEMPOTENCY" };
+    const classification = classifyOrderEventAgainstExisting(canonical, canonicalFromStoredEvent(canonicalRow), raw);
+    if (classification === "CONFLICT") return { kind: "CONFLICT_IDEMPOTENCY" };
+    if (classification === "PROGRESSION") {
+      const progressedRow = await port.updateOrderEventProgression(canonicalRow.id, raw);
+      const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, progressedRow, raw);
+      return { kind: "PROGRESSED", row: progressedRow, queueMark };
     }
     const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, canonicalRow, raw);
     return { kind: "DUPLICATE", row: canonicalRow, queueMark };
