@@ -11,6 +11,7 @@ test("CURRENT_MODELING_AUTHORITY_V1 is aggregate-only, complete, cap30-default c
   vm.runInContext(readFileSync(authorityPath, "utf8"), sandbox, { filename: authorityPath });
   const a = sandbox.window.POLYPROPICKS_CURRENT_MODELING_AUTHORITY;
   assert.equal(a.authorityId, "CURRENT_MODELING_AUTHORITY_V1");
+  assert.equal(a.sourceRowN, 68949);
   assert.equal(a.rows.length, 15);
   assert.deepEqual([...new Set(a.rows.map((r) => r.CAP))], [30, 40, 50]);
   assert.equal(a.rows.filter((r) => r.CAP === 30).length, 5);

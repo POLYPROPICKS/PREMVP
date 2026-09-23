@@ -5,6 +5,7 @@ var CURRENT_MODELING_AUTHORITY_ROLES = { P50_52_SAFE: "SIMPLE_SAFE_BASELINE", PO
 window.POLYPROPICKS_CURRENT_MODELING_AUTHORITY = {
   authorityId: "CURRENT_MODELING_AUTHORITY_V1",
   frozenHistoricalWindow: "2026-08-04..2026-09-20",
+  sourceRowN: 68949,
   authorityEstablishedAt: "2026-09-22T20:28:58.160Z",
   selectionContract: "SELECTION_BEFORE_SETTLEMENT_V1",
   tennisPolicy: "shared resolveTennisMoneyEligibility",
