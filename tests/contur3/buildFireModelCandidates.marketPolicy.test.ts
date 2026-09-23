@@ -158,6 +158,57 @@ const TENNIS_COMPLETED_MATCH_ELIGIBLE = sourceRow({
   shadowScope: "tennis",
 });
 
+// R0-TENNIS — TENNIS_MONEYLINE_ONLY_V1: the structured tennis_completed_match
+// market is the "will the match complete normally" Yes/No proposition, NOT the
+// winner moneyline, and must never become a money Reservation even though its
+// display text says "Completed Match". Only a structured providerEventContext
+// marketType of "moneyline" is admissible.
+function withProviderMarketType(row: ReturnType<typeof sourceRow>, marketType: string) {
+  return {
+    ...row,
+    diagnostics: {
+      ...row.diagnostics,
+      providerEventContext: {
+        v: "v1",
+        provider: "polymarket",
+        eventTitle: row.diagnostics.eventTitle,
+        marketQuestion: row.diagnostics.marketTitle,
+        sportFamily: "tennis",
+        marketType,
+      },
+    },
+  };
+}
+
+const TENNIS_MONEYLINE_ELIGIBLE = withProviderMarketType(
+  sourceRow({
+    id: "tennis-moneyline-atp",
+    event_slug: "atp-alcaraz-sinner-2026-07-27-moneyline",
+    market_slug: "ATP Rome, Main Draw: Moneyline: Carlos Alcaraz vs Jannik Sinner",
+    eventTitle: "ATP Rome: Carlos Alcaraz vs Jannik Sinner",
+    marketTitle: "ATP Rome, Main Draw: Moneyline: Carlos Alcaraz vs Jannik Sinner",
+    shadowScope: "tennis",
+  }),
+  "moneyline",
+);
+
+const TENNIS_COMPLETED_MATCH_STRUCTURED_REJECTED = withProviderMarketType(
+  TENNIS_COMPLETED_MATCH_ELIGIBLE,
+  "tennis_completed_match",
+);
+
+const TENNIS_MONEYLINE_EXCLUDED_LEVEL = withProviderMarketType(
+  sourceRow({
+    id: "tennis-moneyline-w35",
+    event_slug: "itf-llorca1-yesypc1-2026-07-27-moneyline",
+    market_slug: "W35 Reus, Main Draw: Moneyline: Lucia Cortez Llorca vs Daria Yesypchuk",
+    eventTitle: "W35 Reus: Lucia Cortez Llorca vs Daria Yesypchuk",
+    marketTitle: "W35 Reus, Main Draw: Moneyline: Lucia Cortez Llorca vs Daria Yesypchuk",
+    shadowScope: "tennis",
+  }),
+  "moneyline",
+);
+
 const ALL_ROWS = [ALLOWED_FULLMATCH_SPREAD, HALFTIME, CORNERS, PROP, ESPORTS_NON_POLICY];
 
 async function planningCandidates(rows: unknown[]) {
@@ -199,21 +250,37 @@ test("MP-1b: every blocked class is rejected with a structured upstream reason",
   }
 });
 
-test("MP-1b1: a lower-tier ITF level (W35) Completed Match never becomes a planning candidate", async () => {
-  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH_BLOCKED_LEVEL]);
+test("MP-1b1: a lower-tier ITF level (W35) tennis moneyline never becomes a planning candidate", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_MONEYLINE_EXCLUDED_LEVEL]);
   assert.equal(candidates.length, 0);
   assert.equal(rawDiagnostics?.market_policy_eligible, 0);
   assert.equal(rawDiagnostics?.market_policy_rejected, 1);
   assert.equal(rawDiagnostics?.market_policy_rejected_by_reason.TENNIS_EXCLUDED_TOURNAMENT_LEVEL, 1);
 });
 
-test("MP-1b2: a top-tier tennis Completed Match becomes a planning candidate via the dedicated tennis gate", async () => {
-  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH_ELIGIBLE]);
+test("MP-1b1b: a lower-tier ITF level (W35) with no structured market type never becomes a planning candidate (no text-fallback exclusion path either)", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH_BLOCKED_LEVEL]);
+  assert.equal(candidates.length, 0);
+  assert.equal(rawDiagnostics?.market_policy_eligible, 0);
+  assert.equal(rawDiagnostics?.market_policy_rejected, 1);
+  assert.equal(rawDiagnostics?.market_policy_rejected_by_reason.TENNIS_MARKET_TYPE_NOT_MONEYLINE, 1);
+});
+
+test("MP-1b2: a top-tier tennis structured moneyline becomes a planning candidate via the dedicated tennis gate", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_MONEYLINE_ELIGIBLE]);
   assert.equal(candidates.length, 1);
   assert.equal(rawDiagnostics?.market_policy_eligible, 1);
   assert.equal(rawDiagnostics?.market_policy_rejected, 0);
   assert.equal(candidates[0].diagnostics.market_policy?.anchor_kind, "TENNIS_COMPLETED_MATCH_EVENT");
   assert.equal(candidates[0].diagnostics.market_policy?.reason_code, "TENNIS_MONEY_ELIGIBLE");
+});
+
+test("MP-1b3: a structured tennis_completed_match market (the 'will the match complete normally' Yes/No proposition) is rejected outright, even with top-tier identity and 'Completed Match' display text", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH_STRUCTURED_REJECTED]);
+  assert.equal(candidates.length, 0);
+  assert.equal(rawDiagnostics?.market_policy_eligible, 0);
+  assert.equal(rawDiagnostics?.market_policy_rejected, 1);
+  assert.equal(rawDiagnostics?.market_policy_rejected_by_reason.TENNIS_COMPLETED_MATCH_MARKET_REJECTED, 1);
 });
 
 // ── TEST 1c — the production arithmetic can no longer happen ────────────────
