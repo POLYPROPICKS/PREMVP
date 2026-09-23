@@ -7,6 +7,7 @@
 <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
 <script src="MODELING_DAILY_DATA.js"></script>
 <script src="LIVE_RUNTIME_DATA.js"></script>
+<script src="CURRENT_MODELING_AUTHORITY.js"></script>
 <style>
   :root {
     --bg: #0b0f14; --panel: #121821; --panel2: #161d27; --border: #26303c;
@@ -90,11 +91,13 @@
 
 <div id="tab-models" class="tab-panel">
   <section>
-    <h2>Section A — Founder model table (full accepted spectrum)</h2>
+    <h2>Current modeling authority</h2>
+    <div class="banner info" id="authorityBanner"></div>
+    <div class="controls"><label>SAFE authority cap: <select id="authorityCap"><option value="30" selected>30</option><option value="40">40</option><option value="50">50</option></select></label></div>
     <div class="panel"><div id="mainTable"></div></div>
   </section>
   <section>
-    <h2>Section D — Live vs best research</h2>
+    <h2>Legacy / historical diagnostic comparison — not current authority</h2>
     <div class="panel"><div id="gapCard"></div></div>
   </section>
   <section>
@@ -252,12 +255,27 @@
 <footer id="footer"></footer>
 
 <script>
-(function () {
+(async function () {
   var D = window.POLYPROPICKS_MODELING_DATA;
   var LIVE = window.POLYPROPICKS_LIVE_RUNTIME_DATA;
+  var AUTH = window.POLYPROPICKS_CURRENT_MODELING_AUTHORITY;
   if (!D) {
     document.body.innerHTML = '<p style="padding:24px;color:#ef5b5b">MODELING_DAILY_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.</p>';
     return;
+  }
+  // The LIVE panel is request-time truth when production credentials are
+  // available. Static Git data is an explicit, visibly-labelled fallback.
+  try {
+    var liveResponse = await fetch("/api/founder/modeling/live", { cache: "no-store" });
+    if (!liveResponse.ok) throw new Error("HTTP_" + liveResponse.status);
+    var liveBody = await liveResponse.json();
+    if (!liveBody || liveBody.status !== "OK") throw new Error((liveBody && liveBody.stopReason) || "RUNTIME_STOPPED");
+    LIVE = liveBody;
+  } catch (liveError) {
+    LIVE = LIVE || { status: "STOPPED", days: [] };
+    LIVE.staticFallback = true;
+    LIVE.staticFallbackReason = String(liveError && liveError.message ? liveError.message : liveError);
+    LIVE.lastObservedAt = LIVE.GENERATED_AT || null;
   }
   var meta = D.meta, models = D.models, uncappedModels = D.uncappedModels || {};
 
@@ -418,6 +436,23 @@
     "<th>ROI</th><th>P&amp;L</th><th>Max DD</th><th>30D P&amp;L</th><th>Fill30</th><th>Fill40</th><th>Fill50</th><th>Rules</th><th>Live/research gap</th></tr></thead><tbody>" +
     rowsHtml + "</tbody></table>";
 
+  // CURRENT_MODELING_AUTHORITY_V1 is deliberately isolated from the legacy
+  // daily-refresh object above. Legacy data remains diagnostic only.
+  if (AUTH) {
+    function renderCurrentAuthority() {
+      var cap = Number(document.getElementById("authorityCap").value);
+      var rows = AUTH.rows.filter(function (r) { return r.CAP === cap; });
+      document.getElementById("authorityBanner").innerHTML = '<b>CURRENT MODELING AUTHORITY V1</b><br>Historical window: Aug04–Sep20. Selection-before-settlement. Safe tennis universe. Settlement partial. All displayed target models remain P&amp;L-positive even if every unresolved OPEN is treated as a loss. Research flat-1u economics, not realized live cash P&amp;L. PORTFOLIO_BROAD_SAFE is a research reference, not the CURRENT DEPLOYED LIVE POLICY.';
+      document.getElementById("mainTable").innerHTML = '<table><thead><tr><th>MODEL</th><th>ROLE</th><th>CAP</th><th>N</th><th>P&amp;L</th><th>ROI</th><th>MAX DD</th><th>FILL</th><th>FOOTBALL %</th><th>TENNIS %</th></tr></thead><tbody>' + rows.map(function (r) {
+        var satellite = r.MODEL === "TENNIS_P50_52_SAFE" ? ' <span class="status-pill watch">SPARSE SUPPLY</span>' : '';
+        return '<tr class="row-primary"><td><b>' + esc(r.MODEL) + '</b>' + satellite + '<br><span class="status-pill watch">PARTIAL SETTLEMENT</span></td><td>' + esc(r.ROLE) + '</td><td>' + r.CAP + '</td><td>' + r.SELECTED_N + '</td><td>' + fmtU(r.PNL_U_PARTIAL) + '</td><td>' + fmtPct(r.SETTLED_ROI_PCT_PARTIAL) + '</td><td>' + fmtU(r.MAX_DD_U_PARTIAL) + '</td><td>' + fmtPctFrac(r.FILL_RATE) + '</td><td>' + r.FOOTBALL_PCT.toFixed(1) + '%</td><td>' + r.TENNIS_PCT.toFixed(1) + '%</td></tr>' +
+          '<tr class="row-muted"><td colspan="10"><details><summary>Partial-settlement and provenance details</summary>Settled/open: ' + r.SETTLED_N + '/' + r.OPEN_N + ' · coverage: ' + r.SETTLEMENT_COVERAGE_PCT.toFixed(4) + '% · other: ' + r.OTHER_N + ' (' + r.OTHER_PCT.toFixed(1) + '%) · worst/best P&amp;L: ' + fmtU(r.FINAL_PNL_WORST) + ' / ' + fmtU(r.FINAL_PNL_BEST) + ' · worst/best ROI: ' + fmtPct(r.FINAL_ROI_WORST_PCT) + ' / ' + fmtPct(r.FINAL_ROI_BEST_PCT) + ' · rule: ' + esc(AUTH.selectionContract) + '; ' + esc(AUTH.tennisPolicy) + '.</details></td></tr>';
+      }).join('') + '</tbody></table>';
+    }
+    renderCurrentAuthority();
+    document.getElementById("authorityCap").addEventListener("change", renderCurrentAuthority);
+  }
+
   // ==================== SECTION D — live vs best research ====================
   (function () {
     var g = D.liveVsResearch;
@@ -483,6 +518,7 @@
     var stale = ageMins != null && ageMins > 30;
 
     var html = '<div class="note">Calendar day: <b>' + esc(today.minskDate) + '</b> (Minsk) — real-time activity, shown even when today\'s own Reservation has not run yet.</div>';
+    if (LIVE && LIVE.staticFallback) html = '<div class="banner">STATIC FALLBACK / LAST OBSERVED AT ' + esc(LIVE.lastObservedAt || "UNKNOWN") + ' — request-time production read unavailable: ' + esc(LIVE.staticFallbackReason || "UNKNOWN") + '.</div>' + html;
     html += '<div class="kpis" style="padding:12px 0 4px">' +
       card("Today's Reservation", esc(reservationDisplay), res && res.total > 0 ? "" : "warn") +
       card("Current calendar-day Queue", fmtN(q.total)) +
