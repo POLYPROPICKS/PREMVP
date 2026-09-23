@@ -8,6 +8,7 @@
 <script src="MODELING_DAILY_DATA.js"></script>
 <script src="LIVE_RUNTIME_DATA.js"></script>
 <script src="CURRENT_MODELING_AUTHORITY.js"></script>
+<script src="CAPITAL_MODELING_DATA.js"></script>
 <style>
   :root {
     --bg: #0b0f14; --panel: #121821; --panel2: #161d27; --border: #26303c;
@@ -103,6 +104,33 @@
   <section>
     <h2>Section E — Research gap anatomy <span class="status-pill watch">SHADOW RESEARCH DIFFERENCE</span></h2>
     <div class="panel"><div id="gapAnatomy"></div></div>
+  </section>
+</div>
+
+<div id="tab-capital" class="tab-panel">
+  <section>
+    <h2>Capital approximation — separate static research layer</h2>
+    <div class="banner" id="capitalCaveat"></div>
+    <div class="kpis" id="capitalKpis"></div>
+    <div class="panel"><div id="capitalSummary"></div></div>
+    <div class="panel">
+      <h2>Scenario detail</h2>
+      <div class="controls">
+        <label>Scenario: <select id="capitalScenario"></select></label>
+        <label>Model: <select id="capitalModel"></select></label>
+      </div>
+      <div id="capitalDetail"></div>
+    </div>
+    <div class="panel">
+      <h2>What this evidence supports</h2>
+      <ul class="diffs">
+        <li>NONE of tested daily scenarios finished below initial $100.</li>
+        <li>NONE produced capital skips.</li>
+        <li>PROTECTED is highly path-sensitive and compounds dramatically more than FIXED.</li>
+      </ul>
+      <div class="banner">Large protected totals are sensitivity evidence, not a live forecast. Live sizing requires prospective exact-sequence validation and explicit capital bounds.</div>
+    </div>
+    <div class="note">The result preserves accepted model totals and stress drawdown, but daily chronology is reconstructed at aggregate-day granularity.</div>
   </section>
 </div>
 
@@ -259,6 +287,7 @@
   var D = window.POLYPROPICKS_MODELING_DATA;
   var LIVE = window.POLYPROPICKS_LIVE_RUNTIME_DATA;
   var AUTH = window.POLYPROPICKS_CURRENT_MODELING_AUTHORITY;
+  var CAPITAL = window.POLYPROPICKS_CAPITAL_MODELING_DATA;
   if (!D) {
     document.body.innerHTML = '<p style="padding:24px;color:#ef5b5b">MODELING_DAILY_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.</p>';
     return;
@@ -281,7 +310,7 @@
 
   // ---- Tabs ----
   var TABS = [
-    ["overview", "OVERVIEW"], ["models", "MODELS"], ["live", "LIVE"], ["capacity", "CAPACITY"],
+    ["overview", "OVERVIEW"], ["models", "MODELS"], ["live", "LIVE"], ["capacity", "CAPACITY"], ["capital", "CAPITAL"],
     ["score", "SCORE"], ["sports", "SPORTS"], ["markets", "MARKETS"], ["dataquality", "DATA QUALITY"],
     ["closed", "CLOSED HYPOTHESES"],
   ];
@@ -321,6 +350,8 @@
   function fmtPctFrac(v) { return v === null || v === undefined ? "—" : (v * 100).toFixed(2) + "%"; }
   function fmtN(v) { return v === null || v === undefined ? "—" : String(v); }
   function fmtUsd(v) { return v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + "$" + v.toFixed(2); }
+  function fmtCapitalUsd(v) { return v === null || v === undefined ? "—" : "$" + v.toFixed(2); }
+  function fmtCapitalRange(range) { return fmtCapitalUsd(range.min) + " – " + fmtCapitalUsd(range.max); }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
   function walletAgeMinutes(observedAt) { return observedAt ? Math.round((Date.now() - Date.parse(observedAt)) / 60000) : null; }
   function fmtAge(mins) { if (mins == null) return "—"; if (mins < 1) return "just now"; if (mins < 60) return mins + "m ago"; return Math.floor(mins / 60) + "h " + (mins % 60) + "m ago"; }
@@ -328,6 +359,39 @@
     if (!iso) return "—";
     try { return new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Minsk", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) + " Minsk"; }
     catch (e) { return iso; }
+  }
+
+  // ==================== CAPITAL — isolated aggregate approximation ====================
+  if (CAPITAL) {
+    var capitalMeta = CAPITAL.meta;
+    var capitalRows = CAPITAL.models;
+    document.getElementById("capitalCaveat").textContent = "DAILY AGGREGATE APPROXIMATION · NOT A FORECAST · NOT EXACT BET-LEVEL HISTORICAL REPLAY";
+    document.getElementById("capitalKpis").innerHTML = [
+      ["Starting capital", fmtCapitalUsd(capitalMeta.startingCapitalUsd)],
+      ["Window", capitalMeta.sourceWindow[0] + " → " + capitalMeta.sourceWindow[1]],
+      ["Models", String(capitalRows.length)], ["Cap", String(capitalMeta.cap)], ["Capital skips", "NONE"],
+    ].map(function (item) { return '<div class="kpi"><div class="label">' + esc(item[0]) + '</div><div class="value">' + esc(item[1]) + '</div></div>'; }).join("");
+    document.getElementById("capitalSummary").innerHTML = '<table><thead><tr><th>Model</th><th>FIXED END RANGE</th><th>PROTECTED END RANGE</th><th>PROTECTED UPSIDE VS FIXED</th><th>VAULT RANGE</th><th>MAX DD RANGE</th><th>CAPITAL SKIPS</th></tr></thead><tbody>' + capitalRows.map(function (row) {
+      return '<tr><td>' + esc(row.model) + '</td><td>' + fmtCapitalRange(row.summary.fixed_end_usd) + '</td><td>' + fmtCapitalRange(row.summary.protected_end_usd) + '</td><td>' + fmtCapitalRange(row.summary.protected_upside_usd) + '</td><td>' + fmtCapitalRange(row.summary.vault_usd) + '</td><td>' + fmtCapitalRange(row.summary.max_drawdown_usd) + '</td><td>' + row.summary.capital_skips + '</td></tr>';
+    }).join("") + '</tbody></table>';
+    var capitalScenarioSelect = document.getElementById("capitalScenario");
+    CAPITAL.scenarioNames.forEach(function (name) { var option = document.createElement("option"); option.value = name; option.textContent = name; capitalScenarioSelect.appendChild(option); });
+    var capitalModelSelect = document.getElementById("capitalModel");
+    capitalRows.forEach(function (row) { var option = document.createElement("option"); option.value = row.model; option.textContent = row.model; capitalModelSelect.appendChild(option); });
+    function renderCapitalDetail() {
+      var selectedRow = capitalRows.find(function (row) { return row.model === capitalModelSelect.value; });
+      var selectedScenario = selectedRow && selectedRow.scenarios[capitalScenarioSelect.value];
+      if (!selectedScenario) return;
+      var metrics = [["Ending total", "ending_total_usd"], ["Free active", "free_active_usd"], ["Open principal", "open_principal_usd"], ["Vault", "vault_usd"], ["Max drawdown", "max_drawdown_usd"], ["Executed", "executed_n"], ["Capital skips", "capital_skip_n"]];
+      document.getElementById("capitalDetail").innerHTML = '<table><thead><tr><th>Policy</th>' + metrics.map(function (item) { return '<th>' + esc(item[0]) + '</th>'; }).join("") + '</tr></thead><tbody>' + ["fixed", "protected"].map(function (policy) {
+        return '<tr><td>' + policy.toUpperCase() + '</td>' + metrics.map(function (item) { var value = selectedScenario[policy][item[1]]; return '<td>' + (item[1].endsWith("_usd") ? fmtCapitalUsd(value) : esc(value)) + '</td>'; }).join("") + '</tr>';
+      }).join("") + '</tbody></table><div class="note">PROTECTED minus FIXED ending total: ' + fmtCapitalUsd(selectedScenario.protected_minus_fixed_total_usd) + '. Active drawdown is not reported in the source artifact.</div>';
+    }
+    capitalScenarioSelect.addEventListener("change", renderCapitalDetail);
+    capitalModelSelect.addEventListener("change", renderCapitalDetail);
+    renderCapitalDetail();
+  } else {
+    document.getElementById("capitalCaveat").textContent = "CAPITAL_MODELING_DATA.js failed to load. Open this file from the same folder as MODELING_DASHBOARD.html.";
   }
 
   // ==================== OVERVIEW ====================
