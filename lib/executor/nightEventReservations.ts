@@ -1884,12 +1884,21 @@ function computeScore60ResearchShadow(entries: readonly ReservationCandidateMani
   };
 }
 
+/**
+ * NARROW_FOOTBALL_MONEY_POLICY_V1 correction (ISSUE 2): Signal Score never
+ * decides which candidate identities survive manifest truncation. This is
+ * the same freshest-first causal ordering (source_created_at DESC, then
+ * condition_id/token_id ASC as a deterministic tie-break) that
+ * comparePortfolioBroadIdentities already uses, elsewhere in this same
+ * funnel, to pick the winning identity within a PORTFOLIO_BROAD tier --
+ * reused here verbatim, never invented.
+ */
 function compareManifestEntries(
   a: ReservationCandidateManifestEntry,
   b: ReservationCandidateManifestEntry
 ): number {
   return (
-    (b.signal_confidence_num ?? -Infinity) - (a.signal_confidence_num ?? -Infinity) ||
+    (b.source_created_at ?? "").localeCompare(a.source_created_at ?? "") ||
     a.condition_id.localeCompare(b.condition_id) ||
     a.token_id.localeCompare(b.token_id)
   );
@@ -1908,7 +1917,16 @@ function compareManifestEntries(
 export function buildReservationCandidateManifestsByPhysicalEvent(
   rows: readonly Record<string, unknown>[],
   admittedPhysicalEventIds: ReadonlySet<string>,
-  maxEntriesPerEvent = RESERVATION_CANDIDATE_MANIFEST_MAX_ENTRIES
+  maxEntriesPerEvent = RESERVATION_CANDIDATE_MANIFEST_MAX_ENTRIES,
+  /**
+   * NARROW_FOOTBALL_MONEY_POLICY_V1 (ISSUE 2 safeguard): the exact identity
+   * Contract A Planning already committed to for each physical event
+   * (decision.final_identity_evidence, the same authority persisted onto the
+   * Reservation as diagnostics.planning_final_identity_evidence). When
+   * present, truncation never drops this entry -- it is structural inclusion
+   * by already-decided identity, never a score- or rank-based preference.
+   */
+  pinnedIdentityByPhysicalEventId?: ReadonlyMap<string, { condition_id: string; token_id: string } | null>
 ): Map<string, ReservationCandidateManifest> {
   const grouped = new Map<string, ReservationCandidateManifestEntry[]>();
   for (const row of rows) {
@@ -1942,10 +1960,26 @@ export function buildReservationCandidateManifestsByPhysicalEvent(
     // then the manifest entries themselves are truncated as before.
     const score60ResearchShadow = computeScore60ResearchShadow(deduped);
     deduped.sort(compareManifestEntries);
+    const truncated = deduped.length > maxEntriesPerEvent;
+    let keptEntries = deduped.slice(0, maxEntriesPerEvent);
+    const pinned = pinnedIdentityByPhysicalEventId?.get(physicalEventId) ?? null;
+    if (pinned !== null && truncated) {
+      const alreadyKept = keptEntries.some(
+        (e) => e.condition_id === pinned.condition_id && e.token_id === pinned.token_id
+      );
+      if (!alreadyKept) {
+        const pinnedEntry = deduped.find(
+          (e) => e.condition_id === pinned.condition_id && e.token_id === pinned.token_id
+        );
+        if (pinnedEntry) {
+          keptEntries = [pinnedEntry, ...keptEntries.slice(0, maxEntriesPerEvent - 1)].sort(compareManifestEntries);
+        }
+      }
+    }
     result.set(physicalEventId, {
       manifest_version: RESERVATION_CANDIDATE_MANIFEST_VERSION,
-      entries: deduped.slice(0, maxEntriesPerEvent),
-      truncated: deduped.length > maxEntriesPerEvent,
+      entries: keptEntries,
+      truncated,
       score60_research_shadow: score60ResearchShadow,
     });
   }
@@ -2244,10 +2278,27 @@ export function buildReservationsFromPlanningDecisions(
 
   // B2: bounded candidate manifest per admitted physical event, derived from
   // the exact same source-row snapshot the decisions themselves came from.
+  // NARROW_FOOTBALL_MONEY_POLICY_V1 (ISSUE 2 safeguard): pin each physical
+  // event's already-decided Planning identity so manifest truncation can
+  // never drop it -- structural inclusion by decided identity, never a score
+  // preference.
+  const finalIdentityByPhysicalEventId = new Map<string, { condition_id: string; token_id: string } | null>(
+    targeted.map((candidate) => [
+      candidate.decision.physical_event_id,
+      candidate.decision.final_identity_evidence
+        ? {
+            condition_id: candidate.decision.final_identity_evidence.condition_id,
+            token_id: candidate.decision.final_identity_evidence.token_id,
+          }
+        : null,
+    ])
+  );
   const candidateManifestsByPhysicalEventId = opts.sourceRowsForCandidateManifest
     ? buildReservationCandidateManifestsByPhysicalEvent(
         opts.sourceRowsForCandidateManifest,
-        new Set(admittedOccurrenceIds)
+        new Set(admittedOccurrenceIds),
+        RESERVATION_CANDIDATE_MANIFEST_MAX_ENTRIES,
+        finalIdentityByPhysicalEventId
       )
     : new Map<string, ReservationCandidateManifest>();
 
