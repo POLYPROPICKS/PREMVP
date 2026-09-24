@@ -10,7 +10,7 @@
 //
 //   * entry / signal price               >= 0.30  (PRICE_FLOOR)
 //   * entry / signal price               >= 0.50  (CONTRACT_A_MIN_ENTRY_PRICE — loss containment)
-//   * entry / signal price               <  0.60  (CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE — exploration contour)
+//   * entry / signal price               <  0.54  (CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE — narrow football money band, NARROW_FOOTBALL_MONEY_POLICY_V1)
 //   * eSports excluded
 //
 // CONTROL_A_EXPLORATION_V2 (bounded broadening release): the persisted
@@ -87,12 +87,16 @@ export const B2_PRICE_FLOOR = 0.3 as const;
 export const CONTRACT_A_MIN_ENTRY_PRICE = 0.5 as const;
 
 /**
- * Contract A money-admission price ceiling, exclusive (CONTROL_A_EXPLORATION_V2).
- * Bounds the exploration contour to the historically safer
- * [0.50, 0.60) research-compatible price region (C0/C1/C4/C5). An identity at
+ * Contract A money-admission price ceiling, exclusive
+ * (NARROW_FOOTBALL_MONEY_POLICY_V1, 2026-09-24 -- tightened from 0.60 to
+ * 0.54 to bound the live-money candidate/reference price to the approved
+ * ~1.85-2.00 implied-odds band). Bounds the admission contour to
+ * [0.50, 0.54), matching the Reservation PORTFOLIO_BROAD qualification band
+ * and the Queue QUEUE_MAX_ENTRY_PRICE execution ceiling -- one coherent
+ * price contract across Contract A -> Reservation -> Queue. An identity at
  * or above this price is never admitted through this gate.
  */
-export const CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE = 0.6 as const;
+export const CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE = 0.54 as const;
 
 /**
  * Every reason the B2 pre-Reservation event policy can fail closed. A closed

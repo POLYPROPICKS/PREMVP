@@ -59,6 +59,18 @@ function b2Reservation(overrides: Partial<NightEventReservationRow> = {}): Night
       contract_a_stage: "PLANNING",
       source_lineage: { generated_signal_pair_id: "11111111-1111-4111-8111-111111111111" },
       candidate_manifest_version: "RESERVATION_CANDIDATE_MANIFEST_V1",
+      // NARROW_FOOTBALL_MONEY_POLICY_V1: the ONLY thing that decides which
+      // manifest entry wins is the exact identity Contract A Planning already
+      // committed to -- persisted verbatim, never re-ranked by Signal Score or
+      // lexical order. Pinned here to the moneyline entry.
+      planning_final_identity_evidence: {
+        condition_id: "cond-esp-arg-ml",
+        token_id: "token-esp-arg-spain",
+        side: "Spain",
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
       candidate_manifest: [
         {
           generated_signal_pair_id: "11111111-1111-4111-8111-111111111111",
@@ -83,7 +95,7 @@ function b2Reservation(overrides: Partial<NightEventReservationRow> = {}): Night
           event_slug: "fifwc-esp-arg-2026-07-19",
           entry_price_num: 0.38,
           // Deliberately LOWER confidence than the moneyline entry above, so
-          // determinism (max-score wins) is provably exercised.
+          // this fixture proves selection is NOT decided by Signal Score.
           signal_confidence_num: 65,
           metric_formula_version: "v2-lite-growth-safe",
           source_created_at: "2026-07-19T12:00:00.000Z",
@@ -200,17 +212,76 @@ test("RFM-1: a B2 Reservation resolves its Queue row entirely from candidate_man
   assert.ok(Array.isArray(diag.mechanical_guard_trace) && (diag.mechanical_guard_trace as string[]).includes("DEPTH_OK"));
 });
 
-test("RFM-2: multiple manifest market rows for the same physical event remain one candidate universe under ONE Queue row, and the max-confidence entry deterministically wins", async () => {
-  const repo = makeInstrumentedRepo([b2Reservation()]);
+test("RFM-2: multiple manifest market rows for the same physical event remain one candidate universe under ONE Queue row, and the Planning-pinned identity wins -- NOT the max-confidence entry", async () => {
+  // Pin the identity to the SPREAD entry (confidence 65), which is the LOWER
+  // of the two manifest entries -- the moneyline entry (confidence 80) is
+  // deliberately NOT pinned. This proves selection is never a re-ranking by
+  // Signal Score: NARROW_FOOTBALL_MONEY_POLICY_V1 acceptance criterion 1.
+  const reservation = b2Reservation({
+    diagnostics: {
+      ...(b2Reservation().diagnostics as Record<string, unknown>),
+      planning_final_identity_evidence: {
+        condition_id: "cond-esp-arg-spread",
+        token_id: "token-esp-arg-spain-spread",
+        side: "Spain -1.5",
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
+    },
+  });
+  const repo = makeInstrumentedRepo([reservation]);
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
 
   assert.equal(result.queued_count, 1, "exactly one queue row, never one per manifest entry");
   assert.equal(repo.queueRows.length, 1);
   const row = repo.queueRows[0];
-  // The moneyline entry (confidence 80) must win over the spread entry (confidence 65).
-  assert.equal(row.condition_id, "cond-esp-arg-ml");
-  assert.equal(row.token_id, "token-esp-arg-spain");
-  assert.equal(row.score, 80);
+  // The pinned spread entry (confidence 65) wins despite the moneyline entry's
+  // strictly higher confidence (80) -- Signal Score never decides.
+  assert.equal(row.condition_id, "cond-esp-arg-spread");
+  assert.equal(row.token_id, "token-esp-arg-spain-spread");
+  assert.equal(row.score, 65);
+});
+
+test("RFM-2b: a manifest that does NOT contain the pinned planning_final_identity_evidence fails closed with PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_MANIFEST", async () => {
+  const reservation = b2Reservation({
+    diagnostics: {
+      ...(b2Reservation().diagnostics as Record<string, unknown>),
+      planning_final_identity_evidence: {
+        condition_id: "cond-does-not-exist-in-manifest",
+        token_id: "tok-does-not-exist-in-manifest",
+        side: "Nobody",
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
+    },
+  });
+  const repo = makeInstrumentedRepo([reservation]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(result.outcomes[0]?.reason, "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_MANIFEST");
+});
+
+test("RFM-2c: a B2 Reservation with no planning_final_identity_evidence at all fails closed with PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", async () => {
+  const reservation = b2Reservation({
+    diagnostics: {
+      selector_id: "CONTRACT_A_PLANNING_V1",
+      contract_a_stage: "PLANNING",
+      source_lineage: { generated_signal_pair_id: "11111111-1111-4111-8111-111111111111" },
+      candidate_manifest_version: "RESERVATION_CANDIDATE_MANIFEST_V1",
+      candidate_manifest: (b2Reservation().diagnostics as Record<string, unknown>).candidate_manifest,
+      // planning_final_identity_evidence deliberately absent.
+    },
+  });
+  const repo = makeInstrumentedRepo([reservation]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(result.outcomes[0]?.reason, "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING");
 });
 
 test("RFM-3: re-running the same manifest selection is deterministic (repeat run picks the identical candidate)", async () => {
@@ -306,6 +377,14 @@ test("RFM-7: a legacy Reservation with no candidate_manifest_version preserves t
       contract_a_stage: "PLANNING",
       source_lineage: { generated_signal_pair_id: "11111111-1111-4111-8111-111111111111" },
       // No candidate_manifest_version at all -- the pre-B2 shape.
+      planning_final_identity_evidence: {
+        condition_id: "cond-esp-arg-ml",
+        token_id: "token-esp-arg-spain",
+        side: "Spain",
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
     },
   });
   const repo = makeInstrumentedRepo([legacyReservation]);
@@ -327,6 +406,14 @@ test("RFM-8: the B2 manifest path and the legacy GSP path produce byte-identical
       contract_a_stage: "PLANNING",
       source_lineage: { generated_signal_pair_id: "11111111-1111-4111-8111-111111111111" },
       candidate_manifest_version: "RESERVATION_CANDIDATE_MANIFEST_V1",
+      planning_final_identity_evidence: {
+        condition_id: "cond-esp-arg-ml",
+        token_id: "token-esp-arg-spain",
+        side: "Spain",
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
       // Single entry only, matching the legacy fixture's sole GSP row exactly.
       candidate_manifest: [{
         generated_signal_pair_id: "11111111-1111-4111-8111-111111111111",
@@ -345,6 +432,14 @@ test("RFM-8: the B2 manifest path and the legacy GSP path produce byte-identical
       selector_id: "CONTRACT_A_PLANNING_V1",
       contract_a_stage: "PLANNING",
       source_lineage: { generated_signal_pair_id: "11111111-1111-4111-8111-111111111111" },
+      planning_final_identity_evidence: {
+        condition_id: "cond-esp-arg-ml",
+        token_id: "token-esp-arg-spain",
+        side: "Spain",
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
     },
   })]);
 
@@ -440,12 +535,12 @@ test("RFM-12: an excessive spread on the exact selected token SKIPS the reservat
 // (wider than the existing 0.03 live-candidate-policy authority) and sized
 // executable depth by a 2% slippage band off bestAsk -- which could count
 // ask liquidity priced ABOVE the selected candidate's own max_entry_price
-// (QUEUE_MAX_ENTRY_PRICE = 0.62), liquidity the real limit order can never
-// actually consume. These two regressions pin the fix: ONE canonical
-// max_spread (0.03) on every live path, and executable depth counting ONLY
-// ask liquidity at or below max_entry_price.
+// (QUEUE_MAX_ENTRY_PRICE = 0.54, NARROW_FOOTBALL_MONEY_POLICY_V1), liquidity
+// the real limit order can never actually consume. These two regressions pin
+// the fix: ONE canonical max_spread (0.03) on every live path, and executable
+// depth counting ONLY ask liquidity at or below max_entry_price.
 
-test("RFM-13: executable depth counts ONLY ask liquidity at or below max_entry_price (0.62) -- large ask liquidity just above the cap contributes ZERO and insufficient below-cap depth SKIPS", async () => {
+test("RFM-13: executable depth counts ONLY ask liquidity at or below max_entry_price (0.54) -- large ask liquidity just above the cap contributes ZERO and insufficient below-cap depth SKIPS", async () => {
   const repo = makeInstrumentedRepo([b2Reservation()]);
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
     repo,
@@ -456,14 +551,14 @@ test("RFM-13: executable depth counts ONLY ask liquidity at or below max_entry_p
       book: {
         tokenId,
         // Tight spread (0.025 <= 0.03) so this fixture isolates the depth guard.
-        bids: [{ price: 0.59, size: 100 }],
+        bids: [{ price: 0.51, size: 100 }],
         asks: [
-          // <= 0.62 (QUEUE_MAX_ENTRY_PRICE), but together well short of the $2.50 stake.
-          { price: 0.615, size: 2 }, // $1.23
-          { price: 0.62, size: 1 }, // $0.62 -> $1.85 total eligible depth, < $2.50 stake
-          // Above max_entry_price=0.62, and within the OLD (bug) 2%-of-bestAsk
-          // slippage band (0.615 * 1.02 = 0.6273) that used to wrongly count it.
-          { price: 0.625, size: 1000 }, // must contribute ZERO
+          // <= 0.54 (QUEUE_MAX_ENTRY_PRICE), but together well short of the $2.50 stake.
+          { price: 0.535, size: 2 }, // $1.07
+          { price: 0.54, size: 1 }, // $0.54 -> $1.61 total eligible depth, < $2.50 stake
+          // Above max_entry_price=0.54, and within the OLD (bug) 2%-of-bestAsk
+          // slippage band (0.535 * 1.02 = 0.5457) that used to wrongly count it.
+          { price: 0.545, size: 1000 }, // must contribute ZERO
         ],
       },
     }),
@@ -471,7 +566,7 @@ test("RFM-13: executable depth counts ONLY ask liquidity at or below max_entry_p
 
   assert.equal(result.queued_count, 0, "insufficient below-cap depth must SKIP even with abundant above-cap liquidity");
   assert.equal(repo.queueRows.length, 0, "no Queue row -- the selected identity is never replaced by another candidate");
-  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_INSUFFICIENT_EXECUTABLE_DEPTH: depth_usd=1\.85/);
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED: B2_INSUFFICIENT_EXECUTABLE_DEPTH: depth_usd=1\.61/);
 });
 
 test("RFM-14: a spread of 0.04 (above the canonical 0.03 max-spread authority, but under the old B2-only 0.08 ceiling) SKIPS the reservation", async () => {
@@ -484,9 +579,9 @@ test("RFM-14: a spread of 0.04 (above the canonical 0.03 max-spread authority, b
       latencyMs: 20,
       book: {
         tokenId,
-        bids: [{ price: 0.56, size: 100 }],
+        bids: [{ price: 0.46, size: 100 }],
         // Ample below-cap depth, so this fixture isolates the spread guard.
-        asks: [{ price: 0.6, size: 100 }],
+        asks: [{ price: 0.5, size: 100 }],
       },
     }),
   });

@@ -56,7 +56,7 @@ function baseQueueRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExe
     status: "READY",
     order_key: "cond-1:token-1:Argentina",
     idempotency_key: "idem-1",
-    diagnostics: { max_entry_price: 0.6 },
+    diagnostics: { max_entry_price: 0.54 },
     ...overrides,
   };
 }
@@ -191,7 +191,7 @@ for (const bad of ["", "   ", "abc", "2.5abc", "NaN", "Infinity", "-Infinity"]) 
 // 4. The submitted_size stake fallback uses the same numeric-like normalisation:
 //    submitted_size absent + stake_usd "2.5" -> submitted_size normalises to 2.5.
 //    Proven by validation getting PAST the submitted_size check: a queue row whose
-//    max_entry_price (1.5) breaches the 0.62 Founder ceiling is rejected with
+//    max_entry_price (1.5) breaches the 0.54 Founder ceiling is rejected with
 //    QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING. A null fallback would instead be
 //    MISSING_SUBMITTED_SIZE (the size check precedes the ceiling check).
 test("N4: submitted_size falls back from a numeric-string stake_usd and is normalised to numeric 2.5", async () => {
@@ -205,7 +205,7 @@ test("N4: submitted_size falls back from a numeric-string stake_usd and is norma
 });
 
 test("N4b: submitted_size fallback from a numeric-string stake_usd passes when within the notional cap", async () => {
-  const port = makeFakePort([baseQueueRow({ stake_usd: 2.5, diagnostics: { max_entry_price: 0.62 } })]);
+  const port = makeFakePort([baseQueueRow({ stake_usd: 2.5, diagnostics: { max_entry_price: 0.54 } })]);
   const outcome = await handleOrderEventSubmission(
     port,
     irelandCallbackRaw({ stake_usd: "2.5", submitted_size: undefined, submitted_price: 0.4 }),

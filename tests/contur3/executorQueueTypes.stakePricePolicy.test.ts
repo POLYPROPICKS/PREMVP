@@ -47,7 +47,7 @@ function baseQueueRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExe
     status: "READY",
     order_key: "cond-1:token-1:Argentina",
     idempotency_key: "idem-1",
-    diagnostics: { max_entry_price: 0.62 },
+    diagnostics: { max_entry_price: 0.54 },
     ...overrides,
   };
 }
@@ -63,7 +63,7 @@ function baseSubmission(overrides: Partial<OrderEventSubmission> = {}): OrderEve
     market_slug: "argentina-vs-egypt-moneyline",
     stake_usd: 4,
     submitted_size: 6,
-    submitted_price: 0.6,
+    submitted_price: 0.5,
     ...overrides,
   };
 }

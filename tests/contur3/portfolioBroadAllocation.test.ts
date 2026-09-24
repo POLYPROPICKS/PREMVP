@@ -155,8 +155,8 @@ test("6: price 0.49 -> NOT qualified", () => {
 test("7: one physical event with a Tier2 and a genuinely-qualifying Tier1 accepted identity -- Tier1 wins", () => {
   const physicalEventId = "provider:polymarket:evt-a:2026-08-11";
   const results = [
-    acceptedFor({ physicalEventId, generatedSignalPairId: "row-tier2", conditionId: "c-tier2", tokenId: "t-tier2" }),
-    acceptedFor({ physicalEventId, generatedSignalPairId: "row-tier1", conditionId: "c-tier1", tokenId: "t-tier1" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "row-tier2", conditionId: "c-tier2", tokenId: "t-tier2", sport: "SOCCER" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "row-tier1", conditionId: "c-tier1", tokenId: "t-tier1", sport: "SOCCER" }),
   ];
   const rows = [
     sourceRow({ id: "row-tier2", conditionId: "c-tier2", tokenId: "t-tier2", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
@@ -165,6 +165,11 @@ test("7: one physical event with a Tier2 and a genuinely-qualifying Tier1 accept
     // RESERVATION_MIX_GUARD_V1, which is a separate, later-stage concern).
     sourceRow({ id: "row-tier1", conditionId: "c-tier1", tokenId: "t-tier1", entryPrice: 0.51, preEventScore: 64, createdAt: "2026-08-11T11:00:00.000Z" }),
   ];
+  // Both identities are for the same physical event, and NARROW_FOOTBALL_MONEY_
+  // POLICY_V1's football-only mix guard is applied unconditionally under
+  // LIVE_RESERVATION_PORTFOLIO_BROAD_V2 -- the event itself must be football
+  // (the default sport MLB used by acceptedFor() would otherwise be excluded
+  // entirely, before the tier tie-break this test exercises ever runs).
   const result = build(results, rows);
   assert.equal(result.reservations.length, 1);
   assert.equal(result.reservations[0].diagnostics.portfolio_tier, 1);
@@ -177,9 +182,12 @@ test("8: same tier -- freshest (newest) source_created_at wins; condition_id/tok
   // tier ties within one physical event prefer the newest source_created_at,
   // never the oldest.
   const physicalEventId = "provider:polymarket:evt-b:2026-08-11";
+  // Football (SOCCER), so this single physical event survives the
+  // NARROW_FOOTBALL_MONEY_POLICY_V1 football-only mix guard -- the tie-break
+  // this test exercises is a separate, upstream, intra-event concern.
   const results = [
-    acceptedFor({ physicalEventId, generatedSignalPairId: "row-later", conditionId: "c-z", tokenId: "t-z" }),
-    acceptedFor({ physicalEventId, generatedSignalPairId: "row-earlier", conditionId: "c-a", tokenId: "t-a" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "row-later", conditionId: "c-z", tokenId: "t-z", sport: "SOCCER" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "row-earlier", conditionId: "c-a", tokenId: "t-a", sport: "SOCCER" }),
   ];
   const rows = [
     sourceRow({ id: "row-later", conditionId: "c-z", tokenId: "t-z", entryPrice: 0.51, createdAt: "2026-08-11T11:00:00.000Z" }),
@@ -227,10 +235,12 @@ test("9: a raw source row with no corresponding ACCEPTED decision cannot qualify
 
 test("physical-event dedupe: one physical event produces at most one Reservation even with 3 qualifying identities", () => {
   const physicalEventId = "provider:polymarket:evt-d:2026-08-11";
+  // Football (SOCCER), so this physical event survives the NARROW_FOOTBALL_
+  // MONEY_POLICY_V1 football-only mix guard.
   const results = [
-    acceptedFor({ physicalEventId, generatedSignalPairId: "r1", conditionId: "c1", tokenId: "t1" }),
-    acceptedFor({ physicalEventId, generatedSignalPairId: "r2", conditionId: "c2", tokenId: "t2" }),
-    acceptedFor({ physicalEventId, generatedSignalPairId: "r3", conditionId: "c3", tokenId: "t3" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "r1", conditionId: "c1", tokenId: "t1", sport: "SOCCER" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "r2", conditionId: "c2", tokenId: "t2", sport: "SOCCER" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "r3", conditionId: "c3", tokenId: "t3", sport: "SOCCER" }),
   ];
   const rows = [
     sourceRow({ id: "r1", conditionId: "c1", tokenId: "t1", entryPrice: 0.51 }),
@@ -241,14 +251,17 @@ test("physical-event dedupe: one physical event produces at most one Reservation
   assert.equal(result.reservations.length, 1);
 });
 
-// ── RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1: capacity
-// ordering across physical events is Signal Score DESC -> football
-// preference -> freshest source -> provider volume -> physical event id ────
+// ── NARROW_FOOTBALL_MONEY_POLICY_V1: capacity ordering across physical
+// events is football preference (SOCCER/WC only) -> freshest source ->
+// provider volume -> physical event id. Signal Score is never the ranking
+// input, and the LIVE_RESERVATION_MIX_GUARD_FOOTBALL_ONLY_V1 mix guard
+// (applied unconditionally under PORTFOLIO_BROAD) means tennis and every
+// other non-football sport are NEVER selected into a money Reservation,
+// regardless of football sufficiency or Signal Score -- they remain
+// observable upstream as accepted Contract A Planning Decisions, just never
+// promoted to a Reservation. ────────────────────────────────────────────────
 
-// RESERVATION_MIX_GUARD_V1 applies the Founder-staged fill: below 20 football,
-// all football comes first and tennis is the unrestricted first fallback.
-
-test("capacity-1: football shortage retains the eligible tennis fallback", () => {
+test("capacity-1: tennis is excluded from the money Reservation even when football is short, regardless of tennis's higher score", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-74:2026-08-11", generatedSignalPairId: "t74", conditionId: "ct74", tokenId: "tt74", sport: "TENNIS", planningScore: 74 }),
     acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-76:2026-08-11", generatedSignalPairId: "s76", conditionId: "cs76", tokenId: "ts76", sport: "SOCCER", planningScore: 76 }),
@@ -260,11 +273,10 @@ test("capacity-1: football shortage retains the eligible tennis fallback", () =>
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
     "provider:polymarket:evt-soccer-76:2026-08-11",
-    "provider:polymarket:evt-tennis-74:2026-08-11",
   ]);
 });
 
-test("capacity-2: football is staged before tennis when football is short", () => {
+test("capacity-2: tennis is excluded from the money Reservation even at an equal Signal Score to football", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-74b:2026-08-11", generatedSignalPairId: "t74b", conditionId: "ct74b", tokenId: "tt74b", sport: "TENNIS", planningScore: 74 }),
     acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-74b:2026-08-11", generatedSignalPairId: "s74b", conditionId: "cs74b", tokenId: "ts74b", sport: "SOCCER", planningScore: 74 }),
@@ -276,11 +288,10 @@ test("capacity-2: football is staged before tennis when football is short", () =
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
     "provider:polymarket:evt-soccer-74b:2026-08-11",
-    "provider:polymarket:evt-tennis-74b:2026-08-11",
   ]);
 });
 
-test("capacity-3: football stage precedes a higher-score tennis fallback", () => {
+test("capacity-3: tennis is excluded from the money Reservation even with a higher Signal Score than football", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-75:2026-08-11", generatedSignalPairId: "t75", conditionId: "ct75", tokenId: "tt75", sport: "TENNIS", planningScore: 75 }),
     acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-70:2026-08-11", generatedSignalPairId: "s70", conditionId: "cs70", tokenId: "ts70", sport: "SOCCER", planningScore: 70 }),
@@ -292,11 +303,10 @@ test("capacity-3: football stage precedes a higher-score tennis fallback", () =>
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
     "provider:polymarket:evt-soccer-70:2026-08-11",
-    "provider:polymarket:evt-tennis-75:2026-08-11",
   ]);
 });
 
-test("capacity-4: football (WC) preferred over a non-football, non-tennis sport at equal score", () => {
+test("capacity-4: football (WC) is admitted and a non-football, non-tennis sport (MLB) is excluded, even at an equal score", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:evt-mlb-70:2026-08-11", generatedSignalPairId: "m70", conditionId: "cm70", tokenId: "tm70", sport: "MLB", planningScore: 70 }),
     acceptedFor({ physicalEventId: "provider:polymarket:evt-wc-70:2026-08-11", generatedSignalPairId: "w70", conditionId: "cw70", tokenId: "tw70", sport: "WC", planningScore: 70 }),
@@ -308,15 +318,17 @@ test("capacity-4: football (WC) preferred over a non-football, non-tennis sport 
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
     "provider:polymarket:evt-wc-70:2026-08-11",
-    "provider:polymarket:evt-mlb-70:2026-08-11",
   ]);
 });
 
-test("capacity-5: equal score and equal football-preference tier -> freshest source evidence wins, then provider volume, then physical_event_id", () => {
+test("capacity-5: equal football-preference tier -> freshest source evidence wins, then provider volume, then physical_event_id", () => {
+  // Football (SOCCER) for all three: NARROW_FOOTBALL_MONEY_POLICY_V1's
+  // football-only mix guard would otherwise exclude every candidate here
+  // before the freshness tie-break this test exercises ever runs.
   const results = [
-    acceptedFor({ physicalEventId: "provider:polymarket:z-evt:2026-08-11", generatedSignalPairId: "z", conditionId: "cz", tokenId: "tz", sport: "MLB", planningScore: 70 }),
-    acceptedFor({ physicalEventId: "provider:polymarket:a-evt:2026-08-11", generatedSignalPairId: "a", conditionId: "ca", tokenId: "ta", sport: "MLB", planningScore: 70 }),
-    acceptedFor({ physicalEventId: "provider:polymarket:b-evt:2026-08-11", generatedSignalPairId: "b", conditionId: "cb", tokenId: "tb", sport: "MLB", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:z-evt:2026-08-11", generatedSignalPairId: "z", conditionId: "cz", tokenId: "tz", sport: "SOCCER", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:a-evt:2026-08-11", generatedSignalPairId: "a", conditionId: "ca", tokenId: "ta", sport: "SOCCER", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:b-evt:2026-08-11", generatedSignalPairId: "b", conditionId: "cb", tokenId: "tb", sport: "SOCCER", planningScore: 70 }),
   ];
   const rows = [
     sourceRow({ id: "z", conditionId: "cz", tokenId: "tz", entryPrice: 0.51, createdAt: "2026-08-11T08:00:00.000Z" }),
@@ -331,10 +343,11 @@ test("capacity-5: equal score and equal football-preference tier -> freshest sou
   ]);
 });
 
-test("capacity-6: equal score, equal football-preference tier, equal freshness -> higher provider volume wins", () => {
+test("capacity-6: equal football-preference tier, equal freshness -> higher provider volume wins", () => {
+  // Football (SOCCER) for both, for the same reason as capacity-5.
   const results = [
-    acceptedFor({ physicalEventId: "provider:polymarket:low-vol:2026-08-11", generatedSignalPairId: "lv", conditionId: "clv", tokenId: "tlv", sport: "MLB", planningScore: 70 }),
-    acceptedFor({ physicalEventId: "provider:polymarket:high-vol:2026-08-11", generatedSignalPairId: "hv", conditionId: "chv", tokenId: "thv", sport: "MLB", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:low-vol:2026-08-11", generatedSignalPairId: "lv", conditionId: "clv", tokenId: "tlv", sport: "SOCCER", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:high-vol:2026-08-11", generatedSignalPairId: "hv", conditionId: "chv", tokenId: "thv", sport: "SOCCER", planningScore: 70 }),
   ];
   const rows = [
     sourceRow({ id: "lv", conditionId: "clv", tokenId: "tlv", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
@@ -359,7 +372,7 @@ test("cap: 31 qualifying physical events -> 30 Reservations", () => {
   for (let i = 0; i < 31; i++) {
     const id = `event-${String(i).padStart(2, "0")}`;
     const physicalEventId = `provider:polymarket:${id}:2026-08-11`;
-    results.push(acceptedFor({ physicalEventId, generatedSignalPairId: id, conditionId: `c-${id}`, tokenId: `t-${id}` }));
+    results.push(acceptedFor({ physicalEventId, generatedSignalPairId: id, conditionId: `c-${id}`, tokenId: `t-${id}`, sport: "SOCCER" }));
     rows.push(sourceRow({ id, conditionId: `c-${id}`, tokenId: `t-${id}`, entryPrice: 0.51, createdAt: `2026-08-11T${String(8 + Math.floor(i / 6)).padStart(2, "0")}:${String((i % 6) * 10).padStart(2, "0")}:00.000Z` }));
   }
   const result = build(results, rows);
@@ -383,8 +396,9 @@ test("13: policy invariant -- active target = 30, hard ceiling = 50", () => {
 
 test("15: no final executable identity field is populated at Reservation -- only model decision evidence", () => {
   const physicalEventId = "provider:polymarket:evt-e:2026-08-11";
+  // Football (SOCCER), to survive the football-only mix guard.
   const results = [
-    acceptedFor({ physicalEventId, generatedSignalPairId: "r1", conditionId: "c1", tokenId: "t1" }),
+    acceptedFor({ physicalEventId, generatedSignalPairId: "r1", conditionId: "c1", tokenId: "t1", sport: "SOCCER" }),
   ];
   const rows = [sourceRow({ id: "r1", conditionId: "c1", tokenId: "t1", entryPrice: 0.51 })];
   const result = build(results, rows);
@@ -410,10 +424,12 @@ function buildWindowed(startIsoById: Record<string, string>) {
   const results: ContractADecisionResult<ContractAPlanningDecision>[] = [];
   const rows: Record<string, unknown>[] = [];
   for (const [id, start] of Object.entries(startIsoById)) {
-    // Neutral non-football, non-tennis sport: these tests exercise the
-    // reservation WINDOW boundary, upstream of and unrelated to
-    // RESERVATION_MIX_GUARD_V1's football/tennis share enforcement.
-    results.push(acceptedFor({ physicalEventId: `provider:polymarket:${id}:2026-08-11`, generatedSignalPairId: id, conditionId: `c-${id}`, tokenId: `t-${id}`, sport: "MLB", start }));
+    // Football (SOCCER): these tests exercise the reservation WINDOW boundary,
+    // upstream of the mix guard -- but under NARROW_FOOTBALL_MONEY_POLICY_V1
+    // the mix guard is football-only and unconditional, so a non-football
+    // sport would be excluded before the window boundary logic is ever
+    // reached, breaking the point of these tests.
+    results.push(acceptedFor({ physicalEventId: `provider:polymarket:${id}:2026-08-11`, generatedSignalPairId: id, conditionId: `c-${id}`, tokenId: `t-${id}`, sport: "SOCCER", start }));
     rows.push(sourceRow({ id, conditionId: `c-${id}`, tokenId: `t-${id}`, entryPrice: 0.51 }));
   }
   return buildReservationsFromPlanningDecisions(
@@ -455,7 +471,7 @@ test("W6: out-of-window Broad events cannot consume Reservation capacity", () =>
   assert.equal(r.capExcluded, 0);
 });
 
-test("W7: in-window Broad events retain the tennis fallback after football", () => {
+test("W7: an in-window tennis event is excluded from the money Reservation even after an in-window football event fills", () => {
   const results = [
     acceptedFor({ physicalEventId: "provider:polymarket:z-tennis-70:2026-08-11", generatedSignalPairId: "z3", conditionId: "cz3", tokenId: "tz3", sport: "TENNIS", planningScore: 70, start: "2026-08-11T16:00:00.000Z" }),
     acceptedFor({ physicalEventId: "provider:polymarket:a-soccer-76:2026-08-11", generatedSignalPairId: "a1", conditionId: "ca1", tokenId: "ta1", sport: "SOCCER", planningScore: 76, start: "2026-08-11T16:00:00.000Z" }),
@@ -467,6 +483,5 @@ test("W7: in-window Broad events retain the tennis fallback after football", () 
   const r = buildReservationsFromPlanningDecisions(results, { planRunId: buildPlanRunId(ANCHOR_MS), window: W_WINDOW, nowMs: W_NOW }, [], { allocationPolicy: LIVE_RESERVATION_PORTFOLIO_BROAD_V2, sourceRowsForCandidateManifest: rows });
   assert.deepEqual(r.reservations.map((x) => x.physical_event_id), [
     "provider:polymarket:a-soccer-76:2026-08-11",
-    "provider:polymarket:z-tennis-70:2026-08-11",
   ]);
 });

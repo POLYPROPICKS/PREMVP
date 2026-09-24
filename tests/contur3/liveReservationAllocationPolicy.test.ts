@@ -119,7 +119,13 @@ test("29-minute starts exclude while exactly 30 minutes is allocatable", () => {
   assert.equal(result.rejections.find((row) => row.physical_event_id?.includes("too-early"))?.reason_code, "MIN_START_LEAD_NOT_MET");
 });
 
-test("ranking is score desc, preferred sport, provider volume desc, then stable provider identity", () => {
+test("ranking is preferred sport (never Signal Score), provider volume desc, then stable provider identity", () => {
+  // NARROW_FOOTBALL_MONEY_POLICY_V1: the legacy (non-PORTFOLIO_BROAD) branch
+  // of compareLiveReservationAllocationCandidates no longer ranks by Signal
+  // Score at all -- score/rank on these fixtures are inert telemetry, and
+  // sport preference (LIVE_RESERVATION_ALLOCATION_V1.preferredStrategicScopes
+  // = SOCCER/TENNIS) -> provider volume DESC -> physical_event_id ASC decide
+  // the order.
   const result = build([
     accepted({ id: "low-score-soccer", score: 63, sport: "SOCCER", rank: 1 }),
     accepted({ id: "high-score-mlb", score: 70, sport: "MLB", rank: 99 }),
@@ -134,12 +140,15 @@ test("ranking is score desc, preferred sport, provider volume desc, then stable 
     "equal-soccer-a": 500,
   });
   assert.deepEqual(result.reservations.map((row) => row.physical_event_id), [
-    "provider:polymarket:high-score-mlb:2026-08-11",
+    // Preferred sport (SOCCER/TENNIS) group, by provider volume DESC then
+    // physical_event_id ASC on the 500/500 tie:
     "provider:polymarket:equal-tennis-high-volume:2026-08-11",
     "provider:polymarket:equal-soccer-a:2026-08-11",
     "provider:polymarket:equal-soccer-high-volume:2026-08-11",
-    "provider:polymarket:equal-mlb:2026-08-11",
     "provider:polymarket:low-score-soccer:2026-08-11",
+    // Non-preferred (MLB) group, by provider volume DESC:
+    "provider:polymarket:equal-mlb:2026-08-11",
+    "provider:polymarket:high-score-mlb:2026-08-11",
   ]);
 });
 

@@ -91,7 +91,7 @@ test("real reservation cron entry uses Contract A decisions, not the legacy cand
   );
 });
 
-test("full link: exact Signal Pair -> Planning -> persisted Reservation -> max-score Queue is deterministic and idempotent", async () => {
+test("full link: exact Signal Pair -> Planning -> persisted Reservation -> Planning-validated-identity Queue is deterministic and idempotent (a higher-score sibling never displaces the anchor Planning already committed to)", async () => {
   const anchor = source("00000000-0000-4000-8000-000000000101", 75, "cond-anchor");
   const siblingLow = source("00000000-0000-4000-8000-000000000102", 80, "cond-low");
   const siblingHigh = source("00000000-0000-4000-8000-000000000103", 91, "cond-high");
@@ -155,14 +155,27 @@ test("full link: exact Signal Pair -> Planning -> persisted Reservation -> max-s
     fetchFinalIdentitySourceRows: async () => [anchor, siblingLow, siblingHigh, otherEvent],
     fetchCandidates: async () => { throw new Error("no model/Contract A/order-book/price policy may run after Reservation"); },
   };
+  // NARROW_FOOTBALL_MONEY_POLICY_V1 correction: the Queue row is resolved
+  // ENTIRELY from diagnostics.planning_final_identity_evidence, which Contract
+  // A Planning already persisted onto the Reservation as the ANCHOR's own
+  // identity (cond-anchor) -- never re-ranked by Signal Score. siblingHigh
+  // (score 91, strictly higher than the anchor's 75) must NOT win.
+  assert.equal(
+    (reservation.diagnostics.planning_final_identity_evidence as Record<string, unknown> | null)?.condition_id,
+    "cond-anchor"
+  );
   const first = await runEventRebalance(REBALANCE_NOW, { write: true }, deps);
   assert.equal(first.due_count, 1);
-  assert.equal(first.queued_count, 1);
+  assert.equal(first.queued_count, 1, JSON.stringify(first.outcomes));
   assert.equal(queues.length, 1);
-  assert.equal(queues[0].condition_id, "cond-high");
-  assert.equal(queues[0].token_id, "token-cond-high");
+  assert.equal(queues[0].condition_id, "cond-anchor");
+  assert.equal(queues[0].token_id, "token-cond-anchor");
   assert.equal(queues[0].side, "YES");
-  assert.equal(queues[0].diagnostics.selected_signal_pair_id, siblingHigh.id);
+  assert.equal(
+    queues[0].diagnostics.selected_signal_pair_id,
+    anchor.id,
+    "the anchor identity Planning already committed to wins, despite siblingHigh's strictly higher Signal Score"
+  );
   assert.ok(queues[0].idempotency_key);
   const second = await runEventRebalance(REBALANCE_NOW, { write: true }, deps);
   assert.equal(second.already_queued_count, 1);
@@ -175,9 +188,9 @@ test("full link: exact Signal Pair -> Planning -> persisted Reservation -> max-s
   const candidate = mapQueueRowToIrelandCandidate(queues[0], REBALANCE_NOW);
   assert.equal(candidate.queue_row_id, "queue-exact");
   assert.equal(candidate.reservation_id, "reservation-exact");
-  assert.equal(candidate.signal_pair_id, siblingHigh.id);
-  assert.equal(candidate.condition_id, "cond-high");
-  assert.equal(candidate.token_id, "token-cond-high");
+  assert.equal(candidate.signal_pair_id, anchor.id);
+  assert.equal(candidate.condition_id, "cond-anchor");
+  assert.equal(candidate.token_id, "token-cond-anchor");
   assert.equal(candidate.side, "YES");
   assert.equal(candidate.execution_side, "BUY");
   assert.equal(candidate.stake_usd, queues[0].stake_usd);

@@ -922,12 +922,53 @@ function providerPhysicalEventId(eventId: string, eventStartIso: string): string
   return `provider:polymarket:${eventId.toLowerCase()}:${eventStartIso.slice(0, 10)}`;
 }
 
-function compareExactProviderSignalPairs(a: ExactProviderSignalPair, b: ExactProviderSignalPair): number {
-  return b.signalScore - a.signalScore ||
-    a.conditionId.localeCompare(b.conditionId) ||
-    a.tokenId.localeCompare(b.tokenId) ||
-    a.side.localeCompare(b.side) ||
-    a.id.localeCompare(b.id);
+/**
+ * The exact identity Contract A Planning already committed to for this
+ * Reservation (persisted verbatim onto the Reservation row as
+ * diagnostics.planning_final_identity_evidence -- see
+ * ContractAPlanningDecision.final_identity_evidence, contractADecisions.ts).
+ * This is the same field, and the same match predicate, that
+ * produceContractAFinalIdentityDecision's samePersistedIdentity check already
+ * uses to validate a Final Identity candidate -- reused here verbatim, never
+ * re-derived or re-ranked.
+ */
+interface PlanningFinalIdentityEvidence {
+  conditionId: string;
+  tokenId: string;
+  side: string;
+}
+
+function extractPlanningFinalIdentityEvidence(
+  diagnostics: Record<string, unknown> | undefined
+): PlanningFinalIdentityEvidence | null {
+  const raw = diagnostics?.planning_final_identity_evidence;
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const conditionId = text(r.condition_id);
+  const tokenId = text(r.token_id);
+  const side = text(r.side);
+  if (conditionId === null || tokenId === null || side === null) return null;
+  return { conditionId, tokenId, side };
+}
+
+/**
+ * Picks the ONE candidate whose exact identity matches the persisted Contract
+ * A Planning authority (NARROW_FOOTBALL_MONEY_POLICY_V1 correction, ISSUE 1:
+ * final market selection is never a re-ranking of siblings -- by Signal
+ * Score, by lexical identity order, or by any other invented comparator).
+ * Never substitutes a different market: a missing evidence field or a
+ * candidate set that does not contain it fails closed by returning null.
+ */
+function selectByPlanningFinalIdentityEvidence<T extends { conditionId: string; tokenId: string; side: string }>(
+  candidates: readonly T[],
+  evidence: PlanningFinalIdentityEvidence | null
+): T | null {
+  if (evidence === null) return null;
+  return (
+    candidates.find(
+      (c) => c.conditionId === evidence.conditionId && c.tokenId === evidence.tokenId && c.side === evidence.side
+    ) ?? null
+  );
 }
 
 export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
@@ -1180,7 +1221,7 @@ function buildQueueRowFromExactCandidate(
     market_slug: selected.marketSlug, market_title: selected.marketSlug, market_family: null,
     score: selected.signalScore, coverage: null, tier: reservation.event_tier ?? EXECUTABLE_TIER,
     stake_usd: selected.stakeUsd, preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: latestEntryIso(startMs),
-    selection_rank: reservation.reservation_rank ?? 1, selection_reason: "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1",
+    selection_rank: reservation.reservation_rank ?? 1, selection_reason: "RESERVED_EVENT_PLANNING_FINAL_IDENTITY_V1",
     status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
     diagnostics: {
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
@@ -1229,15 +1270,19 @@ async function selectQueueRowFromContractAReservation(
     return { outcome: "SKIPPED", reason: reasonCode, queueRow: null };
   }
   const candidates = rows.map(exactProviderSignalPair).filter((v): v is ExactProviderSignalPair => v !== null)
-    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && providerPhysicalEventId(v.eventId, v.eventStartIso) === physicalEventId)
-    .sort(compareExactProviderSignalPairs);
-  const selected = candidates[0];
-  if (!selected) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
+    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && providerPhysicalEventId(v.eventId, v.eventStartIso) === physicalEventId);
+  if (candidates.length === 0) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
+  const planningIdentity = extractPlanningFinalIdentityEvidence(reservation.diagnostics);
+  if (planningIdentity === null) {
+    return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", queueRow: null };
+  }
+  const selected = selectByPlanningFinalIdentityEvidence(candidates, planningIdentity);
+  if (!selected) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_SET", queueRow: null };
   const row = buildQueueRowFromExactCandidate(reservation, rebalanceRunId, physicalEventId, eventStartIso, selected, {
     sourceAuthority: "GSP_ANCHOR_SIBLING",
-    mechanicalGuardTrace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE"],
+    mechanicalGuardTrace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "PLANNING_FINAL_IDENTITY_VALIDATED", "IDENTITY_COMPLETE"],
   });
-  return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1", queueRow: row };
+  return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_PLANNING_FINAL_IDENTITY_V1", queueRow: row };
 }
 
 /** The B2 candidate-manifest version this Rebalance path knows how to consume.
@@ -1280,19 +1325,6 @@ function manifestEntryToExactSignalPair(entry: unknown): ManifestExactSignalPair
     stakeUsd: EXECUTABLE_STAKE_USD, maxEntryPrice: QUEUE_MAX_ENTRY_PRICE, entryPrice, scoreContractVersion,
     marketSlug: text(e.market_slug),
   };
-}
-
-/** Same ranking rule as compareExactProviderSignalPairs (max score, then a
- * fully deterministic tie-break) — one selection policy regardless of which
- * candidate source produced the array. */
-function compareManifestExactSignalPairs(a: ManifestExactSignalPair, b: ManifestExactSignalPair): number {
-  return (
-    b.signalScore - a.signalScore ||
-    a.conditionId.localeCompare(b.conditionId) ||
-    a.tokenId.localeCompare(b.tokenId) ||
-    a.side.localeCompare(b.side) ||
-    a.id.localeCompare(b.id)
-  );
 }
 
 type ReservationCandidateManifestResolution =
@@ -1433,9 +1465,17 @@ async function evaluateLiveOrderbookGuard(
  * remain distinct candidates under this ONE Reservation's selection — exactly
  * one queue row is ever produced, same as every other selection path.
  *
- * RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1: after the exact
- * condition_id/token_id/side is selected (deterministic max-signal-score,
- * unchanged), the LIVE orderbook for that exact token is refreshed and must
+ * NARROW_FOOTBALL_MONEY_POLICY_V1 correction (ISSUE 1): the exact
+ * condition_id/token_id/side is never chosen by ranking manifest siblings --
+ * neither by Signal Score nor by an invented lexical identity order. It is
+ * the ONE manifest entry that matches the already-persisted Contract A
+ * Planning authority (diagnostics.planning_final_identity_evidence),
+ * validated and carried forward verbatim. A manifest that does not contain
+ * that exact identity fails closed (PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_MANIFEST)
+ * rather than substituting a different market.
+ *
+ * RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1: once that exact identity is
+ * validated, the LIVE orderbook for that exact token is refreshed and must
  * pass the mechanical execution guard before this Reservation may enter
  * READY. A guard failure SKIPS this reservation this cycle -- it never
  * substitutes another manifest entry.
@@ -1451,8 +1491,13 @@ async function selectQueueRowFromReservationCandidateManifest(
   if (!eventStartIso || !Number.isFinite(Date.parse(eventStartIso)) || !physicalEventId) {
     return { outcome: "SKIPPED", reason: "RESERVATION_EXACT_EVENT_LINEAGE_INCOMPLETE", queueRow: null };
   }
-  const selected = [...candidates].sort(compareManifestExactSignalPairs)[0];
-  if (!selected) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
+  if (candidates.length === 0) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
+  const planningIdentity = extractPlanningFinalIdentityEvidence(reservation.diagnostics);
+  if (planningIdentity === null) {
+    return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", queueRow: null };
+  }
+  const selected = selectByPlanningFinalIdentityEvidence(candidates, planningIdentity);
+  if (!selected) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_MANIFEST", queueRow: null };
 
   const guard = await evaluateLiveOrderbookGuard(selected, fetchExactTokenOrderbook);
   if (!guard.pass) {
@@ -1468,13 +1513,13 @@ async function selectQueueRowFromReservationCandidateManifest(
     {
       sourceAuthority: "B2_CANDIDATE_MANIFEST",
       mechanicalGuardTrace: [
-        "RESERVATION_ACTIVE", "DUE_WINDOW", "B2_CANDIDATE_MANIFEST", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE",
+        "RESERVATION_ACTIVE", "DUE_WINDOW", "B2_CANDIDATE_MANIFEST", "PLANNING_FINAL_IDENTITY_VALIDATED", "IDENTITY_COMPLETE",
         ...guard.trace,
       ],
     },
     guard.evidence
   );
-  return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1", queueRow: row };
+  return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_PLANNING_FINAL_IDENTITY_V1", queueRow: row };
 }
 
 /**
