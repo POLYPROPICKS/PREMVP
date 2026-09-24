@@ -109,6 +109,52 @@ function productionReservation(
   } as NightEventReservationRow;
 }
 
+/**
+ * Pins `diagnostics.planning_final_identity_evidence` onto a Reservation —
+ * the exact identity Contract A Planning already committed to (persisted
+ * verbatim at Reservation-write time from ContractAPlanningDecision.
+ * final_identity_evidence; see nightEventReservations.ts's
+ * planningDecisionReservationRow). Under the NARROW_FOOTBALL_MONEY_POLICY_V1
+ * correction this is the ONLY thing that decides which sibling wins — never a
+ * re-ranking by Signal Score or by lexicographic identity order.
+ */
+function withPlanningIdentity(
+  reservation: NightEventReservationRow,
+  identity: { condition_id: string; token_id: string; side: string },
+): NightEventReservationRow {
+  return {
+    ...reservation,
+    diagnostics: {
+      ...(reservation.diagnostics as Record<string, unknown>),
+      planning_final_identity_evidence: {
+        condition_id: identity.condition_id,
+        token_id: identity.token_id,
+        side: identity.side,
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
+    },
+  } as NightEventReservationRow;
+}
+
+/** The pinned identity matching SIBLING_PAIR_ID in productionSiblings() — the
+ * legitimate winner: Contract A Planning already committed to this exact
+ * market for the reserved event, independent of its Signal Score (57, lower
+ * than the ANCHOR's 62) or its lexical identity order. */
+const SIBLING_PLANNING_IDENTITY = {
+  condition_id: CONDITION_ID,
+  token_id: "11111111111111111111111111111111111111111111111111111111111111111111111111111",
+  side: "RE.Arise",
+};
+
+/** The pinned identity matching ANCHOR_PAIR_ID in productionSiblings(). */
+const ANCHOR_PLANNING_IDENTITY = {
+  condition_id: CONDITION_ID,
+  token_id: "74531221319072082662127561958430587464439956098018275068847277854364923581338",
+  side: "Ilbirs eSports",
+};
+
 /** The exact four sibling rows that existed in production for this condition_id. */
 function productionSiblings(): Record<string, unknown>[] {
   return [
@@ -260,8 +306,8 @@ test("C1-0b: harness rejects the exact fabrication that made the old selector te
 // 1. The production failure, reproduced end to end. RED on base.
 // ---------------------------------------------------------------------------
 
-test("C1-1: natural due Reservation reaches Queue via deterministic identity tie-break (no Signal Score ranking)", async () => {
-  const h = harness(productionSiblings(), productionReservation());
+test("C1-1: natural due Reservation reaches Queue via the validated Planning final identity (a higher-score sibling cannot displace it)", async () => {
+  const h = harness(productionSiblings(), withPlanningIdentity(productionReservation(), SIBLING_PLANNING_IDENTITY));
   const result = await h.run();
 
   assert.notEqual(RESERVATION_EVENT_START, EVENT_START, "the regression must cross the real timestamptz/JSON serialization boundary");
@@ -277,11 +323,13 @@ test("C1-1: natural due Reservation reaches Queue via deterministic identity tie
   const q = h.queue[0];
   const diag = q.diagnostics as Record<string, unknown>;
 
-  // Both siblings share the same condition_id, so the winner is decided by the
-  // deterministic identity tie-break (token_id ascending) -- NOT by authoritative
-  // score (62 vs 57): the SIBLING's token_id ("111...") sorts before the ANCHOR's
-  // ("745...") under NARROW_FOOTBALL_MONEY_POLICY_V1, which removed Signal Score
-  // as a ranking input.
+  // Both siblings share the same condition_id, so the winner is decided
+  // EXCLUSIVELY by the persisted Contract A Planning identity
+  // (diagnostics.planning_final_identity_evidence) -- NOT by authoritative
+  // score. The ANCHOR has the strictly HIGHER Signal Score (62 vs the
+  // SIBLING's 57) yet the SIBLING wins because that is the identity Planning
+  // already committed to. This proves acceptance criterion 1: a higher-score
+  // sibling can never displace the authoritative exact identity.
   assert.equal(diag.selected_signal_pair_id, SIBLING_PAIR_ID);
   assert.equal(q.score, 57);
   assert.equal(q.condition_id, CONDITION_ID);
@@ -343,26 +391,45 @@ test("C1-3: missing accepted price fails closed", async () => {
   assert.equal(h.skipped[0]?.reason, "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR");
 });
 
-test("C1-4: deterministic canonical tie-break on equal authoritative score", async () => {
-  const tie = [
+test("C1-4: Planning-pinned identity wins over BOTH a higher-score sibling and a lexicographically-smaller sibling (no comparator exists any more)", async () => {
+  // Three siblings under the same condition_id:
+  //  - "tok-a-smallest": lexicographically the SMALLEST token_id, but a lower score.
+  //  - "tok-m-pinned":   the identity Contract A Planning actually committed to.
+  //  - "tok-z-highest-score": the STRICTLY HIGHEST Signal Score, but not pinned.
+  // Under the corrected contract there is no sort/rank of siblings at all --
+  // selectByPlanningFinalIdentityEvidence is a .find(), never a comparator --
+  // so neither the lowest lexical identity nor the highest score may win.
+  const rows = [
     producerShapedRow({
-      id: ANCHOR_PAIR_ID, conditionId: CONDITION_ID, selectedTokenId: "tok-z",
-      selectedOutcome: "Ilbirs eSports", signalConfidenceNum: 70, entryPriceNum: 0.4,
+      id: ANCHOR_PAIR_ID, conditionId: CONDITION_ID, selectedTokenId: "tok-a-smallest",
+      selectedOutcome: "Ilbirs eSports", signalConfidenceNum: 55, entryPriceNum: 0.4,
       metricFormulaVersion: SCORED_VERSION,
       providerEventId: PROVIDER_EVENT_ID, providerEventStartIso: EVENT_START,
     }),
     producerShapedRow({
-      id: SIBLING_PAIR_ID, conditionId: CONDITION_ID, selectedTokenId: "tok-a",
+      id: SIBLING_PAIR_ID, conditionId: CONDITION_ID, selectedTokenId: "tok-m-pinned",
       selectedOutcome: "RE.Arise", signalConfidenceNum: 70, entryPriceNum: 0.5,
       metricFormulaVersion: SCORED_VERSION,
       providerEventId: PROVIDER_EVENT_ID, providerEventStartIso: EVENT_START,
     }),
+    producerShapedRow({
+      id: "3f8a1c2e-91b5-4a77-9c0d-2e6f7a8b9c1d", conditionId: CONDITION_ID, selectedTokenId: "tok-z-highest-score",
+      selectedOutcome: "Ilbirs eSports", signalConfidenceNum: 99, entryPriceNum: 0.45,
+      metricFormulaVersion: SCORED_VERSION,
+      providerEventId: PROVIDER_EVENT_ID, providerEventStartIso: EVENT_START,
+    }),
   ];
-  const h = harness(tie, productionReservation());
+  const reservation = withPlanningIdentity(productionReservation(), {
+    condition_id: CONDITION_ID,
+    token_id: "tok-m-pinned",
+    side: "RE.Arise",
+  });
+  const h = harness(rows, reservation);
   await h.run();
   assert.equal(h.queue.length, 1);
-  // Same condition_id -> tie-break falls to token_id ascending: tok-a < tok-z.
-  assert.equal(h.queue[0].token_id, "tok-a");
+  // Acceptance criterion 1: a strictly higher-score sibling (99 > 70) cannot displace it.
+  // Acceptance criterion 2: a lexicographically smaller identity ("tok-a-smallest" < "tok-m-pinned") cannot displace it.
+  assert.equal(h.queue[0].token_id, "tok-m-pinned");
   assert.equal(h.queue[0].score, 70);
 });
 
@@ -383,7 +450,12 @@ test("C1-5: incompatible score-contract version is excluded from competition", a
       providerEventId: PROVIDER_EVENT_ID, providerEventStartIso: EVENT_START,
     }),
   ];
-  const h = harness(rows, productionReservation());
+  const reservation = withPlanningIdentity(productionReservation(), {
+    condition_id: CONDITION_ID,
+    token_id: "tok-anchor",
+    side: "Ilbirs eSports",
+  });
+  const h = harness(rows, reservation);
   await h.run();
   assert.equal(h.queue.length, 1);
   assert.equal(
@@ -410,7 +482,12 @@ test("C1-6: wrong provider event / start / physical identity are all rejected", 
       providerEventId: "999999", providerEventStartIso: EVENT_START,
     }),
   ];
-  const hEvent = harness(wrongEvent, productionReservation());
+  const wrongEventReservation = withPlanningIdentity(productionReservation(), {
+    condition_id: CONDITION_ID,
+    token_id: "tok-anchor",
+    side: "Ilbirs eSports",
+  });
+  const hEvent = harness(wrongEvent, wrongEventReservation);
   await hEvent.run();
   assert.equal(hEvent.queue.length, 1);
   assert.equal(hEvent.queue[0].score, 62, "foreign provider event must not compete");
@@ -450,7 +527,7 @@ test("C1-6: wrong provider event / start / physical identity are all rejected", 
 });
 
 test("C1-7: repeated natural cadence creates no duplicate Queue for the same identity", async () => {
-  const h = harness(productionSiblings(), productionReservation());
+  const h = harness(productionSiblings(), withPlanningIdentity(productionReservation(), SIBLING_PLANNING_IDENTITY));
   const first = await h.run();
   assert.equal(first.queued_count, 1);
 
@@ -469,7 +546,7 @@ test("C1-7: repeated natural cadence creates no duplicate Queue for the same ide
 });
 
 test("C1-8: frozen accepted price and stake survive the serialization boundary", async () => {
-  const h = harness(productionSiblings(), productionReservation());
+  const h = harness(productionSiblings(), withPlanningIdentity(productionReservation(), SIBLING_PLANNING_IDENTITY));
   await h.run();
   const diag = h.queue[0].diagnostics as Record<string, unknown>;
   // Round-trip the Queue row the way the queue table would store it.
@@ -480,4 +557,33 @@ test("C1-8: frozen accepted price and stake survive the serialization boundary",
   assert.equal(rtDiag.entry_price, 0.5);
   assert.equal(roundTripped.stake_usd, EXECUTABLE_STAKE_USD);
   assert.equal(rtDiag.selected_signal_score, 57);
+});
+
+// ---------------------------------------------------------------------------
+// 2. New explicit fail-closed coverage for the Planning final identity gate.
+// ---------------------------------------------------------------------------
+
+test("C1-9: a Reservation with no planning_final_identity_evidence at all fails closed with PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", async () => {
+  // productionReservation() carries no planning_final_identity_evidence --
+  // exactly the legacy shape this correction must reject rather than silently
+  // re-ranking siblings by score or lexical order.
+  const h = harness(productionSiblings(), productionReservation());
+  const result = await h.run();
+  assert.equal(result.queued_count, 0);
+  assert.equal(h.queue.length, 0);
+  assert.equal(h.skipped[0]?.reason, "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING");
+});
+
+test("C1-10: a Reservation whose GSP siblings do not include the persisted planning identity fails closed with PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_SET", async () => {
+  // Pin an identity that matches neither real sibling loaded from GSP.
+  const reservation = withPlanningIdentity(productionReservation(), {
+    condition_id: CONDITION_ID,
+    token_id: "tok-does-not-exist-in-candidate-set",
+    side: "Ilbirs eSports",
+  });
+  const h = harness(productionSiblings(), reservation);
+  const result = await h.run();
+  assert.equal(result.queued_count, 0);
+  assert.equal(h.queue.length, 0);
+  assert.equal(h.skipped[0]?.reason, "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_SET");
 });

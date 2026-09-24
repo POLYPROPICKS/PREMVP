@@ -257,7 +257,12 @@ test("production-scale exact sibling lookup is condition-bounded before residual
   }, "the exact provider occurrence and score domain reach the sibling read");
   assert.deepEqual(rows.map((r) => r.id).sort(), ["pair-high", "pair-z", anchor.id].sort(), "different occurrence is excluded after the bounded read");
   assert.equal(rows.length, 3);
-  assert.equal(rows.filter((r) => r.id === "pair-high").length, 1, "the bounded set retains the max-score candidate consumed by the established queue selector");
+  // NOTE: this loader is a bounded exact-identity READ only -- it performs no
+  // ranking of its own. Under NARROW_FOOTBALL_MONEY_POLICY_V1 the actual Queue
+  // selector (selectByPlanningFinalIdentityEvidence) never picks by score; it
+  // is exercised separately in c1RealEntryExecutionSibling.test.ts and
+  // rebalanceFromReservationCandidateManifest.test.ts.
+  assert.equal(rows.filter((r) => r.id === "pair-high").length, 1, "the bounded set retains this exact-identity sibling among the candidates returned to the caller");
 });
 
 test("B1: before T-70, zero queue rows are created", async () => {

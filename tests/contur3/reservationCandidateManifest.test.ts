@@ -166,14 +166,26 @@ test("RCM-2: manifest entries carry enough immutable identity to rediscover the 
 
 // ── 2. Bounded, never a generic historical platform ────────────────────────
 
-test("RCM-3: the manifest is bounded — beyond the cap it truncates rather than growing unbounded", () => {
+// NARROW_FOOTBALL_MONEY_POLICY_V1 correction (ISSUE 2): compareManifestEntries
+// truncation order is source_created_at DESC (freshest-first), condition_id
+// ASC, token_id ASC as a deterministic tie-break -- it is no longer
+// signal_confidence_num DESC. Confidence is deliberately set to move in the
+// OPPOSITE direction of freshness below (higher index = higher confidence but
+// STALER), so a naive "score still wins" regression would keep the wrong
+// entries and this test would catch it.
+const RCM3_FRESHNESS_BASE_MS = Date.parse("2026-07-27T20:00:00.000Z");
+
+test("RCM-3: the manifest is bounded — beyond the cap it truncates rather than growing unbounded, and truncation order is freshest-first, NOT highest-score-first", () => {
   const admitted = new Set(["provider:polymarket:evt-x:2026-07-27"]);
   const rows = Array.from({ length: 30 }, (_, i) =>
     servingRow({
       conditionId: `cond-${i}`,
       tokenId: `tok-${i}`,
       providerEventId: "evt-x",
+      // Higher index = higher confidence but STALER (earlier created_at) --
+      // the inverse of the old score-based ordering fixture.
       confidence: 50 + i,
+      createdAt: new Date(RCM3_FRESHNESS_BASE_MS - i * 1000).toISOString(),
     })
   );
   const manifests = buildReservationCandidateManifestsByPhysicalEvent(rows, admitted, 20);
@@ -181,8 +193,38 @@ test("RCM-3: the manifest is bounded — beyond the cap it truncates rather than
   assert.ok(manifest);
   assert.equal(manifest!.entries.length, 20, "capped at the configured bound");
   assert.equal(manifest!.truncated, true);
-  // Highest-confidence entries survive the cap.
-  assert.equal(manifest!.entries[0].condition_id, "cond-29");
+  // The FRESHEST entry (i=0, the LOWEST confidence of the set) survives at
+  // position 0 -- computed by hand from the fixture's own created_at values.
+  assert.equal(manifest!.entries[0].condition_id, "cond-0");
+  assert.equal(manifest!.entries[0].signal_confidence_num, 50);
+  // The 20 kept entries are exactly the 20 freshest (i=0..19) -- the 10
+  // highest-confidence entries (i=20..29, confidence 70..79, the stalest) are
+  // the ones truncated away, proving Score never re-enters truncation.
+  const keptIds = new Set(manifest!.entries.map((e) => e.condition_id));
+  for (let i = 0; i < 20; i++) assert.ok(keptIds.has(`cond-${i}`), `cond-${i} (fresh) must survive truncation`);
+  for (let i = 20; i < 30; i++) assert.ok(!keptIds.has(`cond-${i}`), `cond-${i} (stale, high-score) must be truncated away`);
+});
+
+test("RCM-3b: a pinned Planning final identity that would normally be truncated away (lowest freshness) still survives truncation, and truncated stays true", () => {
+  const admitted = new Set(["provider:polymarket:evt-x:2026-07-27"]);
+  const rows = Array.from({ length: 30 }, (_, i) =>
+    servingRow({
+      conditionId: `cond-${i}`,
+      tokenId: `tok-${i}`,
+      providerEventId: "evt-x",
+      confidence: 50 + i,
+      createdAt: new Date(RCM3_FRESHNESS_BASE_MS - i * 1000).toISOString(),
+    })
+  );
+  // cond-29/tok-29 is the STALEST row -- it would normally be truncated away.
+  const pinned = new Map([["provider:polymarket:evt-x:2026-07-27", { condition_id: "cond-29", token_id: "tok-29" }]]);
+  const manifests = buildReservationCandidateManifestsByPhysicalEvent(rows, admitted, 20, pinned);
+  const manifest = manifests.get("provider:polymarket:evt-x:2026-07-27");
+  assert.ok(manifest);
+  assert.equal(manifest!.entries.length, 20, "the pin never grows the cap");
+  assert.equal(manifest!.truncated, true, "truncation still occurred for every other entry");
+  const keptIds = new Set(manifest!.entries.map((e) => e.condition_id));
+  assert.ok(keptIds.has("cond-29"), "the Planning-pinned identity survives truncation despite being the stalest row");
 });
 
 // ── 3. Grouping never widens or leaks across physical events ──────────────

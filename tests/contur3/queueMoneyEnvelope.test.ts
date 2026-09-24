@@ -81,6 +81,14 @@ function reservation(entryPrice: number): NightEventReservationRow {
       contract_a_stage: "PLANNING",
       source_lineage: { generated_signal_pair_id: "11111111-1111-4111-8111-111111111111" },
       candidate_manifest_version: "RESERVATION_CANDIDATE_MANIFEST_V1",
+      planning_final_identity_evidence: {
+        condition_id: "cond-esp-arg-ml",
+        token_id: "token-esp-arg-spain",
+        side: "Spain",
+        market_slug: null,
+        canonical_market_key: null,
+        event_slug: null,
+      },
       candidate_manifest: [{
         generated_signal_pair_id: "11111111-1111-4111-8111-111111111111",
         generated_signal_pair_id_is_uuid: true,

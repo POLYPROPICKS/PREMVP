@@ -77,6 +77,19 @@ export function createQueueAuthorityFixture(
       planning_tier: reservation.event_tier,
       planning_rank: reservation.reservation_rank,
       sport_metadata_source: "upstream",
+      // NARROW_FOOTBALL_MONEY_POLICY_V1: the exact identity Contract A
+      // Planning already committed to for this Reservation -- persisted
+      // verbatim (see ContractAPlanningDecision.final_identity_evidence /
+      // planningDecisionReservationRow). Rebalance final market selection
+      // validates a candidate against THIS, never by re-ranking siblings.
+      planning_final_identity_evidence: {
+        condition_id: sourceRow.condition_id,
+        token_id: sourceRow.selected_token_id,
+        side: sourceRow.selected_outcome,
+        market_slug: sourceRow.market_slug,
+        canonical_market_key: null,
+        event_slug: sourceRow.event_slug,
+      },
     },
   };
   const fetchFinalIdentitySourceRows = async () => [sourceRow];
