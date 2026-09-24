@@ -922,9 +922,12 @@ function providerPhysicalEventId(eventId: string, eventStartIso: string): string
   return `provider:polymarket:${eventId.toLowerCase()}:${eventStartIso.slice(0, 10)}`;
 }
 
+// NARROW_FOOTBALL_MONEY_POLICY_V1 (2026-09-24): Signal Score is never the
+// final-market economic selector -- a higher score alone no longer wins.
+// Selection is exact deterministic identity ordering only (never derived,
+// never re-modeled). Score remains persisted telemetry on the winning row.
 function compareExactProviderSignalPairs(a: ExactProviderSignalPair, b: ExactProviderSignalPair): number {
-  return b.signalScore - a.signalScore ||
-    a.conditionId.localeCompare(b.conditionId) ||
+  return a.conditionId.localeCompare(b.conditionId) ||
     a.tokenId.localeCompare(b.tokenId) ||
     a.side.localeCompare(b.side) ||
     a.id.localeCompare(b.id);
@@ -1282,12 +1285,12 @@ function manifestEntryToExactSignalPair(entry: unknown): ManifestExactSignalPair
   };
 }
 
-/** Same ranking rule as compareExactProviderSignalPairs (max score, then a
- * fully deterministic tie-break) — one selection policy regardless of which
- * candidate source produced the array. */
+/** Same ranking rule as compareExactProviderSignalPairs
+ * (NARROW_FOOTBALL_MONEY_POLICY_V1: exact deterministic identity tie-break
+ * only, Signal Score is never the selector) — one selection policy
+ * regardless of which candidate source produced the array. */
 function compareManifestExactSignalPairs(a: ManifestExactSignalPair, b: ManifestExactSignalPair): number {
   return (
-    b.signalScore - a.signalScore ||
     a.conditionId.localeCompare(b.conditionId) ||
     a.tokenId.localeCompare(b.tokenId) ||
     a.side.localeCompare(b.side) ||
@@ -1434,8 +1437,9 @@ async function evaluateLiveOrderbookGuard(
  * one queue row is ever produced, same as every other selection path.
  *
  * RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1: after the exact
- * condition_id/token_id/side is selected (deterministic max-signal-score,
- * unchanged), the LIVE orderbook for that exact token is refreshed and must
+ * condition_id/token_id/side is selected (deterministic identity tie-break,
+ * NARROW_FOOTBALL_MONEY_POLICY_V1 -- Signal Score is never the selector),
+ * the LIVE orderbook for that exact token is refreshed and must
  * pass the mechanical execution guard before this Reservation may enter
  * READY. A guard failure SKIPS this reservation this cycle -- it never
  * substitutes another manifest entry.

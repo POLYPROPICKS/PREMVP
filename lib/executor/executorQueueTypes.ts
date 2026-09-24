@@ -29,14 +29,19 @@ export type ReservationStatus =
 //                             the ordinary stake, never equal to stake_usd by
 //                             construction. Persisted separately, per Queue
 //                             row, as diagnostics.max_stake_usd.
-//   QUEUE_MAX_ENTRY_PRICE     max_entry_price may never exceed 0.62.
+//   QUEUE_MAX_ENTRY_PRICE     max_entry_price may never exceed 0.54
+//                             (NARROW_FOOTBALL_MONEY_POLICY_V1, 2026-09-24 --
+//                             lowered from 0.62 to align the executable price
+//                             ceiling with the ~1.85-2.00 implied-odds /
+//                             0.50-0.54 share-price money band; a worse live
+//                             ask fails closed rather than widening the cap).
 // PREMVP stays the authority; a value above either bound is rejected (fail
 // closed), never silently clamped. Existing Queue rows keep their
 // already-persisted stake. This contract authorizes the envelope only -- it
 // does not decide when a consumer may actually spend above the default.
 export const QUEUE_DEFAULT_STAKE_USD = 2.5 as const;
 export const QUEUE_MAX_STAKE_USD = 4.0 as const;
-export const QUEUE_MAX_ENTRY_PRICE = 0.62 as const;
+export const QUEUE_MAX_ENTRY_PRICE = 0.54 as const;
 export const EXECUTABLE_TIER = "TIER1" as const;
 
 // ALIGN_B2_LIVE_ORDERBOOK_GUARD_WITH_EXISTING_EXECUTION_POLICY_V1 — the ONE

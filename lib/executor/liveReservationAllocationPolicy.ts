@@ -6,7 +6,6 @@ export const LIVE_RESERVATION_ALLOCATION_V1 = Object.freeze({
   targetReservationSlots: 15,
   preferredStrategicScopes: ["SOCCER", "TENNIS"] as const,
   rankingOrder: [
-    "SIGNAL_SCORE_DESC",
     "SPORT_PREFERENCE",
     "PROVIDER_MARKET_VOLUME_DESC",
     "PHYSICAL_EVENT_ID_ASC",
@@ -18,16 +17,17 @@ export const LIVE_RESERVATION_ALLOCATION_V1 = Object.freeze({
  * Event-level: one physical event may qualify through many accepted
  * identities via PORTFOLIO_TIER price/score band qualification (see
  * classifyPortfolioBroadTier + resolvePortfolioBroadPhysicalEventAllocations)
- * -- qualification/tier remains diagnostic evidence on the winning identity,
- * but capacity across physical events is ordered by Signal Score first
- * (RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1): highest
- * planning Signal Score wins, football (SOCCER/WC) is preferred at equal
- * score, then freshest source evidence, then provider volume, then physical
- * event id. Portfolio tier never overrides a higher Signal Score here.
+ * -- qualification/tier remains diagnostic evidence on the winning identity.
  *
- * targetReservationSlots (30) is the ACTIVE cap for this release.
- * hardReservationCeiling (50) is the policy invariant ceiling for the next
- * controlled capacity promotion — it is NOT activated by this release.
+ * NARROW_FOOTBALL_MONEY_POLICY_V1 (2026-09-24): capacity across physical
+ * events is no longer ordered by Signal Score. A higher Signal Score alone
+ * no longer gives a candidate economic priority for scarce Reservation
+ * capacity -- Score remains persisted telemetry (planning_score,
+ * diagnostics), never a ranking input here. Capacity is instead ordered by
+ * deterministic, non-model authorities already owned by this policy:
+ * football (SOCCER/WC) money eligibility first, then freshest source
+ * evidence, then provider volume, then physical event id. Portfolio tier
+ * remains diagnostic evidence only and never participates in this ordering.
  */
 export const LIVE_RESERVATION_PORTFOLIO_BROAD_V2 = Object.freeze({
   policyId: "LIVE_RESERVATION_PORTFOLIO_BROAD_V2",
@@ -36,7 +36,6 @@ export const LIVE_RESERVATION_PORTFOLIO_BROAD_V2 = Object.freeze({
   hardReservationCeiling: 50,
   preferredStrategicScopes: ["SOCCER", "WC"] as const,
   rankingOrder: [
-    "SIGNAL_SCORE_DESC",
     "FOOTBALL_PRIORITY",
     "FRESHEST_SOURCE_EVIDENCE_DESC",
     "PROVIDER_MARKET_VOLUME_DESC",
@@ -60,13 +59,11 @@ export type PortfolioBroadTier = 1 | 2 | 3;
 
 export type LiveReservationRankingOrder =
   | readonly [
-      "SIGNAL_SCORE_DESC",
       "SPORT_PREFERENCE",
       "PROVIDER_MARKET_VOLUME_DESC",
       "PHYSICAL_EVENT_ID_ASC",
     ]
   | readonly [
-      "SIGNAL_SCORE_DESC",
       "FOOTBALL_PRIORITY",
       "FRESHEST_SOURCE_EVIDENCE_DESC",
       "PROVIDER_MARKET_VOLUME_DESC",
@@ -122,20 +119,18 @@ function isPortfolioBroadPolicyId(policy: LiveReservationAllocationPolicy): bool
 
 /**
  * PORTFOLIO_BROAD capacity ranking across physical events
- * (RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1): Signal Score
- * first, football preference second, then freshest-source, provider volume
- * and physical event id as deterministic tie-breaks. Portfolio tier is
- * qualification/diagnostic evidence only here -- it never overrides a higher
- * Signal Score.
+ * (NARROW_FOOTBALL_MONEY_POLICY_V1): football preference first, then
+ * freshest-source evidence, provider volume and physical event id as
+ * deterministic tie-breaks. Signal Score is never a ranking input here --
+ * it remains persisted telemetry only (planning_score, diagnostics).
+ * Portfolio tier is qualification/diagnostic evidence only and never
+ * participates in this ordering.
  */
 function comparePortfolioBroadCandidates(
   left: LiveReservationAllocationCandidate,
   right: LiveReservationAllocationCandidate,
   policy: LiveReservationAllocationPolicy,
 ): number {
-  const scoreDiff = right.decision.planning_score - left.decision.planning_score;
-  if (scoreDiff !== 0) return scoreDiff;
-
   const sportDiff =
     sportPriority(left.decision.strategic_scope, policy) -
     sportPriority(right.decision.strategic_scope, policy);
@@ -166,9 +161,9 @@ export function compareLiveReservationAllocationCandidates(
     return comparePortfolioBroadCandidates(left, right, policy);
   }
 
-  const scoreDiff = right.decision.planning_score - left.decision.planning_score;
-  if (scoreDiff !== 0) return scoreDiff;
-
+  // NARROW_FOOTBALL_MONEY_POLICY_V1: Signal Score is never a ranking input
+  // here -- sport preference and the existing deterministic tie-breaks
+  // (provider volume, physical event id) are the sole ordering authorities.
   const sportDiff =
     sportPriority(left.decision.strategic_scope, policy) -
     sportPriority(right.decision.strategic_scope, policy);
@@ -430,6 +425,14 @@ export function resolvePortfolioBroadPhysicalEventAllocations(
 // football supply reaches 20, reserve exactly its top 20 before up to seven
 // eligible tennis and then other qualified sports. Under 20 football, all
 // football comes first and tennis is the unrestricted first fallback.
+//
+// NARROW_FOOTBALL_MONEY_POLICY_V1 (2026-09-24): `footballOnly` layers a
+// stricter money-authority boundary on top of the staged guard above --
+// when set, tennis and other-sport candidates are NEVER selected into a
+// money Reservation, regardless of football sufficiency. Non-football
+// candidates are simply excluded from `selected`; they are not deleted from
+// their own upstream research/telemetry evidence (generated_signal_pairs /
+// Contract A Planning Decisions), which this pure selector never touches.
 
 export interface LiveReservationMixGuardConfig {
   /** Hard ceiling on the final reservation count N. */
@@ -438,6 +441,13 @@ export interface LiveReservationMixGuardConfig {
   readonly footballFirstSlots: number;
   /** Tennis cap only in the sufficient-football branch. */
   readonly tennisMaxWhenFootballSufficient: number;
+  /**
+   * NARROW_FOOTBALL_MONEY_POLICY_V1: when true, only football candidates are
+   * ever selected -- tennis and other-sport counts are always 0, in both the
+   * sufficient- and insufficient-football branches. Defaults to false so any
+   * other caller of this pure selector keeps the prior staged-mix behavior.
+   */
+  readonly footballOnly?: boolean;
 }
 
 /** Production default: 20 football first, then at most 7 tennis, cap 30. */
@@ -445,6 +455,18 @@ export const LIVE_RESERVATION_MIX_GUARD_V1: LiveReservationMixGuardConfig = Obje
   cap: 30,
   footballFirstSlots: 20,
   tennisMaxWhenFootballSufficient: 7,
+});
+
+/**
+ * Production money-authority default (NARROW_FOOTBALL_MONEY_POLICY_V1):
+ * football is the only money-authoritative sport, so it may fill the full
+ * cap; tennis and other sports are never selected into a money Reservation.
+ */
+export const LIVE_RESERVATION_MIX_GUARD_FOOTBALL_ONLY_V1: LiveReservationMixGuardConfig = Object.freeze({
+  cap: 30,
+  footballFirstSlots: 30,
+  tennisMaxWhenFootballSufficient: 0,
+  footballOnly: true,
 });
 
 export interface LiveReservationMixGuardResult<T> {
@@ -472,15 +494,16 @@ export function selectLiveReservationMix<T>(
     footballSufficient ? config.footballFirstSlots : cap,
   );
   const remainingAfterFootball = cap - footballCount;
-  const tennisCount = Math.min(
-    eligibleTennisRanked.length,
-    remainingAfterFootball,
-    footballSufficient ? config.tennisMaxWhenFootballSufficient : remainingAfterFootball,
-  );
-  const otherCount = Math.min(
-    otherQualifiedRanked.length,
-    remainingAfterFootball - tennisCount,
-  );
+  const tennisCount = config.footballOnly
+    ? 0
+    : Math.min(
+        eligibleTennisRanked.length,
+        remainingAfterFootball,
+        footballSufficient ? config.tennisMaxWhenFootballSufficient : remainingAfterFootball,
+      );
+  const otherCount = config.footballOnly
+    ? 0
+    : Math.min(otherQualifiedRanked.length, remainingAfterFootball - tennisCount);
   const selected = [
     ...footballRanked.slice(0, footballCount),
     ...eligibleTennisRanked.slice(0, tennisCount),

@@ -49,6 +49,7 @@ import { resolveContractAProviderPhysicalEventIdentity } from "./contractADecisi
 import {
   LIVE_RESERVATION_ALLOCATION_V1,
   LIVE_RESERVATION_PORTFOLIO_BROAD_V2,
+  LIVE_RESERVATION_MIX_GUARD_FOOTBALL_ONLY_V1,
   applyLiveReservationMixGuard,
   rankAllocatableApprovedPhysicalEvents,
   resolvePortfolioBroadPhysicalEventAllocations,
@@ -2212,14 +2213,17 @@ export function buildReservationsFromPlanningDecisions(
           opts.restrictToOccurrenceIds!.has(candidate.decision.physical_event_id)
         );
 
-  // RESERVATION_MIX_GUARD_V1 — staged 20 football -> tennis -> other fill.
-  // Only applied under the active PORTFOLIO_BROAD policy;
-  // legacy LIVE_RESERVATION_ALLOCATION_V1 keeps its unmixed ranking.
+  // NARROW_FOOTBALL_MONEY_POLICY_V1 (2026-09-24): football is the only
+  // money-authoritative sport, so the mix guard fills the full cap from
+  // football and never selects tennis/other sports into a money Reservation
+  // (they remain observable upstream as Contract A Planning Decisions /
+  // research evidence, never deleted). Only applied under the active
+  // PORTFOLIO_BROAD policy; legacy LIVE_RESERVATION_ALLOCATION_V1 keeps its
+  // unmixed ranking.
   const targeted = isPortfolioBroadPolicy
     ? applyLiveReservationMixGuard(leadFiltered, {
+      ...LIVE_RESERVATION_MIX_GUARD_FOOTBALL_ONLY_V1,
       cap: allocationPolicy.targetReservationSlots,
-      footballFirstSlots: 20,
-      tennisMaxWhenFootballSufficient: 7,
       })
     : leadFiltered;
 
