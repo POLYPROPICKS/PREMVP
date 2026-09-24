@@ -117,7 +117,7 @@ function projectRefOf(url: string): string {
 }
 
 /** Fail-closed: only ever runs against the bound research-clone project — never production. */
-async function resolveDb() {
+export async function resolveDb() {
   const url = process.env.SUPABASE_CLONE_URL;
   const key = process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("MISSING_CLONE_CREDENTIALS");
@@ -128,7 +128,7 @@ async function resolveDb() {
   return createClient(url, key);
 }
 
-async function fetchRows(): Promise<ScorecardReadyRow[]> {
+export async function fetchRows(): Promise<ScorecardReadyRow[]> {
   const db = await resolveDb();
   const rows: ScorecardReadyRow[] = [];
   // Keep offsets bounded to one model date. A growing full-range OFFSET is
@@ -186,7 +186,7 @@ export function buildIdentityLookup(rowsByPair: Map<string, IdentityCandidate[]>
   };
 }
 
-async function fetchTennisIdentityLookup(db: any, conditionIds: string[]): Promise<IdentityLookup> {
+export async function fetchTennisIdentityLookup(db: any, conditionIds: string[]): Promise<IdentityLookup> {
   const rowsByPair = new Map<string, IdentityCandidate[]>();
   const unique = [...new Set(conditionIds)].filter(Boolean);
   for (let i = 0; i < unique.length; i += CID_CHUNK) {

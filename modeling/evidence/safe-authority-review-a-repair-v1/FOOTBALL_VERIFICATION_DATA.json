@@ -1,0 +1,81 @@
+{
+  "MISSION": "FOOTBALL_VERIFICATION_REVIEW_A_V1",
+  "NOTE": "Denominator-style verification only: UNCAPPED P50_52_SAFE/P50_54_SAFE selections restricted to the reconciled football (soccer) population. No cap, no live-mix allocation, no model ranking. REFERENCE_PNL at display price, NOT_EXECUTION_AUTHORITY. Unresolved rows mean final realised historical PnL is not yet closed.",
+  "PNL_CLASS": "REFERENCE_PNL",
+  "PNL_AUTHORITY": "NOT_EXECUTION_AUTHORITY",
+  "FROZEN_FOOTBALL_DENOMINATOR_N": 4694,
+  "EXACT_SCORE_EXCLUDED_BEFORE_SELECTION_N": 822,
+  "EXACT_SCORE_SELECTED_N": 0,
+  "P50_52_FOOTBALL": {
+    "AUG": {
+      "N": 74,
+      "TERMINAL_N": 71,
+      "UNRESOLVED_N": 3,
+      "UNRESOLVED_BY_STATUS": {
+        "OPEN": 3
+      },
+      "REFERENCE_PNL_U": 12.18,
+      "REFERENCE_ROI_PCT": 17.1549,
+      "MAX_DD_U": -5.02
+    },
+    "SEP": {
+      "N": 941,
+      "TERMINAL_N": 645,
+      "UNRESOLVED_N": 296,
+      "UNRESOLVED_BY_STATUS": {
+        "OPEN": 296
+      },
+      "REFERENCE_PNL_U": 119.61,
+      "REFERENCE_ROI_PCT": 18.5442,
+      "MAX_DD_U": -14.69
+    },
+    "COMBINED": {
+      "N": 1015,
+      "TERMINAL_N": 716,
+      "UNRESOLVED_N": 299,
+      "UNRESOLVED_BY_STATUS": {
+        "OPEN": 299
+      },
+      "REFERENCE_PNL_U": 131.79,
+      "REFERENCE_ROI_PCT": 18.4064,
+      "MAX_DD_U": -14.69
+    }
+  },
+  "P50_54_FOOTBALL": {
+    "AUG": {
+      "N": 96,
+      "TERMINAL_N": 92,
+      "UNRESOLVED_N": 4,
+      "UNRESOLVED_BY_STATUS": {
+        "OPEN": 4
+      },
+      "REFERENCE_PNL_U": 8.29,
+      "REFERENCE_ROI_PCT": 9.0109,
+      "MAX_DD_U": -5.02
+    },
+    "SEP": {
+      "N": 1127,
+      "TERMINAL_N": 789,
+      "UNRESOLVED_N": 338,
+      "UNRESOLVED_BY_STATUS": {
+        "OPEN": 338
+      },
+      "REFERENCE_PNL_U": 135.32,
+      "REFERENCE_ROI_PCT": 17.1508,
+      "MAX_DD_U": -12.48
+    },
+    "COMBINED": {
+      "N": 1223,
+      "TERMINAL_N": 881,
+      "UNRESOLVED_N": 342,
+      "UNRESOLVED_BY_STATUS": {
+        "OPEN": 342
+      },
+      "REFERENCE_PNL_U": 143.61,
+      "REFERENCE_ROI_PCT": 16.3008,
+      "MAX_DD_U": -12.48
+    }
+  },
+  "PRICE_INDEPENDENT_ALPHA_PROVEN": "NO",
+  "ARCHITECT_DB_CROSS_CHECK_DISCREPANCY_NOTE": "An independent architect DB cross-check reported P50_52 combined N=1016/terminal=671/unresolved=345/PnL~+122.89u/ROI~+18.31%/MaxDD~-13.55u and P50_54 combined N=1225/terminal=824/unresolved=401/PnL~+144.65u/ROI~+17.55%/MaxDD~-12.65u. This canonical repaired-runner output is the authority per mission instruction; N is close but terminal/unresolved/PnL/MaxDD diverge. Unresolved by this mission (evidence-persistence-only) — flagged for Review A2."
+}
