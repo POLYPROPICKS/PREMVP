@@ -14,7 +14,12 @@ import {
   buildSafeUniverse,
   resolveSafeTennisDecision,
   sportSplit,
-  fillRateAtCap,
+  daysSupplyAtCapRate,
+  applyReconciledAuthority,
+  buildReconciledClassificationMap,
+  referenceEconomics,
+  PNL_CLASS,
+  PNL_AUTHORITY,
   applyLiveMixAllocation,
   QUALITY_FILL_A_SAFE_MIX_CONFIGS,
   round,
@@ -175,14 +180,14 @@ test("sportSplit buckets into football/tennis/other with correct pct", () => {
   assert.equal(split.OTHER_PCT, 50);
 });
 
-test("fillRateAtCap: fraction of days meeting the cap threshold, measured on UNCAPPED daily supply", () => {
+test("daysSupplyAtCapRate (supply coverage, NOT venue fill probability): fraction of days whose UNCAPPED supply meets the cap", () => {
   const dates = ["2026-09-01", "2026-09-02", "2026-09-03"];
   const bets = [
     ...Array.from({ length: 30 }, (_, i) => selectedCandidate({ physicalEventKey: `d1-${i}`, day: "2026-09-01" })),
     ...Array.from({ length: 10 }, (_, i) => selectedCandidate({ physicalEventKey: `d2-${i}`, day: "2026-09-02" })),
   ];
-  assert.equal(fillRateAtCap(bets, dates, 30), round(1 / 3, 4));
-  assert.equal(fillRateAtCap(bets, dates, 5), round(2 / 3, 4));
+  assert.equal(daysSupplyAtCapRate(bets, dates, 30), round(1 / 3, 4));
+  assert.equal(daysSupplyAtCapRate(bets, dates, 5), round(2 / 3, 4));
 });
 
 // ── QUALITY_FILL_A_SAFE live-mix allocation (selectLiveReservationMix, reused verbatim) ──
@@ -270,4 +275,98 @@ test("settlement reconciliation: SELECTED_N = SETTLED_N + OPEN_N + OTHER_NONTERM
   assert.equal(m.OPEN_N, 1);
   assert.equal(m.OTHER_NONTERMINAL_N, 1);
   assert.equal(m.SETTLED_N + m.OPEN_N + m.OTHER_NONTERMINAL_N, m.SELECTED_N);
+});
+
+// ── Review A repairs ──────────────────────────────────────────────────────────
+import { runPortfolioStrict, runStandaloneStrict, applyDailyCap } from "../../scripts/modeling/daily-portfolio-frontier";
+
+function overlayLine(e: DecisionTimeCandidate, sport: string | null, market: string | null) {
+  const [condition_id, selected_token_id, decision_at] = e.candidateIdentity.split("::");
+  return { condition_id, selected_token_id, decision_at, reconciled_sport_family: sport, reconciled_market_type: market };
+}
+function ev(id: string, evt: string, at: string, price: number, extra: Partial<DecisionTimeCandidate> = {}): DecisionTimeCandidate {
+  return baseEvent({ physicalEventKey: evt, ref: `c-${id}`, candidateRef: "t", decisionTimestamp: at, entryPrice: price, sportFamily: "soccer", candidateIdentity: `c-${id}::t::${at}`, ...extra });
+}
+
+test("EXACT SCORE: excluded BEFORE physical-event selection — a later eligible candidate fills the event, Exact Score never claims it or a cap slot", () => {
+  const es = ev("es", "evt-A", "2026-09-01T09:00:00.000Z", 0.51, { marketTypeRaw: "soccer_exact_score" });
+  const ml = ev("ml", "evt-A", "2026-09-01T10:00:00.000Z", 0.51, { marketTypeRaw: "soccer_moneyline" });
+  const others = Array.from({ length: 3 }, (_, i) => ev(`o${i}`, `evt-o${i}`, `2026-09-01T11:0${i}:00.000Z`, 0.51));
+  const all = [es, ml, ...others];
+  const overlay = buildReconciledClassificationMap(all.map((e) => overlayLine(e, "soccer", e.marketTypeRaw)));
+  const r = applyReconciledAuthority(all, overlay);
+  assert.equal(r.exactScoreExcludedIdentities.has(es.candidateIdentity), true);
+  const selected = runStandaloneStrict(r.eligible, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52);
+  const capped = applyDailyCap(selected, 2);
+  assert.equal(capped.filter((c) => r.exactScoreExcludedIdentities.has(c.candidateIdentity)).length, 0);
+  assert.equal(selected.find((c) => c.physicalEventKey === "evt-A")!.candidateIdentity, ml.candidateIdentity);
+});
+
+test("FOOTBALL AUTHORITY: sport comes only from the reconciled overlay; missing/conflicting overlay fails closed to unresolved", () => {
+  const recovered = ev("r", "evt-r", "2026-09-01T09:00:00.000Z", 0.51, { sportFamily: "" });
+  const missing = ev("m", "evt-m", "2026-09-01T09:00:00.000Z", 0.51, { sportFamily: "soccer" });
+  const conflict = ev("x", "evt-x", "2026-09-01T09:00:00.000Z", 0.51, { sportFamily: "soccer" });
+  const overlay = buildReconciledClassificationMap([
+    overlayLine(recovered, "soccer", null),
+    overlayLine(conflict, "soccer", null),
+    overlayLine(conflict, "basketball", null),
+  ]);
+  const r = applyReconciledAuthority([recovered, missing, conflict], overlay);
+  const byId = new Map(r.eligible.map((e) => [e.candidateIdentity, e.sportFamily]));
+  assert.equal(byId.get(recovered.candidateIdentity), "soccer");
+  assert.equal(byId.get(missing.candidateIdentity), "");
+  assert.equal(byId.get(conflict.candidateIdentity), "");
+  assert.equal(r.overlayMissN, 1);
+});
+
+const TIERS = [(e: any) => e.entryPrice >= 0.5 && e.entryPrice < 0.52, (e: any) => e.entryPrice >= 0.52 && e.entryPrice < 0.54];
+
+test("PREFIX INVARIANCE: appending later observations never changes an already-made portfolio event decision", () => {
+  const early = ev("1", "evt-P", "2026-09-01T09:00:00.000Z", 0.53); // tier 2, first qualifying observation
+  const later = ev("2", "evt-P", "2026-09-01T12:00:00.000Z", 0.51); // tier 1, arrives later
+  const prefix = runPortfolioStrict([early], TIERS as any);
+  const full = runPortfolioStrict([early, later], TIERS as any);
+  const fullReversedInput = runPortfolioStrict([later, early], TIERS as any);
+  assert.deepEqual(full, prefix);
+  assert.deepEqual(fullReversedInput, prefix);
+  assert.equal(full[0].candidateIdentity, early.candidateIdentity);
+  assert.equal(full[0].tier, 2);
+  // Every prefix of a longer stream keeps every decision it already made.
+  const stream = [early, later, ev("3", "evt-Q", "2026-09-01T13:00:00.000Z", 0.55), ev("4", "evt-Q", "2026-09-01T14:00:00.000Z", 0.52), ev("5", "evt-Q", "2026-09-01T15:00:00.000Z", 0.50)];
+  for (let k = 1; k < stream.length; k++) {
+    const before = new Map(runPortfolioStrict(stream.slice(0, k), TIERS as any).map((c) => [c.physicalEventKey, c]));
+    const after = new Map(runPortfolioStrict(stream, TIERS as any).map((c) => [c.physicalEventKey, c]));
+    for (const [key, c] of before) assert.deepEqual(after.get(key), c, `prefix ${k} event ${key}`);
+  }
+});
+
+test("SELECTION BEFORE SETTLEMENT: selection is identical under any settlement map (outcome-independent)", () => {
+  const cands = [ev("1", "evt-S", "2026-09-01T09:00:00.000Z", 0.53), ev("2", "evt-S", "2026-09-01T10:00:00.000Z", 0.51)];
+  const selected = runPortfolioStrict(cands, TIERS as any);
+  const winMap = new Map<string, CorpusLabel>(cands.map((c) => [c.candidateIdentity, "WIN"]));
+  const lossMap = new Map<string, CorpusLabel>(cands.map((c) => [c.candidateIdentity, "LOSS"]));
+  assert.deepEqual(runPortfolioStrict(cands, TIERS as any), selected);
+  assert.notEqual(referenceEconomics(selected, winMap).REFERENCE_PNL_U, referenceEconomics(selected, lossMap).REFERENCE_PNL_U);
+});
+
+test("FINALITY: every nonterminal status (OPEN/NO_MATCH/AMBIGUOUS) is bounded; VOID is terminal with 0 reference PnL per RESEARCH_CORPUS_CONTRACT §5.3", () => {
+  const labels: CorpusLabel[] = ["WIN", "LOSS", "VOID", "OPEN", "NO_MATCH", "AMBIGUOUS"];
+  const capped = labels.map((_, i) => selectedCandidate({ physicalEventKey: `f${i}`, candidateIdentity: `f${i}::id`, entryPrice: 0.5 }));
+  const map = new Map<string, CorpusLabel>(labels.map((l, i) => [`f${i}::id`, l]));
+  const r = referenceEconomics(capped, map);
+  assert.equal(r.SELECTED_N, 6);
+  assert.equal(r.SETTLED_N, 2);
+  assert.equal(r.VOID_N, 1);
+  assert.equal(r.TERMINAL_N, 3);
+  assert.equal(r.UNRESOLVED_N, 3);
+  assert.deepEqual(r.UNRESOLVED_BY_STATUS, { OPEN: 1, NO_MATCH: 1, AMBIGUOUS: 1 });
+  assert.equal(r.REFERENCE_PNL_U, 0); // +1 WIN @0.5, -1 LOSS, VOID 0
+  assert.equal(r.REFERENCE_FINAL_PNL_WORST_U, -3);
+  assert.equal(r.REFERENCE_FINAL_PNL_BEST_U, 3);
+  assert.equal(r.STATUS, "PARTIAL_SETTLEMENT");
+  const allVoid = referenceEconomics([capped[2]], map);
+  assert.equal(allVoid.STATUS, "FINAL_REPRODUCIBLE");
+  assert.equal(allVoid.REFERENCE_FINAL_PNL_WORST_U, 0);
+  assert.equal(PNL_CLASS, "REFERENCE_PNL");
+  assert.equal(PNL_AUTHORITY, "NOT_EXECUTION_AUTHORITY");
 });

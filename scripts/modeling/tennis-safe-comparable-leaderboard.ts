@@ -52,7 +52,8 @@
  *     --start=2026-08-04 --end=2026-09-20
  */
 import { createClient } from "@supabase/supabase-js";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { pathToFileURL } from "node:url";
 import "dotenv/config";
 
@@ -71,19 +72,17 @@ import {
   runStandaloneStrict,
   runPortfolioStrict,
   applyDailyCap,
-  computePartialCapacity,
-  partialMetricsFor,
   settledBetsOnly,
   metricsFor,
-  type PartialSettlementMetrics,
   type SelectedCandidate,
+  type TieredBet,
 } from "./daily-portfolio-frontier";
 import { QUALITY_PORTFOLIOS } from "./quality-fill-portfolio-test";
 
 const DEFAULT_START = "2026-08-04";
 const DEFAULT_END = "2026-09-20";
 const DISPLAY_CAPS = [30, 40, 50] as const;
-const EVIDENCE_OUT_DIR = "modeling/evidence/tennis-safe-comparable-leaderboard-v1";
+const EVIDENCE_OUT_DIR = "modeling/evidence/safe-authority-review-a-repair-v1";
 const EXPECTED_CLONE_PROJECT_REF = "nppznoujvnyjargjkmnv";
 const TENNIS_FAMILY = "tennis";
 /** Chunk size for the .in("condition_id", ...) identity join, mirroring the established CID_CHUNK pattern. */
@@ -118,7 +117,7 @@ function projectRefOf(url: string): string {
 }
 
 /** Fail-closed: only ever runs against the bound research-clone project — never production. */
-async function resolveDb() {
+export async function resolveDb() {
   const url = process.env.SUPABASE_CLONE_URL;
   const key = process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("MISSING_CLONE_CREDENTIALS");
@@ -129,7 +128,7 @@ async function resolveDb() {
   return createClient(url, key);
 }
 
-async function fetchRows(): Promise<ScorecardReadyRow[]> {
+export async function fetchRows(): Promise<ScorecardReadyRow[]> {
   const db = await resolveDb();
   const rows: ScorecardReadyRow[] = [];
   // Keep offsets bounded to one model date. A growing full-range OFFSET is
@@ -187,7 +186,7 @@ export function buildIdentityLookup(rowsByPair: Map<string, IdentityCandidate[]>
   };
 }
 
-async function fetchTennisIdentityLookup(db: any, conditionIds: string[]): Promise<IdentityLookup> {
+export async function fetchTennisIdentityLookup(db: any, conditionIds: string[]): Promise<IdentityLookup> {
   const rowsByPair = new Map<string, IdentityCandidate[]>();
   const unique = [...new Set(conditionIds)].filter(Boolean);
   for (let i = 0; i < unique.length; i += CID_CHUNK) {
@@ -292,7 +291,98 @@ export function buildSafeUniverse(input: DecisionTimeCandidate[], identityLookup
   return { safeUniverse, rawTennisN, approvedTennisN, excludedTennisInput };
 }
 
-// ── Sport composition + fill rate reporting ─────────────────────────────────
+// ── Reconciled football authority + Exact Score pre-selection exclusion ────
+// Review A repair. Sport and market type for SAFE qualification, football-first
+// allocation and sport reporting come ONLY from the already-frozen fail-closed
+// FOOTBALL_DENOMINATOR_RECONCILIATION_V1 overlay
+// (scripts/modeling/build-football-denominator-reconciliation.ts), joined on
+// the exact persisted identity (condition_id, selected_token_id, decision_at)
+// — the same key as candidateIdentity. No second sport resolver: a candidate
+// with no overlay record, or with conflicting overlay records, is unresolved
+// (sportFamily ""), never inferred from title/slug/odds/outcome.
+
+export const FOOTBALL_OVERLAY_PATH =
+  "modeling/evidence/football-denominator-reconciliation-v1/FOOTBALL_DENOMINATOR_OVERLAY_2026-08-04_2026-09-20.jsonl.gz";
+export const FOOTBALL_OVERLAY_RANGE = { start: "2026-08-04", end: "2026-09-20" } as const;
+export const EXACT_SCORE_MARKET_TYPE = "soccer_exact_score";
+
+export interface ReconciledClassification {
+  sportFamily: string | null;
+  marketType: string | null;
+}
+
+interface OverlayLine {
+  condition_id: string;
+  selected_token_id: string;
+  decision_at: string;
+  reconciled_sport_family: string | null;
+  reconciled_market_type: string | null;
+}
+
+/** Overlay lines -> identity map. Conflicting duplicates for one identity fail closed to null. */
+export function buildReconciledClassificationMap(lines: OverlayLine[]): Map<string, ReconciledClassification> {
+  const map = new Map<string, ReconciledClassification>();
+  for (const l of lines) {
+    const key = `${l.condition_id}::${l.selected_token_id}::${l.decision_at}`;
+    const next: ReconciledClassification = { sportFamily: l.reconciled_sport_family ?? null, marketType: l.reconciled_market_type ?? null };
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, next);
+      continue;
+    }
+    map.set(key, {
+      sportFamily: prev.sportFamily === next.sportFamily ? prev.sportFamily : null,
+      marketType: prev.marketType === next.marketType ? prev.marketType : null,
+    });
+  }
+  return map;
+}
+
+export function loadReconciledClassificationMap(path = FOOTBALL_OVERLAY_PATH): Map<string, ReconciledClassification> {
+  const text = gunzipSync(readFileSync(path)).toString("utf8");
+  const lines = text.split("\n").filter((l) => l.trim().length > 0).map((l) => JSON.parse(l) as OverlayLine);
+  return buildReconciledClassificationMap(lines);
+}
+
+export function isExactScore(marketType: string | null | undefined): boolean {
+  return typeof marketType === "string" && marketType.trim().toLowerCase() === EXACT_SCORE_MARKET_TYPE;
+}
+
+export interface ReconciledUniverseResult {
+  eligible: DecisionTimeCandidate[];
+  exactScoreExcludedIdentities: Set<string>;
+  overlayMissN: number;
+  sportChangedN: number;
+}
+
+/**
+ * Applied ONCE, upstream of the safe-tennis gate, every model predicate,
+ * physical-event selection and every daily cap: (1) sportFamily := reconciled
+ * overlay sport ("" when unresolved/missing — fail closed); (2) Exact Score
+ * candidates are removed so they can never claim a physical event or a cap
+ * slot. Decision-time identity/classification only — no settlement is read.
+ */
+export function applyReconciledAuthority(input: DecisionTimeCandidate[], overlay: Map<string, ReconciledClassification>): ReconciledUniverseResult {
+  const eligible: DecisionTimeCandidate[] = [];
+  const exactScoreExcludedIdentities = new Set<string>();
+  let overlayMissN = 0;
+  let sportChangedN = 0;
+  for (const e of input) {
+    const cls = overlay.get(e.candidateIdentity);
+    if (!cls) overlayMissN += 1;
+    const sportFamily = cls?.sportFamily ?? "";
+    if (sportFamily !== e.sportFamily) sportChangedN += 1;
+    const marketType = cls?.marketType ?? e.marketTypeRaw;
+    if (isExactScore(marketType) || isExactScore(e.marketTypeRaw)) {
+      exactScoreExcludedIdentities.add(e.candidateIdentity);
+      continue;
+    }
+    eligible.push({ ...e, sportFamily });
+  }
+  return { eligible, exactScoreExcludedIdentities, overlayMissN, sportChangedN };
+}
+
+// ── Sport composition + supply-coverage reporting ───────────────────────────
 
 export function sportSplit(bets: SelectedCandidate[]) {
   const total = bets.length || 1;
@@ -309,8 +399,12 @@ export function sportSplit(bets: SelectedCandidate[]) {
   };
 }
 
-/** Fraction of days in range whose UNCAPPED daily supply meets `cap`. Settlement-neutral (counts selected candidates only). */
-export function fillRateAtCap(uncapped: SelectedCandidate[], dates: string[], cap: number): number {
+/**
+ * SUPPLY coverage, NOT venue fill probability: fraction of calendar days in
+ * range whose UNCAPPED daily candidate supply meets `cap`. Settlement-neutral
+ * and says nothing about whether any order would be matched on a venue.
+ */
+export function daysSupplyAtCapRate(uncapped: SelectedCandidate[], dates: string[], cap: number): number {
   if (dates.length === 0) return 0;
   const byDay = new Map<string, number>();
   for (const c of uncapped) byDay.set(c.day, (byDay.get(c.day) ?? 0) + 1);
@@ -350,45 +444,119 @@ export function applyLiveMixAllocation(bets: SelectedCandidate[], allDates: stri
 // ── Model definitions: non-tennis semantics reused verbatim; tennis is
 // governed ONLY by the shared safe universe built above — no per-model
 // tennis predicate exists here. Settlement is joined back ONLY here, after
-// selection+cap, via partialMetricsFor/settledBetsOnly (imported verbatim).
+// selection+cap.
+//
+// Settlement status semantics (docs/modeling/RESEARCH_CORPUS_CONTRACT.md §5.3
+// + §PRIMARY — existing contract, not a new convention):
+//   WIN/LOSS -> terminal, settleBetU() reference PnL.
+//   VOID     -> terminal, stake returned, 0 PnL; counted in TERMINAL_N and in
+//               the reference ROI denominator ("Bets" = WIN/LOSS/VOID).
+//   OPEN / NO_MATCH / AMBIGUOUS / any other label -> UNRESOLVED (nonterminal):
+//               no realised PnL; every one of them is bounded LOSS (worst) /
+//               WIN-at-own-entry-price (best) in the finality bounds.
+// All PnL here is REFERENCE_PNL at display price (BETTING_ECONOMICS_CONTRACT_V2
+// §2) — NOT_EXECUTION_AUTHORITY.
 // ─────────────────────────────────────────────────────────────────────────
 
-interface CapRow {
-  MODEL: string;
-  CAP: number | "UNCAPPED";
+export const PNL_CLASS = "REFERENCE_PNL" as const;
+export const PNL_AUTHORITY = "NOT_EXECUTION_AUTHORITY" as const;
+const AUG_END = "2026-08-31";
+
+export type StatusClass = "WIN_LOSS" | "VOID" | "UNRESOLVED";
+export function classifyStatusForFinality(label: CorpusLabel | string): StatusClass {
+  if (label === "WIN" || label === "LOSS") return "WIN_LOSS";
+  if (label === "VOID") return "VOID";
+  return "UNRESOLVED";
+}
+
+export interface ReferenceEconomics {
   SELECTED_N: number;
   SETTLED_N: number;
-  OPEN_N: number;
-  OTHER_NONTERMINAL_N: number;
-  SETTLEMENT_COVERAGE_PCT: number;
-  PNL_U_PARTIAL: number;
-  SETTLED_ROI_PCT_PARTIAL: number;
-  MAX_DD_U_PARTIAL: number;
-  FILL_RATE: number;
+  VOID_N: number;
+  TERMINAL_N: number;
+  UNRESOLVED_N: number;
+  UNRESOLVED_BY_STATUS: Record<string, number>;
+  REFERENCE_PNL_U: number;
+  REFERENCE_ROI_PCT: number;
+  MAX_DD_U: number;
+  REFERENCE_FINAL_PNL_WORST_U: number;
+  REFERENCE_FINAL_PNL_BEST_U: number;
+  REFERENCE_FINAL_ROI_WORST_PCT: number;
+  REFERENCE_FINAL_ROI_BEST_PCT: number;
+  STATUS: "PARTIAL_SETTLEMENT" | "FINAL_REPRODUCIBLE";
+}
+
+/** Post-selection/post-cap settlement join + finality bounds over EVERY nonterminal status. */
+export function referenceEconomics(capped: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>): ReferenceEconomics {
+  const settled: TieredBet[] = [];
+  const unresolvedByStatus: Record<string, number> = {};
+  let voidN = 0;
+  let worstDelta = 0;
+  let bestDelta = 0;
+  for (const c of capped) {
+    const label = settlementByCandidateIdentity.get(c.candidateIdentity);
+    if (label === undefined) throw new Error(`SETTLEMENT_JOIN_MISS: no settlement entry for candidateIdentity=${c.candidateIdentity}`);
+    const cls = classifyStatusForFinality(label);
+    if (cls === "WIN_LOSS") {
+      settled.push({
+        physicalEventKey: c.physicalEventKey,
+        decisionTimestamp: c.decisionTimestamp,
+        eventStart: c.eventStart,
+        leadTimeHours: c.leadTimeHours,
+        entryPrice: c.entryPrice,
+        sportFamily: c.sportFamily,
+        outcome: label as "WIN" | "LOSS",
+        pnlU: settleBetU(label as "WIN" | "LOSS", c.entryPrice),
+        tier: c.tier,
+        day: c.day,
+      });
+    } else if (cls === "VOID") {
+      voidN += 1;
+    } else {
+      unresolvedByStatus[label] = (unresolvedByStatus[label] ?? 0) + 1;
+      worstDelta += settleBetU("LOSS", c.entryPrice);
+      bestDelta += settleBetU("WIN", c.entryPrice);
+    }
+  }
+  const m = metricsFor(settled);
+  const selectedN = capped.length;
+  const terminalN = settled.length + voidN;
+  const unresolvedN = selectedN - terminalN;
+  const worst = round(m.pnl_u + worstDelta, 2);
+  const best = round(m.pnl_u + bestDelta, 2);
+  return {
+    SELECTED_N: selectedN,
+    SETTLED_N: settled.length,
+    VOID_N: voidN,
+    TERMINAL_N: terminalN,
+    UNRESOLVED_N: unresolvedN,
+    UNRESOLVED_BY_STATUS: unresolvedByStatus,
+    REFERENCE_PNL_U: m.pnl_u,
+    REFERENCE_ROI_PCT: terminalN ? round((m.pnl_u / terminalN) * 100, 4) : 0,
+    MAX_DD_U: m.max_drawdown_u,
+    REFERENCE_FINAL_PNL_WORST_U: worst,
+    REFERENCE_FINAL_PNL_BEST_U: best,
+    REFERENCE_FINAL_ROI_WORST_PCT: selectedN ? round((worst / selectedN) * 100, 4) : 0,
+    REFERENCE_FINAL_ROI_BEST_PCT: selectedN ? round((best / selectedN) * 100, 4) : 0,
+    STATUS: unresolvedN > 0 ? "PARTIAL_SETTLEMENT" : "FINAL_REPRODUCIBLE",
+  };
+}
+
+interface CapRow extends ReferenceEconomics {
+  MODEL: string;
+  CAP: number | "UNCAPPED";
+  PNL_CLASS: typeof PNL_CLASS;
+  PNL_AUTHORITY: typeof PNL_AUTHORITY;
+  DAYS_SUPPLY_AT_CAP_RATE: number;
   FOOTBALL_N: number;
   FOOTBALL_PCT: number;
   TENNIS_N: number;
   TENNIS_PCT: number;
   OTHER_N: number;
   OTHER_PCT: number;
-  FINAL_PNL_WORST: number;
-  FINAL_PNL_BEST: number;
-  FINAL_ROI_WORST_PCT: number;
-  FINAL_ROI_BEST_PCT: number;
-  STATUS: "PARTIAL" | "FINAL_REPRODUCIBLE";
-}
-
-/** FINAL_PNL_WORST/BEST: deterministic unresolved bounds. OPEN candidates only — settled ones are already in PNL_U_PARTIAL. */
-function unresolvedBounds(capped: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>, partialPnl: number) {
-  let worstDelta = 0;
-  let bestDelta = 0;
-  for (const c of capped) {
-    const label = settlementByCandidateIdentity.get(c.candidateIdentity);
-    if (label !== "OPEN") continue;
-    worstDelta += settleBetU("LOSS", c.entryPrice);
-    bestDelta += settleBetU("WIN", c.entryPrice);
-  }
-  return { worst: round(partialPnl + worstDelta, 2), best: round(partialPnl + bestDelta, 2) };
+  EXACT_SCORE_SELECTED_N: number;
+  AUG: ReferenceEconomics & { FOOTBALL_N: number };
+  SEP: ReferenceEconomics & { FOOTBALL_N: number };
 }
 
 function rowFor(
@@ -398,39 +566,28 @@ function rowFor(
   uncapped: SelectedCandidate[],
   dates: string[],
   settlementByCandidateIdentity: Map<string, CorpusLabel>,
-  partialOverride?: PartialSettlementMetrics,
+  exactScoreIdentities: Set<string>,
 ): CapRow {
-  const partial = partialOverride ?? partialMetricsFor(capped, settlementByCandidateIdentity);
-  const { settledBets } = settledBetsOnly(capped, settlementByCandidateIdentity);
-  const m = metricsFor(settledBets);
-  const bounds = unresolvedBounds(capped, settlementByCandidateIdentity, m.pnl_u);
-  const selectedN = partial.SELECTED_N || 1;
+  const aug = capped.filter((c) => c.day <= AUG_END);
+  const sep = capped.filter((c) => c.day > AUG_END);
   return {
     MODEL: modelId,
     CAP: cap,
-    SELECTED_N: partial.SELECTED_N,
-    SETTLED_N: partial.SETTLED_N,
-    OPEN_N: partial.OPEN_N,
-    OTHER_NONTERMINAL_N: partial.OTHER_NONTERMINAL_N,
-    SETTLEMENT_COVERAGE_PCT: partial.SETTLEMENT_COVERAGE_PCT,
-    PNL_U_PARTIAL: m.pnl_u,
-    SETTLED_ROI_PCT_PARTIAL: m.roi_pct,
-    MAX_DD_U_PARTIAL: m.max_drawdown_u,
-    FILL_RATE: cap === "UNCAPPED" ? 1 : fillRateAtCap(uncapped, dates, cap),
+    PNL_CLASS,
+    PNL_AUTHORITY,
+    ...referenceEconomics(capped, settlementByCandidateIdentity),
+    DAYS_SUPPLY_AT_CAP_RATE: cap === "UNCAPPED" ? 1 : daysSupplyAtCapRate(uncapped, dates, cap),
     ...sportSplit(capped),
-    FINAL_PNL_WORST: bounds.worst,
-    FINAL_PNL_BEST: bounds.best,
-    FINAL_ROI_WORST_PCT: round((bounds.worst / selectedN) * 100, 4),
-    FINAL_ROI_BEST_PCT: round((bounds.best / selectedN) * 100, 4),
-    STATUS: partial.OPEN_N > 0 ? "PARTIAL" : "FINAL_REPRODUCIBLE",
+    EXACT_SCORE_SELECTED_N: capped.filter((c) => exactScoreIdentities.has(c.candidateIdentity)).length,
+    AUG: { ...referenceEconomics(aug, settlementByCandidateIdentity), FOOTBALL_N: sportSplit(aug).FOOTBALL_N },
+    SEP: { ...referenceEconomics(sep, settlementByCandidateIdentity), FOOTBALL_N: sportSplit(sep).FOOTBALL_N },
   };
 }
 
-function uncappedRow(modelId: string, bets: SelectedCandidate[], dates: string[], settlementByCandidateIdentity: Map<string, CorpusLabel>): CapRow {
-  return rowFor(modelId, "UNCAPPED", bets, bets, dates, settlementByCandidateIdentity);
-}
-
 async function main() {
+  if (START < FOOTBALL_OVERLAY_RANGE.start || END > FOOTBALL_OVERLAY_RANGE.end) {
+    throw new Error(`FOOTBALL_AUTHORITY_RANGE_UNCOVERED: ${START}..${END} outside ${FOOTBALL_OVERLAY_RANGE.start}..${FOOTBALL_OVERLAY_RANGE.end}`);
+  }
   const rawRows = await fetchRows();
   const dates = enumerateMinskDates(START, END);
 
@@ -440,7 +597,12 @@ async function main() {
   const p5052RawMetrics = metricsFor(p5052Raw);
 
   // ── SELECTION_BEFORE_SETTLEMENT_V1 fixed path for every CURRENT _SAFE model ──
-  const { candidates: decisionTimeCandidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rawRows);
+  const { candidates: rawDecisionTimeCandidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rawRows);
+
+  // Review A repair: reconciled football authority + Exact Score exclusion BEFORE any selection/cap.
+  const overlay = loadReconciledClassificationMap();
+  const reconciled = applyReconciledAuthority(rawDecisionTimeCandidates, overlay);
+  const decisionTimeCandidates = reconciled.eligible;
 
   const tennisConditionIds = decisionTimeCandidates.filter((e) => e.sportFamily === TENNIS_FAMILY).map((e) => e.ref).filter((v): v is string => !!v);
   const db = await resolveDb();
@@ -467,65 +629,45 @@ async function main() {
     TENNIS_P50_52_SAFE: runStandaloneStrict(safeUniverse, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52 && e.sportFamily === TENNIS_FAMILY),
   };
 
-  const table: CapRow[] = [
-    {
-      MODEL: "P50_52 (RAW_LEGACY_BASELINE / LEGACY_SETTLEMENT_FIRST / NOT_CURRENT_AUTHORITY)",
-      CAP: "UNCAPPED",
-      SELECTED_N: p5052RawMetrics.events,
-      SETTLED_N: p5052RawMetrics.events,
-      OPEN_N: 0,
-      OTHER_NONTERMINAL_N: 0,
-      SETTLEMENT_COVERAGE_PCT: 100,
-      PNL_U_PARTIAL: p5052RawMetrics.pnl_u,
-      SETTLED_ROI_PCT_PARTIAL: p5052RawMetrics.roi_pct,
-      MAX_DD_U_PARTIAL: p5052RawMetrics.max_drawdown_u,
-      FILL_RATE: 1,
-      ...sportSplit(p5052Raw as unknown as SelectedCandidate[]),
-      FINAL_PNL_WORST: p5052RawMetrics.pnl_u,
-      FINAL_PNL_BEST: p5052RawMetrics.pnl_u,
-      FINAL_ROI_WORST_PCT: p5052RawMetrics.roi_pct,
-      FINAL_ROI_BEST_PCT: p5052RawMetrics.roi_pct,
-      STATUS: "FINAL_REPRODUCIBLE",
-    },
-  ];
+  const table: CapRow[] = [];
   for (const [modelId, bets] of Object.entries(modelBets)) {
-    table.push(uncappedRow(modelId, bets, dates, settlementByCandidateIdentity));
+    table.push(rowFor(modelId, "UNCAPPED", bets, bets, dates, settlementByCandidateIdentity, reconciled.exactScoreExcludedIdentities));
     for (const cap of DISPLAY_CAPS) {
-      if (modelId === "QUALITY_FILL_A_SAFE") {
-        const capped = applyLiveMixAllocation(bets, dates, QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap]);
-        table.push(rowFor(modelId, cap, capped, bets, dates, settlementByCandidateIdentity));
-        continue;
-      }
-
-      // Shared fixed capacity primitive supplies the settlement reconciliation;
-      // applyDailyCap supplies the same selected identities for composition,
-      // drawdown, and unresolved-open bounds.
-      const capacity = computePartialCapacity(bets, settlementByCandidateIdentity, cap);
-      const capped = applyDailyCap(bets, cap);
-      const partial: PartialSettlementMetrics = {
-        SELECTED_N: capacity.selected_n,
-        SETTLED_N: capacity.settled_n,
-        OPEN_N: capacity.open_n,
-        OTHER_NONTERMINAL_N: capacity.other_nonterminal_n,
-        SETTLED_PNL_U_PARTIAL: capacity.settled_pnl_u_partial,
-        SETTLED_ROI_PCT_PARTIAL: capacity.settled_roi_pct_partial,
-        SETTLEMENT_COVERAGE_PCT: capacity.settlement_coverage_pct,
-      };
-      table.push(rowFor(modelId, cap, capped, bets, dates, settlementByCandidateIdentity, partial));
+      const capped = modelId === "QUALITY_FILL_A_SAFE" ? applyLiveMixAllocation(bets, dates, QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap]) : applyDailyCap(bets, cap);
+      table.push(rowFor(modelId, cap, capped, bets, dates, settlementByCandidateIdentity, reconciled.exactScoreExcludedIdentities));
     }
   }
 
   const artifact = {
-    MISSION: "TENNIS_SAFE_COMPARABLE_LEADERBOARD_V1",
-    NOTE: "Every _SAFE model uses the selection-before-settlement fixed path (PR #379). PNL_U_PARTIAL/SETTLED_ROI_PCT_PARTIAL/MAX_DD_U_PARTIAL are never a complete headline result while OPEN_N > 0 (STATUS=PARTIAL); FINAL_PNL_WORST/BEST bound the unresolved OPEN candidates deterministically (LOSS / WIN-at-own-entry-price) and use SELECTED_N as the ROI denominator.",
+    MISSION: "SAFE_MODELING_AUTHORITY_REVIEW_A_REPAIR_V1",
+    PNL_CLASS,
+    PNL_AUTHORITY,
+    NOTE:
+      "Every _SAFE model uses the selection-before-settlement fixed path (PR #379) with Review A repairs: reconciled fail-closed football authority, Exact Score excluded before physical-event selection and cap, causal (prefix-invariant) portfolio decision order, finality bounds over every nonterminal status. REFERENCE_PNL at display price, NOT_EXECUTION_AUTHORITY. DAYS_SUPPLY_AT_CAP_RATE is candidate-supply coverage, not venue fill probability.",
     DATASET_RANGE: { start: START, end: END },
     SOURCE_ROW_N: rawRows.length,
-    PROCESSED_N: decisionTimeCandidates.length,
+    PROCESSED_N: rawDecisionTimeCandidates.length,
+    FOOTBALL_AUTHORITY: {
+      SOURCE: FOOTBALL_OVERLAY_PATH,
+      OVERLAY_IDENTITY_N: overlay.size,
+      OVERLAY_MISS_N: reconciled.overlayMissN,
+      SPORT_CHANGED_VS_CARRIER_N: reconciled.sportChangedN,
+    },
+    EXACT_SCORE_EXCLUDED_BEFORE_SELECTION_N: reconciled.exactScoreExcludedIdentities.size,
     TENNIS_SAFE_UNIVERSE: {
       RAW_TENNIS_N: rawTennisN,
       APPROVED_TENNIS_N: approvedTennisN,
       EXCLUDED_TENNIS_N: rawTennisN - approvedTennisN,
-      EXCLUDED_TENNIS_PNL_U_PARTIAL: round(excludedTennisPnlU, 4),
+      EXCLUDED_TENNIS_REFERENCE_PNL_U: round(excludedTennisPnlU, 4),
+    },
+    RAW_LEGACY_BASELINE_P50_52: {
+      LABEL: "RAW_LEGACY_BASELINE / LEGACY_SETTLEMENT_FIRST / NOT_CURRENT_AUTHORITY",
+      PNL_CLASS,
+      PNL_AUTHORITY,
+      SELECTED_N: p5052RawMetrics.events,
+      REFERENCE_PNL_U: p5052RawMetrics.pnl_u,
+      REFERENCE_ROI_PCT: p5052RawMetrics.roi_pct,
+      MAX_DD_U: p5052RawMetrics.max_drawdown_u,
     },
     TABLE: table,
   };
@@ -533,8 +675,7 @@ async function main() {
   mkdirSync(EVIDENCE_OUT_DIR, { recursive: true });
   const outPath = `${EVIDENCE_OUT_DIR}/LEADERBOARD_${START}_${END}.json`;
   writeFileSync(outPath, JSON.stringify(artifact, null, 2));
-  console.log(JSON.stringify(artifact, null, 2));
-  console.log(`\nWrote ${outPath}`);
+  console.log(`Wrote ${outPath}`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

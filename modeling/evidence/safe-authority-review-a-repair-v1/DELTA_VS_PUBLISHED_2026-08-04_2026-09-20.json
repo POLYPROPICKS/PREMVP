@@ -1,0 +1,1630 @@
+{
+  "MISSION": "SAFE_MODELING_AUTHORITY_REVIEW_A_REPAIR_V1_DELTA",
+  "PNL_CLASS": "REFERENCE_PNL",
+  "PNL_AUTHORITY": "NOT_EXECUTION_AUTHORITY",
+  "PUBLISHED_SOURCE": "modeling/evidence/modeling-dashboard-v1/CURRENT_MODELING_AUTHORITY.js (CURRENT_MODELING_AUTHORITY_V1)",
+  "PUBLISHED_REPRODUCED_WITH_PRE389_TENNIS_GATE": "300/300 published fields reproduced exactly by the unrepaired runner with lib/executor/tennisLiveEligibility.ts at 7fb1f08^",
+  "NOTE": "PUBLISHED PNL_U/ROI are the old WIN/LOSS-only settled figures; REPAIRED REFERENCE_ROI_PCT uses the contract denominator WIN+LOSS+VOID. Published FINAL_PNL_WORST bounded OPEN only.",
+  "rows": [
+    {
+      "MODEL": "P50_52_SAFE",
+      "CAP": 30,
+      "PUBLISHED": {
+        "SELECTED_N": 1015,
+        "SETTLED_N": 937,
+        "OPEN_N": 78,
+        "PNL_U": 150.31,
+        "ROI_PCT": 16.0415,
+        "MAX_DD": -23.98,
+        "FOOTBALL_N": 194,
+        "WORST": 72.31
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 936,
+        "SETTLED_N": 846,
+        "OPEN_N": 90,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 17.13,
+        "ROI_PCT": 2.0251,
+        "MAX_DD": -35.95,
+        "FOOTBALL_N": 206,
+        "WORST": -72.87
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1015,
+        "SETTLED_N": 937,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 78
+        },
+        "REFERENCE_PNL_U": 144.43,
+        "REFERENCE_ROI_PCT": 15.4141,
+        "MAX_DD_U": -25.98,
+        "FOOTBALL_N": 237,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 66.43,
+        "REFERENCE_FINAL_PNL_BEST_U": 221.91,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.5417,
+        "AUG": {
+          "SELECTED_N": 569,
+          "SETTLED_N": 512,
+          "UNRESOLVED_N": 57,
+          "REFERENCE_PNL_U": 47.11,
+          "REFERENCE_ROI_PCT": 9.2012,
+          "FOOTBALL_N": 59
+        },
+        "SEP": {
+          "SELECTED_N": 446,
+          "SETTLED_N": 425,
+          "UNRESOLVED_N": 21,
+          "REFERENCE_PNL_U": 97.33,
+          "REFERENCE_ROI_PCT": 22.9012,
+          "FOOTBALL_N": 178
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 936,
+        "SETTLED_N": 846,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 90
+        },
+        "REFERENCE_PNL_U": 11.25,
+        "REFERENCE_ROI_PCT": 1.3298,
+        "MAX_DD_U": -38.34,
+        "FOOTBALL_N": 250,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -78.75,
+        "REFERENCE_FINAL_PNL_BEST_U": 100.71,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.4792,
+        "AUG": {
+          "SELECTED_N": 512,
+          "SETTLED_N": 454,
+          "UNRESOLVED_N": 58,
+          "REFERENCE_PNL_U": -16.97,
+          "REFERENCE_ROI_PCT": -3.7379,
+          "FOOTBALL_N": 60
+        },
+        "SEP": {
+          "SELECTED_N": 424,
+          "SETTLED_N": 392,
+          "UNRESOLVED_N": 32,
+          "REFERENCE_PNL_U": 28.23,
+          "REFERENCE_ROI_PCT": 7.2015,
+          "FOOTBALL_N": 190
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 0,
+        "REFERENCE_PNL_U": -5.88,
+        "FOOTBALL_N": 43,
+        "MAX_DD_U": -2,
+        "WORST_U": -5.88
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -79,
+        "REFERENCE_PNL_U": -133.18,
+        "FOOTBALL_N": 12
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -79,
+        "REFERENCE_PNL_U": -139.06,
+        "FOOTBALL_N": 56,
+        "MAX_DD_U": -14.36,
+        "WORST_U": -151.06
+      }
+    },
+    {
+      "MODEL": "P50_52_SAFE",
+      "CAP": 40,
+      "PUBLISHED": {
+        "SELECTED_N": 1250,
+        "SETTLED_N": 1159,
+        "OPEN_N": 91,
+        "PNL_U": 199.01,
+        "ROI_PCT": 17.1706,
+        "MAX_DD": -29.04,
+        "FOOTBALL_N": 249,
+        "WORST": 108.01
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1143,
+        "SETTLED_N": 1035,
+        "OPEN_N": 108,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 20.89,
+        "ROI_PCT": 2.0183,
+        "MAX_DD": -38.42,
+        "FOOTBALL_N": 262,
+        "WORST": -87.11
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1247,
+        "SETTLED_N": 1156,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 91
+        },
+        "REFERENCE_PNL_U": 198.13,
+        "REFERENCE_ROI_PCT": 17.1393,
+        "MAX_DD_U": -29.04,
+        "FOOTBALL_N": 298,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 107.13,
+        "REFERENCE_FINAL_PNL_BEST_U": 288.51,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.375,
+        "AUG": {
+          "SELECTED_N": 681,
+          "SETTLED_N": 617,
+          "UNRESOLVED_N": 64,
+          "REFERENCE_PNL_U": 53.77,
+          "REFERENCE_ROI_PCT": 8.7147,
+          "FOOTBALL_N": 70
+        },
+        "SEP": {
+          "SELECTED_N": 566,
+          "SETTLED_N": 539,
+          "UNRESOLVED_N": 27,
+          "REFERENCE_PNL_U": 144.36,
+          "REFERENCE_ROI_PCT": 26.7829,
+          "FOOTBALL_N": 228
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1140,
+        "SETTLED_N": 1032,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 108
+        },
+        "REFERENCE_PNL_U": 20.01,
+        "REFERENCE_ROI_PCT": 1.939,
+        "MAX_DD_U": -39.3,
+        "FOOTBALL_N": 311,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -87.99,
+        "REFERENCE_FINAL_PNL_BEST_U": 127.39,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3333,
+        "AUG": {
+          "SELECTED_N": 606,
+          "SETTLED_N": 542,
+          "UNRESOLVED_N": 64,
+          "REFERENCE_PNL_U": -25.23,
+          "REFERENCE_ROI_PCT": -4.655,
+          "FOOTBALL_N": 70
+        },
+        "SEP": {
+          "SELECTED_N": 534,
+          "SETTLED_N": 490,
+          "UNRESOLVED_N": 44,
+          "REFERENCE_PNL_U": 45.24,
+          "REFERENCE_ROI_PCT": 9.2327,
+          "FOOTBALL_N": 241
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": -3,
+        "REFERENCE_PNL_U": -0.88,
+        "FOOTBALL_N": 49,
+        "MAX_DD_U": 0,
+        "WORST_U": -0.88
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -107,
+        "REFERENCE_PNL_U": -178.12,
+        "FOOTBALL_N": 13
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -110,
+        "REFERENCE_PNL_U": -179,
+        "FOOTBALL_N": 62,
+        "MAX_DD_U": -10.26,
+        "WORST_U": -196
+      }
+    },
+    {
+      "MODEL": "P50_52_SAFE",
+      "CAP": 50,
+      "PUBLISHED": {
+        "SELECTED_N": 1427,
+        "SETTLED_N": 1328,
+        "OPEN_N": 99,
+        "PNL_U": 221.26,
+        "ROI_PCT": 16.6609,
+        "MAX_DD": -25.88,
+        "FOOTBALL_N": 307,
+        "WORST": 122.26
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1300,
+        "SETTLED_N": 1178,
+        "OPEN_N": 122,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 29.22,
+        "ROI_PCT": 2.4802,
+        "MAX_DD": -36.21,
+        "FOOTBALL_N": 314,
+        "WORST": -92.78
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1422,
+        "SETTLED_N": 1323,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 99
+        },
+        "REFERENCE_PNL_U": 218.38,
+        "REFERENCE_ROI_PCT": 16.5064,
+        "MAX_DD_U": -27.82,
+        "FOOTBALL_N": 356,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 119.38,
+        "REFERENCE_FINAL_PNL_BEST_U": 316.76,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3542,
+        "AUG": {
+          "SELECTED_N": 736,
+          "SETTLED_N": 670,
+          "UNRESOLVED_N": 66,
+          "REFERENCE_PNL_U": 66.77,
+          "REFERENCE_ROI_PCT": 9.9657,
+          "FOOTBALL_N": 70
+        },
+        "SEP": {
+          "SELECTED_N": 686,
+          "SETTLED_N": 653,
+          "UNRESOLVED_N": 33,
+          "REFERENCE_PNL_U": 151.61,
+          "REFERENCE_ROI_PCT": 23.2175,
+          "FOOTBALL_N": 286
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1295,
+        "SETTLED_N": 1173,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 122
+        },
+        "REFERENCE_PNL_U": 26.34,
+        "REFERENCE_ROI_PCT": 2.2455,
+        "MAX_DD_U": -38.15,
+        "FOOTBALL_N": 363,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -95.66,
+        "REFERENCE_FINAL_PNL_BEST_U": 147.7,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3125,
+        "AUG": {
+          "SELECTED_N": 651,
+          "SETTLED_N": 585,
+          "UNRESOLVED_N": 66,
+          "REFERENCE_PNL_U": -20.23,
+          "REFERENCE_ROI_PCT": -3.4581,
+          "FOOTBALL_N": 70
+        },
+        "SEP": {
+          "SELECTED_N": 644,
+          "SETTLED_N": 588,
+          "UNRESOLVED_N": 56,
+          "REFERENCE_PNL_U": 46.57,
+          "REFERENCE_ROI_PCT": 7.9201,
+          "FOOTBALL_N": 293
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": -5,
+        "REFERENCE_PNL_U": -2.88,
+        "FOOTBALL_N": 49,
+        "MAX_DD_U": -1.94,
+        "WORST_U": -2.88
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -127,
+        "REFERENCE_PNL_U": -192.04,
+        "FOOTBALL_N": 7
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -132,
+        "REFERENCE_PNL_U": -194.92,
+        "FOOTBALL_N": 56,
+        "MAX_DD_U": -12.27,
+        "WORST_U": -217.92
+      }
+    },
+    {
+      "MODEL": "PORTFOLIO_BROAD_SAFE",
+      "CAP": 30,
+      "PUBLISHED": {
+        "SELECTED_N": 1087,
+        "SETTLED_N": 1008,
+        "OPEN_N": 79,
+        "PNL_U": 140.18,
+        "ROI_PCT": 13.9067,
+        "MAX_DD": -24.19,
+        "FOOTBALL_N": 214,
+        "WORST": 61.18
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1013,
+        "SETTLED_N": 918,
+        "OPEN_N": 95,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": -2.09,
+        "ROI_PCT": -0.2274,
+        "MAX_DD": -37.39,
+        "FOOTBALL_N": 225,
+        "WORST": -97.09
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1084,
+        "SETTLED_N": 998,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 86
+        },
+        "REFERENCE_PNL_U": 118.91,
+        "REFERENCE_ROI_PCT": 11.9148,
+        "MAX_DD_U": -27.17,
+        "FOOTBALL_N": 254,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 32.91,
+        "REFERENCE_FINAL_PNL_BEST_U": 203.78,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.6042,
+        "AUG": {
+          "SELECTED_N": 597,
+          "SETTLED_N": 535,
+          "UNRESOLVED_N": 62,
+          "REFERENCE_PNL_U": 50.2,
+          "REFERENCE_ROI_PCT": 9.3832,
+          "FOOTBALL_N": 59
+        },
+        "SEP": {
+          "SELECTED_N": 487,
+          "SETTLED_N": 463,
+          "UNRESOLVED_N": 24,
+          "REFERENCE_PNL_U": 68.72,
+          "REFERENCE_ROI_PCT": 14.8423,
+          "FOOTBALL_N": 195
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1010,
+        "SETTLED_N": 908,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 102
+        },
+        "REFERENCE_PNL_U": -25.41,
+        "REFERENCE_ROI_PCT": -2.7985,
+        "MAX_DD_U": -51.8,
+        "FOOTBALL_N": 266,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -127.41,
+        "REFERENCE_FINAL_PNL_BEST_U": 75.33,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.5417,
+        "AUG": {
+          "SELECTED_N": 545,
+          "SETTLED_N": 481,
+          "UNRESOLVED_N": 64,
+          "REFERENCE_PNL_U": -14.09,
+          "REFERENCE_ROI_PCT": -2.9293,
+          "FOOTBALL_N": 60
+        },
+        "SEP": {
+          "SELECTED_N": 465,
+          "SETTLED_N": 427,
+          "UNRESOLVED_N": 38,
+          "REFERENCE_PNL_U": -11.32,
+          "REFERENCE_ROI_PCT": -2.6511,
+          "FOOTBALL_N": 206
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": -3,
+        "REFERENCE_PNL_U": -21.27,
+        "FOOTBALL_N": 40,
+        "MAX_DD_U": -2.98,
+        "WORST_U": -28.27
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -74,
+        "REFERENCE_PNL_U": -142.27,
+        "FOOTBALL_N": 11
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -77,
+        "REFERENCE_PNL_U": -165.59,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": -27.61,
+        "WORST_U": -188.59
+      }
+    },
+    {
+      "MODEL": "PORTFOLIO_BROAD_SAFE",
+      "CAP": 40,
+      "PUBLISHED": {
+        "SELECTED_N": 1350,
+        "SETTLED_N": 1251,
+        "OPEN_N": 99,
+        "PNL_U": 165.12,
+        "ROI_PCT": 13.1992,
+        "MAX_DD": -32.49,
+        "FOOTBALL_N": 262,
+        "WORST": 66.12
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1246,
+        "SETTLED_N": 1127,
+        "OPEN_N": 119,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": -17.13,
+        "ROI_PCT": -1.5196,
+        "MAX_DD": -47.06,
+        "FOOTBALL_N": 273,
+        "WORST": -136.13
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1346,
+        "SETTLED_N": 1241,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 105
+        },
+        "REFERENCE_PNL_U": 169.12,
+        "REFERENCE_ROI_PCT": 13.6277,
+        "MAX_DD_U": -34.47,
+        "FOOTBALL_N": 324,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 64.12,
+        "REFERENCE_FINAL_PNL_BEST_U": 272.5,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.5417,
+        "AUG": {
+          "SELECTED_N": 739,
+          "SETTLED_N": 666,
+          "UNRESOLVED_N": 73,
+          "REFERENCE_PNL_U": 55.44,
+          "REFERENCE_ROI_PCT": 8.3243,
+          "FOOTBALL_N": 80
+        },
+        "SEP": {
+          "SELECTED_N": 607,
+          "SETTLED_N": 575,
+          "UNRESOLVED_N": 32,
+          "REFERENCE_PNL_U": 113.68,
+          "REFERENCE_ROI_PCT": 19.7704,
+          "FOOTBALL_N": 244
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1242,
+        "SETTLED_N": 1115,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 127
+        },
+        "REFERENCE_PNL_U": -11.17,
+        "REFERENCE_ROI_PCT": -1.0018,
+        "MAX_DD_U": -52.42,
+        "FOOTBALL_N": 335,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -138.17,
+        "REFERENCE_FINAL_PNL_BEST_U": 114.21,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.4792,
+        "AUG": {
+          "SELECTED_N": 667,
+          "SETTLED_N": 594,
+          "UNRESOLVED_N": 73,
+          "REFERENCE_PNL_U": -24.69,
+          "REFERENCE_ROI_PCT": -4.1566,
+          "FOOTBALL_N": 80
+        },
+        "SEP": {
+          "SELECTED_N": 575,
+          "SETTLED_N": 521,
+          "UNRESOLVED_N": 54,
+          "REFERENCE_PNL_U": 13.52,
+          "REFERENCE_ROI_PCT": 2.595,
+          "FOOTBALL_N": 255
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": -4,
+        "REFERENCE_PNL_U": 4,
+        "FOOTBALL_N": 62,
+        "MAX_DD_U": -1.98,
+        "WORST_U": -2
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -104,
+        "REFERENCE_PNL_U": -182.25,
+        "FOOTBALL_N": 11
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -108,
+        "REFERENCE_PNL_U": -176.29,
+        "FOOTBALL_N": 73,
+        "MAX_DD_U": -19.93,
+        "WORST_U": -204.29
+      }
+    },
+    {
+      "MODEL": "PORTFOLIO_BROAD_SAFE",
+      "CAP": 50,
+      "PUBLISHED": {
+        "SELECTED_N": 1555,
+        "SETTLED_N": 1445,
+        "OPEN_N": 110,
+        "PNL_U": 212.7,
+        "ROI_PCT": 14.7195,
+        "MAX_DD": -33.68,
+        "FOOTBALL_N": 322,
+        "WORST": 102.7
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1431,
+        "SETTLED_N": 1293,
+        "OPEN_N": 138,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 12.51,
+        "ROI_PCT": 0.9673,
+        "MAX_DD": -42.27,
+        "FOOTBALL_N": 327,
+        "WORST": -125.49
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1547,
+        "SETTLED_N": 1427,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 120
+        },
+        "REFERENCE_PNL_U": 208.7,
+        "REFERENCE_ROI_PCT": 14.6251,
+        "MAX_DD_U": -34.66,
+        "FOOTBALL_N": 384,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 88.7,
+        "REFERENCE_FINAL_PNL_BEST_U": 326.85,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.375,
+        "AUG": {
+          "SELECTED_N": 820,
+          "SETTLED_N": 741,
+          "UNRESOLVED_N": 79,
+          "REFERENCE_PNL_U": 65.34,
+          "REFERENCE_ROI_PCT": 8.8178,
+          "FOOTBALL_N": 88
+        },
+        "SEP": {
+          "SELECTED_N": 727,
+          "SETTLED_N": 686,
+          "UNRESOLVED_N": 41,
+          "REFERENCE_PNL_U": 143.36,
+          "REFERENCE_ROI_PCT": 20.898,
+          "FOOTBALL_N": 296
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1423,
+        "SETTLED_N": 1276,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 147
+        },
+        "REFERENCE_PNL_U": 9.64,
+        "REFERENCE_ROI_PCT": 0.7555,
+        "MAX_DD_U": -48.78,
+        "FOOTBALL_N": 388,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -137.36,
+        "REFERENCE_FINAL_PNL_BEST_U": 154.77,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3333,
+        "AUG": {
+          "SELECTED_N": 738,
+          "SETTLED_N": 659,
+          "UNRESOLVED_N": 79,
+          "REFERENCE_PNL_U": -22.79,
+          "REFERENCE_ROI_PCT": -3.4583,
+          "FOOTBALL_N": 88
+        },
+        "SEP": {
+          "SELECTED_N": 685,
+          "SETTLED_N": 617,
+          "UNRESOLVED_N": 68,
+          "REFERENCE_PNL_U": 32.43,
+          "REFERENCE_ROI_PCT": 5.2561,
+          "FOOTBALL_N": 300
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": -8,
+        "REFERENCE_PNL_U": -4,
+        "FOOTBALL_N": 62,
+        "MAX_DD_U": -0.98,
+        "WORST_U": -14
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -124,
+        "REFERENCE_PNL_U": -200.19,
+        "FOOTBALL_N": 5
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -132,
+        "REFERENCE_PNL_U": -203.06,
+        "FOOTBALL_N": 66,
+        "MAX_DD_U": -15.1,
+        "WORST_U": -240.06
+      }
+    },
+    {
+      "MODEL": "QUALITY_FILL_A_SAFE",
+      "CAP": 30,
+      "PUBLISHED": {
+        "SELECTED_N": 1046,
+        "SETTLED_N": 966,
+        "OPEN_N": 80,
+        "PNL_U": 182.95,
+        "ROI_PCT": 18.9391,
+        "MAX_DD": -21.76,
+        "FOOTBALL_N": 301,
+        "WORST": 102.95
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 967,
+        "SETTLED_N": 854,
+        "OPEN_N": 113,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 18.85,
+        "ROI_PCT": 2.2077,
+        "MAX_DD": -32.26,
+        "FOOTBALL_N": 301,
+        "WORST": -94.15
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1045,
+        "SETTLED_N": 966,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 79
+        },
+        "REFERENCE_PNL_U": 170.8,
+        "REFERENCE_ROI_PCT": 17.6812,
+        "MAX_DD_U": -25.6,
+        "FOOTBALL_N": 353,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 91.8,
+        "REFERENCE_FINAL_PNL_BEST_U": 249.19,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.5417,
+        "AUG": {
+          "SELECTED_N": 569,
+          "SETTLED_N": 515,
+          "UNRESOLVED_N": 54,
+          "REFERENCE_PNL_U": 45.23,
+          "REFERENCE_ROI_PCT": 8.7825,
+          "FOOTBALL_N": 92
+        },
+        "SEP": {
+          "SELECTED_N": 476,
+          "SETTLED_N": 451,
+          "UNRESOLVED_N": 25,
+          "REFERENCE_PNL_U": 125.57,
+          "REFERENCE_ROI_PCT": 27.8426,
+          "FOOTBALL_N": 261
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 966,
+        "SETTLED_N": 853,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 113
+        },
+        "REFERENCE_PNL_U": 5.71,
+        "REFERENCE_ROI_PCT": 0.6694,
+        "MAX_DD_U": -34.76,
+        "FOOTBALL_N": 353,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -107.29,
+        "REFERENCE_FINAL_PNL_BEST_U": 117.96,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.4792,
+        "AUG": {
+          "SELECTED_N": 512,
+          "SETTLED_N": 456,
+          "UNRESOLVED_N": 56,
+          "REFERENCE_PNL_U": -17.86,
+          "REFERENCE_ROI_PCT": -3.9167,
+          "FOOTBALL_N": 92
+        },
+        "SEP": {
+          "SELECTED_N": 454,
+          "SETTLED_N": 397,
+          "UNRESOLVED_N": 57,
+          "REFERENCE_PNL_U": 23.57,
+          "REFERENCE_ROI_PCT": 5.937,
+          "FOOTBALL_N": 261
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": -1,
+        "REFERENCE_PNL_U": -12.15,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": -3.84,
+        "WORST_U": -11.15
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -79,
+        "REFERENCE_PNL_U": -164.1,
+        "FOOTBALL_N": 0
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -80,
+        "REFERENCE_PNL_U": -177.24,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": -13,
+        "WORST_U": -210.24
+      }
+    },
+    {
+      "MODEL": "QUALITY_FILL_A_SAFE",
+      "CAP": 40,
+      "PUBLISHED": {
+        "SELECTED_N": 1283,
+        "SETTLED_N": 1188,
+        "OPEN_N": 95,
+        "PNL_U": 225.68,
+        "ROI_PCT": 18.9966,
+        "MAX_DD": -31.04,
+        "FOOTBALL_N": 349,
+        "WORST": 130.68
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1176,
+        "SETTLED_N": 1032,
+        "OPEN_N": 144,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 3.62,
+        "ROI_PCT": 0.3508,
+        "MAX_DD": -37.44,
+        "FOOTBALL_N": 349,
+        "WORST": -140.38
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1291,
+        "SETTLED_N": 1196,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 95
+        },
+        "REFERENCE_PNL_U": 219.52,
+        "REFERENCE_ROI_PCT": 18.3545,
+        "MAX_DD_U": -31.04,
+        "FOOTBALL_N": 401,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 124.52,
+        "REFERENCE_FINAL_PNL_BEST_U": 313.81,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.4375,
+        "AUG": {
+          "SELECTED_N": 693,
+          "SETTLED_N": 631,
+          "UNRESOLVED_N": 62,
+          "REFERENCE_PNL_U": 50.82,
+          "REFERENCE_ROI_PCT": 8.0539,
+          "FOOTBALL_N": 96
+        },
+        "SEP": {
+          "SELECTED_N": 598,
+          "SETTLED_N": 565,
+          "UNRESOLVED_N": 33,
+          "REFERENCE_PNL_U": 168.7,
+          "REFERENCE_ROI_PCT": 29.8584,
+          "FOOTBALL_N": 305
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1184,
+        "SETTLED_N": 1040,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 144
+        },
+        "REFERENCE_PNL_U": -2.54,
+        "REFERENCE_ROI_PCT": -0.2442,
+        "MAX_DD_U": -39.54,
+        "FOOTBALL_N": 401,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -146.54,
+        "REFERENCE_FINAL_PNL_BEST_U": 140.56,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3958,
+        "AUG": {
+          "SELECTED_N": 618,
+          "SETTLED_N": 556,
+          "UNRESOLVED_N": 62,
+          "REFERENCE_PNL_U": -28.18,
+          "REFERENCE_ROI_PCT": -5.0683,
+          "FOOTBALL_N": 96
+        },
+        "SEP": {
+          "SELECTED_N": 566,
+          "SETTLED_N": 484,
+          "UNRESOLVED_N": 82,
+          "REFERENCE_PNL_U": 25.64,
+          "REFERENCE_ROI_PCT": 5.2975,
+          "FOOTBALL_N": 305
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 8,
+        "REFERENCE_PNL_U": -6.16,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": 0,
+        "WORST_U": -6.16
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -107,
+        "REFERENCE_PNL_U": -222.06,
+        "FOOTBALL_N": 0
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -99,
+        "REFERENCE_PNL_U": -228.22,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": -8.5,
+        "WORST_U": -277.22
+      }
+    },
+    {
+      "MODEL": "QUALITY_FILL_A_SAFE",
+      "CAP": 50,
+      "PUBLISHED": {
+        "SELECTED_N": 1465,
+        "SETTLED_N": 1358,
+        "OPEN_N": 107,
+        "PNL_U": 284.16,
+        "ROI_PCT": 20.9247,
+        "MAX_DD": -24.04,
+        "FOOTBALL_N": 398,
+        "WORST": 177.16
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1338,
+        "SETTLED_N": 1174,
+        "OPEN_N": 164,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 16.08,
+        "ROI_PCT": 1.3695,
+        "MAX_DD": -32.22,
+        "FOOTBALL_N": 398,
+        "WORST": -147.92
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1471,
+        "SETTLED_N": 1363,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 108
+        },
+        "REFERENCE_PNL_U": 275.01,
+        "REFERENCE_ROI_PCT": 20.1768,
+        "MAX_DD_U": -27.06,
+        "FOOTBALL_N": 450,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 167.01,
+        "REFERENCE_FINAL_PNL_BEST_U": 382.22,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3542,
+        "AUG": {
+          "SELECTED_N": 754,
+          "SETTLED_N": 687,
+          "UNRESOLVED_N": 67,
+          "REFERENCE_PNL_U": 64.8,
+          "REFERENCE_ROI_PCT": 9.4323,
+          "FOOTBALL_N": 96
+        },
+        "SEP": {
+          "SELECTED_N": 717,
+          "SETTLED_N": 676,
+          "UNRESOLVED_N": 41,
+          "REFERENCE_PNL_U": 210.21,
+          "REFERENCE_ROI_PCT": 31.0962,
+          "FOOTBALL_N": 354
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1344,
+        "SETTLED_N": 1179,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 165
+        },
+        "REFERENCE_PNL_U": 6.93,
+        "REFERENCE_ROI_PCT": 0.5878,
+        "MAX_DD_U": -34.14,
+        "FOOTBALL_N": 450,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -158.07,
+        "REFERENCE_FINAL_PNL_BEST_U": 170.89,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3125,
+        "AUG": {
+          "SELECTED_N": 669,
+          "SETTLED_N": 602,
+          "UNRESOLVED_N": 67,
+          "REFERENCE_PNL_U": -24.2,
+          "REFERENCE_ROI_PCT": -4.0199,
+          "FOOTBALL_N": 96
+        },
+        "SEP": {
+          "SELECTED_N": 675,
+          "SETTLED_N": 577,
+          "UNRESOLVED_N": 98,
+          "REFERENCE_PNL_U": 31.13,
+          "REFERENCE_ROI_PCT": 5.3951,
+          "FOOTBALL_N": 354
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 6,
+        "REFERENCE_PNL_U": -9.15,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": -3.02,
+        "WORST_U": -10.15
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -127,
+        "REFERENCE_PNL_U": -268.08,
+        "FOOTBALL_N": 0
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -121,
+        "REFERENCE_PNL_U": -277.23,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": -10.1,
+        "WORST_U": -335.23
+      }
+    },
+    {
+      "MODEL": "QUALITY_FILL_D_SAFE",
+      "CAP": 30,
+      "PUBLISHED": {
+        "SELECTED_N": 1076,
+        "SETTLED_N": 989,
+        "OPEN_N": 87,
+        "PNL_U": 237.25,
+        "ROI_PCT": 23.9888,
+        "MAX_DD": -21.81,
+        "FOOTBALL_N": 321,
+        "WORST": 150.25
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 999,
+        "SETTLED_N": 855,
+        "OPEN_N": 144,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 26.3,
+        "ROI_PCT": 3.0755,
+        "MAX_DD": -29.81,
+        "FOOTBALL_N": 343,
+        "WORST": -117.7
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1077,
+        "SETTLED_N": 991,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 86
+        },
+        "REFERENCE_PNL_U": 221.26,
+        "REFERENCE_ROI_PCT": 22.3269,
+        "MAX_DD_U": -24.98,
+        "FOOTBALL_N": 373,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 135.26,
+        "REFERENCE_FINAL_PNL_BEST_U": 306.71,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.625,
+        "AUG": {
+          "SELECTED_N": 573,
+          "SETTLED_N": 520,
+          "UNRESOLVED_N": 53,
+          "REFERENCE_PNL_U": 47.64,
+          "REFERENCE_ROI_PCT": 9.1615,
+          "FOOTBALL_N": 100
+        },
+        "SEP": {
+          "SELECTED_N": 504,
+          "SETTLED_N": 471,
+          "UNRESOLVED_N": 33,
+          "REFERENCE_PNL_U": 173.62,
+          "REFERENCE_ROI_PCT": 36.862,
+          "FOOTBALL_N": 273
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1000,
+        "SETTLED_N": 856,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 144
+        },
+        "REFERENCE_PNL_U": 7.33,
+        "REFERENCE_ROI_PCT": 0.8563,
+        "MAX_DD_U": -33.53,
+        "FOOTBALL_N": 395,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -136.67,
+        "REFERENCE_FINAL_PNL_BEST_U": 150.5,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.5625,
+        "AUG": {
+          "SELECTED_N": 518,
+          "SETTLED_N": 463,
+          "UNRESOLVED_N": 55,
+          "REFERENCE_PNL_U": -15.78,
+          "REFERENCE_ROI_PCT": -3.4082,
+          "FOOTBALL_N": 102
+        },
+        "SEP": {
+          "SELECTED_N": 482,
+          "SETTLED_N": 393,
+          "UNRESOLVED_N": 89,
+          "REFERENCE_PNL_U": 23.1,
+          "REFERENCE_ROI_PCT": 5.8779,
+          "FOOTBALL_N": 293
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 1,
+        "REFERENCE_PNL_U": -15.99,
+        "FOOTBALL_N": 52,
+        "MAX_DD_U": -3.17,
+        "WORST_U": -14.99
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -77,
+        "REFERENCE_PNL_U": -210.95,
+        "FOOTBALL_N": 22
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -76,
+        "REFERENCE_PNL_U": -229.92,
+        "FOOTBALL_N": 74,
+        "MAX_DD_U": -11.72,
+        "WORST_U": -286.92
+      }
+    },
+    {
+      "MODEL": "QUALITY_FILL_D_SAFE",
+      "CAP": 40,
+      "PUBLISHED": {
+        "SELECTED_N": 1344,
+        "SETTLED_N": 1231,
+        "OPEN_N": 113,
+        "PNL_U": 294.41,
+        "ROI_PCT": 23.9164,
+        "MAX_DD": -31.04,
+        "FOOTBALL_N": 407,
+        "WORST": 181.41
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1239,
+        "SETTLED_N": 1076,
+        "OPEN_N": 163,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 30.3,
+        "ROI_PCT": 2.8164,
+        "MAX_DD": -31.04,
+        "FOOTBALL_N": 456,
+        "WORST": -132.7
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1352,
+        "SETTLED_N": 1238,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 114
+        },
+        "REFERENCE_PNL_U": 275.81,
+        "REFERENCE_ROI_PCT": 22.2787,
+        "MAX_DD_U": -31.59,
+        "FOOTBALL_N": 456,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 161.81,
+        "REFERENCE_FINAL_PNL_BEST_U": 389.05,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.4792,
+        "AUG": {
+          "SELECTED_N": 697,
+          "SETTLED_N": 635,
+          "UNRESOLVED_N": 62,
+          "REFERENCE_PNL_U": 50.27,
+          "REFERENCE_ROI_PCT": 7.9165,
+          "FOOTBALL_N": 100
+        },
+        "SEP": {
+          "SELECTED_N": 655,
+          "SETTLED_N": 603,
+          "UNRESOLVED_N": 52,
+          "REFERENCE_PNL_U": 225.54,
+          "REFERENCE_ROI_PCT": 37.403,
+          "FOOTBALL_N": 356
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1247,
+        "SETTLED_N": 1082,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 165
+        },
+        "REFERENCE_PNL_U": 12.7,
+        "REFERENCE_ROI_PCT": 1.1738,
+        "MAX_DD_U": -34.59,
+        "FOOTBALL_N": 505,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -152.3,
+        "REFERENCE_FINAL_PNL_BEST_U": 176.68,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.4375,
+        "AUG": {
+          "SELECTED_N": 624,
+          "SETTLED_N": 562,
+          "UNRESOLVED_N": 62,
+          "REFERENCE_PNL_U": -29.05,
+          "REFERENCE_ROI_PCT": -5.169,
+          "FOOTBALL_N": 102
+        },
+        "SEP": {
+          "SELECTED_N": 623,
+          "SETTLED_N": 520,
+          "UNRESOLVED_N": 103,
+          "REFERENCE_PNL_U": 41.75,
+          "REFERENCE_ROI_PCT": 8.0288,
+          "FOOTBALL_N": 403
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 8,
+        "REFERENCE_PNL_U": -18.6,
+        "FOOTBALL_N": 49,
+        "MAX_DD_U": -0.55,
+        "WORST_U": -19.6
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -105,
+        "REFERENCE_PNL_U": -264.11,
+        "FOOTBALL_N": 49
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -97,
+        "REFERENCE_PNL_U": -281.71,
+        "FOOTBALL_N": 98,
+        "MAX_DD_U": -3.55,
+        "WORST_U": -333.71
+      }
+    },
+    {
+      "MODEL": "QUALITY_FILL_D_SAFE",
+      "CAP": 50,
+      "PUBLISHED": {
+        "SELECTED_N": 1546,
+        "SETTLED_N": 1414,
+        "OPEN_N": 132,
+        "PNL_U": 330.7,
+        "ROI_PCT": 23.3873,
+        "MAX_DD": -26.11,
+        "FOOTBALL_N": 484,
+        "WORST": 198.7
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 1421,
+        "SETTLED_N": 1242,
+        "OPEN_N": 179,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": 29.56,
+        "ROI_PCT": 2.3798,
+        "MAX_DD": -38.38,
+        "FOOTBALL_N": 531,
+        "WORST": -149.44
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 1561,
+        "SETTLED_N": 1422,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 139
+        },
+        "REFERENCE_PNL_U": 315.77,
+        "REFERENCE_ROI_PCT": 22.206,
+        "MAX_DD_U": -25.21,
+        "FOOTBALL_N": 546,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 176.77,
+        "REFERENCE_FINAL_PNL_BEST_U": 452.63,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3958,
+        "AUG": {
+          "SELECTED_N": 772,
+          "SETTLED_N": 701,
+          "UNRESOLVED_N": 71,
+          "REFERENCE_PNL_U": 68.68,
+          "REFERENCE_ROI_PCT": 9.7974,
+          "FOOTBALL_N": 114
+        },
+        "SEP": {
+          "SELECTED_N": 789,
+          "SETTLED_N": 721,
+          "UNRESOLVED_N": 68,
+          "REFERENCE_PNL_U": 247.09,
+          "REFERENCE_ROI_PCT": 34.2705,
+          "FOOTBALL_N": 432
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 1436,
+        "SETTLED_N": 1249,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 187
+        },
+        "REFERENCE_PNL_U": 17.59,
+        "REFERENCE_ROI_PCT": 1.4083,
+        "MAX_DD_U": -37.47,
+        "FOOTBALL_N": 592,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -169.41,
+        "REFERENCE_FINAL_PNL_BEST_U": 202.14,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.3542,
+        "AUG": {
+          "SELECTED_N": 689,
+          "SETTLED_N": 618,
+          "UNRESOLVED_N": 71,
+          "REFERENCE_PNL_U": -20.64,
+          "REFERENCE_ROI_PCT": -3.3398,
+          "FOOTBALL_N": 116
+        },
+        "SEP": {
+          "SELECTED_N": 747,
+          "SETTLED_N": 631,
+          "UNRESOLVED_N": 116,
+          "REFERENCE_PNL_U": 38.23,
+          "REFERENCE_ROI_PCT": 6.0586,
+          "FOOTBALL_N": 476
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 15,
+        "REFERENCE_PNL_U": -14.93,
+        "FOOTBALL_N": 62,
+        "MAX_DD_U": 0.9,
+        "WORST_U": -21.93
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -125,
+        "REFERENCE_PNL_U": -301.14,
+        "FOOTBALL_N": 47
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -110,
+        "REFERENCE_PNL_U": -313.11,
+        "FOOTBALL_N": 108,
+        "MAX_DD_U": -11.36,
+        "WORST_U": -368.11
+      }
+    },
+    {
+      "MODEL": "TENNIS_P50_52_SAFE",
+      "CAP": 30,
+      "PUBLISHED": {
+        "SELECTED_N": 271,
+        "SETTLED_N": 242,
+        "OPEN_N": 29,
+        "PNL_U": 218,
+        "ROI_PCT": 90.0826,
+        "MAX_DD": -2,
+        "FOOTBALL_N": 0,
+        "WORST": 189
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 147,
+        "SETTLED_N": 71,
+        "OPEN_N": 76,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": -1,
+        "ROI_PCT": -1.4085,
+        "MAX_DD": -6,
+        "FOOTBALL_N": 0,
+        "WORST": -77
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 271,
+        "SETTLED_N": 242,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 29
+        },
+        "REFERENCE_PNL_U": 218,
+        "REFERENCE_ROI_PCT": 90.0826,
+        "MAX_DD_U": -2,
+        "FOOTBALL_N": 0,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 189,
+        "REFERENCE_FINAL_PNL_BEST_U": 247,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.1458,
+        "AUG": {
+          "SELECTED_N": 68,
+          "SETTLED_N": 68,
+          "UNRESOLVED_N": 0,
+          "REFERENCE_PNL_U": 66,
+          "REFERENCE_ROI_PCT": 97.0588,
+          "FOOTBALL_N": 0
+        },
+        "SEP": {
+          "SELECTED_N": 203,
+          "SETTLED_N": 174,
+          "UNRESOLVED_N": 29,
+          "REFERENCE_PNL_U": 152,
+          "REFERENCE_ROI_PCT": 87.3563,
+          "FOOTBALL_N": 0
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 147,
+        "SETTLED_N": 71,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 76
+        },
+        "REFERENCE_PNL_U": -1,
+        "REFERENCE_ROI_PCT": -1.4085,
+        "MAX_DD_U": -6,
+        "FOOTBALL_N": 0,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -77,
+        "REFERENCE_FINAL_PNL_BEST_U": 74.76,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.0625,
+        "AUG": {
+          "SELECTED_N": 1,
+          "SETTLED_N": 1,
+          "UNRESOLVED_N": 0,
+          "REFERENCE_PNL_U": -1,
+          "REFERENCE_ROI_PCT": -100,
+          "FOOTBALL_N": 0
+        },
+        "SEP": {
+          "SELECTED_N": 146,
+          "SETTLED_N": 70,
+          "UNRESOLVED_N": 76,
+          "REFERENCE_PNL_U": 0,
+          "REFERENCE_ROI_PCT": 0,
+          "FOOTBALL_N": 0
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 0,
+        "REFERENCE_PNL_U": 0,
+        "FOOTBALL_N": 0,
+        "MAX_DD_U": 0,
+        "WORST_U": 0
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -124,
+        "REFERENCE_PNL_U": -219,
+        "FOOTBALL_N": 0
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -124,
+        "REFERENCE_PNL_U": -219,
+        "FOOTBALL_N": 0,
+        "MAX_DD_U": -4,
+        "WORST_U": -266
+      }
+    },
+    {
+      "MODEL": "TENNIS_P50_52_SAFE",
+      "CAP": 40,
+      "PUBLISHED": {
+        "SELECTED_N": 341,
+        "SETTLED_N": 295,
+        "OPEN_N": 46,
+        "PNL_U": 267,
+        "ROI_PCT": 90.5085,
+        "MAX_DD": -2,
+        "FOOTBALL_N": 0,
+        "WORST": 221
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 163,
+        "SETTLED_N": 75,
+        "OPEN_N": 88,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": -1,
+        "ROI_PCT": -1.3333,
+        "MAX_DD": -6,
+        "FOOTBALL_N": 0,
+        "WORST": -89
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 341,
+        "SETTLED_N": 295,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 46
+        },
+        "REFERENCE_PNL_U": 267,
+        "REFERENCE_ROI_PCT": 90.5085,
+        "MAX_DD_U": -2,
+        "FOOTBALL_N": 0,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 221,
+        "REFERENCE_FINAL_PNL_BEST_U": 313,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.1458,
+        "AUG": {
+          "SELECTED_N": 78,
+          "SETTLED_N": 78,
+          "UNRESOLVED_N": 0,
+          "REFERENCE_PNL_U": 76,
+          "REFERENCE_ROI_PCT": 97.4359,
+          "FOOTBALL_N": 0
+        },
+        "SEP": {
+          "SELECTED_N": 263,
+          "SETTLED_N": 217,
+          "UNRESOLVED_N": 46,
+          "REFERENCE_PNL_U": 191,
+          "REFERENCE_ROI_PCT": 88.0184,
+          "FOOTBALL_N": 0
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 163,
+        "SETTLED_N": 75,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 88
+        },
+        "REFERENCE_PNL_U": -1,
+        "REFERENCE_ROI_PCT": -1.3333,
+        "MAX_DD_U": -6,
+        "FOOTBALL_N": 0,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -89,
+        "REFERENCE_FINAL_PNL_BEST_U": 86.76,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.0208,
+        "AUG": {
+          "SELECTED_N": 1,
+          "SETTLED_N": 1,
+          "UNRESOLVED_N": 0,
+          "REFERENCE_PNL_U": -1,
+          "REFERENCE_ROI_PCT": -100,
+          "FOOTBALL_N": 0
+        },
+        "SEP": {
+          "SELECTED_N": 162,
+          "SETTLED_N": 74,
+          "UNRESOLVED_N": 88,
+          "REFERENCE_PNL_U": 0,
+          "REFERENCE_ROI_PCT": 0,
+          "FOOTBALL_N": 0
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 0,
+        "REFERENCE_PNL_U": 0,
+        "FOOTBALL_N": 0,
+        "MAX_DD_U": 0,
+        "WORST_U": 0
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -178,
+        "REFERENCE_PNL_U": -268,
+        "FOOTBALL_N": 0
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -178,
+        "REFERENCE_PNL_U": -268,
+        "FOOTBALL_N": 0,
+        "MAX_DD_U": -4,
+        "WORST_U": -310
+      }
+    },
+    {
+      "MODEL": "TENNIS_P50_52_SAFE",
+      "CAP": 50,
+      "PUBLISHED": {
+        "SELECTED_N": 393,
+        "SETTLED_N": 337,
+        "OPEN_N": 56,
+        "PNL_U": 299,
+        "ROI_PCT": 88.724,
+        "MAX_DD": -2,
+        "FOOTBALL_N": 0,
+        "WORST": 243
+      },
+      "CURRENT_MAIN_UNREPAIRED": {
+        "SELECTED_N": 173,
+        "SETTLED_N": 81,
+        "OPEN_N": 92,
+        "OTHER_NONTERMINAL_N": 0,
+        "PNL_U": -3,
+        "ROI_PCT": -3.7037,
+        "MAX_DD": -7,
+        "FOOTBALL_N": 0,
+        "WORST": -95
+      },
+      "REPAIRED_PRE389_TENNIS_GATE": {
+        "SELECTED_N": 393,
+        "SETTLED_N": 337,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 56
+        },
+        "REFERENCE_PNL_U": 299,
+        "REFERENCE_ROI_PCT": 88.724,
+        "MAX_DD_U": -2,
+        "FOOTBALL_N": 0,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": 243,
+        "REFERENCE_FINAL_PNL_BEST_U": 355,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.0833,
+        "AUG": {
+          "SELECTED_N": 88,
+          "SETTLED_N": 88,
+          "UNRESOLVED_N": 0,
+          "REFERENCE_PNL_U": 86,
+          "REFERENCE_ROI_PCT": 97.7273,
+          "FOOTBALL_N": 0
+        },
+        "SEP": {
+          "SELECTED_N": 305,
+          "SETTLED_N": 249,
+          "UNRESOLVED_N": 56,
+          "REFERENCE_PNL_U": 213,
+          "REFERENCE_ROI_PCT": 85.5422,
+          "FOOTBALL_N": 0
+        }
+      },
+      "REPAIRED_CURRENT_MAIN": {
+        "SELECTED_N": 173,
+        "SETTLED_N": 81,
+        "VOID_N": 0,
+        "UNRESOLVED_BY_STATUS": {
+          "OPEN": 92
+        },
+        "REFERENCE_PNL_U": -3,
+        "REFERENCE_ROI_PCT": -3.7037,
+        "MAX_DD_U": -7,
+        "FOOTBALL_N": 0,
+        "EXACT_SCORE_SELECTED_N": 0,
+        "REFERENCE_FINAL_PNL_WORST_U": -95,
+        "REFERENCE_FINAL_PNL_BEST_U": 88.76,
+        "DAYS_SUPPLY_AT_CAP_RATE": 0.0208,
+        "AUG": {
+          "SELECTED_N": 1,
+          "SETTLED_N": 1,
+          "UNRESOLVED_N": 0,
+          "REFERENCE_PNL_U": -1,
+          "REFERENCE_ROI_PCT": -100,
+          "FOOTBALL_N": 0
+        },
+        "SEP": {
+          "SELECTED_N": 172,
+          "SETTLED_N": 80,
+          "UNRESOLVED_N": 92,
+          "REFERENCE_PNL_U": -2,
+          "REFERENCE_ROI_PCT": -2.5,
+          "FOOTBALL_N": 0
+        }
+      },
+      "DELTA_REVIEW_A_REPAIR_ONLY": {
+        "SELECTED_N": 0,
+        "REFERENCE_PNL_U": 0,
+        "FOOTBALL_N": 0,
+        "MAX_DD_U": 0,
+        "WORST_U": 0
+      },
+      "DELTA_TENNIS_GATE_389_DRIFT_ONLY": {
+        "SELECTED_N": -220,
+        "REFERENCE_PNL_U": -302,
+        "FOOTBALL_N": 0
+      },
+      "DELTA_TOTAL_VS_PUBLISHED": {
+        "SELECTED_N": -220,
+        "REFERENCE_PNL_U": -302,
+        "FOOTBALL_N": 0,
+        "MAX_DD_U": -5,
+        "WORST_U": -338
+      }
+    }
+  ]
+}

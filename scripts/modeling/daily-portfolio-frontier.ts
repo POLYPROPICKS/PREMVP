@@ -253,7 +253,17 @@ export function runStandaloneStrict(
   return out;
 }
 
-/** Decision-time-only counterpart of runPortfolio() — see file-header note above. */
+/**
+ * Decision-time-only counterpart of runPortfolio() — see file-header note above.
+ *
+ * CAUSAL_DECISION_ORDER (Review A repair): each physical event is scanned in
+ * chronological order and the decision is frozen at the FIRST observation
+ * that qualifies for ANY tier; its tier is the best (lowest-index) tier that
+ * observation itself satisfies. A later observation for the same event can
+ * never promote, demote or replace an already-made decision, so appending
+ * later observations is prefix-invariant (the pre-repair tier-major scan let
+ * a later tier-1 row displace an earlier tier-2 decision).
+ */
 export function runPortfolioStrict(
   input: DecisionTimeCandidate[],
   tiers: Array<(e: StrictEvaluatedCandidate) => boolean>,
@@ -268,10 +278,10 @@ export function runPortfolioStrict(
   const out: SelectedCandidate[] = [];
   for (const group of grouped.values()) {
     const sorted = sortChronologically(group) as StrictEvaluatedCandidate[];
-    for (let tierIndex = 0; tierIndex < tiers.length; tierIndex++) {
-      const winner = sorted.find(tiers[tierIndex]);
-      if (winner) {
-        out.push(toSelectedCandidate(winner, tierIndex + 1));
+    for (const event of sorted) {
+      const tierIndex = tiers.findIndex((tier) => tier(event));
+      if (tierIndex >= 0) {
+        out.push(toSelectedCandidate(event, tierIndex + 1));
         break;
       }
     }
