@@ -1,0 +1,192 @@
+// Bounded coverage for the football S1/S2/S3 materializer wiring
+// (scripts/execution-matrix/materializeFootballS1S2S3.ts). Pure
+// mapping/assembly logic only — no live DB calls in this suite.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  assembleCandidate,
+  candidateFromRow,
+  evaluateCandidate,
+  isExcludedFromOrdinaryHold,
+  type RawCandidateRow,
+  type RawSnapshotRow,
+} from "../../scripts/execution-matrix/materializeFootballS1S2S3";
+
+const baseRow: RawCandidateRow = {
+  condition_id: "0xcond-real",
+  selected_token_id: "token-under",
+  event_slug: "mls-lag-laf-2026-07-17-total-2pt5",
+  market_slug: null,
+  formula_version: "trusted-initial-formula-v1.1",
+  metric_formula_version: "v2-lite-growth-safe",
+  created_at: "2026-07-16T09:34:41.255239+00:00",
+  entry_price_num: 0.385,
+};
+
+// 1. Real-source mapping shape -----------------------------------------------
+
+test("candidateFromRow maps real generated_signal_pairs fields to the shared identity shape", () => {
+  const candidate = candidateFromRow(baseRow);
+  assert.equal(candidate.conditionId, baseRow.condition_id);
+  assert.equal(candidate.selectedTokenId, baseRow.selected_token_id);
+  assert.equal(candidate.providerEventId, baseRow.event_slug);
+  assert.equal(candidate.formulaVersion, baseRow.metric_formula_version);
+  assert.equal(candidate.decisionTimeIso, baseRow.created_at);
+});
+
+test("candidateFromRow falls back to condition_id when event_slug is absent, never fabricating an id", () => {
+  const candidate = candidateFromRow({ ...baseRow, event_slug: null });
+  assert.equal(candidate.providerEventId, baseRow.condition_id);
+});
+
+// 2. Identity preservation across S1/S2/S3 -----------------------------------
+
+test("evaluateCandidate produces S1/S2/S3 rows that all carry the same candidate identity fields", () => {
+  const materialized = assembleCandidate(baseRow, [], null);
+  const rows = evaluateCandidate(materialized);
+  assert.equal(rows.length, 3);
+  const identityKeys = rows.map(
+    (r) => `${r.payload.condition_id}::${r.payload.selected_token_id}::${r.payload.formula_version}::${r.payload.decision_time}`,
+  );
+  assert.equal(new Set(identityKeys).size, 1);
+});
+
+// 3. Temporal ordering / causality -------------------------------------------
+
+test("assembleCandidate excludes snapshots at or before decision time from S2/S3 observations", () => {
+  const before: RawSnapshotRow = {
+    captured_at: "2026-07-16T09:00:00.000Z",
+    condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id,
+    implied_decimal_odds_mid: 2.5,
+    implied_decimal_odds_bid: 2.4,
+    spread_bps: 100,
+    bid_depth_total: 100,
+    event_slug: baseRow.event_slug,
+    market_slug: null,
+    event_title: null,
+    market_title: null,
+  };
+  const atDecisionTime: RawSnapshotRow = { ...before, captured_at: baseRow.created_at };
+  const after: RawSnapshotRow = { ...before, captured_at: "2026-07-17T03:21:09.814Z", implied_decimal_odds_mid: 2.6 };
+
+  const materialized = assembleCandidate(baseRow, [before, atDecisionTime, after], null);
+  assert.equal(materialized.s2s3Observations.length, 1);
+  assert.equal(materialized.s2s3Observations[0].observedAtIso, after.captured_at);
+});
+
+test("observations feeding S2/S3 stay in ascending time order regardless of input order", () => {
+  const s = (iso: string, odds: number): RawSnapshotRow => ({
+    captured_at: iso,
+    condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id,
+    implied_decimal_odds_mid: odds,
+    implied_decimal_odds_bid: odds,
+    spread_bps: 10,
+    bid_depth_total: 10,
+    event_slug: baseRow.event_slug,
+    market_slug: null,
+    event_title: null,
+    market_title: null,
+  });
+  const materialized = assembleCandidate(
+    baseRow,
+    [s("2026-07-17T05:00:00Z", 2.1), s("2026-07-17T03:00:00Z", 2.0), s("2026-07-17T04:00:00Z", 2.05)],
+    null,
+  );
+  const times = materialized.s2s3Observations.map((o) => o.observedAtIso);
+  assert.deepEqual(
+    times,
+    [...times].sort(),
+  );
+});
+
+// 4. Exact Score exclusion ---------------------------------------------------
+
+test("isExcludedFromOrdinaryHold flags Exact Score / Correct Score text and nothing else", () => {
+  assert.equal(isExcludedFromOrdinaryHold("Exact Score: 2-1"), true);
+  assert.equal(isExcludedFromOrdinaryHold("Correct score market"), true);
+  assert.equal(isExcludedFromOrdinaryHold("mls-lag-laf-2026-07-17-total-2pt5"), false);
+  assert.equal(isExcludedFromOrdinaryHold(null), false);
+  assert.equal(isExcludedFromOrdinaryHold(undefined), false);
+});
+
+test("assembleCandidate drops Exact Score snapshots from the S2/S3 observation window", () => {
+  const exactScoreSnapshot: RawSnapshotRow = {
+    captured_at: "2026-07-17T03:21:09.814Z",
+    condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id,
+    implied_decimal_odds_mid: 5.0,
+    implied_decimal_odds_bid: 4.8,
+    spread_bps: 10,
+    bid_depth_total: 10,
+    event_slug: null,
+    market_slug: null,
+    event_title: "Exact Score 2-1",
+    market_title: null,
+  };
+  const materialized = assembleCandidate(baseRow, [exactScoreSnapshot], null);
+  assert.equal(materialized.s2s3Observations.length, 0);
+});
+
+// 5. No fabricated ACTUAL_FILL -----------------------------------------------
+
+test("without an authoritative fill row, S2/S3 status is never ACTUAL_FILL even when reachable", () => {
+  const s: RawSnapshotRow = {
+    captured_at: "2026-07-17T03:21:09.814Z",
+    condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id,
+    implied_decimal_odds_mid: 2.6,
+    implied_decimal_odds_bid: 2.5,
+    spread_bps: 10,
+    bid_depth_total: 10,
+    event_slug: baseRow.event_slug,
+    market_slug: null,
+    event_title: null,
+    market_title: null,
+  };
+  const materialized = assembleCandidate(baseRow, [s], null);
+  const rows = evaluateCandidate(materialized);
+  const s2 = rows.find((r) => r.strategy === "S2_FIXED_MAKER_HOLD")!;
+  const s3 = rows.find((r) => r.strategy === "S3_MAKER_VALUE_BAND_HOLD")!;
+  assert.notEqual(s2.payload.status, "ACTUAL_FILL");
+  assert.notEqual(s3.payload.status, "ACTUAL_FILL");
+  assert.equal(s2.payload.actual_fill_decimal_odds, null);
+  assert.equal(s3.payload.actual_fill_decimal_odds, null);
+});
+
+test("an authoritative fill row is required for ACTUAL_FILL, and only then is it populated", () => {
+  const fill = { filledDecimalOdds: 2.0, filledAtIso: "2026-07-17T04:00:00Z", source: "bet_execution_ledger" as const };
+  const materialized = assembleCandidate(baseRow, [], fill);
+  const rows = evaluateCandidate(materialized);
+  const s2 = rows.find((r) => r.strategy === "S2_FIXED_MAKER_HOLD")!;
+  assert.equal(s2.payload.status, "ACTUAL_FILL");
+  assert.equal(s2.payload.actual_fill_decimal_odds, 2.0);
+  assert.equal(s2.payload.fill_evidence_source, "bet_execution_ledger");
+});
+
+// 6. Idempotency (logical-identity window) -----------------------------------
+
+test("recorded_window_start is deterministic from the same source snapshot set, enabling idempotent upsert", () => {
+  const s: RawSnapshotRow = {
+    captured_at: "2026-07-17T03:21:09.814Z",
+    condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id,
+    implied_decimal_odds_mid: 2.6,
+    implied_decimal_odds_bid: 2.5,
+    spread_bps: 10,
+    bid_depth_total: 10,
+    event_slug: baseRow.event_slug,
+    market_slug: null,
+    event_title: null,
+    market_title: null,
+  };
+  const run1 = evaluateCandidate(assembleCandidate(baseRow, [s], null));
+  const run2 = evaluateCandidate(assembleCandidate(baseRow, [s], null));
+  const s2run1 = run1.find((r) => r.strategy === "S2_FIXED_MAKER_HOLD")!;
+  const s2run2 = run2.find((r) => r.strategy === "S2_FIXED_MAKER_HOLD")!;
+  assert.equal(s2run1.payload.recorded_window_start, s2run2.payload.recorded_window_start);
+  assert.deepEqual(s2run1.payload, s2run2.payload);
+});

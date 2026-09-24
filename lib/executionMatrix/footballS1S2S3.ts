@@ -66,7 +66,14 @@ export function decimalOddsToSharePrice(decimalOdds: number): number {
 
 export interface S1Input {
   readonly candidate: CandidateIdentity;
-  readonly modelFairDecimalOdds: number;
+  /**
+   * Model/reference decimal odds, kept distinct from `availableDecimalOdds`.
+   * Optional: some real prospective sources only carry the entry/available
+   * price at decision time with no independently recorded reference odds.
+   * Omit (or pass null) rather than reusing `availableDecimalOdds` here —
+   * never conflate the two fields to fill this in.
+   */
+  readonly modelFairDecimalOdds?: number | null;
   readonly availableDecimalOdds: number;
   readonly minAcceptableDecimalOdds: number;
   readonly spread?: number;
@@ -77,7 +84,7 @@ export interface S1Input {
 export interface S1Evidence {
   readonly strategy: "S1_TAKER_HOLD";
   readonly candidate: CandidateIdentity;
-  readonly modelFairDecimalOdds: number;
+  readonly modelFairDecimalOdds: number | null;
   readonly availableDecimalOdds: number;
   readonly minAcceptableDecimalOdds: number;
   readonly spread: number | null;
@@ -94,7 +101,7 @@ export function evaluateS1TakerHold(input: S1Input): S1Evidence {
   return {
     strategy: "S1_TAKER_HOLD",
     candidate: input.candidate,
-    modelFairDecimalOdds: input.modelFairDecimalOdds,
+    modelFairDecimalOdds: input.modelFairDecimalOdds ?? null,
     availableDecimalOdds: input.availableDecimalOdds,
     minAcceptableDecimalOdds: input.minAcceptableDecimalOdds,
     spread: input.spread ?? null,
