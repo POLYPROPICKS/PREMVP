@@ -1,9 +1,10 @@
 # Independent Review Package — Football Execution Matrix S1/S2/S3
 
-Status: **WIRED, SOURCE-PROVEN, DB-WRITE BLOCKED** — the materializer consumes real
-prospective football evidence already in the research clone and computes correct S1/S2/S3
-evidence rows (verified end to end against project `nppznoujvnyjargjkmnv`), but cannot yet
-persist them: see §7 for the exact first broken edge and the bounded fix committed for it.
+Status: **PERSISTED — real S1/S2/S3 evidence rows exist in the research clone**
+(project `nppznoujvnyjargjkmnv`), written by the already-published materializer after
+Architect applied both required migrations. A same-slice rerun proved DB-level idempotency
+(identical row ids returned on both runs, zero duplicates). See §9 for the persisted-DB
+proof.
 Scope: PREMVP research clone only. No production mutation, no live-money behavior change,
 no Signal Score / model change.
 
@@ -247,3 +248,64 @@ AUTHORITY** until independently reproduced from real prospective S1/S2/S3 eviden
 captured through this schema. Nothing in this package treats that reference cohort as
 proof of live executable edge — `ACTUAL_FILL` rows from authoritative execution evidence
 are the only rows this schema treats as execution authority.
+
+## 9. Persisted DB proof (real writes, mission 3)
+
+Architect applied both `20260924120000_football_execution_matrix_s1s2s3_research_evidence.sql`
+and `20260924133000_football_execution_matrix_s1s2s3_public_bridge.sql` to
+`nppznoujvnyjargjkmnv`. The materializer (`scripts/execution-matrix/materializeFootballS1S2S3.ts`,
+run without `--dry-run`) then wrote real rows successfully — the same first-real-write call
+that previously failed with `PGRST106`/"function not found" now succeeds.
+
+**Read-path limitation, and how idempotency was proven anyway:** `research.*` is still not
+exposed via PostgREST on this clone (see §7) — this session has no `SELECT` path into
+`research.football_execution_matrix_s1s2s3_evidence`, only the `INSERT ... ON CONFLICT ...
+RETURNING id` write RPC. So aggregate DB proof here is derived from that RPC's own
+authoritative return values across two consecutive real runs, not from a separate read
+query — the write RPC only returns an id on successful commit, and
+`ON CONFLICT (condition_id, selected_token_id, formula_version, decision_time, strategy,
+recorded_window_start) DO UPDATE ... RETURNING id` returns the *existing* row's id on a
+duplicate call, never a new one. Two consecutive real runs against the same source slice
+returned:
+
+- Run 1: 12 row ids (4×S1, 4×S2, 4×S3), all distinct.
+- Run 2 (immediately after, same source slice, no source data changed): the **exact same 12
+  ids**, same strategy assignment, zero new ids. `set(run1_ids) == set(run2_ids)`,
+  `len(run1_ids) == len(run2_ids) == 12 == len(unique ids)`.
+
+This is conclusive: the second run upserted the same 12 logical rows rather than creating
+new ones — DB-level idempotent rerun, proven, without fabricating a count.
+
+**Aggregate-first evidence** (derived from the RPC-confirmed writes; the clone was at
+0/0/0/0 before this mission per Architect's report, and this materializer is the only writer
+of this table so far):
+
+| Metric | Value |
+|---|---|
+| Total candidate identities | 4 |
+| Row count after first run | 12 |
+| Row count after second run | 12 (unchanged — same 12 rows) |
+| S1 rows | 4 |
+| S1 TAKE / NO_TAKE | 4 / 0 |
+| S2 rows | 4 |
+| S2 ACTUAL_FILL / FILL_OPPORTUNITY / NO_FILL / UNKNOWN | 0 / 4 / 0 / 0 |
+| S3 rows | 4 |
+| S3 ACTUAL_FILL / FILL_OPPORTUNITY / NO_FILL / UNKNOWN | 0 / 4 / 0 / 0 |
+| Authoritative ACTUAL_FILL count | 0 (no matching `bet_execution_ledger`/`executor_order_events` row for this candidate/token; none fabricated) |
+| min / max `decision_time` | `2026-07-16T09:34:41.255239+00:00` / `2026-07-16T13:04:58.007037+00:00` |
+| min / max `recorded_at` (client-observed at RPC call time; DB `now()` is a few ms earlier) | `2026-09-24T20:13:30.459Z` / `2026-09-24T20:14:49.130Z` |
+| Identity mismatches | 0 (`assertSameCandidateIdentity` did not throw on any candidate) |
+| Exact Score contamination | 0 |
+| Duplicate logical observations after rerun | 0 |
+
+**Reproduction:**
+```bash
+npx tsx scripts/execution-matrix/materializeFootballS1S2S3.ts          # writes, idempotent
+npx tsx scripts/execution-matrix/materializeFootballS1S2S3.ts --dry-run  # compute-only, no writes
+```
+
+**Known limitation carried forward:** without a `research`-schema read path on this clone,
+an independent reviewer cannot yet run an ad hoc `SELECT` to re-verify row counts directly —
+they can only re-run the materializer (safe, idempotent) and observe the same returned ids,
+or Architect can grant a read-only RPC/schema exposure as a follow-up. This does not weaken
+the idempotency proof above, which relies only on the write RPC's own conflict semantics.

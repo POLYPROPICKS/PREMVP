@@ -355,6 +355,14 @@ export interface RunSummary {
   exactScoreContamination: number;
   decisionTimes: string[];
   recordedAtTimes: string[];
+  /**
+   * Row ids returned by the write RPC (research schema has no PostgREST
+   * read path on this clone — see review package §7/§9 — so this is the
+   * proof surface for idempotency: an unchanged set of ids across two runs
+   * for the same source slice means the second run upserted the same
+   * logical rows rather than duplicating them).
+   */
+  writtenRowIds: Array<{ strategy: string; id: string }>;
 }
 
 async function run(dryRun: boolean): Promise<RunSummary> {
@@ -371,6 +379,7 @@ async function run(dryRun: boolean): Promise<RunSummary> {
     exactScoreContamination: 0,
     decisionTimes: [],
     recordedAtTimes: [],
+    writtenRowIds: [],
   };
 
   for (const pair of pairs) {
@@ -446,7 +455,7 @@ async function run(dryRun: boolean): Promise<RunSummary> {
           );
         }
         summary.recordedAtTimes.push(new Date().toISOString());
-        void writtenId;
+        summary.writtenRowIds.push({ strategy: evidenceRow.strategy, id: writtenId as string });
       }
     }
   }
