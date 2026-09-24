@@ -1,5 +1,5 @@
 // PREMVP Queue money envelope: default stake $2.50, exceptional hard ceiling
-// $4.00, max_entry_price <= 0.62.
+// $4.00, max_entry_price <= 0.54.
 //   node --import tsx --test tests/contur3/queueMoneyEnvelope.test.ts
 //
 // RESTORE_DEFAULT_250_SEPARATE_MAX_400_CONTRACT_V1 (2026-09-22): the
@@ -118,7 +118,7 @@ function repoFor(res: NightEventReservationRow) {
 test("QME-1: constants are the corrected two-level envelope and a normal Queue row gets the $2.50 default, not $4.00", async () => {
   assert.equal(QUEUE_DEFAULT_STAKE_USD, 2.5);
   assert.equal(QUEUE_MAX_STAKE_USD, 4);
-  assert.equal(QUEUE_MAX_ENTRY_PRICE, 0.62);
+  assert.equal(QUEUE_MAX_ENTRY_PRICE, 0.54);
   assert.equal(EXECUTABLE_STAKE_USD, 2.5, "EXECUTABLE_STAKE_USD is the ordinary default, never the exceptional ceiling");
   const repo = repoFor(reservation(0.5));
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
@@ -148,7 +148,7 @@ test("QME-2: the Ireland projection carries stake_usd=2.50 and max_stake_usd=4.0
 // ── 3. old Queue row without diagnostics.max_stake_usd: effective max stays its historical stake_usd ──
 
 test("QME-3: a historical Queue row without diagnostics.max_stake_usd is never silently promoted to $4.00", () => {
-  const legacyRow: EventExecutionQueueRow = queueRow({ stake_usd: 2.5 }, 0.62);
+  const legacyRow: EventExecutionQueueRow = queueRow({ stake_usd: 2.5 }, 0.54);
   // No max_stake_usd key at all in diagnostics -- exactly a pre-2026-09-22 row.
   assert.equal((legacyRow.diagnostics as Record<string, unknown>).max_stake_usd, undefined);
   assert.equal(
@@ -162,7 +162,7 @@ test("QME-3: a historical Queue row without diagnostics.max_stake_usd is never s
   // The callback path agrees: a $3.00 submission against this legacy $2.50 row is rejected,
   // even though $3.00 is well under the $4.00 hard ceiling.
   const r = validateOrderEventAgainstQueueRow(
-    submission({ stake_usd: 3, submitted_size: 4.83, submitted_price: 0.62 }),
+    submission({ stake_usd: 3, submitted_size: 4.83, submitted_price: 0.54 }),
     legacyRow,
   );
   assert.deepEqual(r, { ok: false, reason: "STAKE_EXCEEDS_QUEUE_MAX" });
@@ -170,12 +170,12 @@ test("QME-3: a historical Queue row without diagnostics.max_stake_usd is never s
 
 // ── envelope function itself ────────────────────────────────────────────────
 
-test("QME-4: the pure row-level envelope check fails closed above $4.00 / 0.62 and passes at the bounds", () => {
-  assert.equal(queueMoneyEnvelopeViolation(4, 0.62), null);
+test("QME-4: the pure row-level envelope check fails closed above $4.00 / 0.54 and passes at the bounds", () => {
+  assert.equal(queueMoneyEnvelopeViolation(4, 0.54), null);
   assert.equal(queueMoneyEnvelopeViolation(2.5, 0.5), null);
   assert.equal(queueMoneyEnvelopeViolation(4.01, 0.5), "QUEUE_STAKE_ABOVE_ENVELOPE");
   assert.equal(queueMoneyEnvelopeViolation(Number.NaN, 0.5), "QUEUE_STAKE_ABOVE_ENVELOPE");
-  assert.equal(queueMoneyEnvelopeViolation(4, 0.6201), "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING");
+  assert.equal(queueMoneyEnvelopeViolation(4, 0.5401), "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING");
 });
 
 test("QME-5: identity, GTD/latest_entry and idempotency are unchanged by the corrected envelope", async () => {
@@ -194,7 +194,7 @@ test("QME-5: identity, GTD/latest_entry and idempotency are unchanged by the cor
   assert.equal(row.order_key, repoB.queueRows[0].order_key);
 });
 
-test("QME-price-ceiling: max_entry_price above 0.62 is rejected with a specific reason; nothing is written or clamped", async () => {
+test("QME-price-ceiling: max_entry_price above 0.54 is rejected with a specific reason; nothing is written or clamped", async () => {
   const repo = repoFor(reservation(0.625));
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 0);
@@ -205,18 +205,18 @@ test("QME-price-ceiling: max_entry_price above 0.62 is rejected with a specific 
   );
 });
 
-test("QME-price-bound: max_entry_price exactly 0.62 is accepted and copied unchanged (no headroom, no clamp)", async () => {
-  const repo = repoFor(reservation(0.62));
+test("QME-price-bound: max_entry_price exactly 0.54 is accepted and copied unchanged (no headroom, no clamp)", async () => {
+  const repo = repoFor(reservation(0.54));
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
-  assert.equal((repo.queueRows[0].diagnostics as Record<string, unknown>).max_entry_price, 0.62);
+  assert.equal((repo.queueRows[0].diagnostics as Record<string, unknown>).max_entry_price, 0.54);
 });
 
 // ── callback validation ─────────────────────────────────────────────────────
 // A queue row here carries diagnostics.max_stake_usd = 4.00 (the new explicit
 // envelope), exactly what a normal post-2026-09-22 Queue row now persists.
 
-function queueRow(overrides: Partial<EventExecutionQueueRow> = {}, maxEntry: number | null = 0.62): EventExecutionQueueRow {
+function queueRow(overrides: Partial<EventExecutionQueueRow> = {}, maxEntry: number | null = 0.54): EventExecutionQueueRow {
   return {
     id: "queue-1", reservation_id: "res-1", plan_run_id: "plan-1", rebalance_run_id: "rb-1",
     match_family_key: "m", event_title: "t", event_slug: "s", sport: "soccer", league: null,
@@ -230,7 +230,7 @@ function queueRow(overrides: Partial<EventExecutionQueueRow> = {}, maxEntry: num
 }
 
 /** A normal post-2026-09-22 row: stake_usd=2.50 default, diagnostics.max_stake_usd=4.00 explicit ceiling. */
-function queueRowWithEnvelope(overrides: Partial<EventExecutionQueueRow> = {}, maxEntry: number | null = 0.62): EventExecutionQueueRow {
+function queueRowWithEnvelope(overrides: Partial<EventExecutionQueueRow> = {}, maxEntry: number | null = 0.54): EventExecutionQueueRow {
   const base = queueRow(overrides, maxEntry);
   return { ...base, diagnostics: { ...base.diagnostics, max_stake_usd: 4 } };
 }
@@ -239,14 +239,14 @@ function submission(overrides: Partial<OrderEventSubmission> = {}): OrderEventSu
   return {
     queue_id: "queue-1", reservation_id: "res-1", idempotency_key: "i", token_id: "token-1",
     condition_id: "cond-1", side: "Spain", market_slug: "x",
-    stake_usd: 4, submitted_size: 6.4, submitted_price: 0.62,
+    stake_usd: 4, submitted_size: 7.35, submitted_price: 0.54,
     ...overrides,
   } as OrderEventSubmission;
 }
 
 // ── 4. callback/notional <= 4 may pass only under the new explicit max envelope ──
 
-test("QME-6: a $4.00 callback is accepted against a row with the explicit $4.00 diagnostics envelope (notional 3.968 <= 4, price 0.62 <= 0.62)", () => {
+test("QME-6: a $4.00 callback is accepted against a row with the explicit $4.00 diagnostics envelope (notional 3.969 <= 4, price 0.54 <= 0.54)", () => {
   assert.deepEqual(validateOrderEventAgainstQueueRow(submission(), queueRowWithEnvelope()), { ok: true });
 });
 
@@ -258,7 +258,7 @@ test("QME-6b: the SAME $4.00 callback is rejected against a normal $2.50 row wit
 test("QME-6c: a $2.50 callback within the ordinary default is accepted against a normal row with no explicit envelope", () => {
   assert.deepEqual(
     validateOrderEventAgainstQueueRow(
-      submission({ stake_usd: 2.5, submitted_size: 4.03, submitted_price: 0.62 }),
+      submission({ stake_usd: 2.5, submitted_size: 4.62, submitted_price: 0.54 }),
       queueRow(),
     ),
     { ok: true },
@@ -268,7 +268,7 @@ test("QME-6c: a $2.50 callback within the ordinary default is accepted against a
 // ── 5. >4 fails closed ───────────────────────────────────────────────────────
 
 test("QME-7: callback notional above the row's effective max stake is rejected", () => {
-  const r = validateOrderEventAgainstQueueRow(submission({ submitted_size: 7 }), queueRowWithEnvelope());
+  const r = validateOrderEventAgainstQueueRow(submission({ submitted_size: 7.5 }), queueRowWithEnvelope());
   assert.deepEqual(r, { ok: false, reason: "ORDER_NOTIONAL_EXCEEDS_QUEUE_MAX" });
   const s = validateOrderEventAgainstQueueRow(submission({ stake_usd: 4.5 }), queueRowWithEnvelope());
   assert.deepEqual(s, { ok: false, reason: "STAKE_EXCEEDS_QUEUE_MAX" });
@@ -278,68 +278,68 @@ test("QME-9: a Queue row whose effective max stake is itself above $4.00 fails c
   assert.deepEqual(
     validateOrderEventAgainstQueueRow(
       submission(),
-      { ...queueRow({ stake_usd: 4.5 }), diagnostics: { max_entry_price: 0.62, max_stake_usd: 4.5 } },
+      { ...queueRow({ stake_usd: 4.5 }), diagnostics: { max_entry_price: 0.54, max_stake_usd: 4.5 } },
     ),
     { ok: false, reason: "QUEUE_STAKE_ABOVE_ENVELOPE" },
   );
 });
 
-// ── 6/7. price >0.62 fails closed; max_entry_price remains 0.62 ─────────────
+// ── 6/7. price >0.54 fails closed; max_entry_price remains 0.54 ─────────────
 
 test("QME-8: callback price above the Queue max_entry_price is rejected", () => {
-  const r = validateOrderEventAgainstQueueRow(submission({ submitted_price: 0.63, submitted_size: 6 }), queueRowWithEnvelope());
+  const r = validateOrderEventAgainstQueueRow(submission({ submitted_price: 0.55, submitted_size: 6 }), queueRowWithEnvelope());
   assert.deepEqual(r, { ok: false, reason: "PRICE_EXCEEDS_QUEUE_MAX" });
 });
 
-test("QME-9b: a Queue row whose own max_entry_price is above 0.62 fails callback validation closed", () => {
+test("QME-9b: a Queue row whose own max_entry_price is above 0.54 fails callback validation closed", () => {
   assert.deepEqual(
     validateOrderEventAgainstQueueRow(submission({ submitted_price: 0.5, submitted_size: 6 }), queueRowWithEnvelope({}, 0.7)),
     { ok: false, reason: "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING" },
   );
 });
 
-test("QME-14: callback at 0.61 (within the 0.62 cap) is accepted", () => {
+test("QME-14: callback at 0.53 (within the 0.54 cap) is accepted", () => {
   assert.deepEqual(
     validateOrderEventAgainstQueueRow(
-      submission({ submitted_price: 0.61, submitted_size: 6.55, stake_usd: 4 }),
+      submission({ submitted_price: 0.53, submitted_size: 7.5, stake_usd: 4 }),
       queueRowWithEnvelope(),
     ),
     { ok: true },
   );
 });
 
-// ── SET_LIVE_QUEUE_EXECUTION_PRICE_CAP_TO_062_V1 (preserved) ───────────────
+// ── SET_LIVE_QUEUE_EXECUTION_PRICE_CAP_TO_054_V1 (NARROW_FOOTBALL_MONEY_POLICY_V1) ───────────────
 // For normal live Queue rows, max_entry_price is a flat QUEUE_MAX_ENTRY_PRICE
-// (0.62), never the raw candidate entry_price_num.
+// (0.54), never the raw candidate entry_price_num.
 
-test("QME-10: candidate entry_price_num=0.50 -> Queue max_entry_price=0.62 (flat cap, not the raw price)", async () => {
+test("QME-10: candidate entry_price_num=0.50 -> Queue max_entry_price=0.54 (flat cap, not the raw price)", async () => {
   const repo = repoFor(reservation(0.5));
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
-  assert.equal(diag.max_entry_price, 0.62);
+  assert.equal(diag.max_entry_price, 0.54);
 });
 
-test("QME-11: candidate entry_price_num=0.45 -> Queue max_entry_price=0.62 (flat cap, not the raw price)", async () => {
+test("QME-11: candidate entry_price_num=0.45 -> Queue max_entry_price=0.54 (flat cap, not the raw price)", async () => {
   const repo = repoFor(reservation(0.45));
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
-  assert.equal(diag.max_entry_price, 0.62);
+  assert.equal(diag.max_entry_price, 0.54);
 });
 
 test("QME-12: the original candidate entry_price_num is preserved separately from the execution cap", async () => {
   const repo = repoFor(reservation(0.5));
   await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
-  assert.equal(diag.max_entry_price, 0.62);
-  assert.equal(diag.entry_price, 0.5, "original entry_price_num must survive alongside the 0.62 execution cap");
+  assert.equal(diag.max_entry_price, 0.54);
+  assert.equal(diag.entry_price, 0.5, "original entry_price_num must survive alongside the 0.54 execution cap");
 });
 
-test("QME-13: the Ireland projection carries price_cap=0.62 for a sub-0.62 candidate", async () => {
+test("QME-13: the Ireland projection carries price_cap=0.54 for a sub-0.54 candidate", async () => {
   const repo = repoFor(reservation(0.5));
   await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
   const candidate = mapQueueRowToIrelandCandidate(repo.queueRows[0], IN_WINDOW_MS);
-  assert.equal(candidate.max_entry_price, 0.62);
-  assert.equal(candidate.price_cap, 0.62);
+  assert.equal(candidate.max_entry_price, 0.54);
+  assert.equal(candidate.price_cap, 0.54);
 });

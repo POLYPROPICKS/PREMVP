@@ -19,7 +19,7 @@ function row(id: string, score: number, conditionId: string, extra: Record<strin
     id, condition_id: conditionId, selected_token_id: `token-${conditionId}`, selected_outcome: "YES",
     // Real production carriers only. `score`/`stake_usd`/`max_entry_price` are
     // not columns on generated_signal_pairs and must never appear in a fixture.
-    signal_confidence_num: score, entry_price_num: 0.62,
+    signal_confidence_num: score, entry_price_num: 0.5,
     metric_formula_version: "shadow-firemodel1_1_research_v0",
     market_slug: `market-${conditionId}`,
     diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: EVENT_ID, eventStartIso: START }, ...extra },
@@ -38,7 +38,7 @@ function reservation(): NightEventReservationRow {
   };
 }
 
-test("minimal due path selects max signal_score with stable exact-ID tie-break and creates one Queue row", async () => {
+test("minimal due path selects the lexicographically-smallest exact identity (no Signal Score ranking) and creates one Queue row", async () => {
   const r = reservation();
   const rows = [row("pair-low", 12, "cond-low"), row("pair-b", 91, "cond-b"), row("pair-a", 91, "cond-a"),
     { ...row("other-event", 99, "cond-other"), diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: "other", eventStartIso: START } } }];

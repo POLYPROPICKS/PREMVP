@@ -24,7 +24,7 @@ import {
   loadExactProviderSiblingRowsFromAnchor,
   type RebalanceRepoPort,
 } from "../../lib/executor/eventExecutionQueue";
-import { EXECUTABLE_STAKE_USD } from "../../lib/executor/executorQueueTypes";
+import { EXECUTABLE_STAKE_USD, QUEUE_MAX_ENTRY_PRICE } from "../../lib/executor/executorQueueTypes";
 import type {
   EventExecutionQueueRow,
   NightEventReservationRow,
@@ -129,7 +129,7 @@ function productionSiblings(): Record<string, unknown>[] {
       selectedTokenId: "11111111111111111111111111111111111111111111111111111111111111111111111111111",
       selectedOutcome: "RE.Arise",
       signalConfidenceNum: 57,
-      entryPriceNum: 0.675,
+      entryPriceNum: 0.5,
       metricFormulaVersion: SCORED_VERSION,
       providerEventId: PROVIDER_EVENT_ID,
       providerEventStartIso: EVENT_START,
@@ -260,7 +260,7 @@ test("C1-0b: harness rejects the exact fabrication that made the old selector te
 // 1. The production failure, reproduced end to end. RED on base.
 // ---------------------------------------------------------------------------
 
-test("C1-1: natural due Reservation reaches Queue via highest authoritative score", async () => {
+test("C1-1: natural due Reservation reaches Queue via deterministic identity tie-break (no Signal Score ranking)", async () => {
   const h = harness(productionSiblings(), productionReservation());
   const result = await h.run();
 
@@ -277,18 +277,25 @@ test("C1-1: natural due Reservation reaches Queue via highest authoritative scor
   const q = h.queue[0];
   const diag = q.diagnostics as Record<string, unknown>;
 
-  // Winner is decided by authoritative score (62 > 57), not by being the anchor.
-  assert.equal(diag.selected_signal_pair_id, ANCHOR_PAIR_ID);
-  assert.equal(q.score, 62);
+  // Both siblings share the same condition_id, so the winner is decided by the
+  // deterministic identity tie-break (token_id ascending) -- NOT by authoritative
+  // score (62 vs 57): the SIBLING's token_id ("111...") sorts before the ANCHOR's
+  // ("745...") under NARROW_FOOTBALL_MONEY_POLICY_V1, which removed Signal Score
+  // as a ranking input.
+  assert.equal(diag.selected_signal_pair_id, SIBLING_PAIR_ID);
+  assert.equal(q.score, 57);
   assert.equal(q.condition_id, CONDITION_ID);
-  assert.equal(q.side, "Ilbirs eSports");
+  assert.equal(q.side, "RE.Arise");
 
   // Stake comes from the execution contract constant, never from a row field.
   assert.equal(q.stake_usd, EXECUTABLE_STAKE_USD);
   assert.equal(diag.stake_guard_usd, EXECUTABLE_STAKE_USD);
 
-  // Frozen pre-Reservation accepted snapshot price, carried unmodified.
-  assert.equal(diag.max_entry_price, 0.325);
+  // max_entry_price is always the flat Queue execution cap (RESTORE_DEFAULT_250_
+  // SEPARATE_MAX_400_CONTRACT_V1), never the raw candidate price; the frozen
+  // pre-Reservation accepted snapshot price is preserved separately as entry_price.
+  assert.equal(diag.max_entry_price, QUEUE_MAX_ENTRY_PRICE);
+  assert.equal(diag.entry_price, 0.5);
 
   // Exact identity lineage.
   assert.equal(diag.physical_event_id, PHYSICAL_ID);
@@ -346,7 +353,7 @@ test("C1-4: deterministic canonical tie-break on equal authoritative score", asy
     }),
     producerShapedRow({
       id: SIBLING_PAIR_ID, conditionId: CONDITION_ID, selectedTokenId: "tok-a",
-      selectedOutcome: "RE.Arise", signalConfidenceNum: 70, entryPriceNum: 0.6,
+      selectedOutcome: "RE.Arise", signalConfidenceNum: 70, entryPriceNum: 0.5,
       metricFormulaVersion: SCORED_VERSION,
       providerEventId: PROVIDER_EVENT_ID, providerEventStartIso: EVENT_START,
     }),
@@ -469,7 +476,8 @@ test("C1-8: frozen accepted price and stake survive the serialization boundary",
   const roundTripped = JSON.parse(JSON.stringify(h.queue[0])) as EventExecutionQueueRow;
   const rtDiag = roundTripped.diagnostics as Record<string, unknown>;
   assert.equal(rtDiag.max_entry_price, diag.max_entry_price);
-  assert.equal(rtDiag.max_entry_price, 0.325);
+  assert.equal(rtDiag.max_entry_price, QUEUE_MAX_ENTRY_PRICE);
+  assert.equal(rtDiag.entry_price, 0.5);
   assert.equal(roundTripped.stake_usd, EXECUTABLE_STAKE_USD);
-  assert.equal(rtDiag.selected_signal_score, 62);
+  assert.equal(rtDiag.selected_signal_score, 57);
 });
