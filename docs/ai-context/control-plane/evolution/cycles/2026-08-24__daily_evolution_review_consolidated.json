@@ -1,0 +1,749 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "2026-08-24__daily_evolution_review_consolidated",
+  "period_start": "2026-08-13T19:16:58Z",
+  "period_end": "2026-08-24T20:14:14Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "accepted": false,
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "claude-sonnet-5",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "PR#111-#164 (2026-08-07..2026-08-13T19:16:58Z) -- REUSED verbatim from PR#165's own findings for this sub-period (PR#165 itself REUSED most of it from PR#154, which REUSED from PR#132/#146). Not re-derived in this session.",
+      "PR#165 OPEN DRAFT, STILL NOT MERGED, head 3a95ae923a846105b41d04ff49ff194bcf1a394e (claude/pensive-noether-w2pmrr) -- the prior consolidated Evolution cycle for the period ending 2026-08-13T19:16:58Z. This cycle RESUMES that lineage per ONE PERIOD -- ONE LINEAGE: its full Axis A/B findings, defect families, onion chains and hypotheses are REUSED (marked REUSED_FROM_PR165 below) and this document supersedes it for the combined period. Fetched and read live via git in this session (origin/claude/pensive-noether-w2pmrr, 702-line cycle JSON, verified complete).",
+      "PR#154 and PR#132/#146 remain open/closed-unmerged, already superseded by PR#165 -- not re-examined this session.",
+      "PR#149 OPEN, STILL NOT MERGED, head f89c46ef (codex/gsp-current-serving-model-design-20260812) -- unchanged this period.",
+      "PR#166 merge 9fffb8f (codex/new-contour-9-documentation-20260814, 2026-08-14T06:30:24Z) -- NEW. NEW_CONTOUR_9 roadmap documentation: planned 3-step queue-safety rollout (docs, prune-index activation, atomic claim). This is a PLANNED staged rollout (explicit Step1/Step2 labels in source), not a reactive onion chain.",
+      "PR#167 merge b46bd38 (codex/new-contour-9-step1-20260814, 2026-08-14T08:36:32Z) -- NEW. NEW_CONTOUR_9 Step 1: activates the bounded serving-projection prune index transactionally after a bounded production precheck. R4 Contur Gate Review V1 PASS for b46bd3897deddcee0d8a4652f0e0edf1bebf107e, cited verbatim in the PR body.",
+      "PR#168 merge c43990a (codex/new-contour-9-step2-queue-safety, 2026-08-24T09:11:01Z) -- NEW. NEW_CONTOUR_9 Step 2, 10 days after Step 1: makes the READY->CLAIMED Queue-row transition an atomic compare-and-set, closing a race where two concurrent claimants could both win the same Queue row. Exact reviewed SHA c43990a6133d99dbd0c9bc2f4b6d0d0b7b8bf004 cited in PR body. New test tests/contur3/executorQueueMark.callbackContract.test.ts.",
+      "PR#169 merge 51b9fa2 (codex/versioned-graph-control-20260824, 2026-08-24T13:19:51Z) -- NEW. Docs-only: adds a source-backed versioned Mermaid control map for the authority spine/acceptance ladder/funnel evidence. No product/DB/Ireland/scheduler/secret/runtime change per PR body.",
+      "PR#170 merge de4f853 (codex/r5-stake-250-20260824, 2026-08-24T17:35:40Z) -- NEW, MATERIAL. Raises the frozen-model live-contour executable stake EXECUTABLE_STAKE_USD from $1.10 to $2.50 (lib/executor/executorQueueTypes.ts) AND, in the SAME commit, edits control-plane governance itself: ROUTING_AND_PIPELINES.yaml's R5_CROSS_REPO_OR_LIVE_MONEY risk class (previously always-BLOCKED, required_capabilities cleared to []) gains a new authorized_bounded_routes entry 'FOUNDER_AUTHORIZED_PREMVP_FUTURE_QUEUE_STAKE_V1' with authorization_ref 'FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824', max_stake_usd 2.5; scripts/control-plane/validate-control-plane.mjs was simultaneously hardened to assert that exact route shape exists. Independently verified via git show de4f853 in this session. See axis_a.not_proven and automation_hypotheses for the evidence gap this raises: the only trace of the named Founder authorization anywhere in the tracked repository is the string literal itself, defined and checked by the same commit -- self-referential, not independent evidence.",
+      "PR#171 merge 82e40ef (codex/callback-exact-id-20260824, 2026-08-24T19:20:58Z) -- NEW. 'Require queue lineage for order callbacks': removes market_slug from canonical order-event identity comparison (display text is never an admission gate) and, more materially, fixes a genuine silent-passthrough gap -- handleOrderEventSubmission previously fell through with no explicit outcome when no matching Queue row was found; now returns REJECTED_QUEUE_ROW_NOT_FOUND explicitly. Independently verified via git show 82e40ef in this session.",
+      "PR#172 merge 3fd0768 (codex/callback-stake-notional-20260824, 2026-08-24T19:39:32Z) -- NEW, MATERIAL. 'Validate callback stake by USD notional': fixes a genuine dimensional-unit bug in validateOrderEventAgainstQueueRow -- the prior code compared submitted_size (a SHARE count) directly against queueRow.stake_usd (a DOLLAR ceiling), which is not a valid comparison. Now compares a separate stake_usd ceiling field correctly, and additionally computes actual order notional (submitted_price x submitted_size) and checks THAT against the queue's dollar ceiling. Independently verified via git show 3fd0768 in this session.",
+      "PR#173 merge 7386bd1 (codex/breidablik-reconciliation-20260824, 2026-08-24T20:14:14Z) -- NEW, MATERIAL. 'Reconcile accepted executions through canonical callback': adds lib/executor/executionReconciliation.ts (270 lines) -- a new persisted lifecycle-tracking pattern for accepted executions (fill_status, settlement_status, fee_status, gross_pnl_usd, all explicit PENDING/null until real fill/settlement data lands), app/api/executor/order-events/route.ts wiring, and scripts/resolve-signals.ts. New test tests/contur3/executionReconciliation.test.ts (179 lines). This is source-level settlement/PnL SCAFFOLDING only -- every economic field in the new test fixtures is null/PENDING; no fill, fee or settlement value is asserted as real. Independently verified via git show 7386bd1 and by running the new test file live in this session.",
+      "This session independently re-ran live on the current origin/main tip (d4cab1e): git status --short (clean), npm run control-plane:check (250/250 PASS on the unmodified tip -- one more test than PR#165's 249, see defect_accounting.control_plane_note for why this cycle's own commit trips the same known guard again), npx tsc --noEmit (PASS, exit 0), npm run build (PASS, exit 0), tests/contur3/executorQueueMark.callbackContract.test.ts + executorOrderEvents.callbackContract.test.ts + executionReconciliation.test.ts + executorQueueTypes.stakePricePolicy.test.ts (82/82 PASS combined), tests/contur3/eventExecutionQueue.rebalanceScheduler.test.ts (65/65 PASS, covers the $2.50 stake constant end-to-end through candidate building). This session ALSO independently reproduced the exact tests/control-plane/evolutionDailyReview.test.mjs:670 guard failure by staging PR#165's real cycle JSON into cycles/ and rerunning the suite live (not ok 47, ERR_ASSERTION, expected [] got one filename) -- then removed the file, confirming git status clean again. This is the root-cause finding behind automation_hypotheses H1 below."
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-24__daily_evolution_review_input.json"
+  },
+  "axis_a": {
+    "verdict": "ADVANCED",
+    "what_moved": [
+      {
+        "statement": "Атомарный переход READY -> CLAIMED для строки очереди исполнения устраняет гонку, при которой два одновременных претендента могли выиграть одну и ту же строку Queue -- второй шаг запланированного трёхшагового роллаута New Contour 9.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#168 merge c43990a6133d99dbd0c9bc2f4b6d0d0b7b8bf004",
+          "tests/contur3/executorQueueMark.callbackContract.test.ts -- часть 82/82 PASS, независимо перезапущено вживую в этой сессии"
+        ]
+      },
+      {
+        "statement": "Исправлена реальная тихая дыра в обработке callback-исполнений: при отсутствии соответствующей строки очереди handleOrderEventSubmission ранее не возвращал явного исхода; теперь -- явный REJECTED_QUEUE_ROW_NOT_FOUND.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#171 merge 82e40ef054a9fefc38d2d4f9de19f621209be2aa",
+          "git show 82e40ef -- прочитан построчно вживую в этой сессии",
+          "tests/contur3/executorOrderEvents.callbackContract.test.ts -- часть 82/82 PASS, независимо перезапущено вживую"
+        ]
+      },
+      {
+        "statement": "Исправлена реальная размерностная ошибка: валидация ставки callback ранее сравнивала submitted_size (количество акций) напрямую с queueRow.stake_usd (долларовый потолок) -- некорректное сравнение разных единиц измерения. Теперь ставка в долларах и фактический notional (цена x размер) проверяются раздельно и корректно против долларового потолка очереди.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#172 merge 3fd07680f67f86b46a7e3a5c3dfaa9995c341b78",
+          "git show 3fd0768 -- прочитан построчно вживую в этой сессии",
+          "tests/contur3/executorQueueTypes.stakePricePolicy.test.ts -- часть 82/82 PASS, независимо перезапущено вживую"
+        ]
+      },
+      {
+        "statement": "Новый модуль учёта жизненного цикла принятых исполнений (fill_status, settlement_status, fee_status, gross_pnl_usd) добавлен и покрыт 179-строчным тестом -- источниковый каркас для будущей сверки, ещё не боевые данные.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#173 merge 7386bd151af433c2a14ee0d53bc8a58831d1d323",
+          "lib/executor/executionReconciliation.ts",
+          "tests/contur3/executionReconciliation.test.ts -- независимо перезапущено вживую в этой сессии, PASS"
+        ]
+      },
+      {
+        "statement": "Живой ставочный потолок Tier1 поднят с $1.10 до $2.50 через новый bounded-маршрут R5_CROSS_REPO_OR_LIVE_MONEY. Код слит, тесты проходят; внешнее свидетельство самого Founder-разрешения вне коммита не найдено -- см. not_proven и H3.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#170 merge de4f8534a0d2dd1bef010b4181897ccc37cd18b3",
+          "lib/executor/executorQueueTypes.ts EXECUTABLE_STAKE_USD = 2.5",
+          "tests/contur3/eventExecutionQueue.rebalanceScheduler.test.ts -- 65/65 PASS, независимо перезапущено вживую"
+        ]
+      },
+      {
+        "statement": "REUSED_FROM_PR165 (период до 2026-08-13T19:16:58Z): New Contour 7 roadmap, резервируемый раннер бэкфилла, индекс для CONTRACT_A_PLANNING_V1, продюсер дедупликации на current-проекции, независимый архитектурный обзор Phase 1.",
+        "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+        "evidence_refs": [
+          "PR#165 axis_a.what_moved -- прочитано вживую в этой сессии"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "Теперь, когда callback-контракт (наличие строки очереди + размерность ставки) исправлен и есть каркас сверки исполнений, следующий проверяемый факт -- реальный ночной прогон живого исполнения с настоящим fill/fee и заполнением executionReconciliation вместо PENDING/null. Это не проверялось в этой сессии (доступ к БД/бирже вне границ).",
+    "blockers_removed": [
+      {
+        "statement": "Тихий проход callback без строки очереди (неопределённое поведение) -- заменён явным REJECTED_QUEUE_ROW_NOT_FOUND.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#171 merge 82e40ef054a9fefc38d2d4f9de19f621209be2aa"
+        ]
+      },
+      {
+        "statement": "Размерностная ошибка в проверке ставки (акции против долларов) -- заменена корректным раздельным сравнением ставки в долларах и фактического notional.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#172 merge 3fd07680f67f86b46a7e3a5c3dfaa9995c341b78"
+        ]
+      },
+      {
+        "statement": "Гонка двойного захвата строки очереди -- устранена атомарным compare-and-set переходом READY -> CLAIMED.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#168 merge c43990a6133d99dbd0c9bc2f4b6d0d0b7b8bf004"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Критерии phase_1_runtime_acceptance по-прежнему не переподтверждены в проде за этот период -- доступ к БД вне границ, повторная проверка не проводилась.",
+      "CURRENT_STATE.yaml.main.origin_main_sha по-прежнему 280d35bd (слияние PR#161) -- живой origin/main теперь на 11 слитых PR впереди (#162,163,164,166,167,168,169,170,171,172,173), заметно больше, чем 3 PR на момент PR#165. STATE_REFRESH_REQUIRED сохраняется и ухудшился.",
+      "EVIDENCE_LEDGER.md по-прежнему заканчивается записью EV-0020 (2026-08-13T05:30:15Z) -- теперь 17 слитых PR (#156-164,166-173) без записи в реестре доказательств, рост с 9 на момент PR#165.",
+      "Это ВОСЬМОЙ подряд PR цикла Evolution (#116,121,122,132,146,154,165 и этот) -- ни один не слит в main. Причина точно локализована вживую: tests/control-plane/evolutionDailyReview.test.mjs:670-673 требует cycles/ без единого .json-файла -- любой реальный цикл проваливает control-plane:check по конструкции теста.",
+      "Единственный след Founder-разрешения на ставку $2.50 и маршрут R5 (authorization_ref FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824) -- строка, объявленная и проверяемая тем же коммитом. Независимого артефакта не найдено. Это не значит, что разрешения не было (могло быть вне Git) -- но в репозитории оно не доказано, только самоссылочно.",
+      "PR#149 (проектный документ current-serving модели) по-прежнему не слит.",
+      "tests/contur3/twoStageReservationTiming.test.ts по-прежнему падает на 7 из 14 -- не перепроверялось в этой сессии (не в зоне изменений периода).",
+      "Звено S12 (результат на бирже, callback EXECUTED) остаётся UNPROVEN.",
+      "Сверенный PnL, исполнения, комиссии, расчёт: PR#173 добавил каркас учёта, но ни одного реального значения fill/fee/settlement нет; ничего не заявляется."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "НОВОЕ. Модуль сверки исполнений (executionReconciliation.ts): явные поля fill_status/settlement_status/fee_status/gross_pnl_usd -- первый каркас для сверенного PnL, готовый принять реальные данные fill/fee/settlement.",
+        "persisted_artifact": "lib/executor/executionReconciliation.ts, app/api/executor/order-events/route.ts, scripts/resolve-signals.ts",
+        "use_or_validation_evidence": "tests/contur3/executionReconciliation.test.ts (179 строк) -- независимо перезапущено вживую в этой сессии, все проверки PASS.",
+        "evidence_refs": [
+          "PR#173 merge 7386bd151af433c2a14ee0d53bc8a58831d1d323"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "НОВОЕ. Атомарный паттерн compare-and-set для перехода состояния строки очереди (READY -> CLAIMED) -- первый явный пример защиты от гонки конкурентных исполнителей на одной боевой таблице.",
+        "persisted_artifact": "app/api/executor/queue/mark/route.ts, lib/executor/executorCallbackContract.ts",
+        "use_or_validation_evidence": "tests/contur3/executorQueueMark.callbackContract.test.ts -- независимо перезапущено вживую, PASS.",
+        "evidence_refs": [
+          "PR#168 merge c43990a6133d99dbd0c9bc2f4b6d0d0b7b8bf004"
+        ]
+      },
+      {
+        "domain": "MISSION_REGISTRY",
+        "statement": "НОВОЕ, с оговоркой (см. not_proven). Механизм authorized_bounded_routes для R5_CROSS_REPO_OR_LIVE_MONEY: узкое, ограниченное исключение (сумма, репозиторий, исполнитель, ревьюер) из безусловного BLOCKED для живых денег.",
+        "persisted_artifact": "docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml, scripts/control-plane/validate-control-plane.mjs",
+        "use_or_validation_evidence": "control-plane:check 250/250 PASS вживую; формально валиден, но единственный экземпляр (FUTURE_QUEUE_STAKE) без независимого свидетельства авторизации -- см. not_proven.",
+        "evidence_refs": [
+          "PR#170 merge de4f8534a0d2dd1bef010b4181897ccc37cd18b3"
+        ]
+      },
+      {
+        "domain": "MISSION_REGISTRY",
+        "statement": "УСИЛЕНО (REUSED domain из PR#165). premvp.reviewer.contur_gate.v1 продолжает вызываться и получать PASS на боевых PR периода (задокументировано явно для PR#167); для PR#168,170,171,172,173 явной цитаты Contur-рецепта в теле PR нет -- см. axis_a/defect_accounting note ниже.",
+        "persisted_artifact": "docs/ai-context/control-plane/reviewers/contur-gate-reviewer.yaml",
+        "use_or_validation_evidence": "PR#167 тело PR цитирует 'Contur Gate Review V1: PASS for b46bd389...'.",
+        "evidence_refs": [
+          "PR#167"
+        ]
+      },
+      {
+        "domain": "MISSION_CONTRACTS",
+        "statement": "REUSED от PR#165 (изначально PR#154/#132/#124). Mission Contract семантический компилятор.",
+        "persisted_artifact": "docs/ai-context/control-plane/PROMPT__PROTOCOL.md, MISSION_CONTRACT.schema.json, scripts/control-plane/mission-compile.mjs",
+        "use_or_validation_evidence": "control-plane:check 250/250 PASS, прогнано вживую в этой сессии на текущем origin/main.",
+        "evidence_refs": [
+          "PR#124 merge d86cc140",
+          "control-plane:check 250/250 PASS -- прогнано вживую в этой сессии"
+        ]
+      },
+      {
+        "domain": "CONTROLLED_IMPROVEMENT",
+        "statement": "REUSED от PR#165 (изначально PR#135/#146). Навык независимой проверки для нетривиальных миссий.",
+        "persisted_artifact": ".agents/skills/polypropicks-independent-challenge/SKILL.md",
+        "use_or_validation_evidence": "часть control-plane:check 250/250 PASS, прогнано вживую в этой сессии.",
+        "evidence_refs": [
+          "PR#135 merge aac431db"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Это ВОСЬМОЙ подряд PR цикла Daily Evolution Review -- и ни один так и не слит в main. В этой сессии впервые точно локализована техническая причина (см. axis_a.not_proven и H1), но сама причина ещё не устранена -- способность 'разбор становится постоянной канонической историей репозитория' остаётся недоказанной восьмой раз подряд.",
+      "premvp.command.release_pipeline.v1 по-прежнему ни разу не был реально вызван ни для одного из восьми циклов Evolution.",
+      "Новый маршрут authorized_bounded_routes для R5 подтверждён только формальной валидацией схемы, не независимым свидетельством самого Founder-разрешения, лежащего в его основе.",
+      "Используются ли компилятор Mission Contract или навык независимой проверки в реальной небоевой задаче исполнителя (не в самом Evolution-разборе), по-прежнему не проверялось."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": 3,
+      "cost_per_verified_result": "NOT_AVAILABLE",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 3,
+      "reusable_artifacts_created": 3,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-13T19:16:58Z",
+    "period_end": "2026-08-24T20:14:14Z",
+    "capture_coverage": "UNKNOWN",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "defect_accounting": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "method": "Normalized by component + causal boundary + failure class from git commit messages, branch names, merge sequence and PR metadata across the FULL unresolved period since the Stage-2 baseline (a942a0d8, 2026-08-07T11:11:09Z). The 15 families through 2026-08-13T19:16:58Z are REUSED verbatim from PR#165 (itself largely REUSED from PR#154/#146). 4 new families are added for the 2026-08-13T19:16:58Z..2026-08-24T20:14:14Z incremental period. This is a git/PR-ancestry proxy, not a read of any issue tracker or reviewer log -- coverage PARTIAL.",
+    "total_defect_occurrences": 41,
+    "distinct_defect_families": 19,
+    "new_families": 4,
+    "reused_families_with_new_occurrences": 1,
+    "reused_families_unchanged": 14,
+    "control_plane_note": "npm run control-plane:check reported 250/250 PASS live in this session on the unmodified origin/main tip (before this cycle's own files were added) -- one more test than PR#165's 249 (an unrelated test was added to the suite between 2026-08-13 and 2026-08-24; not investigated further, out of this cycle's scope). This session independently reproduced the by-design 'cycles/ ships empty' Stage-1 placeholder guard failure (tests/control-plane/evolutionDailyReview.test.mjs:670-673) by staging PR#165's real cycle JSON into cycles/ and rerunning the suite: 'not ok 47 ... Expected values to be strictly deep-equal ... + [\\'2026-08-13__daily_evolution_review_consolidated.json\\'] - []'. This is now a PROVEN, NEWLY_VERIFIED (not merely inherited) root cause: the test hard-codes 'Stage 1 ships no historical cycle' as a literal invariant that directly contradicts the routine's own canonical mandate (DAILY_EVOLUTION_REVIEW.md section 12/'How to run it' and EVOLUTION_POLICY.yaml's own persistence expectation) to write a real, persisted cycle to exactly that directory and land it on origin/main. Any cycle PR -- including this one -- will trip this guard by construction, for as long as the test itself is not updated. Per this routine's own contract, that update is Control Plane implementation and out of scope for a Daily Evolution Review to make itself -- it is recorded here as a validated defect/hypothesis (H1) for a separate bounded implementation mission.",
+    "families": [
+      {
+        "id": "STRUCTURED_SPORT_FAMILY_CARRIER",
+        "component": "feed ingestion -> scoring -> planning pipeline",
+        "occurrence_count": 5,
+        "lifecycle": "REUSED_FROM_PR165 -- no new occurrence this period",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[0]"
+        ]
+      },
+      {
+        "id": "IRELAND_QUEUE_IDENTITY_PROVIDER_EVENT_DERIVATION",
+        "component": "Ireland execution queue",
+        "occurrence_count": 2,
+        "lifecycle": "REUSED_FROM_PR165 -- no new occurrence this period",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[1]"
+        ]
+      },
+      {
+        "id": "REBALANCE_SIBLING_QUERY_TIMEOUT_57014",
+        "component": "event-rebalance sibling scheduler",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165 -- no new occurrence this period",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[2]"
+        ]
+      },
+      {
+        "id": "RESERVATION_TIMESTAMP_INSTANT_COMPARISON",
+        "component": "reservation/queue write path",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[3]"
+        ]
+      },
+      {
+        "id": "PROVIDER_ID_AUTHORITY_PLANNING_QUEUE",
+        "component": "planning/queue write path",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[4]"
+        ]
+      },
+      {
+        "id": "CONTRACT_A_SCORED_QUERY_UNSCORED_VERSION",
+        "component": "planning query (Contract A)",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[5]"
+        ]
+      },
+      {
+        "id": "STRUCTURED_PRIMARY_SCORER_MARKET_SELECTION",
+        "component": "feed scoring",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[6]"
+        ]
+      },
+      {
+        "id": "SPORTS_PROVIDER_TIMING_AUTHORITY",
+        "component": "sports provider ingestion",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[7]"
+        ]
+      },
+      {
+        "id": "RESERVATION_QUEUE_INVENTORY_CHURN",
+        "component": "reservation queue",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[8]"
+        ]
+      },
+      {
+        "id": "IRELAND_QUEUE_CONTRACT_FIELD_GAP",
+        "component": "Ireland execution queue / ProductionQueueAdapter boundary",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165 (ONION_NEXT_LAYER of IRELAND_QUEUE_IDENTITY_PROVIDER_EVENT_DERIVATION)",
+        "proven_effective": true,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[9]"
+        ]
+      },
+      {
+        "id": "CANONICAL_ARTIFACT_FOUNDER_CORRECTION",
+        "component": "control-plane canonical architecture artifacts",
+        "occurrence_count": 2,
+        "lifecycle": "REUSED_FROM_PR165",
+        "proven_effective": true,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families[10]"
+        ]
+      },
+      {
+        "id": "SERVING_DESIGN_DOC_BEHIND_IMPLEMENTATION",
+        "component": "current_signal_pair_serving design/implementation ordering",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165, unchanged -- PR#149 still open, no new implementation PR against it this period",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#149 still open, head f89c46ef"
+        ]
+      },
+      {
+        "id": "EVOLUTION_CYCLE_PR_NEVER_MERGED",
+        "component": "control-plane / Evolution routine release path",
+        "causal_boundary": "a validated, schema-passing Evolution cycle PR is produced but the merge step never happens",
+        "occurrence_count": 8,
+        "evidence_refs": [
+          "PR#116",
+          "PR#121",
+          "PR#122",
+          "PR#132",
+          "PR#146",
+          "PR#154",
+          "PR#165",
+          "this cycle's own PR"
+        ],
+        "first_seen": "2026-08-07T18:21:30Z",
+        "last_seen": "2026-08-24T20:14:14Z",
+        "lifecycle": "SAME_ROOT_REPEAT (8th occurrence, up from 7 in PR#165) -- but this cycle NEWLY VERIFIED the exact technical root cause for the first time (see control_plane_note and H1): tests/control-plane/evolutionDailyReview.test.mjs:670-673.",
+        "proven_effective": false,
+        "note": "PR#165's H1 repeated the same 'trial release_pipeline.v1 invocation' recommendation as PR#132/#146/#154 before it -- a fourth consecutive cycle proposing the same unexecuted action. That action would ALSO have failed even if attempted, because the actual blocker is the placeholder guard test, not an unexercised pipeline. This cycle narrows the diagnosis instead of repeating the same recommendation a fifth time."
+      },
+      {
+        "id": "CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN",
+        "component": "current_signal_pair_serving backfill runner + Contract A Planning read path",
+        "occurrence_count": 8,
+        "lifecycle": "REUSED_FROM_PR165 -- no new layer this period",
+        "proven_effective": true,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families -- CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN"
+        ]
+      },
+      {
+        "id": "CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014",
+        "component": "Contract A Planning scored serving read path",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR165 -- no new occurrence this period",
+        "proven_effective": true,
+        "evidence_refs": [
+          "PR#165 defect_accounting.families -- CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014"
+        ]
+      },
+      {
+        "id": "CALLBACK_QUEUE_ROW_SILENT_PASSTHROUGH",
+        "component": "executor order-event callback contract",
+        "causal_boundary": "handleOrderEventSubmission had no explicit outcome branch when no matching Queue row was found by idempotency key",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#171 merge 82e40ef054a9fefc38d2d4f9de19f621209be2aa"
+        ],
+        "first_seen": "2026-08-24T22:13:51+03:00",
+        "last_seen": "2026-08-24T22:13:51+03:00",
+        "lifecycle": "NEW_INDEPENDENT",
+        "proven_effective": true,
+        "note": "Verified by reading the exact diff live: previously `if (queueRow) { ... }` with no else branch (implicit undefined fallthrough); now `if (!queueRow) return { kind: \"REJECTED_QUEUE_ROW_NOT_FOUND\" }`. PRODUCT_OR_RUNTIME_DEFECT, fixed same-day it was found."
+      },
+      {
+        "id": "CALLBACK_STAKE_UNIT_MISMATCH",
+        "component": "executor order-event callback contract",
+        "causal_boundary": "validateOrderEventAgainstQueueRow compared a share count (submitted_size) directly against a dollar ceiling (queueRow.stake_usd)",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#172 merge 3fd07680f67f86b46a7e3a5c3dfaa9995c341b78"
+        ],
+        "first_seen": "2026-08-24T22:34:28+03:00",
+        "last_seen": "2026-08-24T22:34:28+03:00",
+        "lifecycle": "NEW_INDEPENDENT",
+        "proven_effective": true,
+        "note": "Verified by reading the exact diff live: `submitted.submitted_size > queueRow.stake_usd` (shares vs dollars) replaced by a correct separate stake_usd-ceiling check plus an explicit notional check `submitted_price * submitted_size > queueRow.stake_usd`. Whether this dimensional bug was ever reachable in a live production callback before today's fix is UNKNOWN -- no runtime/Sentry evidence was checked this session; this is a static-code finding only. PRODUCT_OR_RUNTIME_DEFECT, directly on the live-money validation boundary -- see also axis_a.what_moved."
+      },
+      {
+        "id": "R5_LIVE_MONEY_BOUNDARY_SELF_AUTHORIZATION",
+        "component": "control-plane governance / R5_CROSS_REPO_OR_LIVE_MONEY risk class",
+        "causal_boundary": "a bounded exception to the fail-closed live-money risk class was added, validated only by a string literal that the same commit both defines and checks",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#170 merge de4f8534a0d2dd1bef010b4181897ccc37cd18b3",
+          "docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml authorized_bounded_routes",
+          "scripts/control-plane/validate-control-plane.mjs route shape assertion"
+        ],
+        "first_seen": "2026-08-24T17:35:40+03:00",
+        "last_seen": "2026-08-24T17:35:40+03:00",
+        "lifecycle": "UNKNOWN_RECURRENCE -- first time this exact pattern (self-referential R5 authorization evidence) has been observed; not yet known whether it is one-off or will repeat",
+        "proven_effective": false,
+        "note": "This is NOT a claim that the underlying Founder authorization did not happen -- it plausibly did, outside Git (chat, voice; CHAT_INTERACTION_COVERAGE = UNKNOWN per this routine's own policy). It IS a claim that the tracked repository, by itself, cannot currently distinguish a real bounded Founder authorization to touch the live-money boundary from a self-authorized one, because the only artifact is a string both declared and validated in the same commit. Given R5/live-money is the single highest-stakes boundary in the entire control plane, this gap is flagged as the most important control-plane finding of this cycle -- see automation_hypotheses (R5 evidence hypothesis)."
+      },
+      {
+        "id": "EXECUTOR_CALLBACK_CONTRACT_HARDENING_CHAIN",
+        "component": "executor order-event callback contract (lib/executor/executorCallbackContract.ts, lib/executor/executorQueueTypes.ts)",
+        "causal_boundary": "three sequential same-file patches within 54 minutes, each closing a gap the previous one did not cover: queue-lineage requirement (PR#171) -> stake-unit correctness (PR#172) -> settlement/reconciliation lifecycle (PR#173)",
+        "occurrence_count": 3,
+        "evidence_refs": [
+          "PR#171 (queue lineage, 2026-08-24T19:20:58Z)",
+          "PR#172 (stake notional, 2026-08-24T19:39:32Z)",
+          "PR#173 (reconciliation, 2026-08-24T20:14:14Z)"
+        ],
+        "first_seen": "2026-08-24T19:20:58Z",
+        "last_seen": "2026-08-24T20:14:14Z",
+        "lifecycle": "ONION_CHAIN -- 3 LATENT_NEXT_LAYER_EXPOSED occurrences on one boundary within 54 minutes, meeting the protocol's 2-or-more threshold",
+        "proven_effective": true,
+        "note": "Each individual fix is itself proven effective (tests pass, reproduced live in this session). The systemic question, per protocol, is whether local per-PR diagnosis is too narrow a boundary for the callback contract as a whole -- three consecutive same-file patches in under an hour is evidence that the contract's invariants (lineage, unit correctness, settlement bookkeeping) were not specified together up front. This is the SAME shape of finding as PR#165's CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN, on a different boundary -- see the new automation hypothesis proposing one combined boundary-level contract test."
+      }
+    ],
+    "implemented_fixes": 21,
+    "proven_effective_fixes": 10,
+    "regressions": 0,
+    "active_onion_chains": 3,
+    "onion_chains": [
+      {
+        "chain_id": "IRELAND_QUEUE_CONTRACT_COMPLETENESS_CHAIN",
+        "business_path": "Ireland execution queue contract completeness",
+        "chain_depth": 2,
+        "first_observed": "2026-08-11 (PR#143/#144)",
+        "latest_boundary_reached": "2026-08-12T10:01:03+03:00 (PR#147)",
+        "underlying_systemic_gap": "REUSED_FROM_PR165 -- unchanged this period, no new layer observed.",
+        "missing_verification_boundary": "REUSED_FROM_PR165."
+      },
+      {
+        "chain_id": "CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN",
+        "business_path": "Contract A Planning read path via the current_signal_pair_serving projection",
+        "chain_depth": 8,
+        "first_observed": "2026-08-12T15:24:40Z",
+        "latest_boundary_reached": "2026-08-13T19:16:58Z",
+        "underlying_systemic_gap": "REUSED_FROM_PR165 -- unchanged this period, no new layer observed.",
+        "missing_verification_boundary": "REUSED_FROM_PR165."
+      },
+      {
+        "chain_id": "EXECUTOR_CALLBACK_CONTRACT_HARDENING_CHAIN",
+        "business_path": "executor order-event callback contract: queue-row presence -> stake unit correctness -> settlement/reconciliation lifecycle",
+        "chain_depth": 3,
+        "first_observed": "2026-08-24T19:20:58Z",
+        "latest_boundary_reached": "2026-08-24T20:14:14Z",
+        "underlying_systemic_gap": "The callback contract's invariants (must-match-a-queue-row, dollar-vs-share unit correctness, settlement bookkeeping) were hardened one at a time across three PRs in under an hour rather than specified together as one boundary contract up front. Each was caught same-day rather than in production, which is a materially better outcome than the current-serving chain (all three landed before any live traffic exercised the gap, as far as this session's evidence shows) -- but the pattern of discovering contract requirements sequentially, rather than up front, is the same shape.",
+        "missing_verification_boundary": "No single test or type currently asserts the FULL callback contract (lineage + unit-correct stake + notional ceiling + settlement-state transition) as one unit; it is asserted piecemeal across three separate test files added on three separate PRs.",
+        "hypothesis_tested": "Per protocol: two-or-more LATENT_NEXT_LAYER_EXPOSED defects on the same path require explicitly testing whether local diagnosis/verification is too narrow. Tentatively CONFIRMED for this boundary too, though with a materially better outcome than the current-serving chain -- see the new automation hypothesis."
+      }
+    ],
+    "unresolved_recurring_defects": "EVOLUTION_CYCLE_PR_NEVER_MERGED remains the single most persistent unresolved defect at 8 consecutive occurrences, now with its exact root cause newly verified live in this session. SERVING_DESIGN_DOC_BEHIND_IMPLEMENTATION, STRUCTURED_SPORT_FAMILY_CARRIER, IRELAND_QUEUE_IDENTITY_PROVIDER_EVENT_DERIVATION and the CURRENT_SIGNAL_PAIR_SERVING and CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014 families show no new occurrence this period (REUSED, unchanged). The CURRENT_STATE.yaml / EVIDENCE_LEDGER.md reconciliation gap (H2) continued to widen despite being flagged in the prior two cycles.",
+    "reporting_caveat": "This defect accounting is a git/PR-ancestry proxy plus, for the 2026-08-13T19:16:58Z..2026-08-24T20:14:14Z incremental period, direct live reading of each new commit's diff and re-running of its tests in this session. It is a lower bound: defects caught and fixed within a single commit with no separate corrective commit are invisible to this method."
+  },
+  "executor_and_recovery_load": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "capture_coverage": "PARTIAL",
+    "method": "Proxy from git/PR metadata. The 2026-08-07..2026-08-13T19:16:58Z sub-period (46 merged PRs) is REUSED verbatim from PR#165. The 2026-08-13T19:16:58Z..2026-08-24T20:14:14Z incremental period is independently computed for this cycle.",
+    "executor_runs": 54,
+    "executor_runs_note": "46 REUSED from PR#165 (period through 2026-08-13T19:16:58Z) + 8 NEW merged PRs this incremental period (#166,167,168,169,170,171,172,173). PR#149 and PR#165 (both still open, non-landing) excluded.",
+    "recovery_iterations": 8,
+    "recovery_iterations_note": "8 REUSED from PR#165 for the period through 2026-08-13T19:16:58Z. For the new incremental period, the strict branch-reuse proxy again finds 0 literal branch reuse (all 8 new PRs used distinct head-branch names). This undercounts the real recovery signal exactly as PR#165 noted for its own period: PR#171 and PR#172 are each a same-evening correction of a gap the immediately preceding PR on the identical file left uncovered -- see EXECUTOR_CALLBACK_CONTRACT_HARDENING_CHAIN, which the branch-identity proxy alone would miss entirely (2 thematic recovery PRs this period: #171, #172).",
+    "distinct_pr_head_branches": 47,
+    "distinct_pr_head_branches_note": "39 REUSED from PR#165 + 8 new distinct branches this incremental period.",
+    "architect_corrections": "UNKNOWN -- not visible from git alone.",
+    "reviewer_rejection_count": "UNKNOWN",
+    "prompt_reroutes_or_rewrites": "UNKNOWN",
+    "permission_or_environment_friction": "UNKNOWN",
+    "wrong_routing_or_checkpoint_events": "UNKNOWN"
+  },
+  "founder_actions_detail": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "capture_coverage": "UNKNOWN",
+    "total_founder_actions": "UNKNOWN (floor 0 in operator_actions -- no capture source exists)",
+    "execution_founder_actions_proven": 0,
+    "execution_founder_actions_proven_note": "0 formally captured operator_action_events exist anywhere in the tracked repository -- OPERATOR_ACTION_POLICY.yaml's capture source still does not exist (unchanged since PR#146/#154/#165).",
+    "total_founder_actions_lower_bound": 47,
+    "total_founder_actions_lower_bound_method": "39 (REUSED from PR#165) + 8 distinct head-branch names among the 8 newly merged PRs this incremental period, same branch-name-as-proxy method as PR#154/#165. Does not count this routine's own scheduled invocation, reviewer calls, or any automated step.",
+    "starts": "UNKNOWN (lower bound 47, see total_founder_actions_lower_bound)",
+    "follow_ups": "UNKNOWN",
+    "corrections_retries": "UNKNOWN",
+    "handoffs": "UNKNOWN",
+    "approvals": "UNKNOWN",
+    "manual_ui_recovery_actions": "UNKNOWN",
+    "removable_founder_actions": "UNKNOWN -- cannot classify what was never captured."
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "Это ВОСЬМОЙ подряд PR цикла Daily Evolution Review -- и ни один не слит в main. В этой сессии впервые вживую воспроизведена точная техническая причина: tests/control-plane/evolutionDailyReview.test.mjs:670-673 буквально требует, чтобы cycles/ содержал ноль .json-файлов -- любой реально сохранённый цикл детерминированно проваливает control-plane:check.",
+      "why_it_matters": "Предыдущие четыре цикла подряд (PR#132 H5, PR#146, PR#154 E1, PR#165 H1) предлагали одно и то же непроверенное действие -- пробный вызов release_pipeline.v1 -- но эта проверка сама по себе была бы обречена: причина не в неисполненной рекомендации, а в тесте, кодирующем устаревшую политику 'Stage 1 не имеет боевых циклов' буквально как инвариант, хотя канонический промпт этой самой рутины (DAILY_EVOLUTION_REVIEW.md, раздел 12) прямо требует писать и сливать реальный цикл.",
+      "axis_a_effect": "нет прямого эффекта на продукт, но откладывает момент, когда Founder видит единую консолидированную картину восьмой цикл подряд",
+      "axis_b_effect": "главный неподтверждённый элемент возможности RECOVERY_AND_CHECKPOINTS/CONTROLLED_IMPROVEMENT: цикл разбора систематически не завершает свой жизненный цикл, и теперь причина точно локализована",
+      "proposed_automation": "Отдельная ограниченная миссия (не этот разбор -- ему нельзя менять тесты) обновляет tests/control-plane/evolutionDailyReview.test.mjs:670-673 под реальность Stage 1. Затем один пробный вызов premvp.command.release_pipeline.v1 (validate/dry_run -> resume).",
+      "persistent_artifact": "tests/control-plane/evolutionDailyReview.test.mjs",
+      "expected_value": "останавливает накопление неслитых конкурирующих циклов раз и навсегда, а не откладывает то же самое действие на девятый раз",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "низкий -- сужение теста до реального Stage-1-поведения, не ослабление гейта в остальном; НЕ выполняется этим разбором (запрещено собственным контрактом)",
+      "success_metric": "тест обновлён, и ровно один PR цикла Evolution слит в main через зарегистрированный конвейер, зафиксировано записью EVIDENCE_LEDGER",
+      "rollback_or_stop_condition": "остановиться и эскалировать Founder, если обновление теста потребует ослабить любой ДРУГОЙ инвариант control-plane:check помимо этого конкретного цикл-каунта",
+      "timing": "немедленно -- восьмой цикл подряд без исполнения, и впервые причина точно известна",
+      "classification": "NOW",
+      "evidence_refs": [
+        "tests/control-plane/evolutionDailyReview.test.mjs:670-673 -- прочитано и воспроизведено вживую в этой сессии",
+        "PR#116,121,122,132,146,154,165 -- все открытые/закрытые без слияния"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "CURRENT_STATE.yaml отстаёт от live origin/main на 11 слитых PR (#162,163,164,166-173); EVIDENCE_LEDGER.md отстаёт на 17 слитых PR (#156-164,166-173) от своей последней записи EV-0020. Оба разрыва выросли по сравнению с PR#165 (3 и 9 соответственно), несмотря на то что этот же H2 был явно назван в двух предыдущих циклах.",
+      "why_it_matters": "SAME_ROOT_REPEAT третий цикл подряд (PR#146 H2 -> PR#154 -> PR#165 H2 -> теперь) -- реестр доказательств и снимок состояния, источники истины для будущих разборов, систематически расходятся с реальностью репозитория, и разрыв растёт, а не сокращается.",
+      "axis_a_effect": "мешает будущим циклам подтвердить статус блокеров без ручной git-археологии",
+      "axis_b_effect": "риск регресса возможности RECOVERY_AND_CHECKPOINTS: чекпоинт должен быть текущей истиной, но структурно отстаёт и разрыв растёт",
+      "proposed_automation": "Подключить premvp.command.control_plane_reconcile.v1 (уже PROVEN_PRESENT) как обязательный шаг после каждого пакета из 3+ слитых PR, включая одновременное добавление записи EVIDENCE_LEDGER.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "expected_value": "закрывает оба разрыва одновременно вместо повторения одной и той же рекомендации в четвёртый раз",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий -- уже существующий read-only-по-продукту инструмент",
+      "success_metric": "origin_main_sha в CURRENT_STATE.yaml и последняя запись EVIDENCE_LEDGER.md оба отстают не более чем на 1 слитый PR от live origin/main",
+      "rollback_or_stop_condition": "остановиться, если сверка попытается принять расхождение продуктовой фазы без Founder/Architect",
+      "timing": "следующий пакет из 3+ слияний",
+      "classification": "NOW",
+      "evidence_refs": [
+        "CURRENT_STATE.yaml main.origin_main_sha=280d35bd vs live d4cab1e",
+        "EVIDENCE_LEDGER.md EV-0020 vs PR#156-173"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "PR#170 подняло ставку с $1.10 до $2.50 и открыло маршрут R5_CROSS_REPO_OR_LIVE_MONEY через authorization_ref, который тот же коммит и объявляет, и проверяет. Независимого артефакта разрешения нет нигде в репозитории.",
+      "why_it_matters": "R5/живые деньги -- граница с самыми высокими ставками во всей конституции control-plane. Это первый раз, когда эта граница была расширена, и репозиторий сам по себе не может отличить настоящее ограниченное разрешение Founder от самоавторизации -- не потому, что разрешения не было (оно вполне могло быть дано вне Git), а потому, что для этого нет независимого следа.",
+      "axis_a_effect": "прямой: экономический параметр живого исполнения изменён; отсутствие независимого свидетельства не блокирует уже слитый код, но создаёт риск для доверия к границе живых денег вперёд",
+      "axis_b_effect": "домен PERMISSION_AND_TOOL_POLICY: новый механизм authorized_bounded_routes формально валиден (250/250 control-plane:check), но не имеет правила 'разрешение должно быть независимо от кода, который его использует'",
+      "proposed_automation": "Требовать, чтобы validate-control-plane.mjs проверял НЕ ТОЛЬКО форму authorized_bounded_routes, но и наличие соответствующей отдельной записи в EVIDENCE_LEDGER.md (или новом FOUNDER_AUTHORIZATIONS.md) с тем же authorization_ref, добавленной иначе, чем изменение самого маршрута -- то есть разрешение не может быть тем же коммитом, что и код, который оно разрешает.",
+      "persistent_artifact": "предлагается: docs/ai-context/control-plane/EVIDENCE_LEDGER.md или новый FOUNDER_AUTHORIZATIONS.md + правило в validate-control-plane.mjs",
+      "expected_value": "закрывает разрыв доверия для ЛЮБОГО будущего R5-маршрута, не только для этого одного случая",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "средний -- требует решения, как выглядит достаточное независимое свидетельство Founder-разрешения",
+      "success_metric": "следующий R5 authorized_bounded_route сопровождается независимой записью EVIDENCE_LEDGER/FOUNDER_AUTHORIZATIONS, добавленной отдельно от кода маршрута",
+      "rollback_or_stop_condition": "остановиться, если Founder подтвердит, что текущий уровень доказательства (авторизация вне Git) достаточен и формализация не нужна",
+      "timing": "немедленно -- следующий R5-маршрут не должен повторить тот же паттерн",
+      "classification": "NOW",
+      "evidence_refs": [
+        "PR#170 merge de4f8534a0d2dd1bef010b4181897ccc37cd18b3",
+        "docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml authorized_bounded_routes"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "Три последовательных PR на один и тот же файл (executorCallbackContract.ts) за 54 минуты -- каждый закрывает пробел, не покрытый предыдущим (наличие строки очереди -> корректность единиц ставки -> учёт сверки) -- превышает протокольный порог 'два и более LATENT_NEXT_LAYER_EXPOSED на одном пути'.",
+      "why_it_matters": "Та же форма находки, что и H3/H4 в PR#165 для current-serving, но на другой границе: инварианты callback-контракта не были специфицированы вместе заранее, а обнаруживались последовательно в течение часа. Итог лучше, чем у current-serving (всё поймано до боевого трафика, не в проде), но паттерн тот же.",
+      "axis_a_effect": "снижает уверенность в первой версии любого нового callback-инварианта без явного combined-теста",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: нет единого теста, утверждающего полный контракт (наличие строки + корректность единиц + предел notional + переход состояния сверки) как одно целое",
+      "proposed_automation": "Один комбинированный тест-контракт для lib/executor/executorCallbackContract.ts, покрывающий наличие строки очереди, единицы измерения ставки и предел notional, и переход состояния сверки как один сценарий, а не три отдельных файла.",
+      "persistent_artifact": "предлагается: tests/contur3/executorCallbackContract.fullBoundary.test.ts",
+      "expected_value": "следующее изменение этого файла ловит межслойные несоответствия в одном тесте, а не в следующем PR через час",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий -- только добавление теста",
+      "success_metric": "следующее изменение executorCallbackContract.ts не порождает второй PR-исправление в течение того же дня",
+      "rollback_or_stop_condition": "убрать требование, если комбинированный тест окажется избыточным по сравнению с существующими тремя",
+      "timing": "следующее изменение executorCallbackContract.ts",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "PR#171,172,173 -- прочитаны построчно вживую в этой сессии",
+        "defect_accounting.families.EXECUTOR_CALLBACK_CONTRACT_HARDENING_CHAIN"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "REUSED_FROM_PR165 H3/H4. Раскатка current_signal_pair_serving за прошлый период уже показала 8 слоёв за 28 часов; чек-лист готовности горячих SQL-путей (тест формы индекса + бюджет пула + watchdog) до сих пор не формализован как явное требование в docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md/VERIFICATION_GATES.md, хотя сам класс отказа 57014 не повторился за этот период.",
+      "why_it_matters": "Второй цикл подряд без действия по этой рекомендации, хотя отсутствие нового 57014 в этот период -- слабое косвенное подтверждение, что риск не исчез, а просто не был снова спровоцирован.",
+      "axis_a_effect": "риск повторного боевого отказа того же класса в ещё не проверенном горячем пути остаётся",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: правило по-прежнему не задокументировано как общепроектное",
+      "proposed_automation": "REUSED_FROM_PR165 H3/H4 -- зафиксировать общепроектное правило теста формы индекса для любого нового горячего SQL-запроса.",
+      "persistent_artifact": "docs/ai-context/VERIFICATION_GATES.md",
+      "expected_value": "закрывает класс отказа 57014 системно",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий -- только документируемое правило верификации",
+      "success_metric": "ни один следующий PR с новым/изменённым горячим SQL-запросом не приводит к боевому 57014 без сопровождающего теста формы индекса",
+      "rollback_or_stop_condition": "убрать правило при систематических ложных срабатываниях на холодные запросы",
+      "timing": "следующее изменение VERIFICATION_GATES.md",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "PR#165 automation_hypotheses H3/H4",
+        "REBALANCE_SIBLING_QUERY_TIMEOUT_57014",
+        "CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "PR#149 (проектный документ current-serving модели) остаётся неслитым -- теперь ещё дальше от реализации, чем на момент PR#165.",
+      "why_it_matters": "SAME_ROOT_REPEAT четвёртый цикл подряд -- разрыв между проектом и реализацией не сокращается.",
+      "axis_a_effect": "нет прямого эффекта",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: нет проверки порядка 'проект -> реализация'",
+      "proposed_automation": "REUSED_FROM_PR165/PR154 -- требовать в шаблоне PR явную ссылку на статус связанного проектного документа для боевых изменений БД.",
+      "persistent_artifact": "предлагается: .github/pull_request_template.md",
+      "expected_value": "исключает молчаливое расхождение между принятым проектом и уже слитой реализацией",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий",
+      "success_metric": "PR#149 либо слит, либо явно закрыт как устаревший до следующего цикла",
+      "rollback_or_stop_condition": "убрать требование при ложных срабатываниях на намеренно независимые документы",
+      "timing": "следующее изменение шаблона PR",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "PR#149 open, unmerged",
+        "PR#165 automation_hypotheses H5"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "REUSED_FROM_PR165 H6. Быстрая переделка одной темы в течение часов теперь наблюдалась снова, дважды в один день: плановый трёхшаговый New Contour 9 (166->167->168, хотя и растянутый на 10 дней между шагом 1 и 2) и трёхслойное ужесточение callback-контракта (171->172->173, за 54 минуты).",
+      "why_it_matters": "Паттерн 'новая боевая возможность требует немедленных последующих правок' систематический; на этот раз он проявился и в запланированной, и в реактивной форме в один и тот же день.",
+      "axis_a_effect": "снижает уверенность в первой версии любой новой боевой возможности без ручной проверки диффов",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: нет структурного сигнала о таком паттерне помимо ручного чтения истории",
+      "proposed_automation": "REUSED_FROM_PR165/PR154 -- если тема PR порождает 3+ отдельных PR за 24 часа, требовать явное поле 'что было упущено в первой версии' в последнем PR серии.",
+      "persistent_artifact": "предлагается: .github/pull_request_template.md",
+      "expected_value": "делает видимым паттерн без ручного просмотра истории",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий",
+      "success_metric": "серия из 3+ PR по одной теме за 24 часа сопровождается явным полем причины",
+      "rollback_or_stop_condition": "убрать проверку при ложных срабатываниях на намеренно поэтапную разработку",
+      "timing": "следующее изменение шаблона PR",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "PR#166,167,168",
+        "PR#171,172,173",
+        "PR#165 automation_hypotheses H6"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Распознавать луковичную цепочку (onion chain) вместо серии несвязанных багов -- когда 2+ исправления ложатся на одну и ту же границу за короткое время, останавливаться и спрашивать, какой пограничный инвариант отсутствует, вместо одобрения 'ещё одного точечного патча'.",
+      "why_it_matters_now": "Это повторилось СЕГОДНЯ на новой границе: 3 слоя на callback-контракте за 54 минуты (PR#171,172,173), в дополнение к уже описанной 8-слойной цепочке current-serving из PR#165. Паттерн узнаваем и повторяем, а не случаен.",
+      "how_it_applies_to_current_project": "При просмотре следующей серии из 2+ PR на одну тему за короткое время явно спрашивать: это независимые баги или один и тот же непроверенный пограничный инвариант проявляется слой за слоем? См. H4 выше как готовый пример.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-08-24__daily_evolution_review_consolidated.json",
+      "ladder_level": 4
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Проверять независимое свидетельство перед доверием к самоссылочной авторизации -- когда изменение расширяет чувствительную границу (особенно живые деньги), убеждаться, что разрешение на это существует отдельно от кода, который его использует, а не только как совпадающая строка в том же самом коммите.",
+      "why_it_matters_now": "Именно это произошло сегодня: PR#170 расширило риск-класс R5_CROSS_REPO_OR_LIVE_MONEY и подняло ставку до $2.50, но единственное свидетельство разрешения -- authorization_ref, объявленный и проверяемый одним и тем же коммитом. Это не обязательно ошибка, но именно тот случай, когда стоит остановиться и спросить, есть ли независимый след.",
+      "how_it_applies_to_current_project": "При просмотре любого PR, трогающего R5, платёжные/живые-деньги границы или control-plane governance-файлы (ROUTING_AND_PIPELINES.yaml, validate-control-plane.mjs) одновременно с продуктовым кодом, явно спрашивать: где независимый след разрешения, а не только самосогласованный код? См. H3 выше.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-08-24__daily_evolution_review_consolidated.json",
+      "ladder_level": 6
+    }
+  ],
+  "founder_practice_comparison": "Первая практика дешева и применяется в одиночку при чтении любого следующего отчёта за пару минут -- достаточно спросить один вопрос про количество слоёв. Вторая требует более внимательного взгляда именно на границы живых денег и control-plane governance, но именно она защищает самую чувствительную часть системы -- поэтому она приоритетнее, хотя обе можно делать параллельно.",
+  "founder_practice_recommended_order": [
+    "P2",
+    "P1"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "Если обновить tests/control-plane/evolutionDailyReview.test.mjs:670-673 (точно локализованный блокер) и слить следующий Evolution-цикл через premvp.command.release_pipeline.v1, впервые за восемь циклов подряд станет известно, работает ли путь черновик -> проверка -> слияние.",
+      "bounded_scope": "Один запуск, только обновление этого конкретного теста (не других инвариантов control-plane:check), затем один вызов release_pipeline.v1 в режиме validate/dry_run, потом resume, только для файлов этого PR, без прямого push в main.",
+      "persistent_artifact": "tests/control-plane/evolutionDailyReview.test.mjs, docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "Тест обновлён, и один PR цикла Evolution слит в main через зарегистрированный конвейер, результат зафиксирован записью EVIDENCE_LEDGER.",
+      "stop_condition": "Если обновление теста потребует ослабить любой другой инвариант control-plane:check, или если конвейер запросит доступ за пределами уже разрешённого -- остановиться и эскалировать Founder."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "Если добавить один комбинированный boundary-тест для executorCallbackContract.ts (наличие строки + единицы ставки + notional + состояние сверки как один сценарий), следующее изменение этого файла не потребует второго PR-исправления в течение того же дня.",
+      "bounded_scope": "Один новый тест-файл, применённый только к следующему PR, меняющему executorCallbackContract.ts -- без замены трёх уже существующих тестовых файлов.",
+      "persistent_artifact": "предлагается: tests/contur3/executorCallbackContract.fullBoundary.test.ts",
+      "promotion_condition": "Следующее изменение этого файла проходит комбинированный тест и не порождает второй PR-исправление в течение 24 часов.",
+      "stop_condition": "Если комбинированный тест окажется избыточным по сравнению с тремя существующими -- оставить его необязательным образцом, не гейтом."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "REUSED_FROM_PR165 E3, ЕЩЁ БОЛЬШЕ НЕ ИСПОЛНЕНО (разрыв CURRENT_STATE вырос с 3 до 11 PR, разрыв EVIDENCE_LEDGER -- с 9 до 17). Один Architect-одобренный запуск premvp.command.control_plane_reconcile.v1 закроет оба разрыва одновременно.",
+      "bounded_scope": "Один запуск, только канонические артефакты control-plane, без изменения roadmap_phase, current_value_step или закрытых блокеров.",
+      "persistent_artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "promotion_condition": "origin_main_sha в CURRENT_STATE.yaml становится проверенным предком текущего origin/main, и EVIDENCE_LEDGER.md получает записи для PR#156-173 без ручного редактирования JSON.",
+      "stop_condition": "Если сверка попытается принять любое расхождение продуктовой фазы или закрытых блокеров без Founder/Architect -- остановиться."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
+    "note": "No roadmap_phase change observed this period (CURRENT_STATE.yaml.roadmap_phase remains PHASE1_PLANNING_SERVING_CLOSURE, set by the Founder-approved New Contour 7 decision observed in PR#165). Consolidates and supersedes PR#165 (2026-08-13), which itself superseded PR#154 (2026-08-12), PR#132 (2026-08-10) and PR#146 (2026-08-11), all of which remain open/closed, draft and unmerged. This is the 8th Evolution cycle PR produced under Stage 1 and, like all 7 before it, does not itself resolve the underlying non-merge pattern (automation_hypotheses H1) -- it is evidence and proposal only. This review only OBSERVES CURRENT_STATE.yaml and roadmap facts; it does not itself set, endorse or accept any roadmap, PnL-gate, or live-money-authority change, including the R5 authorized_bounded_routes change flagged in H3."
+  },
+  "next_step": "Founder подтверждает, что этот цикл канонический (PR#165 закрывается как superseded), и рассматривает два приоритета: (1) H1 -- миссия для обновления устаревшего теста-гейта cycles/, чтобы разорвать восьмицикловую цепочку неслитых циклов; (2) H3 -- независимо подтвердить Founder-разрешение на R5 и ставку $2.50 (PR#170).",
+  "corrections": []
+}
