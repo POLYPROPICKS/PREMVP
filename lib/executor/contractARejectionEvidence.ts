@@ -18,7 +18,12 @@ import type { ContractADecisionResult, ContractARejectionTrace } from "./contrac
 export const CONTRACT_A_REJECTION_EVIDENCE_VERSION =
   "DATA_CAPTURE_V2_REJECTION_EVIDENCE_V1" as const;
 
-export type RejectionIdentityLevel = "EXACT_CANDIDATE" | "SOURCE_CANDIDATE" | "PHYSICAL_EVENT" | "UNKNOWN";
+export type RejectionIdentityLevel =
+  | "EXACT_CANDIDATE"
+  | "PARTIAL_CANDIDATE"
+  | "SOURCE_CANDIDATE"
+  | "PHYSICAL_EVENT"
+  | "UNKNOWN";
 
 export interface ContractARejectionEvidenceRow {
   rejection_key: string;
@@ -114,16 +119,26 @@ export function buildContractARejectionEvidence(
     let selectedTokenId: string | null;
     let side: string | null;
 
-    if (exactAvailable) {
+    if (exactAvailable && sourceSide !== null) {
       identityLevel = "EXACT_CANDIDATE";
       conditionId = conditionToken.conditionId;
       selectedTokenId = conditionToken.tokenId;
       side = sourceSide;
-    } else if (sourceRow && sourceConditionId && sourceTokenId) {
-      identityLevel = "SOURCE_CANDIDATE";
+    } else if (exactAvailable) {
+      identityLevel = "PARTIAL_CANDIDATE";
+      conditionId = conditionToken.conditionId;
+      selectedTokenId = conditionToken.tokenId;
+      side = null;
+    } else if (sourceRow && sourceConditionId && sourceTokenId && sourceSide !== null) {
+      identityLevel = "EXACT_CANDIDATE";
       conditionId = sourceConditionId;
       selectedTokenId = sourceTokenId;
       side = sourceSide;
+    } else if (sourceRow && sourceConditionId && sourceTokenId) {
+      identityLevel = "PARTIAL_CANDIDATE";
+      conditionId = sourceConditionId;
+      selectedTokenId = sourceTokenId;
+      side = null;
     } else if (physicalEventId) {
       identityLevel = "PHYSICAL_EVENT";
       conditionId = null;
@@ -136,8 +151,11 @@ export function buildContractARejectionEvidence(
       side = null;
     }
 
+    const tokenLevel =
+      identityLevel === "EXACT_CANDIDATE" || identityLevel === "PARTIAL_CANDIDATE";
+
     const identityValue =
-      identityLevel === "EXACT_CANDIDATE" || identityLevel === "SOURCE_CANDIDATE"
+      tokenLevel
         ? `${conditionId}::${selectedTokenId}`
         : physicalEventId ?? `NO_IDENTITY_${identityLevel}_${++identitylessSequence}`;
 
@@ -147,7 +165,7 @@ export function buildContractARejectionEvidence(
       stage: trace.stage,
       reasonCode: trace.reason_code,
       identityValue: `${generatedSignalPairId ?? "-"}::${identityValue}${
-        identityLevel === "EXACT_CANDIDATE" || identityLevel === "SOURCE_CANDIDATE" ? `::${side ?? "-"}` : ""
+        identityLevel === "EXACT_CANDIDATE" ? `::${side ?? "-"}` : ""
       }`,
     });
     if (seenKeys.has(rejectionKey)) continue;
@@ -184,7 +202,15 @@ export function buildContractARejectionEvidence(
 function rejectFabricatedExactIdentity(rows: ContractARejectionEvidenceRow[]): void {
   for (const row of rows) {
     const level = row.identity_level;
-    if (level === "PHYSICAL_EVENT" || level === "UNKNOWN") {
+    if (level === "EXACT_CANDIDATE") {
+      if (row.condition_id === null || row.selected_token_id === null || row.side === null) {
+        throw new Error("REJECTION_EVIDENCE_EXACT_CANDIDATE_INCOMPLETE");
+      }
+    } else if (level === "PARTIAL_CANDIDATE") {
+      if (row.condition_id === null || row.selected_token_id === null || row.side !== null) {
+        throw new Error("REJECTION_EVIDENCE_PARTIAL_MASQUERADE");
+      }
+    } else if (level === "PHYSICAL_EVENT" || level === "UNKNOWN") {
       if (row.condition_id !== null || row.selected_token_id !== null || row.side !== null) {
         throw new Error("REJECTION_EVIDENCE_IDENTITY_FABRICATION");
       }
@@ -204,9 +230,16 @@ export function rejectedExactIdentitiesOf(
 
 export function deriveNotEvaluatedIdentities(args: {
   sourceRows: readonly Record<string, unknown>[];
-  rejectionRows: readonly ContractARejectionEvidenceRow[];
+  rejectedRows: readonly ContractARejectionEvidenceRow[];
+  /**
+   * Exact persisted identities (condition_id::selected_token_id) of candidates
+   * that WERE evaluated (SELECTED/accepted). NOT_EVALUATED = denominator minus
+   * (evaluated ∪ rejected); without this input the helper cannot be correct.
+   */
+  evaluatedExactIdentities?: ReadonlySet<string>;
 }): Array<{ condition_id: string; selected_token_id: string; side: string | null }> {
-  const rejected = rejectedExactIdentitiesOf(args.rejectionRows);
+  const rejected = rejectedExactIdentitiesOf(args.rejectedRows);
+  const evaluated = args.evaluatedExactIdentities ?? new Set<string>();
   const out: Array<{ condition_id: string; selected_token_id: string; side: string | null }> = [];
   const seen = new Set<string>();
   for (const row of args.sourceRows) {
@@ -218,6 +251,7 @@ export function deriveNotEvaluatedIdentities(args: {
       : null;
     const identity = `${conditionId}::${tokenId}`;
     if (rejected.has(identity)) continue;
+    if (evaluated.has(identity)) continue;
     if (seen.has(identity)) continue;
     seen.add(identity);
     out.push({ condition_id: conditionId, selected_token_id: tokenId, side });

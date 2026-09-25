@@ -27,7 +27,7 @@ create table if not exists public.contract_a_rejection_evidence (
   stage text,
   reason_code text,
   reason_detail text,
-  identity_level text not null check (identity_level in ('EXACT_CANDIDATE', 'SOURCE_CANDIDATE', 'PHYSICAL_EVENT', 'UNKNOWN')),
+  identity_level text not null check (identity_level in ('EXACT_CANDIDATE', 'PARTIAL_CANDIDATE', 'SOURCE_CANDIDATE', 'PHYSICAL_EVENT', 'UNKNOWN')),
   physical_event_id text,
   observation_id text,
   generated_signal_pair_id text,
@@ -42,6 +42,16 @@ create table if not exists public.contract_a_rejection_evidence (
     check (
       identity_level in ('PHYSICAL_EVENT', 'UNKNOWN')
       or (condition_id is not null and selected_token_id is not null)
+    ),
+  constraint contract_a_rejection_evidence_exact_identity_guard
+    check (
+      identity_level <> 'EXACT_CANDIDATE'
+      or (condition_id is not null and selected_token_id is not null and side is not null)
+    ),
+  constraint contract_a_rejection_evidence_partial_side_guard
+    check (
+      identity_level <> 'PARTIAL_CANDIDATE'
+      or (condition_id is not null and selected_token_id is not null and side is null)
     )
 );
 
@@ -59,4 +69,4 @@ revoke all on public.contract_a_rejection_evidence from anon, authenticated;
 grant select, insert on public.contract_a_rejection_evidence to service_role;
 
 comment on table public.contract_a_rejection_evidence IS
-  'Telemetry-only Contract A rejection evidence (DATA_CAPTURE_V2): one compact scalar row per completed ContractARejectionTrace per planning run, idempotent on rejection_key. SELECTED evidence lives in night_event_reservations.diagnostics; NOT_EVALUATED is a derivation, never persisted. Never read by Planning/Reservation/Rebalance/Queue; never a money authority.';
+  'Telemetry-only Contract A rejection evidence (DATA_CAPTURE_V2): one compact scalar row per completed ContractARejectionTrace per planning run, idempotent on rejection_key. EXACT_CANDIDATE requires condition_id + selected_token_id + side; PARTIAL_CANDIDATE never carries an authoritative side; SELECTED evidence lives in night_event_reservations.diagnostics; NOT_EVALUATED is a derivation, never persisted. Never read by Planning/Reservation/Rebalance/Queue; never a money authority.';

@@ -73,7 +73,7 @@ test("one rejected candidate produces exactly one durable rejection row", () => 
   const rows = buildContractARejectionEvidence(input);
   assert.equal(rows.length, 1);
   const row = rows[0];
-  assert.equal(row.identity_level, "EXACT_CANDIDATE");
+  assert.equal(row.identity_level, "PARTIAL_CANDIDATE");
   assert.equal(row.condition_id, "0xc1");
   assert.equal(row.selected_token_id, "0xt1");
   assert.equal(row.side, null);
@@ -83,6 +83,43 @@ test("one rejected candidate produces exactly one durable rejection row", () => 
   assert.ok(!Number.isNaN(Date.parse(row.decision_at)));
   assert.equal(row.generated_signal_pair_id, "11111111-1111-1111-1111-111111111111");
   assert.notEqual(row.rejection_key, "");
+});
+
+test("EXACT_CANDIDATE is impossible without an authoritative side", () => {
+  const input = baseInput({
+    sourceRows: [
+      {
+        id: "11111111-1111-1111-1111-111111111111",
+        condition_id: "0xc1",
+        selected_token_id: "0xt1",
+        selected_outcome: "TeamA",
+      },
+    ],
+    results: [
+      rejectedResult({
+        observationId: "0xc1::0xt1",
+        generatedSignalPairId: "11111111-1111-1111-1111-111111111111",
+        physicalEventId: "provider:polymarket:evt1:2026-09-26",
+        reasonCode: "MARKET_POLICY_REJECTED",
+      }),
+      rejectedResult({
+        observationId: "0xc2::0xt2",
+        physicalEventId: "provider:polymarket:evt2:2026-09-26",
+        reasonCode: "MARKET_POLICY_REJECTED",
+      }),
+    ],
+  });
+  const rows = buildContractARejectionEvidence(input);
+  const exact = rows.filter((r) => r.identity_level === "EXACT_CANDIDATE");
+  assert.equal(exact.length, 1);
+  assert.equal(exact[0].condition_id, "0xc1");
+  assert.equal(exact[0].selected_token_id, "0xt1");
+  assert.equal(exact[0].side, "TeamA");
+  const partial = rows.filter((r) => r.identity_level === "PARTIAL_CANDIDATE");
+  assert.equal(partial.length, 1);
+  assert.equal(partial[0].condition_id, "0xc2");
+  assert.equal(partial[0].selected_token_id, "0xt2");
+  assert.equal(partial[0].side, null);
 });
 
 test("retrying the same planning run does not duplicate rejection rows", () => {
@@ -166,22 +203,28 @@ test("accepted decisions persisted nothing; rejected shape stays bounded to the 
   assert.equal(symbols.includes("outcome"), false);
 });
 
-test("NOT_EVALUATED creates no row and stays derivable as a stable-key anti-join", () => {
+test("NOT_EVALUATED excludes both rejected AND evaluated identities; only C survives", () => {
   const sourceRows = [
-    { id: "r1", condition_id: "0xc1", selected_token_id: "0xt1", selected_outcome: "YES" },
-    { id: "r2", condition_id: "0xc2", selected_token_id: "0xt2", selected_outcome: "NO" },
-    { id: "r3", condition_id: "0xc3", selected_token_id: "0xt3", selected_outcome: "YES" },
+    { id: "r1", condition_id: "0xcA", selected_token_id: "0xtA", selected_outcome: "YES" },
+    { id: "r2", condition_id: "0xcB", selected_token_id: "0xtB", selected_outcome: "NO" },
+    { id: "r3", condition_id: "0xcC", selected_token_id: "0xtC", selected_outcome: "YES" },
   ];
   const rejectionRows = buildContractARejectionEvidence(
     baseInput({
       sourceRows,
-      results: [rejectedResult({ observationId: "0xc1::0xt1", reasonCode: "MARKET_POLICY_REJECTED" })],
+      results: [rejectedResult({ observationId: "0xcA::0xtA", reasonCode: "MARKET_POLICY_REJECTED" })],
     })
   );
-  const notEvaluated = deriveNotEvaluatedIdentities({ sourceRows, rejectionRows });
-  assert.equal(notEvaluated.length, 2);
-  assert.ok(notEvaluated.some((r) => r.condition_id === "0xc2" && r.selected_token_id === "0xt2"));
-  assert.ok(notEvaluated.some((r) => r.condition_id === "0xc3" && r.selected_token_id === "0xt3"));
+  const evaluated = new Set(["0xcB::0xtB"]);
+  const notEvaluated = deriveNotEvaluatedIdentities({
+    sourceRows,
+    rejectedRows: rejectionRows,
+    evaluatedExactIdentities: evaluated,
+  });
+  assert.deepEqual(
+    notEvaluated.map((r) => `${r.condition_id}::${r.selected_token_id}`),
+    ["0xcC::0xtC"]
+  );
 });
 
 test("connection to rejectedExactIdentitiesOf stays consistent across both helpers", () => {
@@ -201,7 +244,7 @@ test("connection to rejectedExactIdentitiesOf stays consistent across both helpe
   const rejected = rejectedExactIdentitiesOf(rejectionRows);
   assert.equal(rejected.has("0xc1::0xt1"), true);
   assert.equal(rejected.has("0xc4::0xt4"), true);
-  assert.equal(deriveNotEvaluatedIdentities({ sourceRows, rejectionRows }).length, 0);
+  assert.equal(deriveNotEvaluatedIdentities({ sourceRows, rejectedRows: rejectionRows }).length, 0);
 });
 
 test("source-row side is carried only when it is genuinely authoritative", () => {

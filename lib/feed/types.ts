@@ -756,6 +756,8 @@ export interface SportsDiscoverySample {
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
     providerMarketId?: string;
+    bestBid?: number | null;
+    bestAsk?: number | null;
   } | null;
   marketsRaw?: Array<{
     outcomes: string[];
@@ -768,6 +770,8 @@ export interface SportsDiscoverySample {
     volume24hr?: number | null;
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
+    bestBid?: number | null;
+    bestAsk?: number | null;
   }>;
   leagueName?: string;
   polymarketEventSlug?: string;
