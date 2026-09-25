@@ -145,20 +145,39 @@ export interface ExecutedLedgerEvidence {
   filled_at: string | null;
 }
 
-/** Never attribute a market-level fill to a decision without a unique order lineage. */
-export function attributeExecutedFill(candidate: RawCandidateRow, orders: CandidateOrderEvidence[], fills: ExecutedLedgerEvidence[]): RawFillRow | null {
-  if (!candidate.id) return null;
-  const linked = orders.filter((o) => o.source_signal_pair_id === candidate.id &&
+export interface CountedEvidenceRows<T> {
+  rows: T[] | null;
+  count: number | null;
+}
+
+function hasCompleteRows<T>(result: CountedEvidenceRows<T>): result is { rows: T[]; count: number } {
+  return result.count !== null && Number.isSafeInteger(result.count) && result.count >= 0 &&
+    Array.isArray(result.rows) && result.rows.length === result.count;
+}
+
+function uniqueCompleteMatchedOrder(candidate: RawCandidateRow, orders: CountedEvidenceRows<CandidateOrderEvidence>): CandidateOrderEvidence | null {
+  if (!candidate.id || !hasCompleteRows(orders) || orders.count !== 1) return null;
+  const linked = orders.rows.filter((o) => o.source_signal_pair_id === candidate.id &&
     o.condition_id === candidate.condition_id && o.token_id === candidate.selected_token_id &&
     o.fill_status === "MATCHED_CONFIRMED" && !!o.clob_order_id);
-  if (linked.length !== 1) return null;
-  const matches = fills.filter((f) => f.exchange_order_id === linked[0].clob_order_id &&
-    f.condition_id === candidate.condition_id && f.token_id === candidate.selected_token_id &&
-    (f.bet_status === "filled" || f.bet_status === "matched" || f.bet_status === "fully_filled") &&
-    f.fill_price !== null && Number.isFinite(f.fill_price) && f.fill_price > 0 && f.fill_price < 1 &&
-    !!f.filled_at && Date.parse(f.filled_at) > Date.parse(candidate.created_at));
-  if (matches.length !== 1) return null;
-  return { filledDecimalOdds: sharePriceToDecimalOdds(matches[0].fill_price!), filledAtIso: matches[0].filled_at!, source: "bet_execution_ledger" };
+  return linked.length === 1 ? linked[0] : null;
+}
+
+/** Exact counts must cover every returned order and ledger row before either can authorize a fill. */
+export function attributeExecutedFill(
+  candidate: RawCandidateRow,
+  orders: CountedEvidenceRows<CandidateOrderEvidence>,
+  fills: CountedEvidenceRows<ExecutedLedgerEvidence>,
+): RawFillRow | null {
+  const linked = uniqueCompleteMatchedOrder(candidate, orders);
+  if (!linked || !hasCompleteRows(fills) || fills.count !== 1) return null;
+  const fill = fills.rows[0];
+  if (fill.exchange_order_id !== linked.clob_order_id ||
+      fill.condition_id !== candidate.condition_id || fill.token_id !== candidate.selected_token_id ||
+      (fill.bet_status !== "filled" && fill.bet_status !== "matched" && fill.bet_status !== "fully_filled") ||
+      fill.fill_price === null || !Number.isFinite(fill.fill_price) || fill.fill_price <= 0 || fill.fill_price >= 1 ||
+      !fill.filled_at || !(Date.parse(fill.filled_at) > Date.parse(candidate.created_at))) return null;
+  return { filledDecimalOdds: sharePriceToDecimalOdds(fill.fill_price), filledAtIso: fill.filled_at, source: "bet_execution_ledger" };
 }
 
 /** Builds the frozen candidate identity shared by S1/S2/S3 for one source row. */
@@ -355,26 +374,33 @@ async function fetchFootballCandidatePairs(client: SupabaseClient): Promise<{ pa
   return { pairs: [...seen.values()], rejectedSnapshots };
 }
 
-async function fetchExecutionEvidence(client: SupabaseClient, conditionId: string, tokenId: string): Promise<{
-  orders: CandidateOrderEvidence[]; fills: ExecutedLedgerEvidence[];
+export async function fetchExecutionEvidence(client: SupabaseClient, candidate: RawCandidateRow): Promise<{
+  orders: CountedEvidenceRows<CandidateOrderEvidence>;
+  fills: CountedEvidenceRows<ExecutedLedgerEvidence>;
 }> {
-  const { data: orderRows, error: orderErr } = await client.from("executor_order_events")
-    .select("clob_order_id,condition_id,token_id,executor_meta")
-    .eq("condition_id", conditionId).eq("token_id", tokenId).limit(200);
+  const unavailable = { rows: null, count: null };
+  if (!candidate.id) return { orders: unavailable, fills: unavailable };
+  const { data: orderRows, count: orderCount, error: orderErr } = await client.from("executor_order_events")
+    .select("clob_order_id,condition_id,token_id,executor_meta", { count: "exact" })
+    .eq("condition_id", candidate.condition_id).eq("token_id", candidate.selected_token_id)
+    .contains("executor_meta", { reconciliation_v1: {
+      source_signal_pair_id: candidate.id, fill_status: "MATCHED_CONFIRMED",
+    } });
   if (orderErr) throw new Error(`fetchExecutionEvidence(orders): ${orderErr.message}`);
-  const orders: CandidateOrderEvidence[] = (orderRows ?? []).map((r) => {
+  const orders: CountedEvidenceRows<CandidateOrderEvidence> = { rows: orderRows?.map((r) => {
     const rec = (r.executor_meta as Record<string, unknown> | null)?.reconciliation_v1 as Record<string, unknown> | undefined;
     return { source_signal_pair_id: typeof rec?.source_signal_pair_id === "string" ? rec.source_signal_pair_id : null,
       clob_order_id: r.clob_order_id, condition_id: r.condition_id, token_id: r.token_id,
       fill_status: typeof rec?.fill_status === "string" ? rec.fill_status : null };
-  });
-  const ids = [...new Set(orders.map((o) => o.clob_order_id).filter((v): v is string => !!v))];
-  if (ids.length === 0) return { orders, fills: [] };
-  const { data: ledgerRows, error: ledgerErr } = await client.from("bet_execution_ledger")
-    .select("exchange_order_id,condition_id,token_id,bet_status,fill_price,filled_at")
-    .in("exchange_order_id", ids).eq("condition_id", conditionId).eq("token_id", tokenId).limit(200);
+  }) ?? null, count: orderCount };
+  const linked = uniqueCompleteMatchedOrder(candidate, orders);
+  if (!linked?.clob_order_id) return { orders, fills: unavailable };
+  const { data: ledgerRows, count: ledgerCount, error: ledgerErr } = await client.from("bet_execution_ledger")
+    .select("exchange_order_id,condition_id,token_id,bet_status,fill_price,filled_at", { count: "exact" })
+    .eq("exchange_order_id", linked.clob_order_id)
+    .eq("condition_id", candidate.condition_id).eq("token_id", candidate.selected_token_id);
   if (ledgerErr) throw new Error(`fetchExecutionEvidence(ledger): ${ledgerErr.message}`);
-  return { orders, fills: (ledgerRows ?? []) as ExecutedLedgerEvidence[] };
+  return { orders, fills: { rows: (ledgerRows as ExecutedLedgerEvidence[] | null), count: ledgerCount } };
 }
 
 export interface RunSummary {
@@ -458,17 +484,13 @@ async function run(dryRun: boolean): Promise<RunSummary> {
       .limit(500);
     if (snapErr) throw new Error(`market_price_liquidity_snapshots fetch: ${snapErr.message}`);
 
-    const execution = await fetchExecutionEvidence(client, pair.condition_id, pair.token_id);
-
     for (const row of distinctByIdentity.values()) {
+      const execution = await fetchExecutionEvidence(client, row);
       const fill = attributeExecutedFill(row, execution.orders, execution.fills);
-      const linkedOrderIds = execution.orders.filter((o) => o.source_signal_pair_id === row.id &&
-        o.condition_id === row.condition_id && o.token_id === row.selected_token_id &&
-        o.fill_status === "MATCHED_CONFIRMED").map((o) => o.clob_order_id);
-      const linkedFills = execution.fills.filter((f) => linkedOrderIds.includes(f.exchange_order_id));
-      summary.preDecisionFillRejections += linkedFills.filter((f) =>
+      if (hasCompleteRows(execution.fills)) summary.preDecisionFillRejections += execution.fills.rows.filter((f) =>
         f.filled_at && Date.parse(f.filled_at) <= Date.parse(row.created_at)).length;
-      if (!fill && (linkedOrderIds.length > 1 || linkedFills.length > 0 || execution.fills.length > 0))
+      if (!fill && (!hasCompleteRows(execution.orders) || execution.orders.count > 0 ||
+          (execution.fills.count !== null && execution.fills.count > 0)))
         summary.ambiguousFillRejections += 1;
       if (fill) summary.authoritativeActualFills += 1;
       const materialized = assembleCandidate(row, (snapshotRows ?? []) as RawSnapshotRow[], fill);

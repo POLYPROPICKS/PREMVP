@@ -1,6 +1,6 @@
 // Bounded coverage for the football S1/S2/S3 materializer wiring
 // (scripts/execution-matrix/materializeFootballS1S2S3.ts). Pure
-// mapping/assembly logic only — no live DB calls in this suite.
+// mapping/assembly and mocked query logic only — no live DB calls in this suite.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -10,6 +10,7 @@ import {
   assembleCandidate,
   candidateFromRow,
   evaluateCandidate,
+  fetchExecutionEvidence,
   isExcludedFromOrdinaryHold,
   isOrdinaryFullMatchSnapshot,
   attributeExecutedFill,
@@ -209,12 +210,97 @@ test("fill attribution requires unique matched order, causal executed ledger pri
   const ledger = { exchange_order_id: "order-1", condition_id: baseRow.condition_id,
     token_id: baseRow.selected_token_id, bet_status: "filled", fill_price: 0.5,
     filled_at: "2026-07-16T10:00:00Z" };
-  assert.equal(attributeExecutedFill(candidate, [order], [ledger])?.filledDecimalOdds, 2);
-  assert.equal(attributeExecutedFill(candidate, [{ ...order, source_signal_pair_id: "other" }], [ledger]), null);
-  assert.equal(attributeExecutedFill(candidate, [order], [{ ...ledger, filled_at: "2026-07-16T09:00:00Z" }]), null);
-  assert.equal(attributeExecutedFill(candidate, [order], [{ ...ledger, fill_price: null }]), null);
-  assert.equal(attributeExecutedFill(candidate, [order, order], [ledger]), null);
-  assert.equal(attributeExecutedFill(candidate, [order], [{ ...ledger, exchange_order_id: "other" }]), null);
+  const orders = { rows: [order], count: 1 };
+  const fills = { rows: [ledger], count: 1 };
+  assert.equal(attributeExecutedFill(candidate, orders, fills)?.filledDecimalOdds, 2);
+  assert.equal(attributeExecutedFill(candidate, { rows: [{ ...order, source_signal_pair_id: "other" }], count: 1 }, fills), null);
+  assert.equal(attributeExecutedFill(candidate, orders, { rows: [{ ...ledger, filled_at: "2026-07-16T09:00:00Z" }], count: 1 }), null);
+  assert.equal(attributeExecutedFill(candidate, orders, { rows: [{ ...ledger, fill_price: null }], count: 1 }), null);
+  assert.equal(attributeExecutedFill(candidate, { rows: [order, order], count: 2 }, fills), null);
+  assert.equal(attributeExecutedFill(candidate, orders, { rows: [{ ...ledger, exchange_order_id: "other" }], count: 1 }), null);
+});
+
+test("more than 200 possible order or ledger matches cannot hide ambiguity behind returned rows", () => {
+  const candidate = { ...baseRow, id: "pair-1" };
+  const order = { source_signal_pair_id: "pair-1", clob_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, fill_status: "MATCHED_CONFIRMED" };
+  const ledger = { exchange_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, bet_status: "filled", fill_price: 0.5,
+    filled_at: "2026-07-16T10:00:00Z" };
+  assert.equal(attributeExecutedFill(candidate, { rows: [order], count: 201 }, { rows: [ledger], count: 1 }), null);
+  assert.equal(attributeExecutedFill(candidate, { rows: [order], count: 1 }, { rows: [ledger], count: 201 }), null);
+});
+
+test("complete duplicate and unknown result sets fail closed", () => {
+  const candidate = { ...baseRow, id: "pair-1" };
+  const order = { source_signal_pair_id: "pair-1", clob_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, fill_status: "MATCHED_CONFIRMED" };
+  const ledger = { exchange_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, bet_status: "filled", fill_price: 0.5,
+    filled_at: "2026-07-16T10:00:00Z" };
+  const orders = { rows: [order], count: 1 };
+  const fills = { rows: [ledger], count: 1 };
+  assert.equal(attributeExecutedFill(candidate, { rows: [order, { ...order, clob_order_id: "order-2" }], count: 2 }, fills), null);
+  assert.equal(attributeExecutedFill(candidate, orders, { rows: [ledger, { ...ledger, fill_price: 0.4 }], count: 2 }), null);
+  assert.equal(attributeExecutedFill(candidate, { rows: [order], count: null }, fills), null);
+  assert.equal(attributeExecutedFill(candidate, { rows: [order], count: 2 }, fills), null);
+  assert.equal(attributeExecutedFill(candidate, orders, { rows: null, count: 1 }), null);
+  assert.equal(attributeExecutedFill(candidate, orders, { rows: [ledger], count: null }), null);
+});
+
+test("decision-specific order and ledger queries request exact counts without a row cap", async () => {
+  const candidate = { ...baseRow, id: "pair-1" };
+  const calls: Array<{ table: string; operation: string; args: unknown[] }> = [];
+  const orderRow = { clob_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, executor_meta: { reconciliation_v1: {
+      source_signal_pair_id: "pair-1", fill_status: "MATCHED_CONFIRMED" } } };
+  const ledgerRow = { exchange_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, bet_status: "filled", fill_price: 0.5,
+    filled_at: "2026-07-16T10:00:00Z" };
+  const client = { from(table: string) {
+    const result = table === "executor_order_events"
+      ? { data: [orderRow], count: 1, error: null }
+      : { data: [ledgerRow], count: 1, error: null };
+    const query = {
+      select(...args: unknown[]) { calls.push({ table, operation: "select", args }); return query; },
+      eq(...args: unknown[]) { calls.push({ table, operation: "eq", args }); return query; },
+      contains(...args: unknown[]) { calls.push({ table, operation: "contains", args }); return query; },
+      then(resolve: (value: typeof result) => unknown) { return Promise.resolve(result).then(resolve); },
+    };
+    return query;
+  } } as unknown as Parameters<typeof fetchExecutionEvidence>[0];
+  const evidence = await fetchExecutionEvidence(client, candidate);
+  assert.equal(attributeExecutedFill(candidate, evidence.orders, evidence.fills)?.filledDecimalOdds, 2);
+  assert.deepEqual(calls.filter((c) => c.operation === "select").map((c) => [c.table, c.args[1]]), [
+    ["executor_order_events", { count: "exact" }], ["bet_execution_ledger", { count: "exact" }],
+  ]);
+  assert.deepEqual(calls.find((c) => c.operation === "contains")?.args,
+    ["executor_meta", { reconciliation_v1: { source_signal_pair_id: "pair-1", fill_status: "MATCHED_CONFIRMED" } }]);
+  assert.deepEqual(calls.filter((c) => c.operation === "eq").map((c) => [c.table, ...c.args]), [
+    ["executor_order_events", "condition_id", baseRow.condition_id],
+    ["executor_order_events", "token_id", baseRow.selected_token_id],
+    ["bet_execution_ledger", "exchange_order_id", "order-1"],
+    ["bet_execution_ledger", "condition_id", baseRow.condition_id],
+    ["bet_execution_ledger", "token_id", baseRow.selected_token_id],
+  ]);
+});
+
+test("submitted_price and matched order status cannot authorize fill without ledger fill_price", () => {
+  const candidate = { ...baseRow, id: "pair-1" };
+  const submittedOnlyOrder = { source_signal_pair_id: "pair-1", clob_order_id: "order-1",
+    condition_id: baseRow.condition_id, token_id: baseRow.selected_token_id,
+    fill_status: "MATCHED_CONFIRMED", submitted_price: 0.5 };
+  const ledgerWithoutPrice = { exchange_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, bet_status: "filled", fill_price: null,
+    filled_at: "2026-07-16T10:00:00Z" };
+  const fill = attributeExecutedFill(candidate,
+    { rows: [submittedOnlyOrder], count: 1 }, { rows: [ledgerWithoutPrice], count: 1 });
+  assert.equal(fill, null);
+  const rows = evaluateCandidate(assembleCandidate(candidate, [], fill));
+  for (const row of rows) {
+    assert.notEqual(row.payload.status, "ACTUAL_FILL");
+    assert.equal(row.payload.actual_fill_decimal_odds, null);
+  }
 });
 
 // 6. Idempotency (logical-identity window) -----------------------------------
