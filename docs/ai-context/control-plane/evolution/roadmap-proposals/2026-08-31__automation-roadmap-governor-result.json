@@ -1,0 +1,285 @@
+{
+  "schema_version": "1.1",
+  "result_id": "2026-08-31__automation-roadmap-governor-result",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Code CLI, runtime-selected model per session (see claude.ai/code session details), executing as the claude_code_cloud target",
+    "prompt_id": "premvp.prompt.automation_roadmap_governor.v1"
+  },
+  "generated_at": "2026-08-31T02:07:34Z",
+  "terminal_disposition": "ONE_AUTOMATION_INVESTMENT",
+  "eligibility": {
+    "eligible": true,
+    "reason": "4 new validated cycle(s) meets the minimum of 3",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle",
+      "2026-08-26__evolution-canonical-cycle",
+      "2026-08-28__evolution-canonical-cycle",
+      "2026-08-30__evolution-canonical-cycle"
+    ],
+    "new_validated_cycle_count": 4,
+    "weekly_boundary_reached": false
+  },
+  "findings": {
+    "axis_b_advancement": {
+      "statement": "Способности Manifest 2 продолжают укрепляться: от новой инвариантной персистенции цикла (25.08) до первого реального подтверждения окупаемости встроенной, но не задействованной автоматизации — evolution_canonicalize.mjs сократил время слияния PR с ~35 часов до 9 секунд без единого действия Founder (PR#211, гипотеза H7 закрыта).",
+      "verdict": "CAPABILITY_STRENGTHENED",
+      "evidence_refs": [
+        "2026-08-25__evolution-canonical-cycle",
+        "2026-08-28__evolution-canonical-cycle",
+        "2026-08-30__evolution-canonical-cycle",
+        "PR#209",
+        "PR#211"
+      ]
+    },
+    "axis_a_support_or_distraction": {
+      "statement": "Продуктовая работа (потолки воронки, единая популяция Contract A, гейт B2, фикс Ireland-колбэков, 72ч lookback, авто-EXPIRY очереди) шла параллельно с Evolution/Governor; ни один цикл не показал, что автоматизация отвлекла от Оси A. Цикл 30.08 — исключение (0 PR, только Manifest 2), но выборка мала для вывода.",
+      "verdict": "NOT_ENOUGH_EVIDENCE",
+      "evidence_refs": [
+        "2026-08-26__evolution-canonical-cycle",
+        "2026-08-28__evolution-canonical-cycle",
+        "2026-08-30__evolution-canonical-cycle"
+      ]
+    },
+    "repeated_problems": [
+      {
+        "problem": "CURRENT_STATE.yaml и EVIDENCE_LEDGER.md отстают от origin/main быстрее, чем их вручную сверяют: один ручной прогон (PR#204) снова отстал на ~7 слияний за ~36 часов, continuous-сверки до сих пор нет.",
+        "repetition_count": 3,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "Ни у одного исполнителя нет первичного лога операторских действий на уровне сообщения — каждый цикл видит только частичную нижнюю оценку по веткам git.",
+        "repetition_count": 4,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle",
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "Недокументированные числовые потолки тихо обрезают воронку primary-фида — один и тот же паттерн находят заново на каждой новой стадии (5-6 случаев в CHAIN-PRIMARY-CAP-20260827).",
+        "repetition_count": 3,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "Путь записи evidence/diagnostics на денежной дорожке молча теряет данные на необработанном крайнем случае — сначала легаси-колбэк Ireland, затем job_runs.diagnostics NOT NULL у Reservation.",
+        "repetition_count": 2,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "experiments_with_evidence": [
+      {
+        "experiment_id": "2026-08-26__evolution-canonical-cycle#E2 (control-plane-reconcile.mjs one-off reconciliation)",
+        "outcome": "PROMOTION_CONDITION_MET",
+        "evidence_refs": [
+          "2026-08-28__evolution-canonical-cycle",
+          "PR#204",
+          "scripts/control-plane/lib/control-plane-reconcile.mjs"
+        ]
+      },
+      {
+        "experiment_id": "2026-08-28__evolution-canonical-cycle#E3 (evolution_canonicalize.mjs real admission run, closing H7)",
+        "outcome": "PROMOTION_CONDITION_MET",
+        "evidence_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "PR#211",
+          "scripts/control-plane/evolution-canonicalize.mjs"
+        ]
+      },
+      {
+        "experiment_id": "production_observation.v1 against Contract A / B2 and the Reservation 72h lookback (proposed across 2026-08-26, 2026-08-28 and 2026-08-30 as E2/E3)",
+        "outcome": "INCONCLUSIVE",
+        "evidence_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "founder_skills_practiced": [
+      {
+        "ladder_id": "VERIFICATION_DISCIPLINE",
+        "repetition_count": 2,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "ladder_id": "PERMISSION_AND_TOOL_DESIGN",
+        "repetition_count": 3,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "ladder_id": "AUTOMATION_ECONOMICS",
+        "repetition_count": 2,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "ladder_id": "CONTROL_PLANE_OWNERSHIP",
+        "repetition_count": 1,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "automation_decisions": [
+      {
+        "subject": "control-plane-reconcile.mjs как CI-гейт или Routine, сверяющий CURRENT_STATE.yaml с живым origin/main",
+        "decision": "PROMOTE",
+        "reason": "Скрипт уже построен, read-only и один раз уже сработал (PR#204), но тут же снова устарел за ~36 часов; тот же паттерн — довести до реального использования уже построенный скрипт — уже окупился на evolution_canonicalize.mjs: 35ч сократились до 9с.",
+        "evidence_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle",
+          "PR#204",
+          "PR#209",
+          "PR#211"
+        ]
+      },
+      {
+        "subject": "Общий лог операторских действий, дозаписываемый обоими исполнителями",
+        "decision": "DEFER",
+        "reason": "Предлагается все 4 цикла подряд, но стоимость реализации всегда неизвестна и дальше эскиза цикла 25.08 дело не пошло; это метрика самой Evolution, не Ось A напрямую — откладываем в пользу более дешёвой и уже готовой сверки CURRENT_STATE.",
+        "evidence_refs": [
+          "2026-08-25__evolution-canonical-cycle",
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "subject": "Общий помощник сохранения количества кандидатов на границе воронки",
+        "decision": "DEFER",
+        "reason": "5-6 подтверждённых случаев за два цикла — реальная повторяемость, но это фид-инженерия, а не инфраструктура Evolution/Governor, и новых случаев в последнем цикле не было — откладываем до следующего инстанса.",
+        "evidence_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "subject": "Статическая проверка на голые числовые потолки без именованной константы",
+        "decision": "DEFER",
+        "reason": "Тот же класс дефекта, что и предыдущий пункт, всё ещё не построена за 3 цикла, стоимость неизвестна, риск ложных срабатываний уже отмечен ревьюером — откладываем вслед за помощником воронки.",
+        "evidence_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "subject": "4 зависших draft PR Governor/Evolution (#199, #205, #206, #212)",
+        "decision": "REJECT",
+        "reason": "Это не новая автоматизация — терминальная стадия персистенции уже построена и зарегистрирована в SCHEDULE_MANIFEST.yaml для Governor-класса, её просто не запускали; этот прогон не занимается PR по своим же границам.",
+        "evidence_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml"
+        ]
+      }
+    ],
+    "roadmap_on_course": {
+      "statement": "Stage 1's exit condition (a real Daily Evolution cycle produced and validated) has now been met 4 times over. Stage 2's entry condition (Stage 1 exit met, at least two comparable cycles) was satisfied by cycle 3, and this very Governor run satisfies Stage 2's own exit condition. No fourth stage or off-roadmap capability has been invented.",
+      "on_course": true
+    },
+    "roadmap_delta_justified": true
+  },
+  "roadmap_delta": {
+    "roadmap_delta_id": "premvp.roadmap_delta.2026-08-31__current-state-reconciliation-continuous.v1",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle",
+      "2026-08-26__evolution-canonical-cycle",
+      "2026-08-28__evolution-canonical-cycle",
+      "2026-08-30__evolution-canonical-cycle"
+    ],
+    "current_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "proposed_change": "Встроить уже готовый scripts/control-plane/lib/control-plane-reconcile.mjs в постоянный контур — CI-гейт при мёрже в origin/main или Routine по тому же расписанию, что Daily Evolution Review — вместо разового ручного запуска.",
+    "preserves": [
+      "Приоритет Оси A (запуск, выручка, PnL) остаётся выше Оси B",
+      "Фаза продукта, смысл C1/C2, PnL-гейты и права на реальные деньги в CURRENT_STATE.yaml не меняются этой делтой",
+      "control-plane-reconcile.mjs остаётся read-only к origin/main и не трогает продовый runtime или базу",
+      "Сверка только предлагает фактическую делту CURRENT_STATE.yaml; принятие остаётся шагом Architect/Founder, как и сейчас"
+    ],
+    "supersedes": [],
+    "retires": [],
+    "business_effect": "Прямого эффекта нет — это слой Evolution/Manifest 2, не продуктовый код. Косвенно: CURRENT_STATE.yaml читает как источник истины каждая будущая задача, и его актуальность снижает риск, что задача Оси A будет спланирована на устаревших фактах.",
+    "manifest_2_effect": "Превращает доказанный, но ручной скрипт сверки в постоянный инвариант, закрывая гипотезу H1 после 3 циклов подряд с рекомендацией делать сейчас и одного ручного прогона (PR#204), который снова устарел за ~36 часов.",
+    "evidence": [
+      {
+        "statement": "control-plane-reconcile.mjs ran once against live git history, computed a correct delta, and that delta was applied via PR#204.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "2026-08-28__evolution-canonical-cycle",
+          "PR#204"
+        ]
+      },
+      {
+        "statement": "CURRENT_STATE.yaml drifted roughly 7 merges behind origin/main again within about 36 hours of that one manual run, and remained unchanged (same state_version) through the following cycle with no new reconciliation.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "statement": "The same class of fix — actually wiring an already-built deterministic script into a pipeline that runs it, instead of leaving it manual — already produced a large measured improvement once this history: evolution_canonicalize.mjs cut Evolution-cycle PR pending time from a ~35 hour baseline to 9 seconds on its first real use.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "PR#209",
+          "PR#211"
+        ]
+      }
+    ],
+    "opportunity_cost": "Время Founder/Architect на утверждение и настройку гейта, риск ложных остановок мёржа на первых порах — это примерно один цикл прямого продуктового времени на настройку и проверку гейта.",
+    "drift_from_original_roadmap": "Нет отклонения — верификация автоматизации и фактические обновления метрик уже входят в объём Stage 2; это активирует уже построенную способность, а не добавляет новую.",
+    "drift_justified": true,
+    "success_metric": "origin_main_sha в CURRENT_STATE.yaml остаётся в пределах небольшого числа слияний от живого origin/main минимум 2 цикла подряд, без единого ручного прогона сверки.",
+    "rollback_condition": "Отключить гейт или Routine, если для расчёта делты понадобится доступ к продовому runtime или базе, если он заблокирует посторонний мёрж, или если Founder отклонит предложенную делту на Promotion Gate.",
+    "accepted": false
+  },
+  "roadmap_factual_updates": {
+    "role": "FACTUAL_ONLY",
+    "last_evaluated_at": "2026-08-31T02:07:34Z",
+    "cycle_count": 4,
+    "evidence_counters": {
+      "canonical_cycles_consumed": 4,
+      "prior_governor_results_consumed": 0
+    },
+    "hypothesis_status": {
+      "CURRENT_STATE_RECONCILIATION_CONTINUOUS_H1": "PROMOTED_TO_ROADMAP_DELTA",
+      "OPERATOR_ACTION_LOG_H1_CYCLE1": "DEFERRED",
+      "FUNNEL_POPULATION_CONSERVATION_HELPER": "DEFERRED",
+      "NUMERIC_CEILING_LINT_CHECK": "DEFERRED"
+    },
+    "repetition_counts": {
+      "current_state_staleness_do_now_recommendation": 3,
+      "operator_action_log_gap": 4,
+      "funnel_silent_ceiling_pattern": 3,
+      "money_lane_evidence_loss_defect_class": 2
+    }
+  },
+  "founder_report_ref": "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-08-31__automation-roadmap-governor-result.report.md",
+  "next_step": "Founder/Architect: рассмотреть предложенную roadmap_delta и, при согласии, авторизовать встраивание control-plane-reconcile.mjs как CI-гейта или Routine через Promotion Gate. Отдельно, вне этого предложения: 4 зависших draft PR Governor/Evolution (#199, #205, #206, #212) нужно провести через уже зарегистрированную терминальную стадию либо явно закрыть — это делает тот, кто владеет этим циклом.",
+  "accepted": false
+}
