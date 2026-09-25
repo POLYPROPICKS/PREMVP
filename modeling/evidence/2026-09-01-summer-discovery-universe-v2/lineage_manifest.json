@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-09-01T12:28:31.230Z",
+  "source_table": "public.generated_signal_pairs (Supabase production, read-only SELECT)",
+  "selection_predicate": "formula_version = 'trusted-initial-formula-v1.1' (metric_formula_version = 'v2-lite-growth-safe', the only non-shadow/production formula lineage identified in the June08-Aug27 window) AND condition_id IS NOT NULL AND selected_token_id IS NOT NULL AND entry_price_num IS NOT NULL AND created_at in [2026-06-08T00:00:00Z, 2026-08-28T00:00:00Z)",
+  "event_row_selection": "Outcome-blind: partition eligible rows by (condition_id, selected_token_id); winner = MIN(created_at, id) ASC per identity (earliest pre-event observation). No signal_result, realized_return_pct, or resolved_at field was consulted before this selection.",
+  "chronological_ordering": "research_order_timestamp = created_at ASC, research_order_id = id ASC (ties)",
+  "physical_identity_caveat": "No independently canonicalized physical_event_id field exists in generated_signal_pairs. physical_event_id in this artifact is the composite (condition_id, selected_token_id) used as the dedup key; this is a provider-market-level identity proxy, not an externally verified physical-event canonicalization. Reported as PARTIAL coverage.",
+  "lead_time_caveat": "lead_time_minutes is derived only where diagnostics.gameStartIso is present on the row; rows without it report lead_time_minutes = NULL (empty).",
+  "sport_family_caveat": "sport_family is derived from diagnostics.marketType via a frozen keyword mapping; rows without diagnostics.marketType report UNKNOWN.",
+  "cohort_gap_note": "Window 2026-07-02T00:00:00Z-2026-08-02T00:00:00Z (RECOVERED) and 2026-08-02T00:00:00Z-2026-08-05T00:00:00Z are as specified/left unqueried per mission cohort boundaries; 2026-08-28 onward excluded.",
+  "coverage_gaps": [
+    {
+      "from": "2026-08-04T00:00:00.000Z",
+      "to": "2026-08-07T00:00:00.000Z",
+      "reason": "statement_timeout"
+    },
+    {
+      "from": "2026-08-07T00:00:00.000Z",
+      "to": "2026-08-10T00:00:00.000Z",
+      "reason": "statement_timeout"
+    },
+    {
+      "from": "2026-08-10T00:00:00.000Z",
+      "to": "2026-08-13T00:00:00.000Z",
+      "reason": "statement_timeout"
+    },
+    {
+      "from": "2026-08-13T00:00:00.000Z",
+      "to": "2026-08-16T00:00:00.000Z",
+      "reason": "statement_timeout"
+    },
+    {
+      "from": "2026-08-16T00:00:00.000Z",
+      "to": "2026-08-19T00:00:00.000Z",
+      "reason": "statement_timeout"
+    },
+    {
+      "from": "2026-08-19T00:00:00.000Z",
+      "to": "2026-08-22T00:00:00.000Z",
+      "reason": "statement_timeout"
+    },
+    {
+      "from": "2026-08-22T00:00:00.000Z",
+      "to": "2026-08-25T00:00:00.000Z",
+      "reason": "statement_timeout"
+    },
+    {
+      "from": "2026-08-25T00:00:00.000Z",
+      "to": "2026-08-28T00:00:00.000Z",
+      "reason": "statement_timeout"
+    }
+  ],
+  "coverage_gap_reason": "Each mission window was scanned in 3-day chunks to bound per-query cost against the ~2.5M-row table (dominated by shadow-formula rows with no covering index for this predicate combination). A listed gap means that specific [from,to) sub-range hit a Supabase statement timeout (57014) after 3 retries and was NOT queried; it is reported as UNQUERIED_COVERAGE_GAP, not as zero/absent rows. All non-gapped ranges are complete and exact."
+}

@@ -1,0 +1,18 @@
+{
+  "provider_event_id": "condition_id (Polymarket market condition id) — exact, from source row",
+  "physical_event_id": "composite (condition_id, selected_token_id) dedup key — PARTIAL, provider-level proxy, not independently canonicalized",
+  "source_row_id": "generated_signal_pairs.id (uuid) — exact",
+  "selected_source_created_at": "generated_signal_pairs.created_at — exact",
+  "game_start_iso": "diagnostics.gameStartIso where present — PARTIAL coverage, NULL otherwise",
+  "sport_family": "derived from diagnostics.marketType via frozen keyword map — PARTIAL, UNKNOWN where marketType absent",
+  "selected_token_id": "generated_signal_pairs.selected_token_id — exact",
+  "condition_id": "generated_signal_pairs.condition_id — exact",
+  "selected_price_num_entry_price": "generated_signal_pairs.entry_price_num — exact",
+  "lead_time_minutes": "derived: (game_start_iso - selected_source_created_at) in minutes, only where game_start_iso present — PARTIAL",
+  "settlement_label": "generated_signal_pairs.signal_result (WIN/LOSS/other/NULL) mapped to WIN/LOSS/AMBIGUOUS/UNRESOLVED — exact, no fuzzy matching",
+  "settlement_source": "generated_signal_pairs.signal_result column — exact",
+  "market_family": "diagnostics.marketType — PARTIAL, empty where absent",
+  "source_cohort": "derived from selected_source_created_at against mission-specified EARLY/RECOVERED/MAIN windows — exact",
+  "source_artifact": "supabase.generated_signal_pairs (live production table, read-only) — exact",
+  "identity_quality": "EXACT where game_start_iso present, else PARTIAL_NO_GAME_START"
+}
