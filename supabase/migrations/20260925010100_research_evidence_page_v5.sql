@@ -24,7 +24,8 @@ RETURNS TABLE (
   provider_sport_code text, provider_sport_family text, market_family text,
   market_type text, event_title text, market_question text, game_start_iso text,
   volume_usd numeric, volume_semantic text, selected_outcome text, data_coverage numeric,
-  best_bid_num numeric, best_ask_num numeric, market_spread_num numeric, odds_decimal_num numeric
+  gamma_market_best_bid_num numeric, gamma_market_best_ask_num numeric, gamma_market_spread_num numeric,
+  gamma_bbo_semantic text, odds_decimal_num numeric, odds_decimal_semantic text
 )
 LANGUAGE plpgsql
 STABLE
@@ -82,10 +83,12 @@ BEGIN
     END,
     NULLIF(f.item->>'selected_outcome', ''),
     NULLIF(f.item->'diagnostics'->>'dataCoverage', '')::numeric,
-    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'best_bid_num', '')::numeric,
-    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'best_ask_num', '')::numeric,
-    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'market_spread_num', '')::numeric,
-    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'odds_decimal_num', '')::numeric
+    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'gamma_market_best_bid_num', '')::numeric,
+    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'gamma_market_best_ask_num', '')::numeric,
+    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'gamma_market_spread_num', '')::numeric,
+    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'gamma_bbo_semantic', ''),
+    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'odds_decimal_num', '')::numeric,
+    NULLIF(f.item->'diagnostics'->'marketTelemetry'->>'odds_decimal_semantic', '')
   FROM flat f
   WHERE f.item_id IS NOT NULL
     AND (f.env_at, f.env_id, f.item_id) > (v_after_at, v_after_env, v_after_item)
@@ -100,4 +103,4 @@ GRANT EXECUTE ON FUNCTION public.research_evidence_page_v5(timestamptz, uuid, uu
   TO service_role;
 
 COMMENT ON FUNCTION public.research_evidence_page_v5(timestamptz, uuid, uuid, timestamptz, integer) IS
-  'Read-only bounded narrow v5 projection of primary_evidence_outbox. DATA_CAPTURE_V2: adds only compact scalar pre-model market telemetry (best_bid_num, best_ask_num, market_spread_num, odds_decimal_num) extracted from evidence_rows[].diagnostics.marketTelemetry, on the v4 item-level cursor contract. Never returns evidence_rows.';
+  'Read-only bounded narrow v5 projection of primary_evidence_outbox. DATA_CAPTURE_V2: adds only compact scalar pre-model market telemetry extracted from evidence_rows[].diagnostics.marketTelemetry — gamma_market_best_bid_num / gamma_market_best_ask_num / gamma_market_spread_num are GAMMA MARKET-LEVEL values (gamma_bbo_semantic = gamma_market_level_bbo_not_token_authority, never token-specific executable BBO) and odds_decimal_num carries its own semantic via odds_decimal_semantic (derived:1/selected_probability; not live ask odds, not fill odds, not closing odds). Same v4 item-level cursor contract. Never returns evidence_rows.';

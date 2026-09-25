@@ -60,11 +60,16 @@ export interface NarrowEvidenceRow {
    * DATA_CAPTURE_V2 pre-model market telemetry scalars, verbatim from
    * diagnostics.marketTelemetry. null on rows produced before the capture, and
    * null when the source RPC is still v4. Never synthesized client-side.
+   * gamma_market_* are Gamma MARKET-LEVEL values (never token-specific
+   * executable BBO; see gamma_bbo_semantic); odds_decimal_num keeps its
+   * meaning in odds_decimal_semantic.
    */
-  best_bid_num?: number | null;
-  best_ask_num?: number | null;
-  market_spread_num?: number | null;
+  gamma_market_best_bid_num?: number | null;
+  gamma_market_best_ask_num?: number | null;
+  gamma_market_spread_num?: number | null;
+  gamma_bbo_semantic?: string | null;
   odds_decimal_num?: number | null;
+  odds_decimal_semantic?: string | null;
 }
 
 export const VOLUME_SEMANTIC_PARENT_EVENT_24H =
