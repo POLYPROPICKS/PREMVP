@@ -1,0 +1,5 @@
+# Deterministic operator output — never EOL-convert so regeneration matches git.
+* text eol=lf
+*.jsonl.gz binary
+*.gz binary
+vendor/plotly-2.35.2.min.js binary
