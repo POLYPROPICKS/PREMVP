@@ -6,7 +6,9 @@ CREATE OR REPLACE VIEW public.step3_legacy_feature_overlay_v1
 WITH (security_invoker = true) AS
 SELECT
   r.model_date, r.population_id, r.condition_id, r.selected_token_id,
-  r.decision_at, r.provider_event_id, r.event_start, r.sport_family,
+  r.decision_at, r.provider_event_id, r.event_start,
+  COALESCE(NULLIF(lower(trim(r.sport_family)), ''),
+    NULLIF(lower(trim(r.canonical_row->>'providerSportFamily')), '')) AS sport_family,
   r.entry_price_num AS entry_price,
   CASE WHEN r.entry_price_num > 0 AND r.entry_price_num < 1
     THEN 1 / r.entry_price_num ELSE NULL END AS decimal_odds_from_price,
