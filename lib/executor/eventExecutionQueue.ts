@@ -1276,6 +1276,16 @@ async function selectQueueRowFromContractAReservation(
   if (planningIdentity === null) {
     return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", queueRow: null };
   }
+  const policy = reservation.diagnostics?.planning_policy_verdict as
+    | { allowed?: boolean; exact_identity?: { condition_id?: string; token_id?: string; side?: string } | null }
+    | undefined;
+  const policyIdentity = policy?.exact_identity;
+  if (policy && (policy.allowed !== true || !policyIdentity ||
+      policyIdentity.condition_id !== planningIdentity.conditionId ||
+      policyIdentity.token_id !== planningIdentity.tokenId ||
+      policyIdentity.side !== planningIdentity.side)) {
+    return { outcome: "SKIPPED", reason: "PLANNING_MARKET_POLICY_IDENTITY_MISMATCH", queueRow: null };
+  }
   const selected = selectByPlanningFinalIdentityEvidence(candidates, planningIdentity);
   if (!selected) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_SET", queueRow: null };
   const row = buildQueueRowFromExactCandidate(reservation, rebalanceRunId, physicalEventId, eventStartIso, selected, {
@@ -1495,6 +1505,16 @@ async function selectQueueRowFromReservationCandidateManifest(
   const planningIdentity = extractPlanningFinalIdentityEvidence(reservation.diagnostics);
   if (planningIdentity === null) {
     return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", queueRow: null };
+  }
+  const policy = reservation.diagnostics?.planning_policy_verdict as
+    | { allowed?: boolean; exact_identity?: { condition_id?: string; token_id?: string; side?: string } | null }
+    | undefined;
+  const policyIdentity = policy?.exact_identity;
+  if (policy && (policy.allowed !== true || !policyIdentity ||
+      policyIdentity.condition_id !== planningIdentity.conditionId ||
+      policyIdentity.token_id !== planningIdentity.tokenId ||
+      policyIdentity.side !== planningIdentity.side)) {
+    return { outcome: "SKIPPED", reason: "PLANNING_MARKET_POLICY_IDENTITY_MISMATCH", queueRow: null };
   }
   const selected = selectByPlanningFinalIdentityEvidence(candidates, planningIdentity);
   if (!selected) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_MANIFEST", queueRow: null };

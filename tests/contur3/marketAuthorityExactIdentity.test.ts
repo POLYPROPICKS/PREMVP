@@ -9,6 +9,8 @@ import {
 } from "../../lib/executor/buildFireModelCandidates";
 import { anchorDecisionForCandidate, buildContractAReservationPlan } from "../../lib/executor/nightEventReservations";
 import { buildContractAPlanningDecision } from "../../lib/executor/contractADecisions";
+import { runEventRebalance, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
+import type { NightEventReservationRow, EventExecutionQueueRow } from "../../lib/executor/executorQueueTypes";
 
 function probe(over: Partial<MarketPolicyProbe> = {}): MarketPolicyProbe {
   return {
@@ -167,9 +169,47 @@ test("source row carries its exact spread verdict into the Planning candidate", 
       produceDecisions: async () => [planning],
     });
     assert.equal(plan.reservations.length, 1);
+    assert.equal(plan.reservations[0].diagnostics.candidate_manifest_version, "RESERVATION_CANDIDATE_MANIFEST_V1");
     assert.deepEqual(plan.reservations[0].diagnostics.planning_policy_verdict?.exact_identity,
       planning.decision.planning_policy_verdict?.exact_identity);
+    assert.equal(plan.reservations[0].diagnostics.planning_policy_verdict?.exact_identity?.condition_id, "spread-market");
     assert.equal(plan.reservations[0].diagnostics.planning_final_identity_evidence?.condition_id, "spread-market");
     assert.ok(plan.reservations[0].diagnostics.candidate_manifest.some((entry) => entry.condition_id === "score-market"));
+    const queued: EventExecutionQueueRow[] = [];
+    const repoFor = (reservation: NightEventReservationRow): RebalanceRepoPort => ({
+      async loadActiveReservations() { return [reservation]; },
+      async loadQueuedReservationIds() { return new Set<string>(); },
+      async markReservationsExpired() {},
+      async markReservationSkipped() {},
+      async markReservationQueued() {},
+      async insertQueueRow(queueRow) { queued.push(queueRow); },
+    });
+    const fetchExactTokenOrderbook = async (tokenId: string) => ({
+      ok: true as const, tokenId, latencyMs: 30,
+      book: { tokenId, bids: [{ price: 0.5, size: 100 }], asks: [{ price: 0.51, size: 100 }] },
+    });
+    const rebalanceNow = Date.parse("2026-09-25T11:00:00.000Z");
+    const queuedResult = await runEventRebalance(rebalanceNow, { write: true }, {
+      repo: repoFor(plan.reservations[0]), fetchExactTokenOrderbook,
+    });
+    assert.equal(queuedResult.queued_count, 1, JSON.stringify(queuedResult.outcomes));
+    assert.equal(queued[0].condition_id, "spread-market");
+    assert.equal(queued[0].token_id, "spread-token");
+    assert.equal(queued[0].side, "Wuxi Wugou");
+    assert.equal(queued[0].diagnostics.max_entry_price, 0.54);
+
+    const altered = structuredClone(plan.reservations[0]);
+    altered.diagnostics.planning_final_identity_evidence = {
+      ...altered.diagnostics.planning_final_identity_evidence!,
+      condition_id: "score-market", token_id: "score-token",
+    };
+    assert.equal(altered.diagnostics.planning_final_identity_evidence.condition_id, "score-market");
+    queued.length = 0;
+    const blocked = await runEventRebalance(rebalanceNow, { write: true }, {
+      repo: repoFor(altered), fetchExactTokenOrderbook,
+    });
+    assert.equal(blocked.queued_count, 0);
+    assert.equal(queued.length, 0);
+    assert.match(JSON.stringify(blocked.outcomes), /PLANNING_MARKET_POLICY_IDENTITY_MISMATCH/);
   }
 });
