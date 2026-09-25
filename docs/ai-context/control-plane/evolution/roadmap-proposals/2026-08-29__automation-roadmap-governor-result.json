@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.1",
+  "result_id": "2026-08-29__automation-roadmap-governor-result",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Runtime-selected model for this Claude Code Cloud session (see session details in claude.ai/code), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by the scheduled Automation Operations Governor routine",
+    "prompt_id": "premvp.prompt.automation_roadmap_governor.v1"
+  },
+  "generated_at": "2026-08-29T00:00:00Z",
+  "terminal_disposition": "EVIDENCE_INSUFFICIENT",
+  "eligibility": {
+    "eligible": false,
+    "reason": "only 1 new validated cycle(s) (minimum 3) and the weekly boundary has not been reached — insufficient evidence for a Governor run",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle"
+    ],
+    "new_validated_cycle_count": 1,
+    "weekly_boundary_reached": false
+  },
+  "findings": {
+    "axis_b_advancement": {
+      "statement": "Only one canonical Evolution cycle exists (2026-08-25). One cycle cannot establish a cross-cycle pattern of Axis B advancement — a single observation is not a trend.",
+      "verdict": "NO_MEASURABLE_CHANGE",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-25__evolution-canonical-cycle.json"
+      ]
+    },
+    "axis_a_support_or_distraction": {
+      "statement": "With only one cycle of history, there is no basis to judge whether automation investment has supported or distracted from Axis A (launch, revenue, settlement, reconciled PnL) across periods.",
+      "verdict": "NOT_ENOUGH_EVIDENCE",
+      "evidence_refs": []
+    },
+    "repeated_problems": [],
+    "experiments_with_evidence": [],
+    "founder_skills_practiced": [],
+    "automation_decisions": [],
+    "roadmap_on_course": {
+      "statement": "The Automation Roadmap has not yet accumulated enough validated cycles for a Governor judgement either way; nothing observed contradicts the current Stage 2 boundary.",
+      "on_course": true
+    },
+    "roadmap_delta_justified": false
+  },
+  "roadmap_delta": null,
+  "roadmap_factual_updates": {
+    "role": "FACTUAL_ONLY",
+    "last_evaluated_at": "2026-08-29T00:00:00Z",
+    "cycle_count": 1
+  },
+  "founder_report_ref": null,
+  "next_step": "Continue running the Daily Evolution Review to accumulate validated cycles. Re-run this Governor once at least 2 more new validated cycles exist (3 total) or the weekly boundary since the last Governor run is reached — whichever comes first.",
+  "accepted": false
+}
