@@ -204,16 +204,29 @@ test("no duplicate condition/token identity is emitted for one market", () => {
   assert.equal(new Set(keys).size, keys.length, "each condition/token pair must appear once");
 });
 
-test("provider capture remains complete while wide scoring takes one hidden event representative", () => {
+test("wide research scoring admits every structured sports market family, not moneyline only", () => {
+  // Bounded one-representative-per-physical-event routing (see
+  // selectResearchMarketsForScoring's own docstring) is a separate, unchanged
+  // scoring-budget mechanism: within ONE event it still surfaces only one
+  // market. To isolate admission (can a nonstandard market family ever reach
+  // the wide research scorer at all) from that per-event budget mechanism,
+  // each nonstandard family below is the ONLY market on its own distinct
+  // physical event — previously excluded entirely, now admitted.
   const { entries } = build([
     event({
-      id: "evt-wide-soccer",
+      id: "evt-wide-total",
       tagIds: ["1", "100350", "500"],
-      markets: [
-        market({ id: "m-wide-moneyline", conditionId: "cond-wide-moneyline", sportsMarketType: "moneyline" }),
-        market({ id: "m-wide-total", conditionId: "cond-wide-total", sportsMarketType: "totals" }),
-        market({ id: "m-wide-spread", conditionId: "cond-wide-spread", sportsMarketType: "spreads" }),
-      ],
+      markets: [market({ id: "m-wide-total", conditionId: "cond-wide-total", sportsMarketType: "totals" })],
+    }),
+    event({
+      id: "evt-wide-spread",
+      tagIds: ["1", "100350", "500"],
+      markets: [market({ id: "m-wide-spread", conditionId: "cond-wide-spread", sportsMarketType: "spreads" })],
+    }),
+    event({
+      id: "evt-wide-corners",
+      tagIds: ["1", "100350", "500"],
+      markets: [market({ id: "m-wide-corners", conditionId: "cond-wide-corners", sportsMarketType: "total_corners" })],
     }),
   ]);
   const universe: ResearchNestedMarket[] = entries.map((entry) => ({
@@ -240,10 +253,16 @@ test("provider capture remains complete while wide scoring takes one hidden even
     scoreOwnership: scoreOwnershipForSportFamily("soccer"),
   }));
 
-  assert.equal(entries.length, 6, "upstream inventory still conserves all market outcomes");
+  assert.equal(entries.length, 6, "upstream inventory still conserves all market outcomes (2 per binary market)");
   const selected = selectResearchMarketsForScoring(universe, new Set(), null, 0);
-  assert.equal(selected.length, 1);
-  assert.equal(selected[0].marketId, "m-wide-moneyline");
+  // Research capture is a separate concern from live-money full-match
+  // eligibility: totals / spreads / corners each get admitted to the wide
+  // research scorer, not narrowed to the full-match (moneyline) line.
+  assert.equal(selected.length, 3);
+  assert.deepEqual(
+    selected.map((row) => row.marketId).sort(),
+    ["m-wide-corners", "m-wide-spread", "m-wide-total"],
+  );
 });
 
 // ── materialization outcome ledger ─────────────────────────────────────────
