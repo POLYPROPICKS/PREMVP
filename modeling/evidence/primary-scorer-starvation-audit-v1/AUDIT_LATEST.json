@@ -1,0 +1,1204 @@
+{
+  "ARTIFACT": "PRIMARY_SCORER_STARVATION_AUDIT_V1",
+  "OUTCOME": "PASS",
+  "RANGE_GENERATED_AT": "2026-09-20T07:46:34.104Z",
+  "DISCOVERY": {
+    "groupedGames": 1648,
+    "within24hGroups": 1513,
+    "within48hGroups": 1648,
+    "volumeEligibleGroups": 632,
+    "finalPairs": 632,
+    "finalCandidates_n": 632,
+    "fallback48hCandidates_n": 246
+  },
+  "FANOUT": {
+    "candidate_identity_n": 7937,
+    "canonical_physical_event_n": 850,
+    "unkeyed_candidate_n": 0,
+    "unkeyed_share_pct": 0
+  },
+  "IDENTITIES_PER_EVENT": {
+    "min": 1,
+    "p25": 1,
+    "median": 2,
+    "p75": 16,
+    "p90": 23,
+    "p95": 34,
+    "p99": 75,
+    "max": 95,
+    "mean": 9.34
+  },
+  "TOP_FANOUT_EVENTS": [
+    {
+      "physical_event_key": "polymarket:nfl-cin-hou-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 95,
+      "identity_share_pct": 1.197
+    },
+    {
+      "physical_event_key": "polymarket:nfl-min-chi-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 93,
+      "identity_share_pct": 1.172
+    },
+    {
+      "physical_event_key": "polymarket:nfl-jax-den-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 91,
+      "identity_share_pct": 1.147
+    },
+    {
+      "physical_event_key": "polymarket:nfl-no-bal-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 89,
+      "identity_share_pct": 1.121
+    },
+    {
+      "physical_event_key": "polymarket:nfl-mia-sf-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 89,
+      "identity_share_pct": 1.121
+    },
+    {
+      "physical_event_key": "polymarket:nfl-cle-tb-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 87,
+      "identity_share_pct": 1.096
+    },
+    {
+      "physical_event_key": "polymarket:nfl-phi-ten-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 83,
+      "identity_share_pct": 1.046
+    },
+    {
+      "physical_event_key": "polymarket:nfl-car-atl-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 77,
+      "identity_share_pct": 0.97
+    },
+    {
+      "physical_event_key": "polymarket:nfl-lv-lac-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 75,
+      "identity_share_pct": 0.945
+    },
+    {
+      "physical_event_key": "polymarket:nfl-was-dal-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 75,
+      "identity_share_pct": 0.945
+    },
+    {
+      "physical_event_key": "polymarket:nfl-sea-ari-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 73,
+      "identity_share_pct": 0.92
+    },
+    {
+      "physical_event_key": "polymarket:nfl-pit-ne-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 71,
+      "identity_share_pct": 0.895
+    },
+    {
+      "physical_event_key": "polymarket:nfl-gb-nyj-2026-09-20:2026-09-20",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 71,
+      "identity_share_pct": 0.895
+    },
+    {
+      "physical_event_key": "polymarket:nfl-ind-kc-2026-09-21:2026-09-21",
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "identity_n": 47,
+      "identity_share_pct": 0.592
+    },
+    {
+      "physical_event_key": "polymarket:tpe1-han-tat-2026-09-20-exact-score:2026-09-20",
+      "providerSportFamily": "soccer",
+      "providerSportCode": "tpe1",
+      "identity_n": 45,
+      "identity_share_pct": 0.567
+    },
+    {
+      "physical_event_key": "polymarket:tpe1-tai-tpc-2026-09-20-exact-score:2026-09-20",
+      "providerSportFamily": "soccer",
+      "providerSportCode": "tpe1",
+      "identity_n": 45,
+      "identity_share_pct": 0.567
+    },
+    {
+      "physical_event_key": "polymarket:ptc-faz-fig-2026-09-20-exact-score:2026-09-20",
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ptc",
+      "identity_n": 45,
+      "identity_share_pct": 0.567
+    },
+    {
+      "physical_event_key": "polymarket:ptc-cdal-set-2026-09-20-exact-score:2026-09-20",
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ptc",
+      "identity_n": 45,
+      "identity_share_pct": 0.567
+    },
+    {
+      "physical_event_key": "polymarket:ptc-ss-far-2026-09-20-halftime-result:2026-09-20",
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ptc",
+      "identity_n": 45,
+      "identity_share_pct": 0.567
+    },
+    {
+      "physical_event_key": "polymarket:bul-lev-lud-2026-09-20:2026-09-20",
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bul",
+      "identity_n": 44,
+      "identity_share_pct": 0.554
+    }
+  ],
+  "CURRENT_ORDER": {
+    "100": {
+      "attempt_n": 100,
+      "unique_physical_event_n": 2,
+      "coverage_pct_of_all_keyed_events": 0.24,
+      "top_sport_families": [
+        {
+          "family": "MISSING",
+          "n": 100
+        }
+      ],
+      "missing_family_attempt_n": 100,
+      "cfb_attempt_n": 0
+    },
+    "250": {
+      "attempt_n": 250,
+      "unique_physical_event_n": 3,
+      "coverage_pct_of_all_keyed_events": 0.35,
+      "top_sport_families": [
+        {
+          "family": "MISSING",
+          "n": 250
+        }
+      ],
+      "missing_family_attempt_n": 250,
+      "cfb_attempt_n": 0
+    },
+    "500": {
+      "attempt_n": 500,
+      "unique_physical_event_n": 6,
+      "coverage_pct_of_all_keyed_events": 0.71,
+      "top_sport_families": [
+        {
+          "family": "MISSING",
+          "n": 500
+        }
+      ],
+      "missing_family_attempt_n": 500,
+      "cfb_attempt_n": 0
+    },
+    "608": {
+      "attempt_n": 608,
+      "unique_physical_event_n": 7,
+      "coverage_pct_of_all_keyed_events": 0.82,
+      "top_sport_families": [
+        {
+          "family": "MISSING",
+          "n": 608
+        }
+      ],
+      "missing_family_attempt_n": 608,
+      "cfb_attempt_n": 0
+    },
+    "1000": {
+      "attempt_n": 1000,
+      "unique_physical_event_n": 16,
+      "coverage_pct_of_all_keyed_events": 1.88,
+      "top_sport_families": [
+        {
+          "family": "MISSING",
+          "n": 942
+        },
+        {
+          "family": "soccer",
+          "n": 58
+        }
+      ],
+      "missing_family_attempt_n": 942,
+      "cfb_attempt_n": 0
+    }
+  },
+  "EVENT_FAIR_ORDER": {
+    "100": {
+      "attempt_n": 100,
+      "unique_physical_event_n": 100,
+      "coverage_pct_of_all_keyed_events": 11.76,
+      "top_sport_families": [
+        {
+          "family": "soccer",
+          "n": 76
+        },
+        {
+          "family": "MISSING",
+          "n": 14
+        },
+        {
+          "family": "baseball",
+          "n": 9
+        },
+        {
+          "family": "esports",
+          "n": 1
+        }
+      ],
+      "missing_family_attempt_n": 14,
+      "cfb_attempt_n": 0
+    },
+    "250": {
+      "attempt_n": 250,
+      "unique_physical_event_n": 250,
+      "coverage_pct_of_all_keyed_events": 29.41,
+      "top_sport_families": [
+        {
+          "family": "soccer",
+          "n": 203
+        },
+        {
+          "family": "MISSING",
+          "n": 20
+        },
+        {
+          "family": "baseball",
+          "n": 13
+        },
+        {
+          "family": "tennis",
+          "n": 7
+        },
+        {
+          "family": "esports",
+          "n": 6
+        }
+      ],
+      "missing_family_attempt_n": 20,
+      "cfb_attempt_n": 0
+    },
+    "500": {
+      "attempt_n": 500,
+      "unique_physical_event_n": 500,
+      "coverage_pct_of_all_keyed_events": 58.82,
+      "top_sport_families": [
+        {
+          "family": "soccer",
+          "n": 400
+        },
+        {
+          "family": "MISSING",
+          "n": 38
+        },
+        {
+          "family": "tennis",
+          "n": 26
+        },
+        {
+          "family": "esports",
+          "n": 16
+        },
+        {
+          "family": "baseball",
+          "n": 14
+        }
+      ],
+      "missing_family_attempt_n": 38,
+      "cfb_attempt_n": 0
+    },
+    "608": {
+      "attempt_n": 608,
+      "unique_physical_event_n": 608,
+      "coverage_pct_of_all_keyed_events": 71.53,
+      "top_sport_families": [
+        {
+          "family": "soccer",
+          "n": 475
+        },
+        {
+          "family": "MISSING",
+          "n": 38
+        },
+        {
+          "family": "tennis",
+          "n": 36
+        },
+        {
+          "family": "esports",
+          "n": 31
+        },
+        {
+          "family": "baseball",
+          "n": 22
+        }
+      ],
+      "missing_family_attempt_n": 38,
+      "cfb_attempt_n": 0
+    },
+    "1000": {
+      "attempt_n": 1000,
+      "unique_physical_event_n": 850,
+      "coverage_pct_of_all_keyed_events": 100,
+      "top_sport_families": [
+        {
+          "family": "soccer",
+          "n": 669
+        },
+        {
+          "family": "tennis",
+          "n": 126
+        },
+        {
+          "family": "esports",
+          "n": 73
+        },
+        {
+          "family": "MISSING",
+          "n": 60
+        },
+        {
+          "family": "baseball",
+          "n": 47
+        }
+      ],
+      "missing_family_attempt_n": 60,
+      "cfb_attempt_n": 0
+    }
+  },
+  "PREFIX_DELTAS": {
+    "100": {
+      "additional_unique_events_vs_current": 98,
+      "coverage_multiplier_vs_current": 50
+    },
+    "250": {
+      "additional_unique_events_vs_current": 247,
+      "coverage_multiplier_vs_current": 83.333
+    },
+    "500": {
+      "additional_unique_events_vs_current": 494,
+      "coverage_multiplier_vs_current": 83.333
+    },
+    "608": {
+      "additional_unique_events_vs_current": 601,
+      "coverage_multiplier_vs_current": 86.857
+    },
+    "1000": {
+      "additional_unique_events_vs_current": 834,
+      "coverage_multiplier_vs_current": 53.125
+    }
+  },
+  "PREFIX_608": {
+    "current_unique_events": 7,
+    "event_fair_unique_events": 608,
+    "absolute_gain": 601,
+    "coverage_multiplier": 86.857
+  },
+  "SPORT_FANOUT": [
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ptc",
+      "unique_physical_events": 32,
+      "candidate_identities": 1152,
+      "identities_per_event": 36,
+      "share_of_all_identities_pct": 14.51
+    },
+    {
+      "providerSportFamily": null,
+      "providerSportCode": "nfl",
+      "unique_physical_events": 40,
+      "candidate_identities": 1142,
+      "identities_per_event": 28.55,
+      "share_of_all_identities_pct": 14.39
+    },
+    {
+      "providerSportFamily": "tennis",
+      "providerSportCode": null,
+      "unique_physical_events": 121,
+      "candidate_identities": 247,
+      "identities_per_event": 2.04,
+      "share_of_all_identities_pct": 3.11
+    },
+    {
+      "providerSportFamily": "baseball",
+      "providerSportCode": "mlb",
+      "unique_physical_events": 35,
+      "candidate_identities": 240,
+      "identities_per_event": 6.86,
+      "share_of_all_identities_pct": 3.02
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "argpn",
+      "unique_physical_events": 12,
+      "candidate_identities": 209,
+      "identities_per_event": 17.42,
+      "share_of_all_identities_pct": 2.63
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": null,
+      "unique_physical_events": 28,
+      "candidate_identities": 170,
+      "identities_per_event": 6.07,
+      "share_of_all_identities_pct": 2.14
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "nor2",
+      "unique_physical_events": 7,
+      "candidate_identities": 164,
+      "identities_per_event": 23.43,
+      "share_of_all_identities_pct": 2.07
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "nwsl",
+      "unique_physical_events": 4,
+      "candidate_identities": 133,
+      "identities_per_event": 33.25,
+      "share_of_all_identities_pct": 1.68
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "swe",
+      "unique_physical_events": 15,
+      "candidate_identities": 126,
+      "identities_per_event": 8.4,
+      "share_of_all_identities_pct": 1.59
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "arg",
+      "unique_physical_events": 21,
+      "candidate_identities": 121,
+      "identities_per_event": 5.76,
+      "share_of_all_identities_pct": 1.52
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "por",
+      "unique_physical_events": 15,
+      "candidate_identities": 119,
+      "identities_per_event": 7.93,
+      "share_of_all_identities_pct": 1.5
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "gre1",
+      "unique_physical_events": 15,
+      "candidate_identities": 115,
+      "identities_per_event": 7.67,
+      "share_of_all_identities_pct": 1.45
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "tur",
+      "unique_physical_events": 12,
+      "candidate_identities": 98,
+      "identities_per_event": 8.17,
+      "share_of_all_identities_pct": 1.23
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "isl1",
+      "unique_physical_events": 4,
+      "candidate_identities": 98,
+      "identities_per_event": 24.5,
+      "share_of_all_identities_pct": 1.23
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "tha1",
+      "unique_physical_events": 12,
+      "candidate_identities": 96,
+      "identities_per_event": 8,
+      "share_of_all_identities_pct": 1.21
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "itsb",
+      "unique_physical_events": 12,
+      "candidate_identities": 94,
+      "identities_per_event": 7.83,
+      "share_of_all_identities_pct": 1.18
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "nor",
+      "unique_physical_events": 15,
+      "candidate_identities": 92,
+      "identities_per_event": 6.13,
+      "share_of_all_identities_pct": 1.16
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "tur2",
+      "unique_physical_events": 4,
+      "candidate_identities": 92,
+      "identities_per_event": 23,
+      "share_of_all_identities_pct": 1.16
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "tpe1",
+      "unique_physical_events": 2,
+      "candidate_identities": 90,
+      "identities_per_event": 45,
+      "share_of_all_identities_pct": 1.13
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "lal",
+      "unique_physical_events": 21,
+      "candidate_identities": 89,
+      "identities_per_event": 4.24,
+      "share_of_all_identities_pct": 1.12
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bul",
+      "unique_physical_events": 3,
+      "candidate_identities": 88,
+      "identities_per_event": 29.33,
+      "share_of_all_identities_pct": 1.11
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "saf1",
+      "unique_physical_events": 4,
+      "candidate_identities": 88,
+      "identities_per_event": 22,
+      "share_of_all_identities_pct": 1.11
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "uru1",
+      "unique_physical_events": 5,
+      "candidate_identities": 86,
+      "identities_per_event": 17.2,
+      "share_of_all_identities_pct": 1.08
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bra",
+      "unique_physical_events": 15,
+      "candidate_identities": 85,
+      "identities_per_event": 5.67,
+      "share_of_all_identities_pct": 1.07
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "sea",
+      "unique_physical_events": 15,
+      "candidate_identities": 83,
+      "identities_per_event": 5.53,
+      "share_of_all_identities_pct": 1.05
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "es2",
+      "unique_physical_events": 15,
+      "candidate_identities": 83,
+      "identities_per_event": 5.53,
+      "share_of_all_identities_pct": 1.05
+    },
+    {
+      "providerSportFamily": "esports",
+      "providerSportCode": "cs2",
+      "unique_physical_events": 23,
+      "candidate_identities": 83,
+      "identities_per_event": 3.61,
+      "share_of_all_identities_pct": 1.05
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bun",
+      "unique_physical_events": 15,
+      "candidate_identities": 82,
+      "identities_per_event": 5.47,
+      "share_of_all_identities_pct": 1.03
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "idn1",
+      "unique_physical_events": 9,
+      "candidate_identities": 79,
+      "identities_per_event": 8.78,
+      "share_of_all_identities_pct": 1
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bel1",
+      "unique_physical_events": 12,
+      "candidate_identities": 77,
+      "identities_per_event": 6.42,
+      "share_of_all_identities_pct": 0.97
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "epl",
+      "unique_physical_events": 20,
+      "candidate_identities": 76,
+      "identities_per_event": 3.8,
+      "share_of_all_identities_pct": 0.96
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ere",
+      "unique_physical_events": 12,
+      "candidate_identities": 75,
+      "identities_per_event": 6.25,
+      "share_of_all_identities_pct": 0.94
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "wsl",
+      "unique_physical_events": 7,
+      "candidate_identities": 75,
+      "identities_per_event": 10.71,
+      "share_of_all_identities_pct": 0.94
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "lva1",
+      "unique_physical_events": 3,
+      "candidate_identities": 73,
+      "identities_per_event": 24.33,
+      "share_of_all_identities_pct": 0.92
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "hun",
+      "unique_physical_events": 3,
+      "candidate_identities": 72,
+      "identities_per_event": 24,
+      "share_of_all_identities_pct": 0.91
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ukr1",
+      "unique_physical_events": 9,
+      "candidate_identities": 72,
+      "identities_per_event": 8,
+      "share_of_all_identities_pct": 0.91
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "den",
+      "unique_physical_events": 12,
+      "candidate_identities": 71,
+      "identities_per_event": 5.92,
+      "share_of_all_identities_pct": 0.89
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "gtm",
+      "unique_physical_events": 3,
+      "candidate_identities": 68,
+      "identities_per_event": 22.67,
+      "share_of_all_identities_pct": 0.86
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "pol",
+      "unique_physical_events": 12,
+      "candidate_identities": 67,
+      "identities_per_event": 5.58,
+      "share_of_all_identities_pct": 0.84
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "est1",
+      "unique_physical_events": 3,
+      "candidate_identities": 67,
+      "identities_per_event": 22.33,
+      "share_of_all_identities_pct": 0.84
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "uzb1",
+      "unique_physical_events": 3,
+      "candidate_identities": 67,
+      "identities_per_event": 22.33,
+      "share_of_all_identities_pct": 0.84
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ecu1",
+      "unique_physical_events": 5,
+      "candidate_identities": 66,
+      "identities_per_event": 13.2,
+      "share_of_all_identities_pct": 0.83
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "uslc",
+      "unique_physical_events": 6,
+      "candidate_identities": 66,
+      "identities_per_event": 11,
+      "share_of_all_identities_pct": 0.83
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "srb",
+      "unique_physical_events": 3,
+      "candidate_identities": 65,
+      "identities_per_event": 21.67,
+      "share_of_all_identities_pct": 0.82
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "u20wwc",
+      "unique_physical_events": 6,
+      "candidate_identities": 64,
+      "identities_per_event": 10.67,
+      "share_of_all_identities_pct": 0.81
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bra3",
+      "unique_physical_events": 3,
+      "candidate_identities": 63,
+      "identities_per_event": 21,
+      "share_of_all_identities_pct": 0.79
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "idn2",
+      "unique_physical_events": 3,
+      "candidate_identities": 63,
+      "identities_per_event": 21,
+      "share_of_all_identities_pct": 0.79
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bl2",
+      "unique_physical_events": 9,
+      "candidate_identities": 60,
+      "identities_per_event": 6.67,
+      "share_of_all_identities_pct": 0.76
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "sui",
+      "unique_physical_events": 9,
+      "candidate_identities": 60,
+      "identities_per_event": 6.67,
+      "share_of_all_identities_pct": 0.76
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "fpd",
+      "unique_physical_events": 2,
+      "candidate_identities": 58,
+      "identities_per_event": 29,
+      "share_of_all_identities_pct": 0.73
+    },
+    {
+      "providerSportFamily": "esports",
+      "providerSportCode": "lol",
+      "unique_physical_events": 16,
+      "candidate_identities": 55,
+      "identities_per_event": 3.44,
+      "share_of_all_identities_pct": 0.69
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "fl1",
+      "unique_physical_events": 13,
+      "candidate_identities": 53,
+      "identities_per_event": 4.08,
+      "share_of_all_identities_pct": 0.67
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "aut",
+      "unique_physical_events": 9,
+      "candidate_identities": 51,
+      "identities_per_event": 5.67,
+      "share_of_all_identities_pct": 0.64
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "hr1",
+      "unique_physical_events": 6,
+      "candidate_identities": 50,
+      "identities_per_event": 8.33,
+      "share_of_all_identities_pct": 0.63
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "canpl",
+      "unique_physical_events": 2,
+      "candidate_identities": 50,
+      "identities_per_event": 25,
+      "share_of_all_identities_pct": 0.63
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "svk1",
+      "unique_physical_events": 6,
+      "candidate_identities": 49,
+      "identities_per_event": 8.17,
+      "share_of_all_identities_pct": 0.62
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "mex",
+      "unique_physical_events": 9,
+      "candidate_identities": 49,
+      "identities_per_event": 5.44,
+      "share_of_all_identities_pct": 0.62
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "swe2",
+      "unique_physical_events": 6,
+      "candidate_identities": 49,
+      "identities_per_event": 8.17,
+      "share_of_all_identities_pct": 0.62
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "kor",
+      "unique_physical_events": 6,
+      "candidate_identities": 48,
+      "identities_per_event": 8,
+      "share_of_all_identities_pct": 0.6
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "slo",
+      "unique_physical_events": 3,
+      "candidate_identities": 47,
+      "identities_per_event": 15.67,
+      "share_of_all_identities_pct": 0.59
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "bel2",
+      "unique_physical_events": 2,
+      "candidate_identities": 47,
+      "identities_per_event": 23.5,
+      "share_of_all_identities_pct": 0.59
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ltu1",
+      "unique_physical_events": 2,
+      "candidate_identities": 45,
+      "identities_per_event": 22.5,
+      "share_of_all_identities_pct": 0.57
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "aze1",
+      "unique_physical_events": 2,
+      "candidate_identities": 44,
+      "identities_per_event": 22,
+      "share_of_all_identities_pct": 0.55
+    },
+    {
+      "providerSportFamily": "basketball",
+      "providerSportCode": "wnba",
+      "unique_physical_events": 6,
+      "candidate_identities": 44,
+      "identities_per_event": 7.33,
+      "share_of_all_identities_pct": 0.55
+    },
+    {
+      "providerSportFamily": "esports",
+      "providerSportCode": "dota2",
+      "unique_physical_events": 11,
+      "candidate_identities": 44,
+      "identities_per_event": 4,
+      "share_of_all_identities_pct": 0.55
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "elc",
+      "unique_physical_events": 6,
+      "candidate_identities": 43,
+      "identities_per_event": 7.17,
+      "share_of_all_identities_pct": 0.54
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ven1",
+      "unique_physical_events": 2,
+      "candidate_identities": 43,
+      "identities_per_event": 21.5,
+      "share_of_all_identities_pct": 0.54
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "kor2",
+      "unique_physical_events": 2,
+      "candidate_identities": 40,
+      "identities_per_event": 20,
+      "share_of_all_identities_pct": 0.5
+    },
+    {
+      "providerSportFamily": "esports",
+      "providerSportCode": "mlbb",
+      "unique_physical_events": 6,
+      "candidate_identities": 30,
+      "identities_per_event": 5,
+      "share_of_all_identities_pct": 0.38
+    },
+    {
+      "providerSportFamily": "esports",
+      "providerSportCode": "r6siege",
+      "unique_physical_events": 14,
+      "candidate_identities": 30,
+      "identities_per_event": 2.14,
+      "share_of_all_identities_pct": 0.38
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "ned2",
+      "unique_physical_events": 1,
+      "candidate_identities": 23,
+      "identities_per_event": 23,
+      "share_of_all_identities_pct": 0.29
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "scop",
+      "unique_physical_events": 3,
+      "candidate_identities": 18,
+      "identities_per_event": 6,
+      "share_of_all_identities_pct": 0.23
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "mls",
+      "unique_physical_events": 3,
+      "candidate_identities": 18,
+      "identities_per_event": 6,
+      "share_of_all_identities_pct": 0.23
+    },
+    {
+      "providerSportFamily": "hockey",
+      "providerSportCode": "dehl",
+      "unique_physical_events": 6,
+      "candidate_identities": 12,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.15
+    },
+    {
+      "providerSportFamily": "hockey",
+      "providerSportCode": null,
+      "unique_physical_events": 2,
+      "candidate_identities": 12,
+      "identities_per_event": 6,
+      "share_of_all_identities_pct": 0.15
+    },
+    {
+      "providerSportFamily": "esports",
+      "providerSportCode": "hok",
+      "unique_physical_events": 2,
+      "candidate_identities": 12,
+      "identities_per_event": 6,
+      "share_of_all_identities_pct": 0.15
+    },
+    {
+      "providerSportFamily": "hockey",
+      "providerSportCode": "cehl",
+      "unique_physical_events": 5,
+      "candidate_identities": 10,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.13
+    },
+    {
+      "providerSportFamily": "tennis",
+      "providerSportCode": "daviscup",
+      "unique_physical_events": 4,
+      "candidate_identities": 8,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.1
+    },
+    {
+      "providerSportFamily": "basketball",
+      "providerSportCode": "bkbbl",
+      "unique_physical_events": 1,
+      "candidate_identities": 6,
+      "identities_per_event": 6,
+      "share_of_all_identities_pct": 0.08
+    },
+    {
+      "providerSportFamily": null,
+      "providerSportCode": "vbeuro",
+      "unique_physical_events": 1,
+      "candidate_identities": 6,
+      "identities_per_event": 6,
+      "share_of_all_identities_pct": 0.08
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "nfl",
+      "unique_physical_events": 4,
+      "candidate_identities": 4,
+      "identities_per_event": 1,
+      "share_of_all_identities_pct": 0.05
+    },
+    {
+      "providerSportFamily": "hockey",
+      "providerSportCode": "khl",
+      "unique_physical_events": 2,
+      "candidate_identities": 4,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.05
+    },
+    {
+      "providerSportFamily": "baseball",
+      "providerSportCode": "npb",
+      "unique_physical_events": 2,
+      "candidate_identities": 4,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.05
+    },
+    {
+      "providerSportFamily": null,
+      "providerSportCode": "pdcdarts",
+      "unique_physical_events": 2,
+      "candidate_identities": 4,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.05
+    },
+    {
+      "providerSportFamily": "cricket",
+      "providerSportCode": "criccpl",
+      "unique_physical_events": 2,
+      "candidate_identities": 4,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.05
+    },
+    {
+      "providerSportFamily": null,
+      "providerSportCode": "rutopft",
+      "unique_physical_events": 1,
+      "candidate_identities": 4,
+      "identities_per_event": 4,
+      "share_of_all_identities_pct": 0.05
+    },
+    {
+      "providerSportFamily": "basketball",
+      "providerSportCode": "bkcl",
+      "unique_physical_events": 1,
+      "candidate_identities": 2,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.03
+    },
+    {
+      "providerSportFamily": null,
+      "providerSportCode": "pll",
+      "unique_physical_events": 1,
+      "candidate_identities": 2,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.03
+    },
+    {
+      "providerSportFamily": null,
+      "providerSportCode": "hbbundesliga",
+      "unique_physical_events": 1,
+      "candidate_identities": 2,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.03
+    },
+    {
+      "providerSportFamily": "soccer",
+      "providerSportCode": "fif",
+      "unique_physical_events": 1,
+      "candidate_identities": 2,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.03
+    }
+  ],
+  "SPORT_FANOUT_ISOLATED": {
+    "missing_family": {
+      "unique_physical_events": 46,
+      "candidate_identities": 1160,
+      "identities_per_event": 25.22,
+      "share_of_all_identities_pct": 14.62,
+      "distinct_code_or_family_rows": 6
+    },
+    "cfb": null,
+    "esports": {
+      "unique_physical_events": 72,
+      "candidate_identities": 254,
+      "identities_per_event": 3.53,
+      "share_of_all_identities_pct": 3.2,
+      "distinct_code_or_family_rows": 6
+    },
+    "soccer": {
+      "unique_physical_events": 545,
+      "candidate_identities": 5930,
+      "identities_per_event": 10.88,
+      "share_of_all_identities_pct": 74.71,
+      "distinct_code_or_family_rows": 66
+    },
+    "tennis": {
+      "unique_physical_events": 125,
+      "candidate_identities": 255,
+      "identities_per_event": 2.04,
+      "share_of_all_identities_pct": 3.21,
+      "distinct_code_or_family_rows": 2
+    },
+    "baseball": {
+      "unique_physical_events": 37,
+      "candidate_identities": 244,
+      "identities_per_event": 6.59,
+      "share_of_all_identities_pct": 3.07,
+      "distinct_code_or_family_rows": 2
+    },
+    "basketball": {
+      "unique_physical_events": 8,
+      "candidate_identities": 52,
+      "identities_per_event": 6.5,
+      "share_of_all_identities_pct": 0.66,
+      "distinct_code_or_family_rows": 3
+    },
+    "hockey": {
+      "unique_physical_events": 15,
+      "candidate_identities": 38,
+      "identities_per_event": 2.53,
+      "share_of_all_identities_pct": 0.48,
+      "distinct_code_or_family_rows": 4
+    },
+    "cricket": {
+      "unique_physical_events": 2,
+      "candidate_identities": 4,
+      "identities_per_event": 2,
+      "share_of_all_identities_pct": 0.05,
+      "distinct_code_or_family_rows": 1
+    },
+    "mma": null
+  },
+  "HYPOTHESES": {
+    "H1_IDENTITY_FANOUT_STARVATION": "SUPPORTED",
+    "H2_PRODUCT_RANKING_VOLUME_CONCENTRATION": "SUPPORTED",
+    "H3_MISSING_SPORT_METADATA_CONSUMES_SCORER_BUDGET": "SUPPORTED",
+    "H4_EVENT_FAIR_IMPROVES_EQUAL_ATTEMPT_COVERAGE": "SUPPORTED",
+    "H5_NULL_KEYS_MATERIAL": "NOT_SUPPORTED"
+  }
+}
