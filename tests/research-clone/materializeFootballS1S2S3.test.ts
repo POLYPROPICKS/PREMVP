@@ -4,12 +4,15 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import {
   assembleCandidate,
   candidateFromRow,
   evaluateCandidate,
   isExcludedFromOrdinaryHold,
+  isOrdinaryFullMatchSnapshot,
+  attributeExecutedFill,
   type RawCandidateRow,
   type RawSnapshotRow,
 } from "../../scripts/execution-matrix/materializeFootballS1S2S3";
@@ -48,7 +51,7 @@ test("evaluateCandidate produces S1/S2/S3 rows that all carry the same candidate
   const rows = evaluateCandidate(materialized);
   assert.equal(rows.length, 3);
   const identityKeys = rows.map(
-    (r) => `${r.payload.condition_id}::${r.payload.selected_token_id}::${r.payload.formula_version}::${r.payload.decision_time}`,
+    (r) => `${r.payload.condition_id}::${r.payload.selected_token_id}::${r.payload.provider_event_id}::${r.payload.formula_version}::${r.payload.decision_time}`,
   );
   assert.equal(new Set(identityKeys).size, 1);
 });
@@ -68,6 +71,9 @@ test("assembleCandidate excludes snapshots at or before decision time from S2/S3
     market_slug: null,
     event_title: null,
     market_title: null,
+    normalized_sport: "soccer",
+    normalized_market_family: "total",
+    market_family_gate_status: "passed",
   };
   const atDecisionTime: RawSnapshotRow = { ...before, captured_at: baseRow.created_at };
   const after: RawSnapshotRow = { ...before, captured_at: "2026-07-17T03:21:09.814Z", implied_decimal_odds_mid: 2.6 };
@@ -90,6 +96,9 @@ test("observations feeding S2/S3 stay in ascending time order regardless of inpu
     market_slug: null,
     event_title: null,
     market_title: null,
+    normalized_sport: "soccer",
+    normalized_market_family: "total",
+    market_family_gate_status: "passed",
   });
   const materialized = assembleCandidate(
     baseRow,
@@ -126,6 +135,9 @@ test("assembleCandidate drops Exact Score snapshots from the S2/S3 observation w
     market_slug: null,
     event_title: "Exact Score 2-1",
     market_title: null,
+    normalized_sport: "soccer",
+    normalized_market_family: "total",
+    market_family_gate_status: "passed",
   };
   const materialized = assembleCandidate(baseRow, [exactScoreSnapshot], null);
   assert.equal(materialized.s2s3Observations.length, 0);
@@ -146,6 +158,9 @@ test("without an authoritative fill row, S2/S3 status is never ACTUAL_FILL even 
     market_slug: null,
     event_title: null,
     market_title: null,
+    normalized_sport: "soccer",
+    normalized_market_family: "total",
+    market_family_gate_status: "passed",
   };
   const materialized = assembleCandidate(baseRow, [s], null);
   const rows = evaluateCandidate(materialized);
@@ -167,6 +182,41 @@ test("an authoritative fill row is required for ACTUAL_FILL, and only then is it
   assert.equal(s2.payload.fill_evidence_source, "bet_execution_ledger");
 });
 
+test("clone unique and upsert keys include provider_event_id", () => {
+  const sql = readFileSync("supabase/migrations/20260925051832_football_execution_matrix_authority_repair.sql", "utf8");
+  assert.match(sql, /unique \(condition_id, selected_token_id, provider_event_id, formula_version,/);
+  assert.match(sql, /on conflict \(condition_id, selected_token_id, provider_event_id, formula_version,/);
+});
+
+test("structured gate rejects non ordinary, partial and Exact Score soccer markets", () => {
+  const base: RawSnapshotRow = { captured_at: "2026-07-17T03:21:09Z", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, implied_decimal_odds_mid: 2.5, implied_decimal_odds_bid: 2.4,
+    spread_bps: 10, bid_depth_total: 10, event_slug: "match", market_slug: null,
+    event_title: "Generic match", market_title: "Total Goals", normalized_sport: "soccer",
+    normalized_market_family: "total", market_family_gate_status: "passed" };
+  assert.equal(isOrdinaryFullMatchSnapshot(base), true);
+  assert.equal(isOrdinaryFullMatchSnapshot({ ...base, normalized_market_family: "UNKNOWN" }), false);
+  assert.equal(isOrdinaryFullMatchSnapshot({ ...base, market_title: "First Half Total Goals" }), false);
+  assert.equal(isOrdinaryFullMatchSnapshot({ ...base, market_title: "Exact Score 2-1" }), false);
+  assert.equal(isOrdinaryFullMatchSnapshot({ ...base, market_title: "Correct Score" , normalized_market_family: undefined }), false);
+  assert.equal(isOrdinaryFullMatchSnapshot({ ...base, market_title: null, market_slug: "correct-score-2-1" }), false);
+});
+
+test("fill attribution requires unique matched order, causal executed ledger price", () => {
+  const candidate = { ...baseRow, id: "pair-1" };
+  const order = { source_signal_pair_id: "pair-1", clob_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, fill_status: "MATCHED_CONFIRMED" };
+  const ledger = { exchange_order_id: "order-1", condition_id: baseRow.condition_id,
+    token_id: baseRow.selected_token_id, bet_status: "filled", fill_price: 0.5,
+    filled_at: "2026-07-16T10:00:00Z" };
+  assert.equal(attributeExecutedFill(candidate, [order], [ledger])?.filledDecimalOdds, 2);
+  assert.equal(attributeExecutedFill(candidate, [{ ...order, source_signal_pair_id: "other" }], [ledger]), null);
+  assert.equal(attributeExecutedFill(candidate, [order], [{ ...ledger, filled_at: "2026-07-16T09:00:00Z" }]), null);
+  assert.equal(attributeExecutedFill(candidate, [order], [{ ...ledger, fill_price: null }]), null);
+  assert.equal(attributeExecutedFill(candidate, [order, order], [ledger]), null);
+  assert.equal(attributeExecutedFill(candidate, [order], [{ ...ledger, exchange_order_id: "other" }]), null);
+});
+
 // 6. Idempotency (logical-identity window) -----------------------------------
 
 test("recorded_window_start is deterministic from the same source snapshot set, enabling idempotent upsert", () => {
@@ -182,6 +232,9 @@ test("recorded_window_start is deterministic from the same source snapshot set, 
     market_slug: null,
     event_title: null,
     market_title: null,
+    normalized_sport: "soccer",
+    normalized_market_family: "total",
+    market_family_gate_status: "passed",
   };
   const run1 = evaluateCandidate(assembleCandidate(baseRow, [s], null));
   const run2 = evaluateCandidate(assembleCandidate(baseRow, [s], null));

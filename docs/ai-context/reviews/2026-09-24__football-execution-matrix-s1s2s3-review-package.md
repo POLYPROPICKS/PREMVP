@@ -309,3 +309,101 @@ an independent reviewer cannot yet run an ad hoc `SELECT` to re-verify row count
 they can only re-run the materializer (safe, idempotent) and observe the same returned ids,
 or Architect can grant a read-only RPC/schema exposure as a follow-up. This does not weaken
 the idempotency proof above, which relies only on the write RPC's own conflict semantics.
+
+## 10. Review B-lite repair and post-repair clone proof (2026-09-25)
+
+This section supersedes the pre-review fill attribution, four-field conflict key,
+read-path and "current" 12-row claims above. Those paragraphs document the reviewed
+`4334fcb` implementation, not the repaired authority.
+
+B-lite verdict was `FAIL_EXECUTION_AUTHORITY` on four findings:
+
+1. **Ordinary full-match eligibility:** discovery previously accepted every
+   `normalized_sport='soccer'` snapshot. It now requires the existing snapshot's
+   structured `normalized_market_family` in `moneyline/spread/total` and
+   `market_family_gate_status='passed'`. PREMVP's canonical Contur3 market/scope
+   classifiers examine *every* event/market title and slug as veto evidence.
+   Unknown structured family or gate fails closed. Source lineage is
+   `public.market_price_liquidity_snapshots` (itself normalized by the liquidity
+   watchlist builder from fine market type), joined exactly by condition/token
+   to `public.generated_signal_pairs`.
+2. **Exact Score:** structured market-family gate is primary. Every available
+   title/slug is separately checked for forbidden classes; a generic event title
+   cannot mask an Exact Score market title. Candidate label checks can only
+   reject; they never admit a row without the structured snapshot gate.
+3. **Fill authority:** the materializer no longer reads `submitted_price` or
+   accepts broad `/fill/i` statuses. It links the exact
+   `generated_signal_pairs.id` to
+   `executor_order_events.executor_meta.reconciliation_v1.source_signal_pair_id`,
+   requires `MATCHED_CONFIRMED`, one linked `clob_order_id`, then exactly one
+   `bet_execution_ledger.exchange_order_id` with the same condition/token,
+   explicit filled/matched status, `fill_price` and `filled_at` strictly after
+   that candidate's decision. The ledger `fill_price` supplies decimal odds.
+   No order or ledger evidence exists for the four clone decisions, so none is
+   attributed. A price touch remains `FILL_OPPORTUNITY`.
+4. **DB identity:** additive clone migration
+   `20260925051832_football_execution_matrix_authority_repair.sql` replaces the
+   four-field unique/conflict key with `(condition_id, selected_token_id,
+   provider_event_id, formula_version, decision_time, strategy,
+   recorded_window_start)`. Its transaction first verified exactly 12 old rows
+   by materializer source tags and absent version marker, deleted only those
+   rows, then installed the new key and bridge conflict target. Every repaired
+   row has diagnostics `materializer_version=FOOTBALL_EXECUTION_MATRIX_S1S2S3_MATERIALIZER_V2`.
+
+The clone `nppznoujvnyjargjkmnv` was queried independently. Before migration it
+held exactly 12 unversioned materializer rows and no other rows in this table.
+The migration was applied to that clone, then the materializer ran twice without
+`--dry-run`. Both runs returned the identical set of 12 IDs. An independent
+read-only SQL aggregate after the second run found:
+
+| Measure | Post-repair value |
+|---|---:|
+| Candidate identities | 4 |
+| Rows after first / second run | 12 / 12 |
+| S1 rows; TAKE / NO_TAKE | 4; 4 / 0 |
+| S2 rows; ACTUAL_FILL / FILL_OPPORTUNITY / NO_FILL / UNKNOWN | 4; 0 / 4 / 0 / 0 |
+| S3 rows; ACTUAL_FILL / FILL_OPPORTUNITY / NO_FILL / UNKNOWN | 4; 0 / 4 / 0 / 0 |
+| Authoritative actual fills | 0 |
+| Full-match eligibility rejected snapshot rows | 0 |
+| Exact Score contamination | 0 |
+| Pre-decision fill rejections | 0 |
+| Ambiguous/unattributed fill rejections | 0 |
+| Duplicate logical observations | 0 |
+| Old/unversioned rows | 0 |
+| min/max decision_time | 2026-07-16 09:34:41.255239+00 / 2026-07-16 13:04:58.007037+00 |
+| min/max recorded_at after second run | 2026-09-25 05:27:57.982057+00 / 2026-09-25 05:27:58.784920+00 |
+
+The repaired clone source has one soccer condition/token represented by three
+snapshots, all structurally `total`/`passed`; it yields four decision times. There
+are no matching order events or ledger rows. Thus real historical fill attribution
+has not been exercised by this clone sample; synthetic tests cover the exact
+causal linkage. No historical maker fill is inferred.
+
+Reproduction:
+
+```bash
+node --import tsx --test tests/research-clone/footballExecutionMatrixS1S2S3.test.ts tests/research-clone/materializeFootballS1S2S3.test.ts
+npm run build
+npx tsx scripts/execution-matrix/materializeFootballS1S2S3.ts
+npx tsx scripts/execution-matrix/materializeFootballS1S2S3.ts
+```
+
+Independent read query for the reviewer (run only on the research clone):
+
+```sql
+select strategy, coalesce(status,take_decision) outcome, count(*) rows,
+       min(decision_time) min_decision_time, max(decision_time) max_decision_time,
+       min(recorded_at) min_recorded_at, max(recorded_at) max_recorded_at
+from research.football_execution_matrix_s1s2s3_evidence
+where diagnostics->>'materializer_version' =
+  'FOOTBALL_EXECUTION_MATRIX_S1S2S3_MATERIALIZER_V2'
+group by strategy, coalesce(status,take_decision)
+order by strategy, outcome;
+```
+
+Focused tests: 22/22 pass. `npm run build` passes. Standalone `tsc --noEmit`
+is blocked by an existing missing `vitest` import in
+`tests/modeling/football-denominator-reconciliation.test.ts`; build's own
+TypeScript phase passes. `npm run control-plane:check` fails on pre-existing
+UTF-8 BOM in four control-plane files. Neither failure is in this repair's
+write boundary.

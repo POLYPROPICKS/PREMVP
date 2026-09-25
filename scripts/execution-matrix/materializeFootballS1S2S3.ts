@@ -27,6 +27,7 @@
  */
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { pathToFileURL } from "node:url";
+import { classifyEventScope, classifyEventScopeFromIdentifier, classifyMarketText } from "../../lib/contur3/taxonomy";
 
 import {
   S2_INITIAL_TARGET_DECIMAL_ODDS,
@@ -43,6 +44,7 @@ import {
 
 const EXPECTED_CLONE_REF = "nppznoujvnyjargjkmnv";
 const S1_MIN_ACCEPTABLE_DECIMAL_ODDS = 1.85;
+export const MATERIALIZER_VERSION = "FOOTBALL_EXECUTION_MATRIX_S1S2S3_MATERIALIZER_V2";
 
 export function projectRef(url: string): string {
   return new URL(url).hostname.split(".")[0];
@@ -78,6 +80,7 @@ export function isExcludedFromOrdinaryHold(text: string | null | undefined): boo
 }
 
 export interface RawCandidateRow {
+  id?: string;
   condition_id: string;
   selected_token_id: string;
   event_slug: string | null;
@@ -100,12 +103,62 @@ export interface RawSnapshotRow {
   market_slug: string | null;
   event_title: string | null;
   market_title: string | null;
+  normalized_sport?: string | null;
+  normalized_market_family?: string | null;
+  market_family_gate_status?: string | null;
 }
 
 export interface RawFillRow {
   filledDecimalOdds: number;
   filledAtIso: string;
-  source: "executor_order_events" | "bet_execution_ledger";
+  source: "bet_execution_ledger";
+}
+
+const ORDINARY_FAMILIES = new Set(["moneyline", "spread", "total"]);
+const FORBIDDEN_CLASSES = new Set(["forbidden_halftime", "forbidden_corners", "forbidden_exact_score", "forbidden_goalscorer", "forbidden_props", "forbidden_futures", "esports_non_policy"]);
+
+/** Snapshot classification is the structured authority; every label can veto it. */
+export function isOrdinaryFullMatchSnapshot(row: RawSnapshotRow): boolean {
+  if (row.normalized_sport !== "soccer" || row.market_family_gate_status !== "passed" ||
+      !ORDINARY_FAMILIES.has(row.normalized_market_family ?? "")) return false;
+  const titles = [row.event_title, row.market_title];
+  const identifiers = [row.event_slug, row.market_slug];
+  if ([...titles, ...identifiers].some((v) => FORBIDDEN_CLASSES.has(classifyMarketText(v)))) return false;
+  if (titles.some((v) => v && classifyEventScope(v) !== "full_match")) return false;
+  if (identifiers.some((v) => v && classifyEventScopeFromIdentifier(v) !== "full_match")) return false;
+  return true;
+}
+
+export interface CandidateOrderEvidence {
+  source_signal_pair_id: string | null;
+  clob_order_id: string | null;
+  condition_id: string | null;
+  token_id: string | null;
+  fill_status: string | null;
+}
+export interface ExecutedLedgerEvidence {
+  exchange_order_id: string | null;
+  condition_id: string | null;
+  token_id: string | null;
+  bet_status: string | null;
+  fill_price: number | null;
+  filled_at: string | null;
+}
+
+/** Never attribute a market-level fill to a decision without a unique order lineage. */
+export function attributeExecutedFill(candidate: RawCandidateRow, orders: CandidateOrderEvidence[], fills: ExecutedLedgerEvidence[]): RawFillRow | null {
+  if (!candidate.id) return null;
+  const linked = orders.filter((o) => o.source_signal_pair_id === candidate.id &&
+    o.condition_id === candidate.condition_id && o.token_id === candidate.selected_token_id &&
+    o.fill_status === "MATCHED_CONFIRMED" && !!o.clob_order_id);
+  if (linked.length !== 1) return null;
+  const matches = fills.filter((f) => f.exchange_order_id === linked[0].clob_order_id &&
+    f.condition_id === candidate.condition_id && f.token_id === candidate.selected_token_id &&
+    (f.bet_status === "filled" || f.bet_status === "matched" || f.bet_status === "fully_filled") &&
+    f.fill_price !== null && Number.isFinite(f.fill_price) && f.fill_price > 0 && f.fill_price < 1 &&
+    !!f.filled_at && Date.parse(f.filled_at) > Date.parse(candidate.created_at));
+  if (matches.length !== 1) return null;
+  return { filledDecimalOdds: sharePriceToDecimalOdds(matches[0].fill_price!), filledAtIso: matches[0].filled_at!, source: "bet_execution_ledger" };
 }
 
 /** Builds the frozen candidate identity shared by S1/S2/S3 for one source row. */
@@ -144,7 +197,7 @@ export function assembleCandidate(
   const causalObservations = laterSnapshots
     .filter((s) => Date.parse(s.captured_at) > decisionTimeMs)
     .filter((s) => s.implied_decimal_odds_mid !== null)
-    .filter((s) => !isExcludedFromOrdinaryHold(s.event_title ?? s.market_title ?? s.event_slug ?? s.market_slug))
+    .filter(isOrdinaryFullMatchSnapshot)
     .sort((a, b) => Date.parse(a.captured_at) - Date.parse(b.captured_at))
     .map((s) => ({
       observedAtIso: s.captured_at,
@@ -202,7 +255,7 @@ export function evaluateCandidate(m: MaterializedCandidate): MaterializedEvidenc
         actual_fill_decimal_odds: s1.actualFillDecimalOdds,
         fill_evidence_source: m.fill?.source ?? null,
         recorded_window_start: s1.candidate.decisionTimeIso,
-        diagnostics: { source: "generated_signal_pairs" },
+        diagnostics: { source: "generated_signal_pairs", materializer_version: MATERIALIZER_VERSION },
       },
     });
   }
@@ -256,7 +309,7 @@ export function evaluateCandidate(m: MaterializedCandidate): MaterializedEvidenc
       fill_evidence_source: m.fill?.source ?? null,
       observation_times: s2.observationTimesIso,
       recorded_window_start: windowStart,
-      diagnostics: { source: "market_price_liquidity_snapshots" },
+      diagnostics: { source: "market_price_liquidity_snapshots", materializer_version: MATERIALIZER_VERSION },
     },
   });
 
@@ -278,71 +331,50 @@ export function evaluateCandidate(m: MaterializedCandidate): MaterializedEvidenc
       fill_evidence_source: m.fill?.source ?? null,
       observation_times: m.s2s3Observations.map((o) => o.observedAtIso),
       recorded_window_start: windowStart,
-      diagnostics: { source: "market_price_liquidity_snapshots" },
+      diagnostics: { source: "market_price_liquidity_snapshots", materializer_version: MATERIALIZER_VERSION },
     },
   });
 
   return rows;
 }
 
-async function fetchFootballCandidatePairs(client: SupabaseClient): Promise<Array<{ condition_id: string; token_id: string }>> {
+async function fetchFootballCandidatePairs(client: SupabaseClient): Promise<{ pairs: Array<{ condition_id: string; token_id: string }>; rejectedSnapshots: number }> {
   const { data, error } = await client
     .from("market_price_liquidity_snapshots")
-    .select("condition_id, token_id, event_title, market_title")
+    .select("condition_id, token_id, event_title, market_title, event_slug, market_slug, normalized_sport, normalized_market_family, market_family_gate_status")
     .eq("normalized_sport", "soccer")
     .limit(1000);
   if (error) throw new Error(`fetchFootballCandidatePairs: ${error.message}`);
   const seen = new Map<string, { condition_id: string; token_id: string }>();
+  let rejectedSnapshots = 0;
   for (const row of data ?? []) {
-    if (isExcludedFromOrdinaryHold(row.event_title ?? row.market_title)) continue;
+    if (!isOrdinaryFullMatchSnapshot(row as RawSnapshotRow)) { rejectedSnapshots += 1; continue; }
     const key = `${row.condition_id}::${row.token_id}`;
     if (!seen.has(key)) seen.set(key, { condition_id: row.condition_id, token_id: row.token_id });
   }
-  return [...seen.values()];
+  return { pairs: [...seen.values()], rejectedSnapshots };
 }
 
-async function fetchAuthoritativeFill(
-  client: SupabaseClient,
-  conditionId: string,
-  tokenId: string,
-): Promise<RawFillRow | null> {
-  const { data: ledgerRows, error: ledgerErr } = await client
-    .from("bet_execution_ledger")
-    .select("fill_price, filled_at, bet_status, condition_id, token_id")
-    .eq("condition_id", conditionId)
-    .eq("token_id", tokenId)
-    .not("fill_price", "is", null)
-    .not("filled_at", "is", null)
-    .limit(5);
-  if (ledgerErr) throw new Error(`fetchAuthoritativeFill(ledger): ${ledgerErr.message}`);
-  const filled = (ledgerRows ?? []).find((r) => r.bet_status && /fill/i.test(r.bet_status));
-  if (filled) {
-    return {
-      filledDecimalOdds: sharePriceToDecimalOdds(filled.fill_price as number),
-      filledAtIso: filled.filled_at as string,
-      source: "bet_execution_ledger",
-    };
-  }
-
-  const { data: orderRows, error: orderErr } = await client
-    .from("executor_order_events")
-    .select("submitted_price, created_at, order_status, success, condition_id, token_id")
-    .eq("condition_id", conditionId)
-    .eq("token_id", tokenId)
-    .eq("success", true)
-    .not("submitted_price", "is", null)
-    .limit(5);
-  if (orderErr) throw new Error(`fetchAuthoritativeFill(orders): ${orderErr.message}`);
-  const orderFilled = (orderRows ?? []).find((r) => r.order_status && /fill/i.test(r.order_status));
-  if (orderFilled) {
-    return {
-      filledDecimalOdds: sharePriceToDecimalOdds(orderFilled.submitted_price as number),
-      filledAtIso: orderFilled.created_at as string,
-      source: "executor_order_events",
-    };
-  }
-
-  return null;
+async function fetchExecutionEvidence(client: SupabaseClient, conditionId: string, tokenId: string): Promise<{
+  orders: CandidateOrderEvidence[]; fills: ExecutedLedgerEvidence[];
+}> {
+  const { data: orderRows, error: orderErr } = await client.from("executor_order_events")
+    .select("clob_order_id,condition_id,token_id,executor_meta")
+    .eq("condition_id", conditionId).eq("token_id", tokenId).limit(200);
+  if (orderErr) throw new Error(`fetchExecutionEvidence(orders): ${orderErr.message}`);
+  const orders: CandidateOrderEvidence[] = (orderRows ?? []).map((r) => {
+    const rec = (r.executor_meta as Record<string, unknown> | null)?.reconciliation_v1 as Record<string, unknown> | undefined;
+    return { source_signal_pair_id: typeof rec?.source_signal_pair_id === "string" ? rec.source_signal_pair_id : null,
+      clob_order_id: r.clob_order_id, condition_id: r.condition_id, token_id: r.token_id,
+      fill_status: typeof rec?.fill_status === "string" ? rec.fill_status : null };
+  });
+  const ids = [...new Set(orders.map((o) => o.clob_order_id).filter((v): v is string => !!v))];
+  if (ids.length === 0) return { orders, fills: [] };
+  const { data: ledgerRows, error: ledgerErr } = await client.from("bet_execution_ledger")
+    .select("exchange_order_id,condition_id,token_id,bet_status,fill_price,filled_at")
+    .in("exchange_order_id", ids).eq("condition_id", conditionId).eq("token_id", tokenId).limit(200);
+  if (ledgerErr) throw new Error(`fetchExecutionEvidence(ledger): ${ledgerErr.message}`);
+  return { orders, fills: (ledgerRows ?? []) as ExecutedLedgerEvidence[] };
 }
 
 export interface RunSummary {
@@ -353,6 +385,9 @@ export interface RunSummary {
   s3StatusCounts: Record<string, number>;
   authoritativeActualFills: number;
   exactScoreContamination: number;
+  fullMatchEligibilityRejections: number;
+  preDecisionFillRejections: number;
+  ambiguousFillRejections: number;
   decisionTimes: string[];
   recordedAtTimes: string[];
   /**
@@ -367,7 +402,7 @@ export interface RunSummary {
 
 async function run(dryRun: boolean): Promise<RunSummary> {
   const { client } = resolveCloneClient();
-  const pairs = await fetchFootballCandidatePairs(client);
+  const discovery = await fetchFootballCandidatePairs(client);
 
   const summary: RunSummary = {
     candidateIdentities: 0,
@@ -377,16 +412,19 @@ async function run(dryRun: boolean): Promise<RunSummary> {
     s3StatusCounts: { ACTUAL_FILL: 0, FILL_OPPORTUNITY: 0, NO_FILL: 0, UNKNOWN: 0 },
     authoritativeActualFills: 0,
     exactScoreContamination: 0,
+    fullMatchEligibilityRejections: discovery.rejectedSnapshots,
+    preDecisionFillRejections: 0,
+    ambiguousFillRejections: 0,
     decisionTimes: [],
     recordedAtTimes: [],
     writtenRowIds: [],
   };
 
-  for (const pair of pairs) {
+  for (const pair of discovery.pairs) {
     const { data: candidateRows, error: candErr } = await client
       .from("generated_signal_pairs")
       .select(
-        "condition_id, selected_token_id, event_slug, market_slug, formula_version, metric_formula_version, created_at, entry_price_num",
+        "id, condition_id, selected_token_id, event_slug, market_slug, formula_version, metric_formula_version, created_at, entry_price_num",
       )
       .eq("condition_id", pair.condition_id)
       .eq("selected_token_id", pair.token_id)
@@ -394,25 +432,25 @@ async function run(dryRun: boolean): Promise<RunSummary> {
       .limit(200);
     if (candErr) throw new Error(`generated_signal_pairs fetch: ${candErr.message}`);
 
-    // Dedup: one decision instance per distinct created_at (the source
-    // materializer that populates generated_signal_pairs may emit repeat
-    // rows for the same serving cycle; each distinct created_at is treated
-    // as its own decision-time identity, never invented or merged).
-    const distinctByCreatedAt = new Map<string, RawCandidateRow>();
+    // Dedup only the full frozen identity, including provider_event_id.
+    const distinctByIdentity = new Map<string, RawCandidateRow>();
     for (const row of (candidateRows ?? []) as RawCandidateRow[]) {
-      if (isExcludedFromOrdinaryHold(row.event_slug ?? row.market_slug)) {
+      if ([row.event_slug, row.market_slug].some(isExcludedFromOrdinaryHold)) {
         summary.exactScoreContamination += 1;
         continue;
       }
-      if (!distinctByCreatedAt.has(row.created_at)) distinctByCreatedAt.set(row.created_at, row);
+      const identity = candidateFromRow(row);
+      const key = JSON.stringify([identity.conditionId, identity.selectedTokenId,
+        identity.providerEventId, identity.formulaVersion, identity.decisionTimeIso]);
+      if (!distinctByIdentity.has(key)) distinctByIdentity.set(key, row);
     }
 
-    if (distinctByCreatedAt.size === 0) continue;
+    if (distinctByIdentity.size === 0) continue;
 
     const { data: snapshotRows, error: snapErr } = await client
       .from("market_price_liquidity_snapshots")
       .select(
-        "captured_at, condition_id, token_id, implied_decimal_odds_mid, implied_decimal_odds_bid, spread_bps, bid_depth_total, event_slug, market_slug, event_title, market_title",
+        "captured_at, condition_id, token_id, implied_decimal_odds_mid, implied_decimal_odds_bid, spread_bps, bid_depth_total, event_slug, market_slug, event_title, market_title, normalized_sport, normalized_market_family, market_family_gate_status",
       )
       .eq("condition_id", pair.condition_id)
       .eq("token_id", pair.token_id)
@@ -420,10 +458,19 @@ async function run(dryRun: boolean): Promise<RunSummary> {
       .limit(500);
     if (snapErr) throw new Error(`market_price_liquidity_snapshots fetch: ${snapErr.message}`);
 
-    const fill = await fetchAuthoritativeFill(client, pair.condition_id, pair.token_id);
-    if (fill) summary.authoritativeActualFills += 1;
+    const execution = await fetchExecutionEvidence(client, pair.condition_id, pair.token_id);
 
-    for (const row of distinctByCreatedAt.values()) {
+    for (const row of distinctByIdentity.values()) {
+      const fill = attributeExecutedFill(row, execution.orders, execution.fills);
+      const linkedOrderIds = execution.orders.filter((o) => o.source_signal_pair_id === row.id &&
+        o.condition_id === row.condition_id && o.token_id === row.selected_token_id &&
+        o.fill_status === "MATCHED_CONFIRMED").map((o) => o.clob_order_id);
+      const linkedFills = execution.fills.filter((f) => linkedOrderIds.includes(f.exchange_order_id));
+      summary.preDecisionFillRejections += linkedFills.filter((f) =>
+        f.filled_at && Date.parse(f.filled_at) <= Date.parse(row.created_at)).length;
+      if (!fill && (linkedOrderIds.length > 1 || linkedFills.length > 0 || execution.fills.length > 0))
+        summary.ambiguousFillRejections += 1;
+      if (fill) summary.authoritativeActualFills += 1;
       const materialized = assembleCandidate(row, (snapshotRows ?? []) as RawSnapshotRow[], fill);
       const evidenceRows = evaluateCandidate(materialized);
       summary.candidateIdentities += 1;
