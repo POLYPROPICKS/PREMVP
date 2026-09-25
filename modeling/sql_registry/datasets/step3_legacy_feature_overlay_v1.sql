@@ -16,7 +16,10 @@ SELECT
   r.canonical_row->>'marketFamily' AS market_family,
   r.canonical_row->>'marketTypeRaw' AS market_type_raw,
   r.canonical_row->>'providerSportCode' AS provider_sport_code,
-  g.diagnostics->'providerEventContext'->>'league' AS league,
+  COALESCE(
+    NULLIF(g.diagnostics->'providerEventContext'->>'league', ''),
+    e.league
+  ) AS league,
   r.canonical_row->>'selectedOutcome' AS selected_outcome,
   CASE WHEN r.event_start IS NOT NULL THEN
     EXTRACT(EPOCH FROM (r.event_start - r.decision_at)) / 3600 END AS lead_time_hours,
@@ -64,7 +67,7 @@ LEFT JOIN LATERAL (
   LIMIT 1
 ) AS g ON true
 LEFT JOIN LATERAL (
-  SELECT item_observation_id, signal_confidence_num, pre_event_score_num, data_coverage
+  SELECT item_observation_id, signal_confidence_num, pre_event_score_num, data_coverage, league
   FROM public.research_evidence_page_rows
   WHERE observed_at = r.decision_at
     AND condition_id = r.condition_id
