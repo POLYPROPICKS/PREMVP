@@ -407,3 +407,67 @@ is blocked by an existing missing `vitest` import in
 TypeScript phase passes. `npm run control-plane:check` fails on pre-existing
 UTF-8 BOM in four control-plane files. Neither failure is in this repair's
 write boundary.
+
+## 11. B2 capped-query authority repair for final Independent Review B3 (2026-09-25)
+
+Independent Review B2 at `a0918ac24595d052a2fa15b425a2413c91f899cf` found one
+remaining HIGH defect: the order and ledger reads each used `.limit(200)`.
+`attributeExecutedFill` then treated exactly one matching row in those returned
+arrays as global uniqueness. A further matching row beyond either cap could
+therefore be hidden while `ACTUAL_FILL` was accepted. B2 also identified the
+missing explicit `submitted_price`-only negative regression.
+
+The materializer now queries `executor_order_events` for the exact candidate's
+`generated_signal_pairs.id` in
+`executor_meta.reconciliation_v1.source_signal_pair_id`, with the exact
+condition/token and `MATCHED_CONFIRMED` state. It requests `count: "exact"`
+with the projected rows in the same query. No fixed row cap is used for fill
+authority. Before the ledger query, the returned order count must be a
+non-negative safe integer, equal the returned array length, and exactly one.
+The one order must still pass every source-pair, condition, token, status and
+non-null `clob_order_id` check.
+
+The ledger query is then narrowed to that exact `clob_order_id` as
+`exchange_order_id`, plus the same condition/token. It also requests an exact
+count without a fixed cap. `ACTUAL_FILL` requires a complete result with
+exactly one ledger row; an accepted executed/matched status; finite ledger
+`fill_price` in `(0,1)`; and `filled_at` strictly after this decision's
+`created_at`. Decimal fill odds are `1 / fill_price`. The executor's
+`submitted_price` is neither selected nor substituted for ledger `fill_price`.
+
+This closes the capped-result proof gap: if the API returns only 200 of 201
+matching rows, the exact count differs from the returned length and the fill
+fails closed. A count above one also fails closed, even when every row was
+returned. Null, missing, malformed and otherwise incomplete result sets fail
+closed. [Supabase's JavaScript select reference](https://supabase.com/docs/reference/javascript/select)
+documents the exact-count option; its
+[JSONB contains filter](https://supabase.com/docs/reference/javascript/using-filters-contains)
+is used to narrow the order query to the candidate reconciliation record.
+The clone schema confirms `executor_meta` is JSONB. Current clone data has
+no matching order events or ledger fills, so real `ACTUAL_FILL` attribution
+remains `UNTESTED_WITH_REAL_FILL`; the static path and synthetic positive case
+are covered.
+
+Focused tests went red against the old array-only signature, then passed
+`26/26` after the repair. They cover returned count above 200 with a shorter
+row array for both stages, complete count above one, unknown/incomplete
+counts, a complete one-order/one-ledger-fill positive case, exact query
+filters/count options with a mocked client, and a `MATCHED_CONFIRMED` order
+with `submitted_price` but no ledger `fill_price`. The latter produces
+neither `ACTUAL_FILL` nor `actual_fill_decimal_odds`. Focused TypeScript check
+on the touched materializer and test passes. `npm run build` passes. The
+repository-wide `tsc --noEmit` still reports only the pre-existing missing
+`vitest` import in `tests/modeling/football-denominator-reconciliation.test.ts`.
+`npm run control-plane:check` still stops on the four pre-existing BOM files
+identified above.
+
+No materializer write run was needed: this repair changes only fill lookup,
+and the clone has no order evidence for the four source decisions. A read-only
+aggregate after the repair found four source candidate identities, 12 total
+V2 rows, S1 `4 TAKE`, S2 `4 FILL_OPPORTUNITY`, S3
+`4 FILL_OPPORTUNITY`, zero `ACTUAL_FILL`, zero duplicate logical
+observations and zero old/unversioned rows. The V2 `recorded_at` bounds remain
+`2026-09-25 05:27:57.982057+00` to `2026-09-25 05:27:58.784920+00`, identical
+to §10. Persisted V2 evidence has not changed. The unique key and RPC
+conflict target are untouched; §10's two-run idempotency proof still applies
+to the same source slice. No production or live-money behavior changed.
