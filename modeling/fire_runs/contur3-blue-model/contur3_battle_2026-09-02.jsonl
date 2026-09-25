@@ -1,0 +1,1 @@
+{"timestamp_iso":"2026-09-02T02:08:44.615Z","runner":"blue-model-status","endpoint":"/api/executor/queue + /api/cron/event-rebalance (dryRun)","http_status":200,"ok":true,"candidate_count":0,"next_due_iso":null,"diagnostic_report_path":"/home/user/PREMVP/modeling/fire_runs/contur3-blue-model/2026-09-02T02-08-42Z_blue_model_status.json","verdict":"BLUE_MODEL_ARMED_WAITING"}
