@@ -21,6 +21,7 @@ import {
   type ResearchFunnelCounters,
   type ResearchNestedMarket,
 } from "./types";
+import { buildMarketTelemetryAtObservation } from "./marketTelemetry";
 import { buildResearchScoreObservation } from "./researchScoreObservation";
 
 import {
@@ -1714,6 +1715,7 @@ async function enrichMarket(
     dataCoverage: 0,
     formulaUsed: FORMULA_VERSION,
     rejectionReasons: [],
+    marketTelemetry: buildMarketTelemetryAtObservation(market, selectedOutcome.price),
     parentEventVolume24hr: Number(
       event.volume24hr ?? market.volume24hr ?? 0
     ),

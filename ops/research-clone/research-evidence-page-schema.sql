@@ -40,6 +40,13 @@ alter table public.research_evidence_page_rows add column if not exists data_cov
 alter table public.research_evidence_page_rows add column if not exists volume_semantic text;
 alter table public.research_evidence_page_rows add column if not exists event_title text;
 alter table public.research_evidence_page_rows add column if not exists market_question text;
+-- DATA_CAPTURE_V2 pre-model market telemetry (diminutive scalars, captured at
+-- production enrichment time from the gamma market payload; additively exposed
+-- by research_evidence_page_v5).
+alter table public.research_evidence_page_rows add column if not exists best_bid_num numeric;
+alter table public.research_evidence_page_rows add column if not exists best_ask_num numeric;
+alter table public.research_evidence_page_rows add column if not exists market_spread_num numeric;
+alter table public.research_evidence_page_rows add column if not exists odds_decimal_num numeric;
 
 create index if not exists research_evidence_page_rows_window_idx
   on public.research_evidence_page_rows (observed_at, observation_id, item_observation_id);

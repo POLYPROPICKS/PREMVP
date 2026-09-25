@@ -92,6 +92,15 @@ export interface LandingCardDiagnostics {
   rejectionReasons: string[];
   signalStatus?: "qualified" | "upcoming_candidate";
   gameStartIso?: string | null;
+  marketTelemetry?: {
+    v: "v1";
+    best_bid_num: number | null;
+    best_ask_num: number | null;
+    market_spread_num: number | null;
+    odds_decimal_num: number | null;
+    odds_decimal_semantic: string;
+    capture_source: string;
+  };
   parentEventVolume24hr?: number | null;
   providerSportCode?: string | null;
   providerSportFamily?: string | null;

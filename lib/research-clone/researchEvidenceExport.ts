@@ -56,6 +56,15 @@ export interface NarrowEvidenceRow {
   selected_outcome: string | null;
   /** Decision-time diagnostics.dataCoverage, verbatim. */
   data_coverage: number | null;
+  /**
+   * DATA_CAPTURE_V2 pre-model market telemetry scalars, verbatim from
+   * diagnostics.marketTelemetry. null on rows produced before the capture, and
+   * null when the source RPC is still v4. Never synthesized client-side.
+   */
+  best_bid_num?: number | null;
+  best_ask_num?: number | null;
+  market_spread_num?: number | null;
+  odds_decimal_num?: number | null;
 }
 
 export const VOLUME_SEMANTIC_PARENT_EVENT_24H =

@@ -52,3 +52,33 @@ create policy prospective_selection_shadow_public_snapshot_read
   on public.prospective_selection_shadow_runtime
   for select to anon
   using (row_kind = 'SNAPSHOT' and row_key = 'CURRENT');
+
+-- DATA_CAPTURE_V2 shadow-stage evidence contract (RESEARCH CLONE ONLY,
+-- strictly additive). Join identity for all S1/S2/S3 columns is the frozen
+-- exact identity already carried by the ledger rows
+-- (candidate_identity / condition_id + selected_token_id per decision_date).
+-- No writer exists yet for S2/S3 execution states, so they stay NULL until a
+-- research-only shadow engine records them; NULL is never fabricated.
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s1_status text;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s1_available_decimal_odds numeric;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s2_maker_target_decimal_odds numeric;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s2_touch_opportunity boolean;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s2_fill_state text;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s3_value_corridor_min_decimal_odds numeric;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s3_min_acceptable_decimal_odds numeric;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s3_acceptable_price_opportunity boolean;
+alter table public.prospective_selection_shadow_runtime
+  add column if not exists s3_fill_state text;
+
+comment on column public.prospective_selection_shadow_runtime.s1_available_decimal_odds IS
+  'S1 shadow evidence: the decimal odds available to the shadow identity at its decision snapshot. Never conflated with maker target, minimum acceptable, or fill odds.';
+comment on column public.prospective_selection_shadow_runtime.s2_maker_target_decimal_odds IS
+  'S2 maker target decimal odds. Research-only; cannot affect Planning/Reservation/Queue/stake/Ireland.';
