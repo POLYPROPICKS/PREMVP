@@ -7,9 +7,18 @@
  * FROZEN model set through the existing capacity/economics engine for newly
  * closed MODEL_READY days only, and appends their aggregate results.
  *
+ * SELECTION_BEFORE_SETTLEMENT_V1: model selection and the daily cap are
+ * frozen using decision-time-only fields (toDecisionTimeSelectionInput /
+ * runStandaloneStrict / runPortfolioStrict / applyDailyCap). Settlement is
+ * joined in only AFTER selection+cap, via partialDailyResults(), so an OPEN
+ * candidate still occupies its selected/capped slot and is never replaced by
+ * a later-settled one. Appended pnl_u is SETTLED-PARTIAL only (never
+ * fabricated for OPEN rows) — see pnl_semantic on each cap bucket below.
+ *
  * ENGINE_REUSE (one capacity-selection authority, verbatim):
- *   runStandalone / runPortfolio / applyDailyCap / computeDailyResults /
- *   metricsFor  <- scripts/modeling/daily-portfolio-frontier.ts
+ *   toDecisionTimeSelectionInput <- scripts/modeling/factor-atlas.ts
+ *   runStandaloneStrict / runPortfolioStrict / applyDailyCap /
+ *   partialDailyResults        <- scripts/modeling/daily-portfolio-frontier.ts
  *   QUALITY_PORTFOLIOS (QUALITY_FILL_A / QUALITY_FILL_D tier definitions)
  *                <- scripts/modeling/quality-fill-portfolio-test.ts
  *   C5 predicate <- lib/modeling/research-engine/models.ts (FROZEN_MODELS.C5)
@@ -30,15 +39,16 @@ import "dotenv/config";
 
 import { enumerateMinskDates, type ScorecardReadyRow } from "@/lib/modeling/research-corpus/rollingCorpus";
 import { FROZEN_MODELS } from "@/lib/modeling/research-engine/models";
-import { toAtlasInput, type AtlasInputEvent } from "./factor-atlas";
+import { toDecisionTimeSelectionInput, type DecisionTimeCandidate } from "./factor-atlas";
 import {
-  runStandalone,
-  runPortfolio,
+  runStandaloneStrict,
+  runPortfolioStrict,
   applyDailyCap,
-  computeDailyResults,
+  partialDailyResults,
   STANDALONE_STRATEGIES,
   PORTFOLIOS,
-  type TieredBet,
+  type SelectedCandidate,
+  type PartialDailyResultRow,
 } from "./daily-portfolio-frontier";
 import { QUALITY_PORTFOLIOS } from "./quality-fill-portfolio-test";
 
@@ -53,38 +63,83 @@ const FROZEN_CLOSED_DAYS = 48;
 const MODEL_ORDER = ["QUALITY_FILL_A", "QUALITY_FILL_D", "P50_52", "PORTFOLIO_BROAD", "P50_54", "C5", "C0", "TENNIS_P50_52"] as const;
 type ModelId = (typeof MODEL_ORDER)[number];
 
-type StandalonePredicate = Parameters<typeof runStandalone>[1];
+/**
+ * Per-cap dashboard row. `n` is the SELECTED count (decision-time, before any
+ * settlement filter) — never the settled-only count. `pnl_u` is SETTLED
+ * candidates only (never fabricated for OPEN rows); `pnl_semantic` makes that
+ * explicit so a reader can never mistake it for final daily P&L while
+ * `open_n > 0`. Field name `pnl_u` is kept only for dashboard compatibility.
+ */
+interface CapBucket {
+  n: number;
+  settled_n: number;
+  open_n: number;
+  other_nonterminal_n: number;
+  pnl_u: number;
+  pnl_semantic: "settled_partial";
+  settlement_coverage_pct: number;
+}
 
-function findStrategy(id: string) {
+function roundPct(v: number): number {
+  const r = Math.round((v + Number.EPSILON) * 10000) / 10000;
+  return Object.is(r, -0) ? 0 : r;
+}
+
+function toCapBucket(row: PartialDailyResultRow): CapBucket {
+  return {
+    n: row.event_n,
+    settled_n: row.settled_n,
+    open_n: row.open_n,
+    other_nonterminal_n: row.other_nonterminal_n,
+    pnl_u: row.settled_pnl_u_partial,
+    pnl_semantic: "settled_partial",
+    settlement_coverage_pct: row.event_n ? roundPct((row.settled_n / row.event_n) * 100) : 0,
+  };
+}
+
+// Decision-time-only predicate/tier types — same shape as the legacy
+// AtlasEvaluatedEvent predicates (entryPrice/scoreLevel/sportFamily/
+// leadTimeHours only, never outcome), reused verbatim via the same
+// `as unknown as` structural cast pattern already used internally by
+// runStandaloneStrict/runPortfolioStrict for the DecisionTimeCandidate shape.
+type StandaloneStrictPredicate = Parameters<typeof runStandaloneStrict>[1];
+type PortfolioStrictTiers = Parameters<typeof runPortfolioStrict>[1];
+
+function findStrategy(id: string): StandaloneStrictPredicate {
   const s = STANDALONE_STRATEGIES.find((x) => x.id === id);
   if (!s) throw new Error(`STANDALONE_STRATEGY_MISSING:${id}`);
-  return s.predicate;
+  return s.predicate as unknown as StandaloneStrictPredicate;
 }
-function findPortfolio(id: string) {
+function findPortfolio(id: string): PortfolioStrictTiers {
   const p = PORTFOLIOS.find((x) => x.id === id);
   if (!p) throw new Error(`PORTFOLIO_MISSING:${id}`);
-  return p.tiers;
+  return p.tiers as unknown as PortfolioStrictTiers;
 }
 
-/** One frozen run spec per tracked model — reused verbatim from the accepted definitions. */
-function runModel(modelId: ModelId, input: AtlasInputEvent[]): TieredBet[] {
+/**
+ * One frozen run spec per tracked model — reused verbatim from the accepted
+ * definitions. SELECTION_BEFORE_SETTLEMENT_V1: this only ever selects/caps
+ * DecisionTimeCandidate[] (no outcome/labelAsOf field exists on that shape);
+ * settlement is joined in by the caller only after selection+cap.
+ */
+function runModel(modelId: ModelId, input: DecisionTimeCandidate[]): SelectedCandidate[] {
   switch (modelId) {
     case "QUALITY_FILL_A":
-      return runPortfolio(input, QUALITY_PORTFOLIOS.QUALITY_FILL_A);
+      return runPortfolioStrict(input, QUALITY_PORTFOLIOS.QUALITY_FILL_A as unknown as PortfolioStrictTiers);
     case "QUALITY_FILL_D":
-      return runPortfolio(input, QUALITY_PORTFOLIOS.QUALITY_FILL_D);
+      return runPortfolioStrict(input, QUALITY_PORTFOLIOS.QUALITY_FILL_D as unknown as PortfolioStrictTiers);
     case "P50_52":
-      return runStandalone(input, findStrategy("P50_52"));
+      return runStandaloneStrict(input, findStrategy("P50_52"));
     case "PORTFOLIO_BROAD":
-      return runPortfolio(input, findPortfolio("PORTFOLIO_BROAD"));
+      return runPortfolioStrict(input, findPortfolio("PORTFOLIO_BROAD"));
     case "P50_54":
-      return runStandalone(input, findStrategy("P50_54"));
+      return runStandaloneStrict(input, findStrategy("P50_54"));
     case "C5":
-      return runStandalone(input, FROZEN_MODELS.C5.predicate as StandalonePredicate);
+      return runStandaloneStrict(input, FROZEN_MODELS.C5.predicate as unknown as StandaloneStrictPredicate);
     case "C0":
-      return runStandalone(input, findStrategy("C0"));
+      return runStandaloneStrict(input, findStrategy("C0"));
     case "TENNIS_P50_52":
-      return runStandalone(input, findStrategy("TENNIS_P50_52"));
+      return runStandaloneStrict(input, findStrategy("TENNIS_P50_52"));
   }
 }
 
@@ -207,20 +262,22 @@ async function main(): Promise<void> {
   }
 
   const rawRows = await fetchRowsForDates(db, newDates);
-  const input: AtlasInputEvent[] = toAtlasInput(rawRows);
+  // SELECTION_BEFORE_SETTLEMENT_V1: candidates carry no outcome/labelAsOf field at
+  // all — settlement is looked up only after selection+cap, via settlementByCandidateIdentity.
+  const { candidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rawRows);
 
-  const appended: Array<{ date: string; model: ModelId; cap30: { n: number; pnl_u: number }; cap40: { n: number; pnl_u: number }; cap50: { n: number; pnl_u: number } }> = [];
+  const appended: Array<{ date: string; model: ModelId; cap30: CapBucket; cap40: CapBucket; cap50: CapBucket }> = [];
   for (const modelId of MODEL_ORDER) {
-    const bets = runModel(modelId, input);
-    const perCapDaily = CAPS.map((cap) => computeDailyResults(applyDailyCap(bets, cap), newDates));
+    const selected = runModel(modelId, candidates);
+    const perCapDaily = CAPS.map((cap) => partialDailyResults(applyDailyCap(selected, cap), settlementByCandidateIdentity, newDates));
     for (let i = 0; i < newDates.length; i++) {
       const date = newDates[i];
       appended.push({
         date,
         model: modelId,
-        cap30: { n: perCapDaily[0][i].event_n, pnl_u: perCapDaily[0][i].pnl_u },
-        cap40: { n: perCapDaily[1][i].event_n, pnl_u: perCapDaily[1][i].pnl_u },
-        cap50: { n: perCapDaily[2][i].event_n, pnl_u: perCapDaily[2][i].pnl_u },
+        cap30: toCapBucket(perCapDaily[0][i]),
+        cap40: toCapBucket(perCapDaily[1][i]),
+        cap50: toCapBucket(perCapDaily[2][i]),
       });
     }
   }

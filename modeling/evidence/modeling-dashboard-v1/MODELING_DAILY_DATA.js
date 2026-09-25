@@ -28,7 +28,7 @@
  */
 window.POLYPROPICKS_MODELING_DATA = {
   "ARTIFACT": "MODELING_DAILY_DATA_V1",
-  "GENERATED_AT": "2026-09-25T14:03:57.456Z",
+  "GENERATED_AT": "2026-09-25T14:14:21.494Z",
   "meta": {
     "frozenPeriodStart": "2026-08-04",
     "frozenPeriodEnd": "2026-09-20",
@@ -1389,15 +1389,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_A",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 46
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1405,15 +1420,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_D",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 46
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1421,15 +1451,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 25.94
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 25.94,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 31.94
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 31.94,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 39.94
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 39.94,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1437,15 +1482,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "PORTFOLIO_BROAD",
       "cap30": {
         "n": 30,
-        "pnl_u": 28
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 28,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 34
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 34,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 42
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 42,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1453,15 +1513,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_54",
       "cap30": {
         "n": 30,
-        "pnl_u": 23.72
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 23.72,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 31.72
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 31.72,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 37.72
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 37.72,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1469,15 +1544,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C5",
       "cap30": {
         "n": 30,
-        "pnl_u": 20.21
+        "settled_n": 29,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 19.21,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 96.6667
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 28.21
+        "settled_n": 39,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 27.21,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 97.5
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 36.21
+        "settled_n": 49,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 35.21,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 98
       }
     },
     {
@@ -1485,15 +1575,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C0",
       "cap30": {
         "n": 30,
-        "pnl_u": 20.21
+        "settled_n": 29,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 19.21,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 96.6667
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 28.21
+        "settled_n": 39,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 27.21,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 97.5
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 36.21
+        "settled_n": 49,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 35.21,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 98
       }
     },
     {
@@ -1501,15 +1606,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "TENNIS_P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 46
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1517,15 +1637,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_A",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 48
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 48,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1533,15 +1668,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_D",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 48
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 48,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1549,15 +1699,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 48
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 48,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1565,15 +1730,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "PORTFOLIO_BROAD",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 48
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 48,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1581,15 +1761,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_54",
       "cap30": {
         "n": 30,
-        "pnl_u": 28
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 28,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 36
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 36,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 45.89
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 45.89,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1597,15 +1792,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C5",
       "cap30": {
         "n": 30,
-        "pnl_u": 26
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 26,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 34
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 34,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 43.89
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 43.89,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1613,15 +1823,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C0",
       "cap30": {
         "n": 30,
-        "pnl_u": 26
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 26,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 34
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 34,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 43.89
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 43.89,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1629,15 +1854,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "TENNIS_P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 48
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 48,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1645,15 +1885,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_A",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 46
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1661,15 +1916,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_D",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 46
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1677,15 +1947,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 25.88
+        "settled_n": 28,
+        "open_n": 2,
+        "other_nonterminal_n": 0,
+        "pnl_u": 23.88,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 93.3333
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 35.88
+        "settled_n": 38,
+        "open_n": 2,
+        "other_nonterminal_n": 0,
+        "pnl_u": 33.88,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 95
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 41.88
+        "settled_n": 48,
+        "open_n": 2,
+        "other_nonterminal_n": 0,
+        "pnl_u": 41.88,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 96
       }
     },
     {
@@ -1693,15 +1978,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "PORTFOLIO_BROAD",
       "cap30": {
         "n": 30,
-        "pnl_u": 25.96
+        "settled_n": 29,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 29,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 96.6667
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 35.96
+        "settled_n": 39,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 37,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 97.5
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 39.96
+        "settled_n": 49,
+        "open_n": 1,
+        "other_nonterminal_n": 0,
+        "pnl_u": 41,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 98
       }
     },
     {
@@ -1709,15 +2009,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_54",
       "cap30": {
         "n": 30,
-        "pnl_u": 25.89
+        "settled_n": 28,
+        "open_n": 2,
+        "other_nonterminal_n": 0,
+        "pnl_u": 23.89,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 93.3333
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 33.79
+        "settled_n": 38,
+        "open_n": 2,
+        "other_nonterminal_n": 0,
+        "pnl_u": 31.79,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 95
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 39.68
+        "settled_n": 47,
+        "open_n": 3,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38.68,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 94
       }
     },
     {
@@ -1725,15 +2040,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C5",
       "cap30": {
         "n": 30,
-        "pnl_u": 21.89
+        "settled_n": 27,
+        "open_n": 3,
+        "other_nonterminal_n": 0,
+        "pnl_u": 18.89,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 90
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 29.79
+        "settled_n": 37,
+        "open_n": 3,
+        "other_nonterminal_n": 0,
+        "pnl_u": 26.79,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 92.5
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 37.46
+        "settled_n": 46,
+        "open_n": 4,
+        "other_nonterminal_n": 0,
+        "pnl_u": 35.46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 92
       }
     },
     {
@@ -1741,15 +2071,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C0",
       "cap30": {
         "n": 30,
-        "pnl_u": 21.89
+        "settled_n": 27,
+        "open_n": 3,
+        "other_nonterminal_n": 0,
+        "pnl_u": 18.89,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 90
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 29.79
+        "settled_n": 37,
+        "open_n": 3,
+        "other_nonterminal_n": 0,
+        "pnl_u": 26.79,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 92.5
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 37.46
+        "settled_n": 46,
+        "open_n": 4,
+        "other_nonterminal_n": 0,
+        "pnl_u": 35.46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 92
       }
     },
     {
@@ -1757,15 +2102,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "TENNIS_P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 30,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 30,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 38
+        "settled_n": 40,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 38,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 46
+        "settled_n": 50,
+        "open_n": 0,
+        "other_nonterminal_n": 0,
+        "pnl_u": 46,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 100
       }
     },
     {
@@ -1773,15 +2133,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_A",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 19,
+        "open_n": 11,
+        "other_nonterminal_n": 0,
+        "pnl_u": 19,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 63.3333
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 40
+        "settled_n": 28,
+        "open_n": 12,
+        "other_nonterminal_n": 0,
+        "pnl_u": 28,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 70
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 50
+        "settled_n": 37,
+        "open_n": 13,
+        "other_nonterminal_n": 0,
+        "pnl_u": 37,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 74
       }
     },
     {
@@ -1789,15 +2164,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "QUALITY_FILL_D",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 19,
+        "open_n": 11,
+        "other_nonterminal_n": 0,
+        "pnl_u": 19,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 63.3333
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 40
+        "settled_n": 28,
+        "open_n": 12,
+        "other_nonterminal_n": 0,
+        "pnl_u": 28,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 70
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 50
+        "settled_n": 37,
+        "open_n": 13,
+        "other_nonterminal_n": 0,
+        "pnl_u": 37,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 74
       }
     },
     {
@@ -1805,15 +2195,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 27.89
+        "settled_n": 17,
+        "open_n": 13,
+        "other_nonterminal_n": 0,
+        "pnl_u": 14.94,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 56.6667
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 37.89
+        "settled_n": 20,
+        "open_n": 20,
+        "other_nonterminal_n": 0,
+        "pnl_u": 17.94,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 50
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 47.89
+        "settled_n": 27,
+        "open_n": 23,
+        "other_nonterminal_n": 0,
+        "pnl_u": 24.94,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 54
       }
     },
     {
@@ -1821,15 +2226,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "PORTFOLIO_BROAD",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 18,
+        "open_n": 12,
+        "other_nonterminal_n": 0,
+        "pnl_u": 18,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 60
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 40
+        "settled_n": 23,
+        "open_n": 17,
+        "other_nonterminal_n": 0,
+        "pnl_u": 23,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 57.5
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 50
+        "settled_n": 31,
+        "open_n": 19,
+        "other_nonterminal_n": 0,
+        "pnl_u": 31,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 62
       }
     },
     {
@@ -1837,15 +2257,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "P50_54",
       "cap30": {
         "n": 30,
-        "pnl_u": 28
+        "settled_n": 14,
+        "open_n": 16,
+        "other_nonterminal_n": 0,
+        "pnl_u": 12,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 46.6667
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 37.9
+        "settled_n": 19,
+        "open_n": 21,
+        "other_nonterminal_n": 0,
+        "pnl_u": 17,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 47.5
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 47.9
+        "settled_n": 23,
+        "open_n": 27,
+        "other_nonterminal_n": 0,
+        "pnl_u": 21,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 46
       }
     },
     {
@@ -1853,15 +2288,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C5",
       "cap30": {
         "n": 30,
-        "pnl_u": 29.82
+        "settled_n": 14,
+        "open_n": 16,
+        "other_nonterminal_n": 0,
+        "pnl_u": 14,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 46.6667
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 39.72
+        "settled_n": 18,
+        "open_n": 22,
+        "other_nonterminal_n": 0,
+        "pnl_u": 18,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 45
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 49.72
+        "settled_n": 22,
+        "open_n": 28,
+        "other_nonterminal_n": 0,
+        "pnl_u": 21.82,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 44
       }
     },
     {
@@ -1869,15 +2319,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "C0",
       "cap30": {
         "n": 30,
-        "pnl_u": 29.82
+        "settled_n": 14,
+        "open_n": 16,
+        "other_nonterminal_n": 0,
+        "pnl_u": 14,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 46.6667
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 39.72
+        "settled_n": 18,
+        "open_n": 22,
+        "other_nonterminal_n": 0,
+        "pnl_u": 18,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 45
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 49.72
+        "settled_n": 22,
+        "open_n": 28,
+        "other_nonterminal_n": 0,
+        "pnl_u": 21.82,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 44
       }
     },
     {
@@ -1885,15 +2350,30 @@ window.POLYPROPICKS_MODELING_DATA = {
       "model": "TENNIS_P50_52",
       "cap30": {
         "n": 30,
-        "pnl_u": 30
+        "settled_n": 19,
+        "open_n": 11,
+        "other_nonterminal_n": 0,
+        "pnl_u": 19,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 63.3333
       },
       "cap40": {
         "n": 40,
-        "pnl_u": 40
+        "settled_n": 28,
+        "open_n": 12,
+        "other_nonterminal_n": 0,
+        "pnl_u": 28,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 70
       },
       "cap50": {
         "n": 50,
-        "pnl_u": 50
+        "settled_n": 37,
+        "open_n": 13,
+        "other_nonterminal_n": 0,
+        "pnl_u": 37,
+        "pnl_semantic": "settled_partial",
+        "settlement_coverage_pct": 74
       }
     }
   ]
