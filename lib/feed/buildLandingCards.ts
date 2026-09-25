@@ -552,8 +552,8 @@ export type FireModelWideTerminalStatus =
 export function selectResearchMarketsForScoring(
   universe: readonly ResearchNestedMarket[],
   publicIdentitySet: ReadonlySet<string>,
-  // `null` removes only the positional ceiling. The hidden population remains
-  // bounded to one deterministic representative per physical event.
+  // `null` removes the positional ceiling entirely: every distinct eligible
+  // sibling identity for every physical event is a research candidate.
   limit: number | null,
   rotationOffset: number,
 ): ResearchNestedMarket[] {
@@ -590,16 +590,23 @@ export function selectResearchMarketsForScoring(
     ? ((rotationOffset % canonicalByEvent.length) + canonicalByEvent.length) % canonicalByEvent.length
     : 0;
   const rotated = [...canonicalByEvent.slice(offset), ...canonicalByEvent.slice(0, offset)];
-  const represented = new Set(publicRows.map((row) => `${row.eventId}::${row.eventStartIso}`));
-  const firstPerEvent: ResearchNestedMarket[] = [];
-  for (const eventRows of rotated) {
-    const eventKey = `${eventRows[0].eventId}::${eventRows[0].eventStartIso}`;
-    if (!represented.has(eventKey)) {
-      represented.add(eventKey);
-      firstPerEvent.push(eventRows[0]);
+
+  // RESTORE_EVENT_SIBLING_RESEARCH_OPPORTUNITY_SET_V1: one physical event may
+  // contribute every distinct eligible sibling identity, not one deterministic
+  // representative. Flatten round-robin (event 1's 1st sibling, event 2's 1st
+  // sibling, ..., then event 1's 2nd sibling, ...) rather than event-by-event,
+  // so a fixed/exhausted `limit` still spreads breadth across events first and
+  // only spends remaining budget on extra siblings within an event, instead of
+  // one high-sibling-count event crowding out every other event.
+  const maxSiblingsPerEvent = rotated.reduce((max, eventRows) => Math.max(max, eventRows.length), 0);
+  const hiddenFlattened: ResearchNestedMarket[] = [];
+  for (let round = 0; round < maxSiblingsPerEvent; round++) {
+    for (const eventRows of rotated) {
+      if (round < eventRows.length) hiddenFlattened.push(eventRows[round]);
     }
   }
-  const combined = [...publicRows, ...firstPerEvent];
+
+  const combined = [...publicRows, ...hiddenFlattened];
   return unbounded ? combined : combined.slice(0, limit);
 }
 
@@ -4268,7 +4275,7 @@ export async function buildLandingCards(options?: {
       rf.researchSnapshotsSelectedRotating = selectedResearch.length - selectedPublicCount;
       rf.researchSnapshotSelectionLimit = researchLimit ?? undefined;
       rf.researchScorerSelectionMode = researchLimit === null
-        ? "REPRESENTATIVE_PER_EVENT"
+        ? "ALL_ELIGIBLE"
         : "FIXED_LIMIT";
       rf.researchUniverseEvents = s2ResearchUniverseEventCount;
       rf.researchUniverseMarkets = dedupedSupportedResearchCount;

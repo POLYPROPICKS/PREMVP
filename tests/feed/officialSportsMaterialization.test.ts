@@ -205,13 +205,10 @@ test("no duplicate condition/token identity is emitted for one market", () => {
 });
 
 test("wide research scoring admits every structured sports market family, not moneyline only", () => {
-  // Bounded one-representative-per-physical-event routing (see
-  // selectResearchMarketsForScoring's own docstring) is a separate, unchanged
-  // scoring-budget mechanism: within ONE event it still surfaces only one
-  // market. To isolate admission (can a nonstandard market family ever reach
-  // the wide research scorer at all) from that per-event budget mechanism,
-  // each nonstandard family below is the ONLY market on its own distinct
-  // physical event — previously excluded entirely, now admitted.
+  // Each nonstandard family below is its own distinct physical event so this
+  // test isolates admission (can a nonstandard market family ever reach the
+  // wide research scorer at all) from sibling fan-out within one event, which
+  // is covered separately in researchScorerCapacity.test.ts.
   const { entries } = build([
     event({
       id: "evt-wide-total",

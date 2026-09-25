@@ -194,13 +194,28 @@ test("research scorer selection deterministically ties structured full-match mar
     sportsMarketType: "moneyline",
   });
 
+  // Limit of 1 isolates the deterministic tie-break itself (both rows share
+  // one physical event, so with room to spare both would otherwise survive —
+  // see researchScorerCapacity.test.ts for multi-sibling capture from one event).
   const selected = selectResearchMarketsForScoring(
+    [laterProviderId, malformed, unsupported, invalidStart, earlierProviderId],
+    new Set(),
+    1,
+    0,
+  );
+  assert.deepEqual(selected.map((row) => row.marketId), ["provider-market-a"]);
+
+  // With room, both structured siblings of the same physical event survive.
+  const selectedBoth = selectResearchMarketsForScoring(
     [laterProviderId, malformed, unsupported, invalidStart, earlierProviderId],
     new Set(),
     5,
     0,
   );
-  assert.deepEqual(selected.map((row) => row.marketId), ["provider-market-a"]);
+  assert.deepEqual(selectedBoth.map((row) => row.marketId).sort(), [
+    "provider-market-a",
+    "provider-market-z",
+  ]);
 });
 
 test("scored carrier preserves provider event and sport authority into persisted research diagnostics", () => {
