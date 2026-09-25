@@ -121,9 +121,9 @@ test("serving prune is bounded, index-backed, and never performs a broad GSP rea
   assert.doesNotMatch(pruneMigration, /DELETE FROM public\.generated_signal_pairs/i);
 });
 
-test("prune batch ceiling was raised to 500 without changing predicate, index, or historical-data safety", () => {
-  assert.match(pruneBatchRaiseMigration, /p_batch_size < 1 OR p_batch_size > 500/);
-  assert.doesNotMatch(pruneBatchRaiseMigration, /p_batch_size > 25\b/);
+test("prune batch ceiling was raised to 5000 without changing predicate, index, or historical-data safety", () => {
+  assert.match(pruneBatchRaiseMigration, /p_batch_size < 1 OR p_batch_size > 5000/);
+  assert.doesNotMatch(pruneBatchRaiseMigration, /p_batch_size > 500\b/);
   assert.match(pruneBatchRaiseMigration, /serving\.projection_status = 'ACTIVE'/);
   assert.match(pruneBatchRaiseMigration, /serving\.expires_at <= now\(\)/);
   assert.match(pruneBatchRaiseMigration, /ORDER BY serving\.expires_at ASC[\s\S]*LIMIT p_batch_size[\s\S]*FOR UPDATE SKIP LOCKED/);
@@ -267,21 +267,21 @@ test("writer projection is idempotent by source UUID and serving prune batches e
     args: { p_source_generated_signal_pair_ids: ["source-a", "source-b"] },
   });
 
-  const prune = await pruneCurrentSignalPairServing(Array.from({ length: 501 }, (_, index) => `source-${index}`));
+  const prune = await pruneCurrentSignalPairServing(Array.from({ length: 5001 }, (_, index) => `source-${index}`));
   assert.deepEqual(prune, { attempted: true, deletedRows: 0, batches: 2, durationMs: prune.durationMs });
   assert.deepEqual(calls.slice(1), [
     {
       fn: "prune_current_signal_pair_serving",
       args: {
-        p_batch_size: 500,
-        p_resolved_source_generated_signal_pair_ids: Array.from({ length: 500 }, (_, index) => `source-${index}`),
+        p_batch_size: 5000,
+        p_resolved_source_generated_signal_pair_ids: Array.from({ length: 5000 }, (_, index) => `source-${index}`),
       },
     },
     {
       fn: "prune_current_signal_pair_serving",
       args: {
-        p_batch_size: 500,
-        p_resolved_source_generated_signal_pair_ids: ["source-500"],
+        p_batch_size: 5000,
+        p_resolved_source_generated_signal_pair_ids: ["source-5000"],
       },
     },
   ]);

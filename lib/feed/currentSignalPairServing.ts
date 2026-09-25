@@ -1,10 +1,11 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 
-// Raised from 25 (see supabase/migrations/20260918160000_current_signal_pair_serving_prune_batch_raise.sql):
+// Raised from 25 via 500 (see supabase/migrations/20260918160000_current_signal_pair_serving_prune_batch_raise.sql):
 // 25 rows/call could not keep pace with sustained ACTIVE-row accumulation on
-// current_signal_pair_serving (BATCH_LIMIT_STARVATION). The predicate/index
-// are unchanged; only the per-call ceiling grew.
-export const CURRENT_SERVING_PRUNE_BATCH_SIZE = 500;
+// current_signal_pair_serving (BATCH_LIMIT_STARVATION). Production testing
+// confirmed a 5000-row transaction completes safely in ~6s with no timeout or
+// lock error. The predicate/index are unchanged; only the per-call ceiling grew.
+export const CURRENT_SERVING_PRUNE_BATCH_SIZE = 5000;
 
 export class ServingProjectionPendingError extends Error {
   readonly sourceGeneratedSignalPairIds: readonly string[];
