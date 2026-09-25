@@ -38,7 +38,6 @@ import {
 import {
   deriveProviderEsportsGame,
   discoverSportsMarkets,
-  OFFICIAL_FULL_MATCH_MARKET_TYPES,
 } from "./discoverSportsMarkets";
 import { hasEligibleEventVolume, MINIMUM_MODEL_EVENT_VOLUME_USD } from "./eventLiquidityGate";
 import type { SportsDiscoverySample } from "./types";
@@ -604,12 +603,21 @@ export function selectResearchMarketsForScoring(
   return unbounded ? combined : combined.slice(0, limit);
 }
 
+// RESTORE_RESEARCH_ONLY_WIDE_MARKET_CAPTURE_V1: structural identity authority
+// only. `OFFICIAL_FULL_MATCH_MARKET_TYPES` is the full-match coverage
+// denominator elsewhere (materialization ledger, live/full-match Contract A
+// candidate contour) — it is NOT a research-capture eligibility predicate.
+// Gating research-only scorer admission on it silently narrowed the wide S2
+// research universe to moneyline-only, dropping every nonstandard football
+// market (corners, halftime, BTTS, team totals, first-to-score, spread,
+// totals, etc.) before it ever reached `generated_signal_research_snapshots`.
+// Research capture is a separate concern from live-money market-family
+// eligibility, so `sportsMarketType` is intentionally not checked here.
 function hasStructuredScorerMarketAuthority(row: ResearchNestedMarket): boolean {
   if (!row.eventId || !row.eventStartIso || !row.marketId || !row.conditionId || !row.selectedTokenId) return false;
   if (!Number.isFinite(Date.parse(row.eventStartIso))) return false;
   if (!row.providerSportFamily || row.providerSportSource !== "structured_sports_tag") return false;
-  const marketType = row.sportsMarketType?.trim().toLowerCase();
-  return Boolean(marketType && OFFICIAL_FULL_MATCH_MARKET_TYPES.has(marketType));
+  return true;
 }
 
 function compareStructuredProviderMarketRows(a: ResearchNestedMarket, b: ResearchNestedMarket): number {
