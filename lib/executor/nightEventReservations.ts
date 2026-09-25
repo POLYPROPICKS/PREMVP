@@ -288,6 +288,9 @@ export function anchorDecisionForCandidate(c: FireModelCandidate): FullMatchAnch
   // re-derivation here would be a second, competing authority -- the defect that
   // produced NO_FULLMATCH_ANCHOR = 22 against 22 already-planned events.
   const policy = upstreamMarketPolicyOf(c);
+  if (c.diagnostics?.market_policy && !policy) {
+    return { allowed: false, reason: "FULLMATCH_IDENTITY_INVALID" };
+  }
   if (policy) {
     return policy.allowed
       ? { allowed: true }
@@ -337,11 +340,7 @@ export function marketPolicyFingerprint(input: {
 }): string {
   const surfaces = [
     input.providerMarketQuestion ?? "",
-    input.providerEventTitle ?? "",
     input.marketTitle ?? "",
-    input.market_slug ?? "",
-    input.event_slug ?? "",
-    input.match_family_key ?? "",
     input.inferred_sport ?? "",
     input.activity_label_detected ? "1" : "0",
   ].join(" ");
@@ -374,6 +373,12 @@ function candidateMarketPolicyFingerprint(c: FireModelCandidate): string {
 function upstreamMarketPolicyOf(c: FireModelCandidate) {
   const policy = c.diagnostics?.market_policy ?? null;
   if (policy === null) return null;
+  const identity = policy.exact_identity;
+  if (identity === null) {
+    if (policy.anchor_kind !== "STRUCTURED_FULLMATCH_EVENT") return null;
+  } else if (identity.condition_id !== c.condition_id ||
+      identity.token_id !== c.token_id ||
+      identity.side !== c.side) return null;
   if (policy.anchor_fingerprint !== candidateMarketPolicyFingerprint(c)) return null;
   return policy;
 }
@@ -397,6 +402,10 @@ function isUpstreamRejected(c: FireModelCandidate): boolean {
  */
 function anchorEvidenceForCandidate(c: FireModelCandidate): MarketAnchorDecision {
   const policy = upstreamMarketPolicyOf(c);
+  if (c.diagnostics?.market_policy && !policy) {
+    return { market_class: "unknown", event_scope: "full_match", allowed: false,
+      reason_code: "UNKNOWN_MARKET_CLASS", evidence_source: "structured" };
+  }
   if (policy) {
     return {
       market_class: policy.market_class,

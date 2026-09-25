@@ -300,6 +300,8 @@ export interface UpstreamMarketPolicyDecision {
    * marketPolicyFingerprint in nightEventReservations.ts.
    */
   anchor_fingerprint: string;
+  /** The executable outcome for which this verdict was made. */
+  exact_identity: { condition_id: string; token_id: string; side: string } | null;
 }
 
 /** The surfaces the market-policy decision is read from. */
@@ -316,6 +318,9 @@ export type MarketPolicyProbe = Pick<
   conditionId?: string | null;
   providerSportCode?: string | null;
   providerMarketType?: string | null;
+  condition_id?: string | null;
+  token_id?: string | null;
+  side?: string | null;
 };
 
 /**
@@ -342,12 +347,28 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
   // read only the surfaces MarketPolicyProbe already carries.
   const candidate = probe as unknown as FireModelCandidate;
   const anchorInput = candidateAnchorInput(candidate);
-  const canonical = resolveMarketAnchorDecision(anchorInput);
+  const exactIdentity =
+    probe.condition_id?.trim() && probe.token_id?.trim() && probe.side?.trim()
+      ? { condition_id: probe.condition_id.trim(), token_id: probe.token_id.trim(), side: probe.side.trim() }
+      : null;
+  // The provider's market type belongs to this source row's exact outcome. A
+  // parent event slug/title is never evidence about that market's semantics.
+  const structuredType = probe.providerMarketType?.trim().toLowerCase() ?? "";
+  const exactStructuredMarket = (probe.inferred_sport === "soccer" || probe.inferred_sport === "football") &&
+    exactIdentity !== null && Boolean(probe.providerMarketId?.trim()) && Boolean(structuredType) &&
+    Boolean(probe.providerMarketQuestion?.trim());
+  const canonical = exactStructuredMarket
+    ? resolveMarketAnchorDecision({
+        providerMarketQuestion: structuredType,
+        marketTitle: probe.providerMarketQuestion ?? null,
+      })
+    : resolveMarketAnchorDecision(anchorInput);
   const diag = (probe.diagnostics ?? {}) as Record<string, unknown>;
   const base = {
     market_class: canonical.market_class,
     event_scope: canonical.event_scope,
     decided_by: MARKET_POLICY_VERSION,
+    exact_identity: exactIdentity,
     anchor_fingerprint: marketPolicyFingerprint({
       providerMarketQuestion: probe.providerMarketQuestion ?? null,
       providerEventTitle: probe.providerEventTitle ?? null,
@@ -360,11 +381,29 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
     }),
   } as const;
 
+  if ((probe.inferred_sport === "soccer" || probe.inferred_sport === "football") &&
+      structuredType && !exactStructuredMarket) {
+    return { ...base, allowed: false, reason_code: "EXACT_MARKET_IDENTITY_INCOMPLETE", anchor_kind: "REJECTED" };
+  }
+
   if (probe.activity_label_detected) {
     return { ...base, allowed: false, reason_code: "ACTIVITY_LABEL", anchor_kind: "REJECTED" };
   }
-  if (isForbiddenAnchorMarket(candidate)) {
+  if (!exactStructuredMarket && isForbiddenAnchorMarket(candidate)) {
     return { ...base, allowed: false, reason_code: "FORBIDDEN_ANCHOR_MARKET", anchor_kind: "REJECTED" };
+  }
+  if (exactStructuredMarket) {
+    // Only the provider's exact full-match market enums establish executable
+    // scope. The canonical taxonomy still rejects forbidden question wording.
+    const fullMatchType = ["moneyline", "spread", "spreads", "total", "totals"].includes(structuredType);
+    const questionDecision = probe.providerMarketQuestion
+      ? resolveMarketAnchorDecision({ providerMarketQuestion: probe.providerMarketQuestion })
+      : null;
+    const ownQuestionForbidden = questionDecision !== null &&
+      (questionDecision.market_class.startsWith("forbidden_") || questionDecision.event_scope !== "full_match");
+    const allowed = fullMatchType && canonical.allowed && !ownQuestionForbidden;
+    return { ...base, allowed, reason_code: allowed ? "EXECUTABLE_MARKET" : "FORBIDDEN_ANCHOR_MARKET",
+      anchor_kind: allowed ? "EXECUTABLE_MARKET" : "REJECTED" };
   }
 
   // R0-TENNIS — TENNIS is governed entirely by its own dedicated gate, never
@@ -2407,6 +2446,9 @@ export async function buildFireModelCandidates(
         conditionId: typeof row.condition_id === "string" ? row.condition_id : null,
         providerSportCode: providerContext?.sportFamily ?? null,
         providerMarketType: providerContext?.marketType ?? null,
+        condition_id: typeof row.condition_id === "string" ? row.condition_id : null,
+        token_id: typeof row.selected_token_id === "string" ? row.selected_token_id : null,
+        side,
         // Deliberately the surfaces the EMITTED candidate will carry, not the
         // raw source row's: the verdict must describe the candidate that
         // reservation later receives, or it describes nothing it can be

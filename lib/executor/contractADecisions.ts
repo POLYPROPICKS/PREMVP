@@ -458,6 +458,13 @@ export function buildContractAPlanningDecision(
   if (start.iso !== providerIdentity.eventStartIso) return reject("EXACT_PROVIDER_EVENT_START_MISMATCH");
 
   const policy = candidate.diagnostics.market_policy ?? null;
+  if (policy !== null && (
+    (policy.exact_identity === null && policy.anchor_kind !== "STRUCTURED_FULLMATCH_EVENT") ||
+    (policy.exact_identity !== null && (
+      policy.exact_identity.condition_id !== candidate.condition_id ||
+      policy.exact_identity.token_id !== candidate.token_id ||
+      policy.exact_identity.side !== candidate.side))
+  )) return reject("MARKET_POLICY_REJECTED", "EXACT_IDENTITY_MISMATCH");
   if (policy !== null && policy.allowed === false) {
     return reject("MARKET_POLICY_REJECTED", policy.reason_code);
   }
