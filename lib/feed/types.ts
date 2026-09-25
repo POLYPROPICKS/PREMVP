@@ -92,6 +92,16 @@ export interface LandingCardDiagnostics {
   rejectionReasons: string[];
   signalStatus?: "qualified" | "upcoming_candidate";
   gameStartIso?: string | null;
+  marketTelemetry?: {
+    v: "v1";
+    gamma_market_best_bid_num: number | null;
+    gamma_market_best_ask_num: number | null;
+    gamma_market_spread_num: number | null;
+    gamma_bbo_semantic: string;
+    odds_decimal_num: number | null;
+    odds_decimal_semantic: string;
+    capture_source: string;
+  };
   parentEventVolume24hr?: number | null;
   providerSportCode?: string | null;
   providerSportFamily?: string | null;
@@ -747,6 +757,8 @@ export interface SportsDiscoverySample {
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
     providerMarketId?: string;
+    bestBid?: number | null;
+    bestAsk?: number | null;
   } | null;
   marketsRaw?: Array<{
     outcomes: string[];
@@ -759,6 +771,8 @@ export interface SportsDiscoverySample {
     volume24hr?: number | null;
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
+    bestBid?: number | null;
+    bestAsk?: number | null;
   }>;
   leagueName?: string;
   polymarketEventSlug?: string;

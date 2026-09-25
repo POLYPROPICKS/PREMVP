@@ -21,6 +21,7 @@ import {
   type ResearchFunnelCounters,
   type ResearchNestedMarket,
 } from "./types";
+import { buildMarketTelemetryAtObservation } from "./marketTelemetry";
 import { buildResearchScoreObservation } from "./researchScoreObservation";
 
 import {
@@ -101,7 +102,11 @@ export function sampleToCandidateMarket(sample: SportsDiscoverySample): Candidat
     clobTokenIds: primary.clobTokenIds as unknown as string[] | string,
     volume24hr: primary.volume24hr ?? undefined,
     oneDayPriceChange: primary.oneDayPriceChange ?? undefined,
-  };
+    // DATA_CAPTURE_V2: already-fetched Gamma top-of-book scalars carried
+    // verbatim from the discovery sample; absent when discovery never saw them.
+    bestBid: primary.bestBid ?? undefined,
+    bestAsk: primary.bestAsk ?? undefined,
+  } as PolymarketRawMarket;
 
   const event: PolymarketRawEvent = {
     id: sample.providerEventId || sample.gameId || sample.slug,
@@ -211,7 +216,10 @@ export function sampleToCandidateMarkets(sample: SportsDiscoverySample): Candida
       clobTokenIds: sib.clobTokenIds as unknown as string[] | string,
       volume24hr: sib.volume24hr ?? undefined,
       oneDayPriceChange: sib.oneDayPriceChange ?? undefined,
-    };
+      // DATA_CAPTURE_V2: sibling top-of-book scalars carried verbatim.
+      bestBid: sib.bestBid ?? undefined,
+      bestAsk: sib.bestAsk ?? undefined,
+    } as PolymarketRawMarket;
 
     (siblingMarket as unknown as Record<string, unknown>)._parentMeta = {
       ...primaryParentMeta,
@@ -1714,6 +1722,7 @@ async function enrichMarket(
     dataCoverage: 0,
     formulaUsed: FORMULA_VERSION,
     rejectionReasons: [],
+    marketTelemetry: buildMarketTelemetryAtObservation(market, selectedOutcome.price),
     parentEventVolume24hr: Number(
       event.volume24hr ?? market.volume24hr ?? 0
     ),

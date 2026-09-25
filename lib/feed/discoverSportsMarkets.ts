@@ -1174,6 +1174,8 @@ export async function discoverSportsMarkets(
               volumeNum: typeof pm.volume === "number" ? pm.volume : null,
               volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
               volumeClob: null,
+              bestBid: cand.nm.bestBid ?? null,
+              bestAsk: cand.nm.bestAsk ?? null,
             },
           });
         }
@@ -1300,6 +1302,8 @@ export async function discoverSportsMarkets(
           volumeNum: typeof pmTyped.volume === "number" ? pmTyped.volume : null,
           volume24hr: typeof pmTyped.volume24hr === "number" ? pmTyped.volume24hr : null,
           volumeClob: null,
+          bestBid: cand.normalized.bestBid ?? null,
+          bestAsk: cand.normalized.bestAsk ?? null,
         },
       });
     }
@@ -1368,6 +1372,8 @@ export async function discoverSportsMarkets(
           volumeNum: typeof pm.volume === "number" ? pm.volume : null,
           volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
           volumeClob: null,
+          bestBid: picked.normalized.bestBid ?? null,
+          bestAsk: picked.normalized.bestAsk ?? null,
         },
       };
     };
@@ -1487,6 +1493,8 @@ export async function discoverSportsMarkets(
         volumeClob: g.primaryMarket.volumeClob,
         oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
         providerMarketId: g.primaryMarket.id,
+        bestBid: g.primaryMarket.bestBid ?? null,
+        bestAsk: g.primaryMarket.bestAsk ?? null,
       } : null,
       // Add all grouped markets for mapper to try.
       // BOUNDED_MULTI_IDENTITY_SOURCE_QUALIFICATION_V1: only markets that satisfy
@@ -1513,6 +1521,8 @@ export async function discoverSportsMarkets(
               volume24hr: m.volume24hr,
               volumeClob: m.volumeClob,
               oneDayPriceChange: m.oneDayPriceChange,
+              bestBid: m.bestBid ?? null,
+              bestAsk: m.bestAsk ?? null,
             }))
         : [],
     }));
@@ -1549,6 +1559,8 @@ export async function discoverSportsMarkets(
         volumeClob: g.primaryMarket.volumeClob,
         oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
         providerMarketId: g.primaryMarket.id,
+        bestBid: g.primaryMarket.bestBid ?? null,
+        bestAsk: g.primaryMarket.bestAsk ?? null,
       } : null,
     }));
 
