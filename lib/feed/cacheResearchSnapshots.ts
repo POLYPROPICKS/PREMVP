@@ -6,6 +6,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { ResearchEligibleSignalSnapshot } from "./types";
 import { buildResearchScoreObservation } from "./researchScoreObservation";
+import { chunkArray, SHADOW_INSERT_CHUNK } from "./writeBatching";
 
 /**
  * FORWARD_RICH_CAPTURE_V1 — pure row builder for one research snapshot.
@@ -72,6 +73,15 @@ export function toResearchSnapshotRow(s: ResearchEligibleSignalSnapshot) {
  * Write research-eligible signal snapshots to the isolated research table.
  * Uses upsert with conflict target (snapshot_run_id, condition_id, selected_token_id).
  * Returns { inserted: 0 } for empty input without hitting Supabase.
+ *
+ * A full ALL_ELIGIBLE research run can propose tens of thousands of rows in
+ * one call. Sending that as a single upsert produces a multi-megabyte request
+ * body that PostgREST rejects outright, failing the whole write with nothing
+ * persisted. Splitting into SHADOW_INSERT_CHUNK-sized upserts (the same bound
+ * already proven for generated_signal_pairs writes, see writeBatching.ts)
+ * keeps each request inside transport limits without changing conflict or
+ * dedup semantics. A failed chunk is attributed by row count already
+ * persisted rather than reported as full success.
  */
 export async function writeResearchEligibleSignalSnapshots({
   snapshots,
@@ -82,15 +92,21 @@ export async function writeResearchEligibleSignalSnapshots({
 
   const rows = snapshots.map(toResearchSnapshotRow);
 
-  const { error, count } = await supabaseAdmin
-    .from("generated_signal_research_snapshots")
-    .upsert(rows, {
-      onConflict: "snapshot_run_id,condition_id,selected_token_id",
-    });
+  let inserted = 0;
+  for (const chunk of chunkArray(rows, SHADOW_INSERT_CHUNK)) {
+    const { error, count } = await supabaseAdmin
+      .from("generated_signal_research_snapshots")
+      .upsert(chunk, {
+        onConflict: "snapshot_run_id,condition_id,selected_token_id",
+      });
 
-  if (error) {
-    throw new Error(`Failed to write research snapshots: ${error.message}`);
+    if (error) {
+      throw new Error(
+        `Failed to write research snapshots: ${error.message} (after ${inserted} of ${rows.length} rows)`,
+      );
+    }
+    inserted += count ?? chunk.length;
   }
 
-  return { inserted: count ?? rows.length };
+  return { inserted };
 }
