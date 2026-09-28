@@ -28,6 +28,7 @@ import {
   fetchPolymarketSportsMetadataSafe,
   fetchPolymarketEventsByTagSafe,
   fetchPriceHistorySafe,
+  fetchResearchPriceHistorySafe,
   fetchSpreadSafe,
   fetchOrderBookSafe,
   fetchTradesSafe,
@@ -1822,12 +1823,36 @@ export function selectRecoverablePrimaryMarket(
  * Always returns an EnrichedMarket if we have valid Gamma data
  * Enrichment failures are warnings, not fatal errors
  */
+// FORWARD_PRICE_MOMENTUM_EVIDENCE_REPAIR_V1 — nearest-at-or-before selection
+// over an ASCENDING-sorted, already-validated point series. Never selects a
+// future point; returns null (not a fabricated value) when no point exists
+// at or before `targetMs`. Research-only — the live path keeps its existing
+// `.find()` walk unchanged.
+export function selectNearestAtOrBefore(
+  sortedAscending: readonly PolymarketPricePoint[],
+  targetMs: number,
+): PolymarketPricePoint | null {
+  let result: PolymarketPricePoint | null = null;
+  for (const point of sortedAscending) {
+    const t = new Date(point.timestamp).getTime();
+    if (!Number.isFinite(t)) continue;
+    if (t > targetMs) break; // ascending order: no later point can qualify either
+    result = point;
+  }
+  return result;
+}
+
 async function enrichMarket(
   event: PolymarketRawEvent,
   market: PolymarketRawMarket,
   initialWarnings: string[] = [],
   forcedOutcome?: ForcedOutcomeSelection,
+  // Explicit, narrow research-only dependency switch (never inferred from
+  // warning strings). Absent/false preserves exact existing live/public
+  // behavior — see HARD BOUNDARIES: no live-money/public-score behavior change.
+  options?: { researchPriceHistory?: boolean },
 ): Promise<EnrichedMarket | null> {
+  const useResearchPriceHistory = options?.researchPriceHistory === true;
   const parentMeta = getParentMeta(market);
   const providerGame =
     deriveProviderEsportsGame(parentMeta.title ?? "") ??
@@ -1887,13 +1912,41 @@ async function enrichMarket(
     gammaPriceChange = oneWeekChange / 7; // Approximate daily
   }
 
-  // Fetch price history from CLOB (best effort - only if we have token ID)
+  // Fetch price history from CLOB (best effort - only if we have token ID).
+  // Research and live/public use different fetchers (never both — no duplicate
+  // fetch for the same identity) and different point-selection logic; see
+  // FORWARD_PRICE_MOMENTUM_EVIDENCE_REPAIR_V1.
   let priceHistory: PolymarketPricePoint[] | null = null;
   if (selectedOutcome.tokenId) {
-    priceHistory = await fetchPriceHistorySafe(selectedOutcome.tokenId, "6h");
+    priceHistory = useResearchPriceHistory
+      ? await fetchResearchPriceHistorySafe(selectedOutcome.tokenId)
+      : await fetchPriceHistorySafe(selectedOutcome.tokenId, "6h");
   }
 
-  if (priceHistory && priceHistory.length > 0) {
+  if (useResearchPriceHistory) {
+    // RESEARCH ONLY: nearest-at-or-before selection over the corrected,
+    // ascending-sorted, actually-normalized CLOB series. price1hAgo and
+    // delta1hPp are computed independently of price6hAgo/delta6hPp (unlike
+    // the live path's single-winner computeDeltaPp) so both can genuinely
+    // be present at once. No Gamma 24h fallback here — a 24h provider change
+    // is not a truthful 6h decision-time feature; when real history is
+    // unavailable the fields stay null rather than fabricated.
+    if (priceHistory && priceHistory.length > 0) {
+      const nowMs = Date.now();
+      const price1h = selectNearestAtOrBefore(priceHistory, nowMs - 3_600_000);
+      const price6h = selectNearestAtOrBefore(priceHistory, nowMs - 21_600_000);
+      diagnostics.price1hAgo = price1h?.price ?? null;
+      diagnostics.price6hAgo = price6h?.price ?? null;
+      diagnostics.delta1hPp = diagnostics.price1hAgo !== null
+        ? roundNumber((selectedOutcome.price - diagnostics.price1hAgo) * 100)
+        : null;
+      diagnostics.delta6hPp = diagnostics.price6hAgo !== null
+        ? roundNumber((selectedOutcome.price - diagnostics.price6hAgo) * 100)
+        : null;
+    } else {
+      warnings.push("Research: no real CLOB price history available; evidence left null");
+    }
+  } else if (priceHistory && priceHistory.length > 0) {
     // Find prices at roughly 1h and 6h ago
     const now = new Date().getTime();
     const oneHourAgo = now - 3600000;
@@ -4158,6 +4211,7 @@ export async function buildLandingCards(options?: {
             adapted.candidate.market,
             adapted.candidate.warnings,
             adapted.forcedOutcome,
+            { researchPriceHistory: true },
           );
         } catch {
           return { key, status: "NOT_SCORED_ENRICHMENT_THREW", score: null, dataCoverage: null, winProbability: null, pair: null, diagnostics: null };
