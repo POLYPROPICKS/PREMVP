@@ -52,6 +52,43 @@ export const RANGE_END = "2026-09-24";
 const PAGE = 1000;
 const GSP_PAGE = 200;
 
+export const SOURCE_ROW_SELECT = [
+  "model_date", "population_id", "condition_id", "selected_token_id", "decision_at",
+  "provider_event_id", "sport_family", "settlement_label", "entry_price_num",
+  "canonical_sport_family:canonical_row->sportFamily",
+  "canonical_provider_sport_family:canonical_row->providerSportFamily",
+  "canonical_provider_sport_code:canonical_row->providerSportCode",
+  "canonical_market_type_raw:canonical_row->marketTypeRaw",
+  "canonical_lead_time_hours:canonical_row->leadTimeHours",
+  "canonical_score_level:canonical_row->scoreLevel",
+  "canonical_data_coverage:canonical_row->dataCoverage",
+  "canonical_volume_usd:canonical_row->volumeUsd",
+].join(",");
+
+export function reconstructSourceRow(row: Record<string, unknown>): SourceRow {
+  return {
+    model_date: String(row.model_date),
+    population_id: String(row.population_id),
+    condition_id: String(row.condition_id),
+    selected_token_id: String(row.selected_token_id),
+    decision_at: String(row.decision_at),
+    provider_event_id: row.provider_event_id as string | null,
+    sport_family: row.sport_family as string | null,
+    settlement_label: row.settlement_label as string | null,
+    entry_price_num: row.entry_price_num as number | null,
+    canonical_row: {
+      sportFamily: row.canonical_sport_family,
+      providerSportFamily: row.canonical_provider_sport_family,
+      providerSportCode: row.canonical_provider_sport_code,
+      marketTypeRaw: row.canonical_market_type_raw,
+      leadTimeHours: row.canonical_lead_time_hours,
+      scoreLevel: row.canonical_score_level,
+      dataCoverage: row.canonical_data_coverage,
+      volumeUsd: row.canonical_volume_usd,
+    },
+  };
+}
+
 function projectRef(url: string): string {
   return new URL(url).hostname.split(".")[0];
 }
@@ -74,7 +111,7 @@ async function readAllSourceRows(db: any): Promise<SourceRow[]> {
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await db
         .from("research_model_ready_rows")
-        .select("model_date,population_id,condition_id,selected_token_id,decision_at,provider_event_id,sport_family,settlement_label,entry_price_num,canonical_row")
+        .select(SOURCE_ROW_SELECT)
         .eq("model_date", d)
         .order("population_id")
         .order("condition_id")
@@ -82,7 +119,7 @@ async function readAllSourceRows(db: any): Promise<SourceRow[]> {
         .order("decision_at")
         .range(from, from + PAGE - 1);
       if (error) throw new Error(`RECON_SOURCE_READ:${d}:${error.code ?? error.message}`);
-      rows.push(...((data ?? []) as SourceRow[]));
+      rows.push(...((data ?? []).map((row: Record<string, unknown>) => reconstructSourceRow(row))));
       if ((data?.length ?? 0) < PAGE) break;
     }
     console.error(JSON.stringify({ STAGE: "SOURCE_READ", MODEL_DATE: d, ROWS_SO_FAR: rows.length }));
