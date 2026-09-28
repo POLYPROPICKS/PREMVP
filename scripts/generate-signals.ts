@@ -157,6 +157,25 @@ async function main() {
         `invalid_reasons=${JSON.stringify(pinLoad.invalid_pin_reason_counts)}`
     );
 
+    // RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — optional research-only wide-scorer
+    // targeting, read only in research mode. Absent env vars preserve exact
+    // current all-sport scorer behavior (default budget, no family filter).
+    const researchScorerSportFamily =
+      producerMode === "research" ? (process.env.RESEARCH_SCORER_SPORT_FAMILY || undefined) : undefined;
+    const researchScorerBudgetMsEnv =
+      producerMode === "research" && process.env.RESEARCH_SCORER_BUDGET_MS
+        ? Number(process.env.RESEARCH_SCORER_BUDGET_MS)
+        : undefined;
+    const researchScorerBudgetMs =
+      researchScorerBudgetMsEnv !== undefined && Number.isFinite(researchScorerBudgetMsEnv)
+        ? researchScorerBudgetMsEnv
+        : undefined;
+    if (producerMode === "research" && (researchScorerSportFamily || researchScorerBudgetMs !== undefined)) {
+      console.log(
+        `[generate-signals] research scorer targeting: sportFamily=${researchScorerSportFamily ?? "(none)"} budgetMs=${researchScorerBudgetMs ?? "(default)"}`
+      );
+    }
+
     // Call sports landing cards generation logic
     const result = await buildLandingCards({
       limit: CONFIG.limit,
@@ -181,6 +200,8 @@ async function main() {
       researchLimit: null,
       researchOddsMin: 1.25,
       researchOddsMax: 4.00,
+      researchScorerSportFamily,
+      researchScorerBudgetMs,
     });
 
     // Founder LIVE rule: across the merged qualified + upcoming pool, pre-start
