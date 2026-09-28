@@ -21,11 +21,11 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
-  norm,
   obj,
   buildProviderCodeSportMap,
   buildOverlayRecord,
   buildMarketTypeResolverIndex,
+  resolveMarketType,
   sortOverlay,
   countDuplicateIdentities,
   buildPeriodStats,
@@ -320,11 +320,28 @@ export async function runReconciliationV2(db: any): Promise<{
   console.error(JSON.stringify({ STAGE: "SOURCE_READ_COMPLETE", ROWS: sourceRows.length }));
 
   const identityKeys = new Set(sourceRows.map((r) => `${r.condition_id}::${r.selected_token_id}`));
-  const gspIndex = await readGspMarketTypeIndex(db, identityKeys);
-  console.error(JSON.stringify({ STAGE: "GSP_READ_COMPLETE", IDENTITIES: gspIndex.size }));
   const snapshotTypes = await readSnapshotMarketTypes(db, identityKeys);
   console.error(JSON.stringify({ STAGE: "SNAPSHOT_READ_COMPLETE", OBSERVATIONS: snapshotTypes.length }));
-  const evidenceTypes = await readEvidencePageMarketTypes(db, identityKeys);
+  const emptyGspIndex = new Map<string, GspMarketTypeEntry[]>();
+  const snapshotResolver = buildMarketTypeResolverIndex(sourceRows, snapshotTypes, [], emptyGspIndex);
+  const gspCandidateKeys = new Set<string>();
+  for (const row of sourceRows) {
+    if (resolveMarketType(row, emptyGspIndex, snapshotResolver).basis === "MARKET_TYPE_UNRESOLVED") {
+      gspCandidateKeys.add(`${row.condition_id}::${row.selected_token_id}`);
+    }
+  }
+  console.error(JSON.stringify({ STAGE: "GSP_READ_START", CANDIDATE_IDENTITIES: gspCandidateKeys.size }));
+  const gspIndex = await readGspMarketTypeIndex(db, gspCandidateKeys);
+  console.error(JSON.stringify({ STAGE: "GSP_READ_COMPLETE", IDENTITIES: gspIndex.size }));
+  const gspResolver = buildMarketTypeResolverIndex(sourceRows, snapshotTypes, [], gspIndex);
+  const evidenceCandidateKeys = new Set<string>();
+  for (const row of sourceRows) {
+    if (resolveMarketType(row, gspIndex, gspResolver).basis === "MARKET_TYPE_UNRESOLVED") {
+      evidenceCandidateKeys.add(`${row.condition_id}::${row.selected_token_id}`);
+    }
+  }
+  console.error(JSON.stringify({ STAGE: "EVIDENCE_PAGE_READ_START", CANDIDATE_IDENTITIES: evidenceCandidateKeys.size }));
+  const evidenceTypes = await readEvidencePageMarketTypes(db, evidenceCandidateKeys);
   console.error(JSON.stringify({ STAGE: "EVIDENCE_PAGE_READ_COMPLETE", OBSERVATIONS: evidenceTypes.length }));
   const resolverIndex = buildMarketTypeResolverIndex(sourceRows, snapshotTypes, evidenceTypes, gspIndex);
   const overlay = buildOverlay(sourceRows, gspIndex, resolverIndex);
