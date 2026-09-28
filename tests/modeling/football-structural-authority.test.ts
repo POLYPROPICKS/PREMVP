@@ -86,10 +86,42 @@ test("market structure classifies the six requested buckets exactly", () => {
   assert.deepEqual(MARKET_BUCKET_IDS, ["moneyline", "totals", "spreads", "total_corners", "other_structured", "soccer_exact_score"]);
 });
 
-test("soccer_exact_score is kept outside ordinary HOLD, everything else stays inside", () => {
+test("soccer_exact_score is kept outside ordinary HOLD, proven non-Exact-Score markets stay inside", () => {
   assert.equal(isOrdinaryHold("soccer_exact_score"), false);
   assert.equal(isOrdinaryHold("moneyline"), true);
-  assert.equal(isOrdinaryHold(null), true);
+  assert.equal(isOrdinaryHold("totals"), true);
+  assert.equal(isOrdinaryHold("spreads"), true);
+  assert.equal(isOrdinaryHold("total_corners"), true);
+  assert.equal(isOrdinaryHold("soccer_first_to_score"), true); // other_structured: PROVEN not exact-score
+});
+
+// ── FAIL_CLOSED: unresolved market type must never enter ordinary HOLD ─────
+test("unresolved market type (marketTypeRaw === null) is fail-closed EXCLUDED from ordinary HOLD, not admitted by default", () => {
+  assert.equal(marketBucketOf(null), "UNRESOLVED");
+  assert.equal(isOrdinaryHold(null), false);
+});
+
+test("exact-score exclusion requires PROOF (marketBucketOf === soccer_exact_score), never assumed from absence of a market type", () => {
+  // An unresolved row is excluded from ordinary HOLD, but for a DIFFERENT reason
+  // than Exact-Score: marketBucketOf(null) is "UNRESOLVED", not "soccer_exact_score".
+  assert.notEqual(marketBucketOf(null), "soccer_exact_score");
+  assert.equal(isOrdinaryHold(null), false);
+  // A row proven to be an ordinary structured market is never excluded.
+  assert.equal(marketBucketOf("moneyline") === "soccer_exact_score", false);
+  assert.equal(isOrdinaryHold("moneyline"), true);
+});
+
+test("grid level: an unresolved-market-type candidate is excluded from every odds-bucket cell but still visible in UNRESOLVED_MARKET_TYPE", () => {
+  const r = sourceRow({ canonical_row: { eventStart: "2026-08-05T18:00:00.000Z" } }); // no marketTypeRaw
+  const overlay = overlayFor(r, "soccer", null);
+  const { candidates, settlementByCandidateIdentity } = buildStructuralCandidates([r], [overlay]);
+  const grid = buildOddsGrid(candidates, settlementByCandidateIdentity);
+  const totalSelected = ODDS_BUCKETS.reduce((sum, b) => sum + grid.AUG[b.id].N_SELECTED, 0);
+  assert.equal(totalSelected, 0);
+
+  const marketGrid = buildMarketStructureGrid(candidates, settlementByCandidateIdentity);
+  assert.equal(marketGrid.AUG.UNRESOLVED_MARKET_TYPE.N_SELECTED, 1);
+  assert.equal(marketGrid.AUG.soccer_exact_score.N_SELECTED, 0);
 });
 
 // ── period boundary correctness ─────────────────────────────────────────────

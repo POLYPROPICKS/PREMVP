@@ -199,9 +199,20 @@ export function marketBucketOf(marketTypeRaw: string | null): MarketBucketId {
   return "other_structured";
 }
 
-/** Exact Score is kept outside ordinary HOLD (odds/timing grids, daily supply). */
+/**
+ * Fail-closed admission into ordinary HOLD (odds/timing grids, daily supply):
+ * a row is admitted only when its market type is PROVEN not-Exact-Score —
+ * i.e. `marketBucketOf` resolved it to one of the concrete non-Exact-Score
+ * buckets. `UNRESOLVED` (marketTypeRaw could not be resolved via the
+ * canonical/GSP-diagnostics lineage — see resolveMarketType in
+ * build-football-denominator-reconciliation.ts) is NEITHER provably
+ * Exact-Score NOR provably an ordinary market, so it must never be admitted
+ * into ordinary HOLD economics. It is reported only as its own
+ * COVERAGE_LIMITED diagnostic bucket in the market-structure grid.
+ */
 export function isOrdinaryHold(marketTypeRaw: string | null): boolean {
-  return marketBucketOf(marketTypeRaw) !== "soccer_exact_score";
+  const bucket = marketBucketOf(marketTypeRaw);
+  return bucket !== "soccer_exact_score" && bucket !== "UNRESOLVED";
 }
 
 // ── Stats helpers (not economics — plain descriptive statistics) ──────────
@@ -444,6 +455,7 @@ export async function buildArtifact(db: any): Promise<StructuralAuthorityArtifac
       STAKE: "flat 1u (lib/modeling/research-engine/settlement.ts settleBetU)",
       ODDS: "DISPLAY_ODDS = 1 / entry_price (BETTING_ECONOMICS_CONTRACT_V2.md #DISPLAY_ODDS)",
       EXACT_SCORE: "soccer_exact_score kept OUTSIDE ordinary HOLD (odds/timing grids, daily supply); reported only as its own market-structure/daily-supply diagnostic bucket",
+      UNRESOLVED_MARKET_TYPE: "FAIL_CLOSED: a row whose market type cannot be resolved via the canonical_row.marketTypeRaw / generated_signal_pairs.diagnostics fallback lineage is PROVEN neither Exact-Score nor an ordinary market, so it is excluded from every ordinary-HOLD odds/timing/daily-supply cell (isOrdinaryHold requires bucket !== 'soccer_exact_score' AND bucket !== 'UNRESOLVED'). It is reported only in MARKET_STRUCTURE_GRID.<period>.UNRESOLVED_MARKET_TYPE, which is COVERAGE_LIMITED, not a seventh admitted market bucket.",
       PNL_LABEL: "REFERENCE_PNL / NOT_EXECUTION_AUTHORITY (BETTING_ECONOMICS_CONTRACT_V2.md #2)",
     },
     DENOMINATOR: {
@@ -509,7 +521,7 @@ function buildMarkdown(a: StructuralAuthorityArtifact): string {
     ([k, m]) => `| ${k} | ${m.N_SELECTED} | ${m.N_SETTLED} | ${m.REFERENCE_PNL_U} | ${m.REFERENCE_ROI_SETTLED_PCT} |`,
   );
   sections.push([icHeader, ...icRows].join("\n"));
-  sections.push(`\n## Scope and non-claims\n\n- \`${a.REFERENCE_PNL_LABEL}\`\n- All odds are \`DISPLAY_ODDS\` (BETTING_ECONOMICS_CONTRACT_V2.md), never AVAILABLE/FILL/NET odds.\n- \`soccer_exact_score\` is excluded from every odds/timing grid cell and from ORDINARY_HOLD daily supply.\n- No production write, no model ranking/promotion performed here.\n`);
+  sections.push(`\n## Scope and non-claims\n\n- \`${a.REFERENCE_PNL_LABEL}\`\n- All odds are \`DISPLAY_ODDS\` (BETTING_ECONOMICS_CONTRACT_V2.md), never AVAILABLE/FILL/NET odds.\n- \`soccer_exact_score\` is excluded from every odds/timing grid cell and from ORDINARY_HOLD daily supply.\n- **FAIL_CLOSED / COVERAGE_LIMITED**: rows whose market type cannot be resolved via the canonical_row.marketTypeRaw / generated_signal_pairs.diagnostics fallback lineage are PROVEN neither Exact-Score nor an ordinary market, and are excluded from every ordinary-HOLD odds/timing/daily-supply cell. They are reported only in the market-structure grid's \`UNRESOLVED_MARKET_TYPE\` diagnostic bucket, never silently folded into ordinary HOLD. For SEP_1_12 in particular, \`canonical_row.marketTypeRaw\` was not populated at the source and \`generated_signal_pairs.diagnostics\` carries no \`marketType\` field for that window, so market-structure attribution (moneyline/totals/spreads/etc breakdown) is COVERAGE_LIMITED for SEP_1_12 — the odds/timing grids themselves remain valid over the admitted (proven non-Exact-Score) rows.\n- No production write, no model ranking/promotion performed here.\n`);
   return sections.join("\n");
 }
 
