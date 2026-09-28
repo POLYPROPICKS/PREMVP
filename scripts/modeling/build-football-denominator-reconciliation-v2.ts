@@ -84,6 +84,7 @@ async function readAllSourceRows(db: any): Promise<SourceRow[]> {
       rows.push(...((data ?? []) as SourceRow[]));
       if ((data?.length ?? 0) < PAGE) break;
     }
+    console.error(JSON.stringify({ STAGE: "SOURCE_READ", MODEL_DATE: d, ROWS_SO_FAR: rows.length }));
   }
   return rows;
 }
@@ -123,6 +124,7 @@ async function readGspMarketTypeIndex(db: any, keys: Set<string>): Promise<Map<s
       }
       if ((data?.length ?? 0) < PAGE) break;
     }
+    console.error(JSON.stringify({ STAGE: "GSP_READ", CONDITION_CHUNK_END: chunk.at(-1), KEYS_SO_FAR: index.size }));
   }
   return index;
 }
@@ -159,6 +161,7 @@ async function readSnapshotMarketTypes(db: any, keys: Set<string>): Promise<Snap
       }
       if ((data?.length ?? 0) < PAGE) break;
     }
+    console.error(JSON.stringify({ STAGE: "SNAPSHOT_READ", CONDITION_CHUNK_END: chunk.at(-1), OBSERVATIONS_SO_FAR: entries.length }));
   }
   return entries;
 }
@@ -192,6 +195,7 @@ async function readEvidencePageMarketTypes(db: any, keys: Set<string>): Promise<
       }
       if ((data?.length ?? 0) < PAGE) break;
     }
+    console.error(JSON.stringify({ STAGE: "EVIDENCE_PAGE_READ", CONDITION_CHUNK_END: chunk.at(-1), OBSERVATIONS_SO_FAR: entries.length }));
   }
   return entries;
 }
@@ -311,12 +315,17 @@ export async function runReconciliationV2(db: any): Promise<{
   periods: { AUG: PeriodBreakdown; SEP_1_12: PeriodBreakdown; SEP_13_24: PeriodBreakdown; COMBINED: PeriodBreakdown };
   duplicateIdentitiesTotal: number;
 }> {
+  console.error(JSON.stringify({ STAGE: "START", SOURCE_RANGE: `${RANGE_START}..${RANGE_END}` }));
   const sourceRows = await readAllSourceRows(db);
+  console.error(JSON.stringify({ STAGE: "SOURCE_READ_COMPLETE", ROWS: sourceRows.length }));
 
   const identityKeys = new Set(sourceRows.map((r) => `${r.condition_id}::${r.selected_token_id}`));
   const gspIndex = await readGspMarketTypeIndex(db, identityKeys);
+  console.error(JSON.stringify({ STAGE: "GSP_READ_COMPLETE", IDENTITIES: gspIndex.size }));
   const snapshotTypes = await readSnapshotMarketTypes(db, identityKeys);
+  console.error(JSON.stringify({ STAGE: "SNAPSHOT_READ_COMPLETE", OBSERVATIONS: snapshotTypes.length }));
   const evidenceTypes = await readEvidencePageMarketTypes(db, identityKeys);
+  console.error(JSON.stringify({ STAGE: "EVIDENCE_PAGE_READ_COMPLETE", OBSERVATIONS: evidenceTypes.length }));
   const resolverIndex = buildMarketTypeResolverIndex(sourceRows, snapshotTypes, evidenceTypes, gspIndex);
   const overlay = buildOverlay(sourceRows, gspIndex, resolverIndex);
   const duplicateIdentitiesTotal = countDuplicateIdentities(overlay);
