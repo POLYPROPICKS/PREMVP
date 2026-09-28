@@ -25,6 +25,7 @@ import {
   obj,
   buildProviderCodeSportMap,
   buildOverlayRecord,
+  buildMarketTypeResolverIndex,
   sortOverlay,
   countDuplicateIdentities,
   buildPeriodStats,
@@ -33,6 +34,10 @@ import {
   type SourceRow,
   type OverlayRecord,
   type GspMarketTypeEntry,
+  type SnapshotMarketTypeEntry,
+  type EvidenceMarketTypeEntry,
+  type MarketTypeResolverIndex,
+  type MarketTypeSource,
   type PeriodStats,
 } from "./build-football-denominator-reconciliation";
 
@@ -89,30 +94,106 @@ async function readGspMarketTypeIndex(db: any, keys: Set<string>): Promise<Map<s
   const conditionIds = [...new Set([...keys].map((k) => k.split("::")[0]))].sort();
   for (let i = 0; i < conditionIds.length; i += GSP_PAGE) {
     const chunk = conditionIds.slice(i, i + GSP_PAGE);
-    const { data, error } = await db
-      .from("generated_signal_pairs")
-      .select("id,condition_id,selected_token_id,created_at,diagnostics")
-      .in("condition_id", chunk);
-    if (error) throw new Error(`RECON_GSP_READ:${error.code ?? error.message}`);
-    for (const raw of data ?? []) {
-      const r = obj(raw);
-      const conditionId = String(r.condition_id ?? "");
-      const selectedTokenId = String(r.selected_token_id ?? "");
-      const key = `${conditionId}::${selectedTokenId}`;
-      if (!keys.has(key)) continue;
-      const d2 = obj(r.diagnostics);
-      const entry: GspMarketTypeEntry = {
-        id: String(r.id ?? ""),
-        condition_id: conditionId,
-        selected_token_id: selectedTokenId,
-        created_at: String(r.created_at ?? ""),
-        market_type: typeof d2.marketType === "string" ? d2.marketType : null,
-      };
-      if (!index.has(key)) index.set(key, []);
-      index.get(key)!.push(entry);
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db
+        .from("generated_signal_pairs")
+        .select("id,condition_id,selected_token_id,created_at,diagnostics")
+        .in("condition_id", chunk)
+        .order("condition_id")
+        .order("selected_token_id")
+        .order("created_at")
+        .order("id")
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`RECON_GSP_READ:${error.code ?? error.message}`);
+      for (const raw of data ?? []) {
+        const r = obj(raw);
+        const conditionId = String(r.condition_id ?? "");
+        const selectedTokenId = String(r.selected_token_id ?? "");
+        const key = `${conditionId}::${selectedTokenId}`;
+        const d2 = obj(r.diagnostics);
+        const entry: GspMarketTypeEntry = {
+          id: String(r.id ?? ""),
+          condition_id: conditionId,
+          selected_token_id: selectedTokenId,
+          created_at: String(r.created_at ?? ""),
+          market_type: typeof d2.marketType === "string" ? d2.marketType : null,
+        };
+        if (!index.has(key)) index.set(key, []);
+        index.get(key)!.push(entry);
+      }
+      if ((data?.length ?? 0) < PAGE) break;
     }
   }
   return index;
+}
+
+async function readSnapshotMarketTypes(db: any, keys: Set<string>): Promise<SnapshotMarketTypeEntry[]> {
+  const conditionIds = [...new Set([...keys].map((k) => k.split("::")[0]))].sort();
+  const entries: SnapshotMarketTypeEntry[] = [];
+  for (let i = 0; i < conditionIds.length; i += GSP_PAGE) {
+    const chunk = conditionIds.slice(i, i + GSP_PAGE);
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db
+        .from("generated_signal_research_snapshots")
+        .select("condition_id,selected_token_id,diagnostics")
+        .in("condition_id", chunk)
+        .order("condition_id")
+        .order("selected_token_id")
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`RECON_SNAPSHOT_READ:${error.code ?? error.message}`);
+      for (const raw of data ?? []) {
+        const r = obj(raw);
+        const diagnostics = obj(r.diagnostics);
+        const researchContext = obj(diagnostics.researchContext);
+        const fireModel = obj(diagnostics.fireModel);
+        const rawHints = obj(fireModel.rawFeatureHints);
+        const contextType = typeof researchContext.marketType === "string" ? researchContext.marketType : null;
+        const hintType = typeof rawHints.marketType === "string" ? rawHints.marketType : null;
+        if (contextType === null && hintType === null) continue;
+        entries.push({
+          condition_id: String(r.condition_id ?? ""),
+          selected_token_id: String(r.selected_token_id ?? ""),
+          research_context_market_type: contextType,
+          firemodel_hint_market_type: hintType,
+        });
+      }
+      if ((data?.length ?? 0) < PAGE) break;
+    }
+  }
+  return entries;
+}
+
+async function readEvidencePageMarketTypes(db: any, keys: Set<string>): Promise<EvidenceMarketTypeEntry[]> {
+  const conditionIds = [...new Set([...keys].map((k) => k.split("::")[0]))].sort();
+  const entries: EvidenceMarketTypeEntry[] = [];
+  for (let i = 0; i < conditionIds.length; i += GSP_PAGE) {
+    const chunk = conditionIds.slice(i, i + GSP_PAGE);
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await db
+        .from("research_evidence_page_rows")
+        .select("observation_id,condition_id,selected_token_id,observed_at,market_type")
+        .in("condition_id", chunk)
+        .order("observed_at")
+        .order("observation_id")
+        .range(from, from + PAGE - 1);
+      if (error) throw new Error(`RECON_EVIDENCE_READ:${error.code ?? error.message}`);
+      for (const raw of data ?? []) {
+        const r = obj(raw);
+        const conditionId = String(r.condition_id ?? "");
+        const selectedTokenId = String(r.selected_token_id ?? "");
+        if (!keys.has(`${conditionId}::${selectedTokenId}`)) continue;
+        entries.push({
+          id: String(r.observation_id ?? ""),
+          condition_id: conditionId,
+          selected_token_id: selectedTokenId,
+          created_at: String(r.observed_at ?? ""),
+          market_type: typeof r.market_type === "string" ? r.market_type : null,
+        });
+      }
+      if ((data?.length ?? 0) < PAGE) break;
+    }
+  }
+  return entries;
 }
 
 function canonicalJsonLine(r: OverlayRecord): string {
@@ -128,9 +209,13 @@ function canonicalJsonLine(r: OverlayRecord): string {
   return JSON.stringify(ordered);
 }
 
-export function buildOverlay(sourceRows: SourceRow[], gspIndex: Map<string, GspMarketTypeEntry[]>): OverlayRecord[] {
+export function buildOverlay(
+  sourceRows: SourceRow[],
+  gspIndex: Map<string, GspMarketTypeEntry[]>,
+  resolverIndex?: MarketTypeResolverIndex,
+): OverlayRecord[] {
   const codeMap = buildProviderCodeSportMap(sourceRows);
-  return sortOverlay(sourceRows.map((row) => buildOverlayRecord(row, codeMap, gspIndex)));
+  return sortOverlay(sourceRows.map((row) => buildOverlayRecord(row, codeMap, gspIndex, resolverIndex)));
 }
 
 export interface PeriodBreakdown {
@@ -141,7 +226,68 @@ export interface PeriodBreakdown {
   SPORT_UNRESOLVED_N: number;
   SPORT_CONFLICT_N: number;
   DUPLICATE_OVERLAY_IDENTITY_N: number;
+  marketTypeLineage: MarketTypeLineageBreakdown;
   stats: PeriodStats;
+}
+
+export interface MarketTypeLineageBreakdown {
+  IDENTITY: Record<string, number>;
+  PHYSICAL_EVENT: Record<string, number>;
+}
+
+const LINEAGE_SOURCES: MarketTypeSource[] = [
+  "MARKET_TYPE_CANONICAL",
+  "MARKET_TYPE_RESEARCH_CONTEXT_EXACT",
+  "MARKET_TYPE_FIREMODEL_HINT_EXACT",
+  "MARKET_TYPE_CONDITION_STATIC",
+  "MARKET_TYPE_EVIDENCE_PAGE_EXACT",
+  "MARKET_TYPE_GSP_DIAGNOSTICS",
+  "MARKET_TYPE_CONFLICT",
+  "MARKET_TYPE_UNRESOLVED",
+];
+const LINEAGE_REPORT_NAMES: Record<MarketTypeSource, string> = {
+  MARKET_TYPE_CANONICAL: "FROM_CANONICAL_ROW_N",
+  MARKET_TYPE_RESEARCH_CONTEXT_EXACT: "FROM_RESEARCH_CONTEXT_EXACT_N",
+  MARKET_TYPE_FIREMODEL_HINT_EXACT: "FROM_FIREMODEL_HINT_EXACT_N",
+  MARKET_TYPE_CONDITION_STATIC: "FROM_CONDITION_STATIC_RECOVERY_N",
+  MARKET_TYPE_EVIDENCE_PAGE_EXACT: "FROM_EVIDENCE_PAGE_N",
+  MARKET_TYPE_GSP_DIAGNOSTICS: "FROM_GSP_N",
+  MARKET_TYPE_CONFLICT: "CONFLICT_N",
+  MARKET_TYPE_UNRESOLVED: "UNRESOLVED_N",
+};
+
+function marketTypeLineageBreakdown(rows: OverlayRecord[]): MarketTypeLineageBreakdown {
+  const rank = new Map(LINEAGE_SOURCES.map((source, i) => [source, i]));
+  const summarize = (groups: Map<string, OverlayRecord[]>): Record<string, number> => {
+    const result: Record<string, number> = Object.fromEntries(Object.values(LINEAGE_REPORT_NAMES).map((name) => [name, 0]));
+    result.CANONICAL_SOCCER_N = groups.size;
+    result.RESOLVED_N = 0;
+    result.EXACT_SCORE_N = 0;
+    result.PROVEN_ORDINARY_N = 0;
+    for (const group of groups.values()) {
+      const selectedSource = group.map((r) => r.market_type_source).sort((a, b) => rank.get(a)! - rank.get(b)!)[0];
+      result[LINEAGE_REPORT_NAMES[selectedSource]]++;
+      if (selectedSource === "MARKET_TYPE_CONFLICT") result.CONFLICT_N++;
+      else if (selectedSource === "MARKET_TYPE_UNRESOLVED") result.UNRESOLVED_N++;
+      else result.RESOLVED_N++;
+      if (group.some((r) => r.reconciled_market_type === "soccer_exact_score")) result.EXACT_SCORE_N++;
+      if (group.some((r) => r.reconciled_market_type !== null && r.reconciled_market_type !== "soccer_exact_score")) result.PROVEN_ORDINARY_N++;
+    }
+    return result;
+  };
+  const identities = new Map<string, OverlayRecord[]>();
+  const events = new Map<string, OverlayRecord[]>();
+  for (const row of rows) {
+    if (row.reconciled_sport_family !== "soccer") continue;
+    const identityKey = `${row.condition_id}::${row.selected_token_id}`;
+    if (!identities.has(identityKey)) identities.set(identityKey, []);
+    identities.get(identityKey)!.push(row);
+    if (row.provider_event_id) {
+      if (!events.has(row.provider_event_id)) events.set(row.provider_event_id, []);
+      events.get(row.provider_event_id)!.push(row);
+    }
+  }
+  return { IDENTITY: summarize(identities), PHYSICAL_EVENT: summarize(events) };
 }
 
 function periodBreakdown(range: string, rows: OverlayRecord[]): PeriodBreakdown {
@@ -154,6 +300,7 @@ function periodBreakdown(range: string, rows: OverlayRecord[]): PeriodBreakdown 
     SPORT_UNRESOLVED_N: stats.sport_unresolved_physical_event_n,
     SPORT_CONFLICT_N: stats.sport_conflict_physical_event_n,
     DUPLICATE_OVERLAY_IDENTITY_N: countDuplicateIdentities(rows),
+    marketTypeLineage: marketTypeLineageBreakdown(rows),
     stats,
   };
 }
@@ -166,14 +313,12 @@ export async function runReconciliationV2(db: any): Promise<{
 }> {
   const sourceRows = await readAllSourceRows(db);
 
-  const needsGspFallback = new Set<string>();
-  for (const row of sourceRows) {
-    if (norm(obj(row.canonical_row).marketTypeRaw) === null) {
-      needsGspFallback.add(`${row.condition_id}::${row.selected_token_id}`);
-    }
-  }
-  const gspIndex = await readGspMarketTypeIndex(db, needsGspFallback);
-  const overlay = buildOverlay(sourceRows, gspIndex);
+  const identityKeys = new Set(sourceRows.map((r) => `${r.condition_id}::${r.selected_token_id}`));
+  const gspIndex = await readGspMarketTypeIndex(db, identityKeys);
+  const snapshotTypes = await readSnapshotMarketTypes(db, identityKeys);
+  const evidenceTypes = await readEvidencePageMarketTypes(db, identityKeys);
+  const resolverIndex = buildMarketTypeResolverIndex(sourceRows, snapshotTypes, evidenceTypes, gspIndex);
+  const overlay = buildOverlay(sourceRows, gspIndex, resolverIndex);
   const duplicateIdentitiesTotal = countDuplicateIdentities(overlay);
 
   const augRows = overlay.filter((r) => r.model_date >= RANGE_START && r.model_date <= AUG_END);
@@ -267,6 +412,15 @@ Read-only overlay over \`research_model_ready_rows\` (research clone \`${EXPECTE
 | COMBINED | ${periods.COMBINED.SOURCE_ROW_N} | ${periods.COMBINED.UNIQUE_SELECTION_N} | ${periods.COMBINED.UNIQUE_PHYSICAL_EVENT_N} | ${periods.COMBINED.stats.canonical_soccer_physical_event_n} | ${periods.COMBINED.SPORT_UNRESOLVED_N} | ${periods.COMBINED.SPORT_CONFLICT_N} | ${periods.COMBINED.DUPLICATE_OVERLAY_IDENTITY_N} |
 
 (COMBINED is deduplicated over the whole ${RANGE_START}..${RANGE_END} range, not a sum of the three periods; a physical event present in more than one period is counted once in COMBINED. Physical events present in both AUG and SEP_1_12: ${crossAugSep1}. Physical events present in both SEP_1_12 and SEP_13_24: ${crossSep1Sep2}.)
+
+## Canonical market-type lineage
+
+Counts are shown first by unique \`condition_id + selected_token_id\` identity, then by unique \`provider_event_id\` physical event, for canonical soccer only. A condition with conflicting normalized structured observations fails closed.
+
+\`MARKET_TYPE_LINEAGE_BY_PERIOD\`:
+\`\`\`json
+${JSON.stringify(Object.fromEntries(Object.entries(periods).map(([period, breakdown]) => [period, breakdown.marketTypeLineage])), null, 2)}
+\`\`\`
 
 ## Scope and non-claims
 

@@ -5,6 +5,7 @@ import {
   buildProviderCodeSportMap,
   countDuplicateIdentities,
   explicitSportFamily,
+  MarketTypeResolverIndex,
   reconcileSport,
   resolveMarketType,
   sortOverlay,
@@ -86,10 +87,74 @@ describe("structured market-type recovery", () => {
 });
 
 describe("market type reconciliation", () => {
+  const emptyResolver = (): MarketTypeResolverIndex => ({
+    researchContextExact: new Map(),
+    fireModelHintExact: new Map(),
+    conditionStatic: new Map(),
+    evidencePageExact: new Map(),
+    gspExact: new Map(),
+    conflictingConditions: new Set(),
+  });
+
   it("prefers canonical_row.marketTypeRaw and normalizes it", () => {
     const r = row({ canonical_row: { marketTypeRaw: " Moneyline " } });
-    const result = resolveMarketType(r, new Map());
+    const resolver = emptyResolver();
+    resolver.researchContextExact.set("COND_1::TOK_1", ["totals"]);
+    const result = resolveMarketType(r, new Map(), resolver);
     expect(result).toEqual({ source: "moneyline", reconciled: "moneyline", basis: "MARKET_TYPE_CANONICAL" });
+  });
+
+  it("recovers researchContext.marketType by exact condition and selected token", () => {
+    const r = row({ condition_id: "C9", selected_token_id: "T9", canonical_row: {} });
+    const resolver = emptyResolver();
+    resolver.researchContextExact.set("C9::T9", [" Totals "]);
+    resolver.researchContextExact.set("C9::OTHER", ["spreads"]);
+    expect(resolveMarketType(r, new Map(), resolver)).toEqual({
+      source: "totals", reconciled: "totals", basis: "MARKET_TYPE_RESEARCH_CONTEXT_EXACT",
+    });
+  });
+
+  it("uses fireModel.rawFeatureHints.marketType when the exact research context is absent", () => {
+    const r = row({ condition_id: "C9", selected_token_id: "T9", canonical_row: {} });
+    const resolver = emptyResolver();
+    resolver.fireModelHintExact.set("C9::T9", ["spreads"]);
+    expect(resolveMarketType(r, new Map(), resolver)).toEqual({
+      source: "spreads", reconciled: "spreads", basis: "MARKET_TYPE_FIREMODEL_HINT_EXACT",
+    });
+  });
+
+  it("recovers a condition's unique static market type", () => {
+    const r = row({ condition_id: "C9", selected_token_id: "T9", canonical_row: {} });
+    const resolver = emptyResolver();
+    resolver.conditionStatic.set("C9", ["total_corners", " Total_Corners "]);
+    expect(resolveMarketType(r, new Map(), resolver)).toEqual({
+      source: "total_corners", reconciled: "total_corners", basis: "MARKET_TYPE_CONDITION_STATIC",
+    });
+  });
+
+  it("fails closed when condition-level structured market types conflict", () => {
+    const r = row({ condition_id: "C9", selected_token_id: "T9", canonical_row: { marketTypeRaw: "moneyline" } });
+    const resolver = emptyResolver();
+    resolver.conflictingConditions.add("C9");
+    expect(resolveMarketType(r, new Map(), resolver)).toEqual({
+      source: null, reconciled: null, basis: "MARKET_TYPE_CONFLICT",
+    });
+    resolver.conflictingConditions.clear();
+    resolver.conditionStatic.set("C9", ["moneyline", "totals"]);
+    expect(resolveMarketType(r, new Map(), resolver).basis).toBe("MARKET_TYPE_CONFLICT");
+  });
+
+  it("uses the latest at-or-before exact evidence-page observation", () => {
+    const r = row({ condition_id: "C9", selected_token_id: "T9", decision_at: "2026-08-05T10:00:00.000Z", canonical_row: {} });
+    const resolver = emptyResolver();
+    resolver.evidencePageExact.set("C9::T9", [
+      { id: "1", condition_id: "C9", selected_token_id: "T9", created_at: "2026-08-05T08:00:00.000Z", market_type: "totals" },
+      { id: "2", condition_id: "C9", selected_token_id: "T9", created_at: "2026-08-05T09:30:00.000Z", market_type: "moneyline" },
+      { id: "3", condition_id: "C9", selected_token_id: "T9", created_at: "2026-08-05T12:00:00.000Z", market_type: "spreads" },
+    ]);
+    expect(resolveMarketType(r, new Map(), resolver)).toEqual({
+      source: "moneyline", reconciled: "moneyline", basis: "MARKET_TYPE_EVIDENCE_PAGE_EXACT",
+    });
   });
 
   it("falls back to the latest eligible exact generated_signal_pairs match", () => {
@@ -102,6 +167,15 @@ describe("market type reconciliation", () => {
     const index = new Map([["C9::T9", entries]]);
     const result = resolveMarketType(r, index);
     expect(result).toEqual({ source: "moneyline", reconciled: "moneyline", basis: "MARKET_TYPE_GSP_DIAGNOSTICS" });
+  });
+
+  it("keeps unresolved values closed and never classifies from titles or slugs", () => {
+    const unresolved = row({
+      canonical_row: { eventTitle: "Exact Score: 2-1", marketQuestion: "Home Team to Win?" },
+    });
+    expect(resolveMarketType(unresolved, new Map(), emptyResolver())).toEqual({
+      source: null, reconciled: null, basis: "MARKET_TYPE_UNRESOLVED",
+    });
   });
 });
 

@@ -64,8 +64,22 @@ export type SportBasis =
 
 export type MarketTypeSource =
   | "MARKET_TYPE_CANONICAL"
+  | "MARKET_TYPE_RESEARCH_CONTEXT_EXACT"
+  | "MARKET_TYPE_FIREMODEL_HINT_EXACT"
+  | "MARKET_TYPE_CONDITION_STATIC"
+  | "MARKET_TYPE_EVIDENCE_PAGE_EXACT"
   | "MARKET_TYPE_GSP_DIAGNOSTICS"
+  | "MARKET_TYPE_CONFLICT"
   | "MARKET_TYPE_UNRESOLVED";
+
+export interface MarketTypeResolverIndex {
+  researchContextExact: Map<string, string[]>;
+  fireModelHintExact: Map<string, string[]>;
+  conditionStatic: Map<string, string[]>;
+  evidencePageExact: Map<string, GspMarketTypeEntry[]>;
+  gspExact: Map<string, GspMarketTypeEntry[]>;
+  conflictingConditions: Set<string>;
+}
 
 export interface OverlayRecord {
   model_date: string;
@@ -171,17 +185,132 @@ export interface GspMarketTypeEntry {
   market_type: string | null;
 }
 
-/** Market-type reconciliation: canonical_row.marketTypeRaw first, exact GSP fallback second. */
+export interface SnapshotMarketTypeEntry {
+  condition_id: string;
+  selected_token_id: string;
+  research_context_market_type: string | null;
+  firemodel_hint_market_type: string | null;
+}
+
+export interface EvidenceMarketTypeEntry extends GspMarketTypeEntry {}
+
+export function buildMarketTypeResolverIndex(
+  sourceRows: SourceRow[],
+  snapshots: SnapshotMarketTypeEntry[],
+  evidenceRows: EvidenceMarketTypeEntry[],
+  gspIndex: Map<string, GspMarketTypeEntry[]>,
+): MarketTypeResolverIndex {
+  const index: MarketTypeResolverIndex = {
+    researchContextExact: new Map(),
+    fireModelHintExact: new Map(),
+    conditionStatic: new Map(),
+    evidencePageExact: new Map(),
+    gspExact: gspIndex,
+    conflictingConditions: new Set(),
+  };
+  const allByCondition = new Map<string, Set<string>>();
+  const staticByCondition = new Map<string, Set<string>>();
+  const add = (map: Map<string, string[]>, key: string, value: unknown) => {
+    const normalized = norm(value);
+    if (!normalized) return;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(normalized);
+  };
+  const addCondition = (conditionId: string, value: unknown, includeInStatic: boolean) => {
+    const normalized = norm(value);
+    if (!normalized) return;
+    if (!allByCondition.has(conditionId)) allByCondition.set(conditionId, new Set());
+    allByCondition.get(conditionId)!.add(normalized);
+    if (includeInStatic) {
+      if (!staticByCondition.has(conditionId)) staticByCondition.set(conditionId, new Set());
+      staticByCondition.get(conditionId)!.add(normalized);
+    }
+  };
+
+  for (const row of sourceRows) {
+    const type = obj(row.canonical_row).marketTypeRaw;
+    addCondition(row.condition_id, type, true);
+  }
+  for (const snapshot of snapshots) {
+    const key = `${snapshot.condition_id}::${snapshot.selected_token_id}`;
+    add(index.researchContextExact, key, snapshot.research_context_market_type);
+    add(index.fireModelHintExact, key, snapshot.firemodel_hint_market_type);
+    addCondition(snapshot.condition_id, snapshot.research_context_market_type, true);
+    addCondition(snapshot.condition_id, snapshot.firemodel_hint_market_type, true);
+  }
+  for (const [key, entries] of gspIndex) {
+    const conditionId = entries[0]?.condition_id;
+    for (const entry of entries) addCondition(conditionId ?? key.split("::")[0], entry.market_type, true);
+  }
+  for (const entry of evidenceRows) {
+    const key = `${entry.condition_id}::${entry.selected_token_id}`;
+    if (!index.evidencePageExact.has(key)) index.evidencePageExact.set(key, []);
+    index.evidencePageExact.get(key)!.push(entry);
+    addCondition(entry.condition_id, entry.market_type, false);
+  }
+  for (const [conditionId, values] of allByCondition) {
+    if (values.size > 1) index.conflictingConditions.add(conditionId);
+  }
+  for (const [conditionId, values] of staticByCondition) {
+    index.conditionStatic.set(conditionId, [...values]);
+  }
+  return index;
+}
+
+function uniqueMarketType(values: string[] | undefined): string | null | "CONFLICT" {
+  const distinct = [...new Set((values ?? []).map(norm).filter((v): v is string => v !== null))];
+  if (distinct.length > 1) return "CONFLICT";
+  return distinct[0] ?? null;
+}
+
+/** Market type is static condition metadata. Any observed condition conflict fails closed. */
 export function resolveMarketType(
   row: SourceRow,
   gspIndex: Map<string, GspMarketTypeEntry[]>,
+  resolverIndex?: MarketTypeResolverIndex,
 ): { source: string | null; reconciled: string | null; basis: MarketTypeSource } {
+  const conditionStatic = uniqueMarketType(resolverIndex?.conditionStatic.get(row.condition_id));
+  if (resolverIndex?.conflictingConditions.has(row.condition_id) || conditionStatic === "CONFLICT") {
+    return { source: null, reconciled: null, basis: "MARKET_TYPE_CONFLICT" };
+  }
   const canonical = norm(obj(row.canonical_row).marketTypeRaw);
   if (canonical !== null) {
     return { source: canonical, reconciled: canonical, basis: "MARKET_TYPE_CANONICAL" };
   }
   const key = `${row.condition_id}::${row.selected_token_id}`;
-  const entries = gspIndex.get(key) ?? [];
+
+  const context = uniqueMarketType(resolverIndex?.researchContextExact.get(key));
+  if (context === "CONFLICT") return { source: null, reconciled: null, basis: "MARKET_TYPE_CONFLICT" };
+  if (context !== null) {
+    return { source: context, reconciled: context, basis: "MARKET_TYPE_RESEARCH_CONTEXT_EXACT" };
+  }
+  const hint = uniqueMarketType(resolverIndex?.fireModelHintExact.get(key));
+  if (hint === "CONFLICT") return { source: null, reconciled: null, basis: "MARKET_TYPE_CONFLICT" };
+  if (hint !== null) {
+    return { source: hint, reconciled: hint, basis: "MARKET_TYPE_FIREMODEL_HINT_EXACT" };
+  }
+  if (conditionStatic !== null) {
+    return { source: conditionStatic, reconciled: conditionStatic, basis: "MARKET_TYPE_CONDITION_STATIC" };
+  }
+
+  const evidence = resolverIndex?.evidencePageExact.get(key) ?? [];
+  let bestEvidence: GspMarketTypeEntry | null = null;
+  for (const e of evidence) {
+    if (e.created_at > row.decision_at) continue;
+    if (!bestEvidence || e.created_at > bestEvidence.created_at || (e.created_at === bestEvidence.created_at && e.id > bestEvidence.id)) bestEvidence = e;
+  }
+  const evidenceTypes = evidence.map((e) => norm(e.market_type)).filter((v): v is string => v !== null);
+  if (!bestEvidence && uniqueMarketType(evidenceTypes) !== "CONFLICT") {
+    for (const e of evidence) {
+      if (!bestEvidence || e.created_at > bestEvidence.created_at || (e.created_at === bestEvidence.created_at && e.id > bestEvidence.id)) bestEvidence = e;
+    }
+  }
+  const evidenceType = norm(bestEvidence?.market_type);
+  if (evidenceType !== null) {
+    return { source: evidenceType, reconciled: evidenceType, basis: "MARKET_TYPE_EVIDENCE_PAGE_EXACT" };
+  }
+
+  const entries = resolverIndex?.gspExact.get(key) ?? gspIndex.get(key) ?? [];
   let best: GspMarketTypeEntry | null = null;
   for (const e of entries) {
     if (e.created_at > row.decision_at) continue;
@@ -198,9 +327,10 @@ export function buildOverlayRecord(
   row: SourceRow,
   codeMap: Map<string, Set<string>>,
   gspIndex: Map<string, GspMarketTypeEntry[]>,
+  resolverIndex?: MarketTypeResolverIndex,
 ): OverlayRecord {
   const sport = reconcileSport(row, codeMap);
-  const market = resolveMarketType(row, gspIndex);
+  const market = resolveMarketType(row, gspIndex, resolverIndex);
   const canonicalRow = row.canonical_row;
   return {
     model_date: row.model_date,
