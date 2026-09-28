@@ -406,6 +406,84 @@ export async function fetchPriceHistorySafe(
   return await safeFetch<PolymarketPricePoint[]>(url);
 }
 
+// FORWARD_PRICE_MOMENTUM_EVIDENCE_REPAIR_V1 — the canonical CLOB `/prices-history`
+// response is `{ history: [{ t: <unix seconds>, p: <probability> }] }`, not a bare
+// array of `{ timestamp, price }`. `fetchPriceHistorySafe` above mistypes the
+// response and is left exactly as-is (live/public path — behavior frozen). This
+// raw shape is intentionally local/internal: only the normalized
+// `PolymarketPricePoint[]` form below ever leaves this module.
+interface RawClobPriceHistoryPoint {
+  t?: unknown;
+  p?: unknown;
+}
+interface RawClobPriceHistoryResponse {
+  history?: unknown;
+}
+
+/**
+ * Normalizes a CLOB `/prices-history` response into the internal
+ * `{ timestamp: ISO string, price: number }` point shape. Accepts the
+ * canonical `{ history: [{ t, p }] }` object, and — for defensive
+ * compatibility only — a bare array of already-normalized
+ * `{ timestamp, price }` points. Malformed points are dropped, never
+ * zero-filled. Result is sorted ascending by timestamp.
+ */
+function normalizeResearchPriceHistory(
+  raw: RawClobPriceHistoryResponse | PolymarketPricePoint[] | null,
+): PolymarketPricePoint[] | null {
+  if (!raw) return null;
+  const rawPoints: unknown[] = Array.isArray(raw)
+    ? raw
+    : Array.isArray((raw as RawClobPriceHistoryResponse).history)
+      ? ((raw as RawClobPriceHistoryResponse).history as unknown[])
+      : [];
+
+  const points: PolymarketPricePoint[] = [];
+  for (const item of rawPoints) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as RawClobPriceHistoryPoint & { timestamp?: unknown; price?: unknown };
+
+    // Canonical CLOB shape: { t: unix seconds, p: probability }.
+    if (typeof rec.t === "number" && Number.isFinite(rec.t) && typeof rec.p === "number" && Number.isFinite(rec.p)) {
+      points.push({ timestamp: new Date(rec.t * 1000).toISOString(), price: rec.p });
+      continue;
+    }
+    // Defensive compatibility: previously-normalized internal shape.
+    if (typeof rec.timestamp === "string" && typeof rec.price === "number" && Number.isFinite(rec.price)) {
+      const asMs = new Date(rec.timestamp).getTime();
+      if (Number.isFinite(asMs)) points.push({ timestamp: rec.timestamp, price: rec.price });
+    }
+    // Anything else is truthfully malformed — dropped, never fabricated as zero.
+  }
+
+  points.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  return points.length > 0 ? points : null;
+}
+
+/**
+ * RESEARCH-ONLY normalized price history fetch. Uses the same CLOB
+ * `/prices-history` endpoint as `fetchPriceHistorySafe` but parses the
+ * actual provider response shape and requests a bounded 1-day/60-minute
+ * lookback so a true 6h-ago reference point can genuinely be resolved.
+ * Never used by the live/public enrichment path.
+ */
+export async function fetchResearchPriceHistorySafe(
+  tokenId: string,
+): Promise<PolymarketPricePoint[] | null> {
+  if (!tokenId) return null;
+
+  const params = new URLSearchParams({
+    interval: "1d",
+    market: tokenId,
+    fidelity: "60",
+  });
+
+  const url = `${CLOB_API_BASE}/prices-history?${params.toString()}`;
+
+  const raw = await safeFetch<RawClobPriceHistoryResponse | PolymarketPricePoint[]>(url);
+  return normalizeResearchPriceHistory(raw);
+}
+
 /**
  * Fetch current spread for a token from CLOB API
  */
