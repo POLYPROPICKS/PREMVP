@@ -176,6 +176,7 @@ function row(observedAt: string, envId: string, itemId: string, extra: Partial<N
     volume_semantic: "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr",
     selected_outcome: "Yes",
     data_coverage: 0.9,
+    league: null,
     ...extra,
   };
 }
@@ -315,6 +316,7 @@ test("clone schema authority is clone-only, additive, and keeps identity/index s
   for (const col of ["selected_outcome text", "data_coverage numeric", "volume_semantic text"]) {
     assert.ok(CLONE_SCHEMA.includes(`add column if not exists ${col}`), col);
   }
+  assert.match(CLONE_SCHEMA, /add column if not exists league text/);
   assert.match(CLONE_SCHEMA, /primary key \(observation_id, item_observation_id\)/);
   assert.match(CLONE_SCHEMA, /\(observed_at, observation_id, item_observation_id\)/);
   assert.match(CLONE_SCHEMA, /'PRODUCTION_RESEARCH_EVIDENCE_PAGE'/);
@@ -343,8 +345,8 @@ test("production primary_evidence_outbox is no longer a generic raw SYNC_SPECS t
   const specs = SCRIPT.slice(SCRIPT.indexOf("const SPECS"), SCRIPT.indexOf("const EMPTY_TABLE_EVIDENCE"));
   assert.equal(specs.includes('table: "primary_evidence_outbox"'), false);
   assert.equal(/\|\s*"primary_evidence_outbox"/.test(SCRIPT), false, "TableName no longer includes primary_evidence_outbox");
-  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v4", args\)/);
-  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?",/.test(SCRIPT), false, "runtime never calls v1/v2/v3");
+  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v5", args\)/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v4|_v3|_v2)?",/.test(SCRIPT), false, "runtime only calls v5");
   assert.match(SCRIPT, /syncResearchEvidencePage\(target, source, bootstrapSince\)/);
   assert.match(SCRIPT, /onConflict: CLONE_EVIDENCE_CONFLICT_KEY/);
   assert.match(SCRIPT, /source_kind: CLONE_EVIDENCE_SOURCE_KIND/);
@@ -410,6 +412,8 @@ const SQL_V3 = readFileSync(repoRoot + "supabase/migrations/20260919100000_resea
 const EXEC_V3 = SQL_V3.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
 const SQL_V4 = readFileSync(repoRoot + "supabase/migrations/20260923090003_research_evidence_page_v4.sql", "utf8");
 const EXEC_V4 = SQL_V4.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
+const SQL_V5 = readFileSync(repoRoot + "supabase/migrations/20260925092016_step3_research_evidence_page_v5.sql", "utf8");
+const EXEC_V5 = SQL_V5.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
 
 test("v3 migration: new function, item cursor, 500-row bound, v1/v2 untouched, no new index", () => {
   assert.match(SQL_V3, /CREATE OR REPLACE FUNCTION public\.research_evidence_page_v3\(/);
@@ -479,6 +483,38 @@ test("v4 retains v3 cursor/bounds and projects only verbatim tennis identity tex
   assert.equal(/(?:DROP|ALTER|CREATE(?: OR REPLACE)?)\s+FUNCTION(?: IF EXISTS)?\s+public\.research_evidence_page(?:_v3|_v2)?\(/.test(EXEC_V4), false);
 });
 
+test("v5 adds only verbatim provider league to the bounded v4 projection contract", () => {
+  assert.match(SQL_V5, /CREATE OR REPLACE FUNCTION public\.research_evidence_page_v5\(/);
+  assert.match(SQL_V5, /p_after_item_observation_id uuid/);
+  assert.match(SQL_V5, /LIMIT 20/);
+  assert.match(SQL_V5, /LIMIT LEAST\(GREATEST\(COALESCE\(p_max_rows, 500\), 1\), 500\)/);
+  assert.match(SQL_V5, /SET statement_timeout = '5s'/);
+  assert.match(EXEC_V5, /STABLE/);
+  assert.match(EXEC_V5, /SECURITY INVOKER/);
+  assert.match(SQL_V5, /requires an explicit p_until/);
+  assert.match(SQL_V5, /NULLIF\(f\.item->'diagnostics'->'providerEventContext'->>'league', ''\)/);
+  assert.match(SQL_V5, /GRANT EXECUTE ON FUNCTION public\.research_evidence_page_v5[\s\S]{0,200}TO service_role/);
+  assert.match(SQL_V5, /REVOKE ALL ON FUNCTION public\.research_evidence_page_v5[\s\S]{0,200}FROM PUBLIC, anon, authenticated/);
+  assert.equal(/\bOFFSET\b/i.test(EXEC_V5), false);
+  const returnsBlock = SQL_V5.slice(SQL_V5.indexOf("RETURNS TABLE ("), SQL_V5.indexOf("LANGUAGE plpgsql"));
+  assert.match(returnsBlock, /league text/);
+  assert.equal(returnsBlock.includes("evidence_rows"), false);
+  for (const col of ["observation_id uuid", "market_type text", "event_title text", "market_question text", "data_coverage numeric"]) {
+    assert.ok(returnsBlock.includes(col), col);
+  }
+});
+
+test("STEP3 overlay uses optional exact-decision league evidence without widening the join", () => {
+  const overlay = readFileSync(repoRoot + "modeling/sql_registry/datasets/step3_legacy_feature_overlay_v1.sql", "utf8");
+  assert.match(overlay, /COALESCE\(\s*NULLIF\(g\.diagnostics->'providerEventContext'->>'league', ''\),\s*e\.league\s*\) AS league/);
+  const evidenceJoin = overlay.slice(overlay.indexOf("LEFT JOIN LATERAL (\n  SELECT item_observation_id"), overlay.indexOf("LEFT JOIN LATERAL (\n  SELECT CASE"));
+  assert.match(evidenceJoin, /observed_at = r\.decision_at/);
+  assert.match(evidenceJoin, /condition_id = r\.condition_id/);
+  assert.match(evidenceJoin, /selected_token_id = r\.selected_token_id/);
+  assert.equal(/observed_at\s*>\s*r\.decision_at/.test(evidenceJoin), false);
+  assert.match(overlay, /LEFT JOIN LATERAL/);
+});
+
 test("persisted narrow identity reaches the reader and tennis gate without settlement", async () => {
   const sourceRow = row("2026-09-21T01:00:00.000Z", "env-title", "item-title", {
     provider_sport_family: "tennis",
@@ -538,7 +574,7 @@ function fakeSource(envs: SimEnv[], calls: Array<{ name: string; args: Record<st
     calls,
     async rpc(name: string, args: Record<string, unknown>) {
       calls.push({ name, args });
-      return { data: simV3(envs, args), error: null };
+      return { data: simV3(envs, args).map((r) => ({ ...r, league: "premier_league" })), error: null };
     },
   };
 }
@@ -614,8 +650,9 @@ test("multi-envelope boundary: a boundary that cuts an envelope leaves later env
   const r = await syncResearchEvidencePage(target, source, "2026-09-19T00:00:00.000Z");
   assert.equal(target.rows.size, SRC_TOTAL, "two-plus-page union equals the source item count");
   assert.equal(r.ROWS_WRITTEN, SRC_TOTAL);
+  assert.ok([...target.rows.values()].every((r) => r.league === "premier_league"), "v5 league value reaches the clone upsert");
   assert.equal(r.APPEND_PENDING, false);
-  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v4"));
+  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v5"));
   assert.ok(source.calls.every((c) => c.args.p_max_rows === 500 && typeof c.args.p_until === "string"));
   assert.equal(new Set(source.calls.map((c) => c.args.p_until)).size, 1, "one fixed p_until for the whole run");
   assert.deepEqual(r.CURSOR_AFTER, { observedAt: envC.at, observationId: envC.id, itemObservationId: envC.items[9] });
@@ -666,6 +703,7 @@ test("--repair-since overrides the forward cursor for repair ONLY, and never tou
   assert.equal(r.MODE, "REPAIR");
   assert.equal(source.calls[0].args.p_after_observed_at, new Date(Date.parse(T0) - 1).toISOString(), "starts at the repair boundary, not the forward cursor");
   assert.equal(target.rows.size, SRC_TOTAL, "repair restored every item although the forward cursor was already at the end");
+  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v5"));
   assert.ok(target.inserts.every((i) => i.source.endsWith(":repair-cursor:research_evidence_page_rows:v3")), "only the repair cursor is written");
   assert.equal(jobRuns.filter((j) => j.source === forward.source).length, 1, "normal checkpoint untouched (no reset, no move)");
   assert.equal(target.inserts.at(-1)!.diagnostics.complete, true);
@@ -676,12 +714,12 @@ test("--repair-since overrides the forward cursor for repair ONLY, and never tou
   assert.equal(again.APPEND_PENDING, false);
 });
 
-test("repair mode is finitely bounded and resumable; runtime uses v4 only", () => {
+test("repair mode is finitely bounded and resumable; runtime uses v5 only", () => {
   const src = readFileSync(repoRoot + "scripts/research-clone-daily-sync.ts", "utf8");
   assert.match(src, /MAX_REPAIR_EVIDENCE_PAGES = 500/);
   assert.ok(500 * RESEARCH_EVIDENCE_V3_MAX_ROWS >= 194090, "repair page budget covers the measured window");
-  assert.match(src, /source\.rpc\("research_evidence_page_v4", args\)/);
-  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?",/.test(src), false);
+  assert.match(src, /source\.rpc\("research_evidence_page_v5", args\)/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v4|_v3|_v2)?",/.test(src), false);
   assert.match(src, /checkpoint:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
   assert.match(src, /repair-cursor:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
 });

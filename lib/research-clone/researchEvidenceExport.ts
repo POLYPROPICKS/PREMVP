@@ -56,6 +56,8 @@ export interface NarrowEvidenceRow {
   selected_outcome: string | null;
   /** Decision-time diagnostics.dataCoverage, verbatim. */
   data_coverage: number | null;
+  /** Verbatim decision-time diagnostics.providerEventContext.league. */
+  league: string | null;
 }
 
 export const VOLUME_SEMANTIC_PARENT_EVENT_24H =
