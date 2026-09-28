@@ -473,6 +473,114 @@ export function s2DirectSportBucket(rm: ResearchNestedMarket): string | null {
   return rm.providerSportFamily ?? rm.leagueName ?? rm.marketFamily ?? null;
 }
 
+// RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — when the wide scorer actually
+// called enrichMarket() for a S2 identity, its decision-time evidence already
+// exists in memory (`enrichedResearch.diagnostics`). This carries that exact
+// already-computed evidence into the S2 snapshot instead of the S2-direct
+// path's hard-coded nulls. Absent provider evidence stays null — never
+// fabricated as zero — and nothing here re-fetches or recomputes anything.
+export function s2WideScorerEvidenceFields(diag: LandingCardDiagnostics | null): Pick<LandingCardDiagnostics,
+  | "price1hAgo"
+  | "price6hAgo"
+  | "delta1hPp"
+  | "delta6hPp"
+  | "spread"
+  | "openInterest"
+  | "recentTradeCash"
+  | "maxTradeCash"
+  | "selectedTradeCount"
+  | "totalTradeCount"
+  | "holderConcentrationScore"
+> & Partial<Pick<LandingCardDiagnostics,
+  | "formulaAudit"
+  | "directionalFlowVersion"
+  | "directionalFlowBinaryGuard"
+  | "directionalFlowEvidenceState"
+  | "directionalFlowSampleLimit"
+  | "directionalFlowFetchedTradeCount"
+  | "directionalFlowTokenMatchedCount"
+  | "directionalFlowTokenUnmatchedCount"
+  | "directionalFlowCoverageRatio"
+  | "directionalFlowOldestTradeIso"
+  | "directionalFlowNewestTradeIso"
+  | "selectedSideExactRecentCash"
+  | "opposingSideExactRecentCash"
+  | "selectedSideExactTradeCount"
+  | "opposingSideExactTradeCount"
+  | "selectedSideExactMaxTradeCash"
+  | "opposingSideExactMaxTradeCash"
+>> {
+  return {
+    price1hAgo: diag?.price1hAgo ?? null,
+    price6hAgo: diag?.price6hAgo ?? null,
+    delta1hPp: diag?.delta1hPp ?? null,
+    delta6hPp: diag?.delta6hPp ?? null,
+    spread: diag?.spread ?? null,
+    openInterest: diag?.openInterest ?? null,
+    recentTradeCash: diag?.recentTradeCash ?? null,
+    maxTradeCash: diag?.maxTradeCash ?? null,
+    selectedTradeCount: diag?.selectedTradeCount ?? null,
+    totalTradeCount: diag?.totalTradeCount ?? null,
+    holderConcentrationScore: diag?.holderConcentrationScore ?? null,
+    ...(diag?.formulaAudit ? { formulaAudit: diag.formulaAudit } : {}),
+    ...(diag?.directionalFlowVersion
+      ? {
+          directionalFlowVersion: diag.directionalFlowVersion,
+          directionalFlowBinaryGuard: diag.directionalFlowBinaryGuard,
+          directionalFlowEvidenceState: diag.directionalFlowEvidenceState,
+          directionalFlowSampleLimit: diag.directionalFlowSampleLimit,
+          directionalFlowFetchedTradeCount: diag.directionalFlowFetchedTradeCount,
+          directionalFlowTokenMatchedCount: diag.directionalFlowTokenMatchedCount,
+          directionalFlowTokenUnmatchedCount: diag.directionalFlowTokenUnmatchedCount,
+          directionalFlowCoverageRatio: diag.directionalFlowCoverageRatio,
+          directionalFlowOldestTradeIso: diag.directionalFlowOldestTradeIso,
+          directionalFlowNewestTradeIso: diag.directionalFlowNewestTradeIso,
+          selectedSideExactRecentCash: diag.selectedSideExactRecentCash,
+          opposingSideExactRecentCash: diag.opposingSideExactRecentCash,
+          selectedSideExactTradeCount: diag.selectedSideExactTradeCount,
+          opposingSideExactTradeCount: diag.opposingSideExactTradeCount,
+          selectedSideExactMaxTradeCash: diag.selectedSideExactMaxTradeCash,
+          opposingSideExactMaxTradeCash: diag.opposingSideExactMaxTradeCash,
+        }
+      : {}),
+  };
+}
+
+// Canonical already-computed score for a wide-scored S2 row: the same source
+// the public research snapshot already uses (formulaAudit.finalSignalV2),
+// falling back to the legacy formulaScore, then null. Capture only — never
+// recomputes or introduces a new score.
+export function s2WideScorerCanonicalScore(
+  diag: LandingCardDiagnostics | null,
+  legacyScore: number | null,
+): number | null {
+  return diag?.formulaAudit?.finalSignalV2 ?? legacyScore ?? null;
+}
+
+// RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — splits the already-selected
+// research population (selectedResearch, from #404's sibling selector) into
+// what the wide scorer actually opens vs. what it scope-filters out. This
+// NEVER shrinks selectedResearch itself (persistence/sibling capture/sport
+// lineage capture are untouched) — it only decides scorer admission. `null`
+// (or empty) sportFamily is regression-equivalent to current all-sport
+// behavior: everything goes to `forScoring`, nothing is scope-filtered.
+export function splitResearchMarketsByScorerScope(
+  selectedResearch: readonly ResearchNestedMarket[],
+  sportFamily: string | null,
+): { forScoring: ResearchNestedMarket[]; scopeFiltered: ResearchNestedMarket[] } {
+  if (!sportFamily) return { forScoring: [...selectedResearch], scopeFiltered: [] };
+  const forScoring: ResearchNestedMarket[] = [];
+  const scopeFiltered: ResearchNestedMarket[] = [];
+  for (const row of selectedResearch) {
+    if (row.providerSportFamily.trim().toLowerCase() === sportFamily) {
+      forScoring.push(row);
+    } else {
+      scopeFiltered.push(row);
+    }
+  }
+  return { forScoring, scopeFiltered };
+}
+
 /**
  * Bounded scorer routing with event conservation. Public rows remain first, then
  * one eligible market per still-unrepresented provider occurrence is selected
@@ -3533,6 +3641,11 @@ export async function buildLandingCards(options?: {
   // researchScorerBudgetMs (wall clock) instead of by an arbitrary count.
   researchLimit?: number | null;
   researchScorerBudgetMs?: number;
+  // RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — optional research-only wide-scorer
+  // scope filter. Absent (default) preserves exact current all-sport scorer
+  // behavior. When set, ONLY narrows which selectedResearch identities the wide
+  // scorer opens; it never shrinks selectedResearch/persistence/sibling capture.
+  researchScorerSportFamily?: string | null;
   // PRIMARY-LOOP WALL-CLOCK GUARD: runtime override for the sequential primary
   // candidate loop's wall-clock budget (defaults to PRIMARY_LOOP_DEFAULT_BUDGET_MS,
   // clamped to [1s, 30min]). `primaryLoopNowMs` injects a clock for deterministic
@@ -3577,6 +3690,8 @@ export async function buildLandingCards(options?: {
   );
   const researchOddsMin = options?.researchOddsMin ?? 1.25;
   const researchOddsMax = options?.researchOddsMax ?? 4.00;
+  // Absent/empty preserves exact current all-sport scorer behavior.
+  const researchScorerSportFamily = options?.researchScorerSportFamily?.trim().toLowerCase() || null;
   const primaryLoopNowMs = options?.primaryLoopNowMs ?? Date.now;
 
   const researchSnapshots: ResearchEligibleSignalSnapshot[] = [];
@@ -4012,6 +4127,11 @@ export async function buildLandingCards(options?: {
         dataCoverage: number | null;
         winProbability: number | null;
         pair: ReturnType<typeof generateLandingCardPair> | null;
+        // RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — the exact already-computed
+        // enrichMarket() diagnostics for this row when enrichment actually ran;
+        // null when the row never reached enrichment (adapter rejected, threw,
+        // scope-filtered, budget-exhausted). Capture only, never re-fetched.
+        diagnostics: LandingCardDiagnostics | null;
       };
 
       const wideOutcomes = new Map<string, FireModelWideOutcome>();
@@ -4029,7 +4149,7 @@ export async function buildLandingCards(options?: {
         const key = `${rm.conditionId}::${rm.selectedTokenId}`;
         const adapted = researchNestedMarketToCandidate(rm);
         if (!adapted) {
-          return { key, status: "NOT_SCORED_ADAPTER_REJECTED", score: null, dataCoverage: null, winProbability: null, pair: null };
+          return { key, status: "NOT_SCORED_ADAPTER_REJECTED", score: null, dataCoverage: null, winProbability: null, pair: null, diagnostics: null };
         }
         let enrichedResearch: Awaited<ReturnType<typeof enrichMarket>> = null;
         try {
@@ -4040,15 +4160,16 @@ export async function buildLandingCards(options?: {
             adapted.forcedOutcome,
           );
         } catch {
-          return { key, status: "NOT_SCORED_ENRICHMENT_THREW", score: null, dataCoverage: null, winProbability: null, pair: null };
+          return { key, status: "NOT_SCORED_ENRICHMENT_THREW", score: null, dataCoverage: null, winProbability: null, pair: null, diagnostics: null };
         }
         if (!enrichedResearch) {
-          return { key, status: "NOT_SCORED_ENRICHMENT_NULL", score: null, dataCoverage: null, winProbability: null, pair: null };
+          return { key, status: "NOT_SCORED_ENRICHMENT_NULL", score: null, dataCoverage: null, winProbability: null, pair: null, diagnostics: null };
         }
         const coverage = enrichedResearch.diagnostics.dataCoverage;
+        const diagnostics = enrichedResearch.diagnostics;
         const fm11Pair = generateLandingCardPair(enrichedResearch);
         if (!fm11Pair) {
-          return { key, status: "NOT_SCORED_PAIR_GENERATION_FAILED", score: null, dataCoverage: coverage, winProbability: null, pair: null };
+          return { key, status: "NOT_SCORED_PAIR_GENERATION_FAILED", score: null, dataCoverage: coverage, winProbability: null, pair: null, diagnostics };
         }
         const score =
           typeof enrichedResearch.diagnostics.formulaScore === "number"
@@ -4057,16 +4178,25 @@ export async function buildLandingCards(options?: {
         const winProbability = fm11Pair.premiumSignal.winProbability;
         // Research-band selection rule (UNCHANGED thresholds).
         if (coverage < 25) {
-          return { key, status: "SCORED_AND_REJECTED_COVERAGE_BELOW_RESEARCH_FLOOR_25", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+          return { key, status: "SCORED_AND_REJECTED_COVERAGE_BELOW_RESEARCH_FLOOR_25", score, dataCoverage: coverage, winProbability, pair: fm11Pair, diagnostics };
         }
         if (coverage >= minDataCoverage) {
-          return { key, status: "SCORED_AND_REJECTED_COVERAGE_AT_OR_ABOVE_PRODUCT_THRESHOLD", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+          return { key, status: "SCORED_AND_REJECTED_COVERAGE_AT_OR_ABOVE_PRODUCT_THRESHOLD", score, dataCoverage: coverage, winProbability, pair: fm11Pair, diagnostics };
         }
         if (winProbability < 50) {
-          return { key, status: "SCORED_AND_REJECTED_WIN_PROBABILITY_BELOW_50", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+          return { key, status: "SCORED_AND_REJECTED_WIN_PROBABILITY_BELOW_50", score, dataCoverage: coverage, winProbability, pair: fm11Pair, diagnostics };
         }
-        return { key, status: "SCORED_AND_SELECTED", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+        return { key, status: "SCORED_AND_SELECTED", score, dataCoverage: coverage, winProbability, pair: fm11Pair, diagnostics };
       };
+
+      // RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — the family filter narrows only
+      // which identities the wide scorer OPENS. selectedResearch (persistence,
+      // sibling capture, sport lineage capture) is untouched. Scope-filtered rows
+      // get a truthful non-budget terminal status immediately, before the budget
+      // clock starts, so they never count toward WIDE_SCORER_ATTEMPT_N or
+      // BUDGET_EXHAUSTED_N.
+      const { forScoring: selectedResearchForScoring, scopeFiltered: scopeFilteredResearch } =
+        splitResearchMarketsByScorerScope(selectedResearch, researchScorerSportFamily);
 
       const scorerStartedMs = Date.now();
       let budgetExhausted = false;
@@ -4076,18 +4206,27 @@ export async function buildLandingCards(options?: {
       let notScoredCount = 0;
       let scoreRetainedCount = 0;
 
-      for (let i = 0; i < selectedResearch.length; i += RESEARCH_SCORER_CHUNK_SIZE) {
-        const chunk = selectedResearch.slice(i, i + RESEARCH_SCORER_CHUNK_SIZE);
+      for (const rm of scopeFilteredResearch) {
+        notScoredCount++;
+        recordWideTerminal({
+          key: `${rm.conditionId}::${rm.selectedTokenId}`,
+          status: "NOT_SCORED_SCORER_SCOPE_FILTERED",
+          score: null, dataCoverage: null, winProbability: null, pair: null, diagnostics: null,
+        });
+      }
+
+      for (let i = 0; i < selectedResearchForScoring.length; i += RESEARCH_SCORER_CHUNK_SIZE) {
+        const chunk = selectedResearchForScoring.slice(i, i + RESEARCH_SCORER_CHUNK_SIZE);
         if (Date.now() - scorerStartedMs >= researchScorerBudgetMs) {
           budgetExhausted = true;
-          for (const rm of selectedResearch.slice(i)) {
+          for (const rm of selectedResearchForScoring.slice(i)) {
             rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
             counterForWideResearch(rm).BUDGET_EXHAUSTED_N++;
             notScoredCount++;
             recordWideTerminal({
               key: `${rm.conditionId}::${rm.selectedTokenId}`,
               status: "NOT_SCORED_SCORER_BUDGET_EXHAUSTED",
-              score: null, dataCoverage: null, winProbability: null, pair: null,
+              score: null, dataCoverage: null, winProbability: null, pair: null, diagnostics: null,
             });
           }
           break;
@@ -4105,7 +4244,7 @@ export async function buildLandingCards(options?: {
               return {
                 key: `${rm.conditionId}::${rm.selectedTokenId}`,
                 status: "NOT_SCORED_SCORER_THREW",
-                score: null, dataCoverage: null, winProbability: null, pair: null,
+                score: null, dataCoverage: null, winProbability: null, pair: null, diagnostics: null,
               };
             }
           }),
@@ -4141,6 +4280,7 @@ export async function buildLandingCards(options?: {
       rf.researchScorerBudgetMs = researchScorerBudgetMs;
       rf.researchScorerElapsedMs = Date.now() - scorerStartedMs;
       rf.researchScorerBudgetExhausted = budgetExhausted;
+      rf.researchScorerSportFamily = researchScorerSportFamily;
       rf.wideResearchBySportFamily = wideResearchBySportFamily;
 
       // Build set of already-captured conditionId::selectedTokenId keys (from public-path loop)
@@ -4162,6 +4302,14 @@ export async function buildLandingCards(options?: {
         // scored in the wide loop above, instead of emitting SCORE_UNAVAILABLE blindly.
         const wo = wideOutcomes.get(rmKey) ?? null;
         const woScored = wo !== null && !wo.status.startsWith("NOT_SCORED_");
+        const woEnriched = Boolean(wo?.diagnostics);
+        // RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — capture the already-computed
+        // canonical score (formulaAudit.finalSignalV2, same source the public
+        // snapshot uses) when the wide scorer actually enriched this row; never a
+        // new/recomputed score.
+        const wideCanonicalScore = woScored
+          ? s2WideScorerCanonicalScore(wo!.diagnostics, wo!.score)
+          : null;
         const gameStartIso = rm.gameStartTimeIso ?? rm.eventStartIso;
         const hoursUntilStart = (new Date(gameStartIso).getTime() - nowMs) / 3_600_000;
         const europeanOdds = rm.selectedPriceNum > 0
@@ -4192,17 +4340,6 @@ export async function buildLandingCards(options?: {
             selectedTokenId: rm.selectedTokenId,
             selectedOutcome: rm.selectedOutcomeName ?? "",
             currentPrice: rm.selectedPriceNum,
-            price1hAgo: null,
-            price6hAgo: null,
-            delta1hPp: null,
-            delta6hPp: null,
-            spread: null,
-            openInterest: null,
-            recentTradeCash: null,
-            maxTradeCash: null,
-            selectedTradeCount: null,
-            totalTradeCount: null,
-            holderConcentrationScore: null,
             dataCoverage: wo?.dataCoverage ?? 0,
             formulaUsed: woScored ? FORMULA_VERSION : "research-s2-direct",
             rejectionReasons: [wo ? wo.status : "research-s2-direct"],
@@ -4211,6 +4348,11 @@ export async function buildLandingCards(options?: {
             // sport lineage from ResearchNestedMarket verbatim; see
             // buildS2DirectProviderLineage for why S2-direct rows need this.
             ...buildS2DirectProviderLineage(rm),
+            // RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — preserve the exact
+            // already-computed enrichMarket() evidence when the wide scorer
+            // actually opened this row; the S2-direct hard-coded nulls only
+            // apply when it did not (see s2WideScorerEvidenceFields).
+            ...s2WideScorerEvidenceFields(wo?.diagnostics ?? null),
             researchContext: {
               v: "v1",
               signalPhaseAtSnapshot: "prematch",
@@ -4222,16 +4364,17 @@ export async function buildLandingCards(options?: {
               discoverySourceProxy: null,
               gameTimeConfidence: null,
             },
-            // Explainability: S2 markets are not enriched; no formula score available.
-            // All codes below are truthful for this path — enrichMarket() was not called.
-            formulaScore: woScored ? wo!.score : null,
+            // Explainability: most S2 rows are not enriched, so no formula score is
+            // available for them. Wide-scorer-enriched rows (woEnriched) carry the
+            // real already-computed canonical score captured above.
+            formulaScore: woScored ? wideCanonicalScore : null,
             fireModel: {
               version: "firemodel_capture_v1",
               capturedAt: researchSnapshotAt,
               sourceRunId: researchSnapshotRunId,
               formulaVersion: FORMULA_VERSION,
               modelCandidate: {
-                score: woScored ? wo!.score : null,
+                score: woScored ? wideCanonicalScore : null,
                 tier: null,
                 confidence: woScored ? wo!.winProbability : null,
                 dataCoverage: wo?.dataCoverage ?? null,
@@ -4256,7 +4399,7 @@ export async function buildLandingCards(options?: {
                   hasSelectedTokenId: Boolean(rm.selectedTokenId),
                   hasOpposingTokenId: Boolean(rm.opposingTokenId),
                   hasEntryPrice: rm.selectedPriceNum != null,
-                  hasFormulaScore: woScored && wo!.score !== null,
+                  hasFormulaScore: woScored && wideCanonicalScore !== null,
                 },
                 queryId: "all_sports_research_candidates_v1",
                 datasetId: "ALL_SPORTS_RESEARCH_CANDIDATES_V1",
@@ -4274,9 +4417,15 @@ export async function buildLandingCards(options?: {
             },
             productRejectionReasonDetails: [
               { code: "RESEARCH_S2_DIRECT", detail: "Market found via S2 wide research universe scan, not via the enrichment-then-product-gate path." },
-              { code: "S2_NOT_ENRICHED", detail: "enrichMarket() was not called; no trade data, holder concentration, or directional flow was computed for this snapshot." },
-              { code: "SCORE_UNAVAILABLE", detail: "formulaScore is null because scorePolymarket() was not executed in this path." },
-              { code: "FORMULA_AUDIT_UNAVAILABLE", detail: "No formulaAudit object exists; sub-scores (smartMoney, pubWhale, preEvent) were not computed." },
+              ...(woEnriched
+                ? [{ code: "S2_WIDE_SCORER_ENRICHED", detail: "enrichMarket() was called by the wide scorer for this row; trade data, holder concentration, and directional flow reflect whatever the provider returned for this snapshot (fields remain null where the provider had no evidence)." }]
+                : [{ code: "S2_NOT_ENRICHED", detail: "enrichMarket() was not called; no trade data, holder concentration, or directional flow was computed for this snapshot." }]),
+              ...(woScored && wideCanonicalScore !== null
+                ? []
+                : [{ code: "SCORE_UNAVAILABLE", detail: "formulaScore is null because scorePolymarket() was not executed in this path." }]),
+              ...(wo?.diagnostics?.formulaAudit
+                ? []
+                : [{ code: "FORMULA_AUDIT_UNAVAILABLE", detail: "No formulaAudit object exists; sub-scores (smartMoney, pubWhale, preEvent) were not computed." }]),
               { code: "PRODUCT_GATE_NOT_EVALUATED", detail: "Score, dataCoverage, timingWindow, and duplicate gates were not evaluated; product eligibility is unknown for this snapshot." },
             ],
           } as LandingCardDiagnostics,
@@ -4291,7 +4440,7 @@ export async function buildLandingCards(options?: {
           // candidate was actually scored this run; unscored S2-direct rows carry
           // an explicit null with lineage rather than a silently absent field.
           scoreObservation: buildResearchScoreObservation({
-            scoreValue: woScored ? wo!.score : null,
+            scoreValue: woScored ? wideCanonicalScore : null,
             metricFormulaVersion: woScored ? FORMULA_VERSION : null,
             snapshotAt: researchSnapshotAt,
             snapshotRunId: researchSnapshotRunId,

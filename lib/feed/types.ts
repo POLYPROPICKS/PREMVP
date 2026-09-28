@@ -286,6 +286,9 @@ export interface ResearchFunnelCounters {
   researchScorerBudgetMs?: number;
   researchScorerElapsedMs?: number;
   researchScorerBudgetExhausted?: boolean;
+  // RESEARCH_FOOTBALL_SCORER_COMPLETENESS_V1 — research-only wide-scorer scope
+  // filter actually applied this run, or null when absent (default, all-sport).
+  researchScorerSportFamily?: string | null;
   // P2 FireModel1.1 wide terminal accounting. Conserves:
   // firemodel11WideAttempted === selected + scoredRejected + notScored.
   firemodel11WideScoredRejected?: number;
