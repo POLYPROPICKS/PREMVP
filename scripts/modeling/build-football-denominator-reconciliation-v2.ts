@@ -167,15 +167,31 @@ async function readSnapshotMarketTypes(db: any, keys: Set<string>): Promise<Snap
 }
 
 async function readEvidencePageMarketTypes(db: any, keys: Set<string>): Promise<EvidenceMarketTypeEntry[]> {
-  const conditionIds = [...new Set([...keys].map((k) => k.split("::")[0]))].sort();
+  const tokensByCondition = new Map<string, Set<string>>();
+  for (const key of keys) {
+    const separator = key.indexOf("::");
+    const conditionId = key.slice(0, separator);
+    const selectedTokenId = key.slice(separator + 2);
+    if (!/^[A-Za-z0-9_-]+$/.test(conditionId) || !/^[A-Za-z0-9_-]+$/.test(selectedTokenId)) {
+      throw new Error("RECON_EVIDENCE_READ_INVALID_EXACT_ID");
+    }
+    if (!tokensByCondition.has(conditionId)) tokensByCondition.set(conditionId, new Set());
+    tokensByCondition.get(conditionId)!.add(selectedTokenId);
+  }
+  const conditionEntries = [...tokensByCondition.entries()].sort(([a], [b]) => a.localeCompare(b));
   const entries: EvidenceMarketTypeEntry[] = [];
-  for (let i = 0; i < conditionIds.length; i += GSP_PAGE) {
-    const chunk = conditionIds.slice(i, i + GSP_PAGE);
+  const conditionPageSize = 50;
+  for (let i = 0; i < conditionEntries.length; i += conditionPageSize) {
+    const chunk = conditionEntries.slice(i, i + conditionPageSize);
+    const exactPairFilter = chunk
+      .map(([conditionId, selectedTokens]) => `and(condition_id.eq.${conditionId},selected_token_id.in.(${[...selectedTokens].sort().join(",")}))`)
+      .join(",");
     for (let from = 0; ; from += PAGE) {
       const { data, error } = await db
         .from("research_evidence_page_rows")
         .select("observation_id,condition_id,selected_token_id,observed_at,market_type")
-        .in("condition_id", chunk)
+        .or(exactPairFilter)
+        .not("market_type", "is", null)
         .order("observed_at")
         .order("observation_id")
         .range(from, from + PAGE - 1);
@@ -195,7 +211,7 @@ async function readEvidencePageMarketTypes(db: any, keys: Set<string>): Promise<
       }
       if ((data?.length ?? 0) < PAGE) break;
     }
-    console.error(JSON.stringify({ STAGE: "EVIDENCE_PAGE_READ", CONDITION_CHUNK_END: chunk.at(-1), OBSERVATIONS_SO_FAR: entries.length }));
+    console.error(JSON.stringify({ STAGE: "EVIDENCE_PAGE_READ", CONDITION_CHUNK_END: chunk.at(-1)?.[0], OBSERVATIONS_SO_FAR: entries.length }));
   }
   return entries;
 }
