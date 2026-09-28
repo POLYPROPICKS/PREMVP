@@ -442,6 +442,37 @@ export function buildStructuredProviderDiagnostics(
   };
 }
 
+// PERSIST_CANONICAL_SPORT_FAMILY_V1 — S2 wide-snapshot rows are built directly
+// from ResearchNestedMarket (no ParentEventMeta/enrichMarket pass), so they need
+// their own narrow lineage carrier. providerSportFamily is the canonical sport
+// authority end to end; league/marketFamily remain display/taxonomy dimensions
+// only and must never be substituted here.
+export function buildS2DirectProviderLineage(rm: ResearchNestedMarket): Pick<LandingCardDiagnostics,
+  | "providerSportCode"
+  | "providerSportFamily"
+  | "providerSportSource"
+  | "providerSportTagIds"
+  | "providerSeriesIds"
+  | "providerEventId"
+  | "providerMarketId"
+> {
+  return {
+    providerSportCode: rm.providerSportCode,
+    providerSportFamily: rm.providerSportFamily,
+    providerSportSource: rm.providerSportSource,
+    providerSportTagIds: rm.providerSportTagIds,
+    providerSeriesIds: rm.providerSeriesIds,
+    providerEventId: rm.eventId,
+    providerMarketId: rm.marketId,
+  };
+}
+
+// Canonical sport bucket for S2-direct fireModel.modelCandidate: prefer the
+// structured providerSportFamily over the display-only league/marketFamily.
+export function s2DirectSportBucket(rm: ResearchNestedMarket): string | null {
+  return rm.providerSportFamily ?? rm.leagueName ?? rm.marketFamily ?? null;
+}
+
 /**
  * Bounded scorer routing with event conservation. Public rows remain first, then
  * one eligible market per still-unrepresented provider occurrence is selected
@@ -4176,6 +4207,10 @@ export async function buildLandingCards(options?: {
             formulaUsed: woScored ? FORMULA_VERSION : "research-s2-direct",
             rejectionReasons: [wo ? wo.status : "research-s2-direct"],
             gameStartIso,
+            // PERSIST_CANONICAL_SPORT_FAMILY_V1 — preserve the structured provider
+            // sport lineage from ResearchNestedMarket verbatim; see
+            // buildS2DirectProviderLineage for why S2-direct rows need this.
+            ...buildS2DirectProviderLineage(rm),
             researchContext: {
               v: "v1",
               signalPhaseAtSnapshot: "prematch",
@@ -4204,7 +4239,7 @@ export async function buildLandingCards(options?: {
                 marketFamily: rm.marketFamily ?? rm.leagueName ?? rm.sportsMarketType ?? null,
                 normalizedFixtureKey: rm.eventSlug || null,
                 fixtureKeyConfidence: rm.eventSlug ? "MEDIUM" : "LOW",
-                sportBucket: rm.leagueName ?? rm.marketFamily ?? null,
+                sportBucket: s2DirectSportBucket(rm),
                 leagueBucket: rm.leagueName ?? rm.marketFamily ?? null,
                 phase: "prematch",
                 minutesToStart: Number.isFinite(hoursUntilStart) ? Math.round(hoursUntilStart * 60) : null,
