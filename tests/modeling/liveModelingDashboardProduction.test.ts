@@ -106,6 +106,7 @@ test("CAPITAL dashboard fetches live shadow without cache and labels static data
   assert.match(html, /fetch\("\/api\/founder\/modeling\/shadow", \{ cache: "no-store" \}\)/);
   assert.match(html, /SHADOW_RUNTIME\.historicalDaily/);
   assert.match(html, /D\.meta\.latestDashboardDate = historicalDaily\.latestDashboardDate/);
+  assert.match(html, /Historical daily through " \+ meta\.latestDashboardDate/);
   assert.match(html, /STATIC FALLBACK ONLY/);
   assert.match(html, /LAST REFRESH/);
   assert.match(html, /SETTLEMENT FRESH THROUGH/);

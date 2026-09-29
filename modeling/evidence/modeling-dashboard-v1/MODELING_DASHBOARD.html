@@ -1014,7 +1014,7 @@
     "<dt>Combined refresh command</dt><dd><code>" + esc(p.combinedRefreshCommand) + "</code></dd>";
 
   document.getElementById("footer").textContent =
-    "Generated " + D.GENERATED_AT + " · " + D.ARTIFACT + (LIVE ? " · live snapshot " + LIVE.GENERATED_AT : "") + " · Aggregate metrics only, no raw event rows.";
+    "Generated " + D.GENERATED_AT + " · " + D.ARTIFACT + " · Historical daily through " + meta.latestDashboardDate + (LIVE ? " · live snapshot " + LIVE.GENERATED_AT : "") + " · Aggregate metrics only, no raw event rows.";
 })();
 </script>
 </body>
