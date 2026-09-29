@@ -1,0 +1,40 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "MISSION": "CANDIDATE_V3_UNIVERSE_GATE_BOUNDED_REPAIR_V1",
+  "SOURCE_PR": "POLYPROPICKS/PREMVP#409",
+  "BASE_HEAD_SHA": "28099ddaf25558828173c8dab05ceed6ae8f300b",
+  "TRIGGER": "Final Independent Review verdict BOUNDED_FIX_REQUIRED",
+  "FIRST_BROKEN_EDGE": "source row -> Candidate V3 universe -> produceFrozenModelV2ShadowDecisions",
+  "FAILURES_ON_EDGE": [
+    "football/soccer scope not enforced before the producer (producer only excludes eSports)",
+    "missing or nested market type bypasses the producer's top-level market_type check (producer admits absent/blank; nested diagnostics.researchContext.marketType is never read)"
+  ],
+  "REPAIR": {
+    "KIND": "PURE_RESEARCH_ONLY_PRE_GATE",
+    "GATE_FILE": "scripts/modeling/candidate-v3-shadow-universe-gate.ts",
+    "TEST_FILE": "tests/modeling/candidate-v3-shadow-universe-gate.test.ts",
+    "COMPOSITION_HELPER": "runCandidateV3Selector(rows, asOfIso): gate -> allowed rows only -> produceFrozenModelV2ShadowDecisions",
+    "PRODUCER_MODIFIED": false,
+    "PRODUCER_RULES_REIMPLEMENTED": false,
+    "PRODUCER_REJECTION_INDEX_NOTE": "producer rejection indices are remapped to the ORIGINAL input index; producerInputIndex keeps the filtered-array index"
+  },
+  "AUTHORITIES_REUSED_NOT_COPIED": {
+    "SPORT": "normalizeProviderSportFamily from lib/feed/sportScoreOwnership.ts",
+    "MARKET": "classifyMarketText, isAllowedFullMatchMarketClass, normalizeMarketText from lib/contur3/taxonomy.ts"
+  },
+  "SCOPE_LIMITS": {
+    "DB_QUERIES": 0,
+    "RAW_DB_ROWS": 0,
+    "GAMMA_LOOKUPS": 0,
+    "PRODUCTION_FILES_CHANGED": 0,
+    "NEW_RESEARCH": false,
+    "THRESHOLD_TUNING": false,
+    "NOT_CHANGED": ["producer", "live execution", "planning", "reservation", "Contract A", "price/score/timing", "momentum", "selector semantics", "legacy 120M naming", "MaxDD ordering", "shadow harness"]
+  },
+  "PRESERVED_PROVENANCE": "modeling/evidence/candidate-v3-freeze-v1/ (unmodified)",
+  "SOURCE_FILE_SHA256_AT_REPAIR": {
+    "lib/modeling/frozenModelProducerV2Shadow.ts": "f3fa873786de306f81f2a3c5e710164edd746f8db327e990f7baba995cf6598b",
+    "lib/contur3/taxonomy.ts": "46cd3994635df8ccbced343f8a9e8cdf15fc7d4877be705e8ddffab2a466138f",
+    "lib/feed/sportScoreOwnership.ts": "2150600e774375f9bb0f95374642d93ccc176de82d09b282ac6d0d8fb053e174"
+  }
+}
