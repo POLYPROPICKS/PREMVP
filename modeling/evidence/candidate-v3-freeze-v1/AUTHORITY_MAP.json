@@ -1,0 +1,16 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "SOURCE_HEAD_SHA": "cb8565b9330fb10b1b553cdb0b5fd661d0dd2eb8",
+  "MAP": [
+    {"CONCERN": "final exact market + one-per-event", "FILE": "lib/modeling/frozenModelProducerV2Shadow.ts", "SYMBOL": "produceFrozenModelV2ShadowDecisions / compareForTieBreak"},
+    {"CONCERN": "thresholds (65, 0.30, 1440, T-90 offset)", "FILE": "lib/modeling/frozenModelProducerV2Shadow.ts", "SYMBOL": "SCORE_THRESHOLD, PRICE_FLOOR, CONTRACT_A_TIMING_WINDOW_MINUTES, T90_OFFSET_MS"},
+    {"CONCERN": "T-90 snapshot", "FILE": "lib/modeling/frozenModelProducerV2Shadow.ts", "SYMBOL": "resolveT90Snapshot"},
+    {"CONCERN": "score extraction and eSports exclusion", "FILE": "lib/modeling/historicalFunnelVariants.ts", "SYMBOL": "getScoreValue, isEsports"},
+    {"CONCERN": "strict identity key", "FILE": "lib/modeling/generatedSignalPairsExportContract.ts", "SYMBOL": "getStrictDedupKeyForExportRow, getCanonicalTokenIdForExportRow"},
+    {"CONCERN": "physical event key", "FILE": "lib/modeling/eventGroupSelection.ts", "SYMBOL": "buildEventGroupKey"},
+    {"CONCERN": "frozen vs Contur3 exact identity comparison (read-only)", "FILE": "lib/modeling/frozenExecutionContractBridge.ts", "SYMBOL": "compareFrozenAndContur3"},
+    {"CONCERN": "football universe classification", "FILE": "scripts/modeling/build-football-denominator-reconciliation-v2.ts", "SYMBOL": "reuses v1 fail-closed classifier"},
+    {"CONCERN": "strict settlement labels (research only)", "FILE": "scripts/modeling/step4c-strict-terminal-resolver.ts", "SYMBOL": "classifyStrict"},
+    {"CONCERN": "NOT final selector (planning stage)", "FILE": "lib/executor/nightPortfolioPlanner.ts", "SYMBOL": "compareCandidateQuality"}
+  ]
+}

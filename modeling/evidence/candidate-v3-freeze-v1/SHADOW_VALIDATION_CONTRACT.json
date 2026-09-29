@@ -1,0 +1,17 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "EXECUTED_IN_THIS_MISSION": false,
+  "CANDIDATE_NAME": "CANDIDATE_V3_CONTRACT_A_NO_MOMENTUM",
+  "MEMBERSHIP": "exact Candidate V3 membership = produceFrozenModelV2ShadowDecisions output over football universe",
+  "MEMBERSHIP_FROZEN_BEFORE_SETTLEMENT": true,
+  "MEMBERSHIP_HASH_REQUIRED": "sha256 of sorted condition_id::selected_token_id::side lines, recorded before any settlement lookup",
+  "SETTLEMENT": "strict exact-identity terminal resolver; five distinct labels",
+  "BETS_PER_EVENT": 1,
+  "STAKE": "flat 1u reference",
+  "PRODUCTION_WRITES": false,
+  "ADAPTIVE_THRESHOLD_CHANGES": false,
+  "NEW_OPTIMIZATION_DURING_SHADOW": false,
+  "METRICS_TO_REPORT_LATER": ["selected N", "settled N", "open N", "W", "L", "PnL u", "ROI", "MaxDD", "hit rate"],
+  "METRIC_NOTES": "ROI/hit rate over settled only; LOOKUP_UNAVAILABLE and INVALID_TOKEN_IDENTITY reported separately, never as OPEN or LOSS",
+  "PNL_LABEL": "REFERENCE_PNL"
+}

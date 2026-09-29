@@ -1,0 +1,96 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "STATUS": "FROZEN_CANDIDATE_FOR_FINAL_REVIEW_NOT_LIVE_AUTHORIZATION",
+  "CANDIDATE_NAME": "CANDIDATE_V3_CONTRACT_A_NO_MOMENTUM",
+  "SOURCE_HEAD_SHA": "cb8565b9330fb10b1b553cdb0b5fd661d0dd2eb8",
+  "SOURCE_PR": "POLYPROPICKS/PREMVP#409",
+  "MODEL_VERSION": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+  "MODEL_VERSION_NOTE": "Legacy string constant FROZEN_MODEL_V2_VERSION; suffix '120M' is a historical label. Actual enforced Contract A window is 0 < minutes_until_start <= 1440.",
+  "CONTRACT_VERSION": "CONTRACT_A_FROZEN_MODEL_V2_SHADOW_DECISION_V1",
+  "SCHEMA_VERSION": "FROZEN_MODEL_V2_SHADOW_DECISION_V1",
+  "UNIVERSE": {
+    "SPORT_SCOPE": "SOCCER_FOOTBALL_ONLY",
+    "ENFORCEMENT_LAYER": "UNIVERSE_PRE_FILTER_UPSTREAM_OF_PRODUCER",
+    "NOTE": "produceFrozenModelV2ShadowDecisions has no sport filter (only eSports exclusion). Football scope is applied by the committed fail-closed football classifier reused by scripts/modeling/build-football-denominator-reconciliation-v2.ts (imports v1 pure functions). Rows whose sport/market type cannot be proven football are excluded (fail-closed).",
+    "NO_GENERALIZATION_TO_OTHER_SPORTS": true
+  },
+  "SOURCE_SNAPSHOT_RULE": {
+    "IDENTITY_GROUPING": "strict observation identity = getStrictDedupKeyForExportRow = condition_id::selected_token_id",
+    "T90": "eligible source rows: created_at <= game_start - 90 minutes; winner = latest created_at among eligible; tie-break observationId ascending (localeCompare)",
+    "LATE_SNAPSHOT": "a row created after the T-90 boundary is never eligible and cannot displace an earlier valid snapshot",
+    "VISIBILITY": "rows with created_at > asOf rejected FUTURE_DATA_REJECTED; unparsable created_at rejected SNAPSHOT_NOT_T90_COMPATIBLE",
+    "LEAKAGE": "winning_outcome / real_pnl_usd never read by producer"
+  },
+  "ELIGIBILITY_GATES": {
+    "ORDER": ["identity_complete", "market_type_supported", "t90_snapshot_resolved", "esports_excluded", "SCORE_THRESHOLD", "PRICE_FLOOR", "CONTRACT_A_TIMING_WINDOW"],
+    "SCORE_THRESHOLD": 65,
+    "SCORE_COMPARATOR": "score >= 65 (reject if null or < 65)",
+    "SCORE_FIELD_PRECEDENCE": ["signal_confidence_num", "score", "signal_score", "pre_event_score_num"],
+    "PRICE_FLOOR": 0.30,
+    "PRICE_COMPARATOR": "entry_price_num finite, 0 < p <= 1, and p >= 0.30",
+    "NO_PRICE_CEILING": true,
+    "NO_ODDS_BAND_FILTER": true,
+    "MARKET_TYPE": "BINARY only (SUPPORTED_MARKET_TYPES = BINARY, binary); a present non-BINARY market_type is rejected UNSUPPORTED_MARKET",
+    "MARKET_TYPE_NOTE": "Producer admits rows whose market_type/marketType field is absent or blank (only present-and-non-BINARY is rejected). V3 preserves this producer semantics unchanged; flagged for Final Review as OPEN_ITEM_MARKET_TYPE_ABSENT_ADMITTED."
+  },
+  "TIMING": {
+    "WINDOW_MINUTES_MAX": 1440,
+    "COMPARATOR": "0 < minutes_until_start <= 1440",
+    "REFERENCE": "minutes_until_start = (diagnostics.gameStartIso - asOf) / 60000 (physical event lead time at the evaluation instant, not observation age)",
+    "REJECTION_LABEL_LEGACY": "OUTSIDE_120M"
+  },
+  "EXCLUSIONS": ["eSports (isEsports from historicalFunnelVariants)", "non-BINARY present market_type", "non-football (universe pre-filter)", "incomplete identity"],
+  "PHYSICAL_EVENT_GROUPING": {
+    "FUNCTION": "buildEventGroupKey (lib/modeling/eventGroupSelection.ts), fallback to condition_id when key empty",
+    "SCOPE": "one bet per physical event over eligible siblings only"
+  },
+  "FINAL_MARKET_SELECTOR": {
+    "AUTHORITY": "Contract A final",
+    "FUNCTION": "produceFrozenModelV2ShadowDecisions",
+    "FILE": "lib/modeling/frozenModelProducerV2Shadow.ts",
+    "PLANNING_STAGE_compareCandidateQuality_IS_NOT_FINAL_SELECTOR": true,
+    "NO_LATER_COMPARATOR_MAY_SUBSTITUTE_MARKET": true,
+    "CHRONOLOGICAL_FIRST_SELECTOR": "NOT_PROMOTED"
+  },
+  "TIE_BREAKS": {
+    "ORDER": ["score DESC", "created_at (T-90 snapshot) ASC", "observationId ASC (localeCompare)"],
+    "SOURCE": "compareForTieBreak in frozenModelProducerV2Shadow.ts",
+    "LOSERS_LABEL": "DUPLICATE_EVENT_LOWER_RANK"
+  },
+  "EXACT_IDENTITY_CONTRACT": {
+    "REQUIRED": ["event identity (eventKey)", "condition_id", "selected_token_id", "selected side (selected_outcome)"],
+    "CARRIER": "decision.observationId = condition_id::selected_token_id plus decision.selectedOutcome; condition_id/token_id are read from the source export row matched by observationId (as frozenExecutionContractBridge does)",
+    "REJECTIONS": ["MISSING_EVENT_IDENTITY", "MISSING_TOKEN_ID", "MISSING_SELECTED_OUTCOME"],
+    "SUBSTITUTION": "FORBIDDEN"
+  },
+  "MOMENTUM_POLICY": {
+    "STATUS": "EXCLUDED",
+    "STEP4C_RESULT": "NO_MOMENTUM_LIFT_PROVEN",
+    "M1": {"log_loss": 0.6619, "brier": 0.2349},
+    "M2_with_momentum": {"log_loss": 0.6890, "brier": 0.2387},
+    "M2_better_logloss_folds": "0/3",
+    "FORBIDDEN_AS_ELIGIBILITY_RANKING_OR_EXECUTION": ["price1hAgo", "price6hAgo", "delta1hPp", "delta6hPp"],
+    "BACKLOG": "V4"
+  },
+  "SETTLEMENT_POLICY": {
+    "RESOLVER": "strict terminal resolver (scripts/modeling/step4c-strict-terminal-resolver.ts classifyStrict), research/evaluation only",
+    "LABELS": ["WIN", "LOSS", "OPEN", "LOOKUP_UNAVAILABLE", "INVALID_TOKEN_IDENTITY"],
+    "LOOKUP_UNAVAILABLE_EQUALS_OPEN": false,
+    "MISSING_TOKEN_EQUALS_LOSS": false,
+    "PRODUCTION_RESOLVER_MODIFIED": false
+  },
+  "FAIL_CLOSED_POLICY": {
+    "UNKNOWN_SPORT_OR_MARKET_TYPE_IN_UNIVERSE": "exclude, never fold into eligible",
+    "MISSING_IDENTITY": "reject",
+    "UNPARSABLE_TIMES": "reject",
+    "CONTRADICTION_WITH_THIS_CONTRACT": "STOP: CANDIDATE_CONTRACT_CONTRADICTION",
+    "REFERENCE_NOT_REIMPLEMENTATION": "V3 references production functions; it does not copy or reimplement them"
+  },
+  "HISTORICAL_ROI_POLICY": {
+    "ENCODED_AS_AUTHORITY": false,
+    "STATUS": "PROVISIONAL_COVERAGE_AND_SETTLEMENT_LIMITED",
+    "COMBINED_SEPTEMBER_ROI": "NOT_ENCODED",
+    "ODDS_1_75_TO_2_00_RESTRICTION": "NOT_ADDED"
+  },
+  "RESEARCH_FREEZE": "Sep1-12 provenance, Founder 301 reconstruction, 66-batch S2 closure, remaining selector replay, new market/timing/odds/score/estimator/momentum searches are CLOSED for V3; ideas go to V4 backlog"
+}
