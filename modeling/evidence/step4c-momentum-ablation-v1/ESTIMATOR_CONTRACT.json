@@ -1,0 +1,56 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "ESTIMATOR": {
+    "NAME": "DETERMINISTIC_L2_LOGISTIC_V1",
+    "LAMBDA": 1,
+    "INTERCEPT_REGULARIZED": false,
+    "INIT": "all coefficients = 0",
+    "OPTIMIZER": "deterministic Newton / IRLS",
+    "MAX_ITER": 100,
+    "CONVERGENCE": "max abs coefficient delta < 1e-8",
+    "CONTINUOUS_NORMALIZATION": "training-fold mean and population std (divide by n); std == 0 => 0",
+    "MARKET_TYPE": "training-fold one-hot; sorted lexicographic vocabulary; first category dropped as baseline; unknown test category => all-zero vector",
+    "LOG_LOSS_PROB_CLIP": 1e-15,
+    "HYPERPARAMETER_SEARCH": false,
+    "CALIBRATION": false,
+    "RANDOMNESS": false
+  },
+  "ARM_FEATURES": {
+    "M0": [
+      "selected_price_num",
+      "market_type"
+    ],
+    "M1": [
+      "selected_price_num",
+      "score",
+      "coverage",
+      "lead_time_hours",
+      "market_type"
+    ],
+    "M2": [
+      "selected_price_num",
+      "score",
+      "coverage",
+      "lead_time_hours",
+      "price1hAgo",
+      "price6hAgo",
+      "delta1hPp",
+      "delta6hPp",
+      "market_type"
+    ]
+  },
+  "TARGET": "WIN=1 LOSS=0; OPEN/LOOKUP_UNAVAILABLE/INVALID_TOKEN_IDENTITY excluded, never LOSS",
+  "FOLDS": "chronological expanding window 40/60/80 percent; sort game_start_iso ASC, event_id ASC (string order)",
+  "VERDICT": "POSITIVE iff M2 pooled logloss < M1 AND M2 pooled Brier < M1 AND M2 beats M1 logloss in >=2/3 folds",
+  "FEATURE_SOURCES": {
+    "market_type": "diagnostics.researchContext.marketType",
+    "score": "diagnostics.scoreObservation.scoreValue",
+    "coverage": "data_coverage_num",
+    "lead_time_hours": "(game_start_iso - snapshot_at) hours",
+    "price1hAgo": "diagnostics.price1hAgo",
+    "price6hAgo": "diagnostics.price6hAgo",
+    "delta1hPp": "diagnostics.delta1hPp",
+    "delta6hPp": "diagnostics.delta6hPp"
+  },
+  "HELD_OUT_PARTITION_TOUCHED": false
+}

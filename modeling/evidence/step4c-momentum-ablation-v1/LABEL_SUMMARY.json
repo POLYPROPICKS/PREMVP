@@ -1,0 +1,764 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "MEMBERSHIP_SHA256": "669792cbb32248faf0bfb3de9a536f6d0913d0481b4753afa0deeba41f3a6f1c",
+  "SAMPLE_N": 122,
+  "WIN_N": 65,
+  "LOSS_N": 56,
+  "OPEN_N": 1,
+  "LOOKUP_UNAVAILABLE_N": 0,
+  "INVALID_TOKEN_IDENTITY_N": 0,
+  "CONDITION_ID_MISMATCH_N": 0,
+  "REASON_COUNTS": {
+    "MARKET_NOT_CLOSED": 1,
+    "OPPOSITE_TOKEN_WINS": 56,
+    "WINNER_IS_SELECTED_TOKEN": 65
+  },
+  "INVARIANTS": {
+    "NO_LOOKUP_FAILURE_BECAME_OPEN": true,
+    "NO_MISSING_TOKEN_BECAME_LOSS": true,
+    "EVERY_WIN_LOSS_TOKEN_IN_CLOB_TOKEN_IDS": true,
+    "EVERY_RETURNED_CONDITION_ID_MATCHES": true,
+    "LABELS_EXHAUSTIVE": true
+  },
+  "STRICT_INVARIANTS_PASS": true,
+  "TERMINAL_N": 121,
+  "RAW_DB_ROWS_READ_N": 2845,
+  "IDENTITY_KEY_ROWS_READ_N": 2723,
+  "FEATURE_ROWS_READ_N": 122,
+  "GAMMA_LOOKUP_N": 122,
+  "PRODUCTION_WRITES": 0,
+  "RESULTS": [
+    {
+      "condition_id": "0x34cd17ffd447986f605b7213266dba9730619e52ad9fec709a081b7e32dd5722",
+      "selected_token_id": "34989455493911581828887810781895070350175831058172493653120933788169457693724",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xf2db0b371c73fdfa0933fb2fb4ab02a609388df1ce7ba12863f15be5a47e1beb",
+      "selected_token_id": "43869879105525708841166543023874646083528444073276289945502033403398264451966",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x81735ef4454249a8a3a4d6eef64244f8b8dbd3ff7b45ae3974aa97582a08426d",
+      "selected_token_id": "36836809580806206595177405955492220573713410867504562950187378500674416892104",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x2d1e778c5dc483f6fd4d38ae54489cd9ab2ab0e8838de6afb97b2b036feaca2b",
+      "selected_token_id": "54646111626777643687448100766554478588117662057034961963257132024285866041957",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x4be369b1e4157b1a58ea017259b60bf2edf27cd88321798d7aa840f3f978689c",
+      "selected_token_id": "54136284103010705575878247532502058845096035824621047744799460903870545838626",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x8d0df7d6a65c6685cb5b6084abeefbea350fde64913453f5b462f9170840785e",
+      "selected_token_id": "89640328987244391019746488903009877059657697585486247467266025522469298728167",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x1e198bf454a4f68d7d8f19e9c2c3ebcb24d8665140e7beddc13a67c800cf3c1a",
+      "selected_token_id": "38028899838025353641467710573165566600602275442710460302110267509176404672799",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xcd7084036b7a6b356c2bcbc0cdb055f58a5a5748812236277060a369fd7862fa",
+      "selected_token_id": "16508073628538963590884606773218241593225989394503732900386938399433623320400",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xc6cd3e1a0f898aa50bca8a629ed4a176eb63e24202d29f2d835895ff44a417d7",
+      "selected_token_id": "47177094514879649558049599973361372415860035851140662130533295144376859409295",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x4798d11d52b6578036aef600b08b04ebf874ae0097f85be6213dc86fc33738d1",
+      "selected_token_id": "27862382418126479352748213152334962594099205009499968078968426041882978641057",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x007c22bbb3b03e21ee2e6b98ec44c7844b7cfe1e7ef7f89ef5e0999cc3afd0d9",
+      "selected_token_id": "48740195823456263618804598483801483502540795470314859525828912677637051151131",
+      "label": "OPEN",
+      "reason": "MARKET_NOT_CLOSED"
+    },
+    {
+      "condition_id": "0xc70c28bc1f9de4a0f147c9c5a1645844be2130705721b7931a1704671e7a2625",
+      "selected_token_id": "93523012572033915687477026908175214463569958461601120305868361805473287894361",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x0d9504ac7a6be167841319f879504492fd913de1499b2a384b25d3d5b7a20784",
+      "selected_token_id": "113717794362577008710589154816601205463008879897361696672237269527422916751567",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x3855e4d4a20a12858b16a2e3ccffe9a07341e4ec8d2cf9eff24f28d265cebd44",
+      "selected_token_id": "47068190677020059850605241177188835803714906345550524560743422249372238512267",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x6bf07c947df9ccfdddc5ad9a62d941722e68f0be675caf07276030e96755806f",
+      "selected_token_id": "54221887033038071998136226858737131309646637021442371388095698120838909141667",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x06fb607195415053ef3188b8b337813c40b08f9cf503613d8f64f8998dc7ce19",
+      "selected_token_id": "104160165138043590492009339941278534782502779407724210431942773984391673288533",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xe73fbec1c28bab2ae9a393a0d193cb0bf0cffe726f395b957174e24de8f0ec50",
+      "selected_token_id": "37385430677767341932342148039814629110002006339974726687654598038095465576763",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x83b54c3f1d582667cc03466bb14dec3ffd4d97be8d0a35ae73c55d27926d4e5a",
+      "selected_token_id": "87133348829170622882580038377378485715528540923767150240814541370411608227068",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x4b254b949aeb5611e670f1beca143231bf43a9595707c1766c605baadde78230",
+      "selected_token_id": "21246019053250788330220613594010388597730853537601962822722860391689335827045",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x03e37d7f251e8366f2dfa18919100b7f3bb22510f627909d7d7e38dea13d4f7e",
+      "selected_token_id": "37961501022832143749421903771493130315332200089166191202350003274864317676387",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xf4e2b1ead46b4834f8057ebdad8f6ac7f5f7a51b66b0696746ed116a1db44fd1",
+      "selected_token_id": "94036727576450466315346567881955318170066700130913124076655999217549755626915",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xc87657e876feaf77e6e9510a407bbe9d11b98684b062d2422b2e7db08a46bb39",
+      "selected_token_id": "33319385361242735456967645275325101952549964255998543911689356901128052695520",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xf5bb9f7ef9816afc4cefe2d4d69d89ba02cfa4eb3b6e6e18f116115fcf835fa7",
+      "selected_token_id": "71704993898756678880906328730727054104936557696866370322369605993233955684162",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x48a1f6aef34b646652cc3e56d7217313c99047e90270e6eaa326a6eb30227ab2",
+      "selected_token_id": "6372057631361103929981967716297515753698100223916771906526113584177990784170",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xe48474c30169ad9275e9d78129ef8bd94c74b1565cac935e61882a1826b52294",
+      "selected_token_id": "23976790404796741857960763068100008560200529163345732003180341533775561948816",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x1a1adec6b50c73dec6b137891c203e280d8832c2251dd3976fd751ee98bb5aa3",
+      "selected_token_id": "54218374189249132787990902362704425257560507657967357850739479876497255128902",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xed070c61b0263f46061df8326c97901cb045730907ac1bc77f842ccf17d322b9",
+      "selected_token_id": "101776860322538567184450872771269257115744441616145146460551591876918502458277",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x4b7b411cae21f94f12b4e228eba60ea22d6a8544a9f8f2c6ff318191e02854f8",
+      "selected_token_id": "95570677367528538293861338454556916988952562199428294449715604404311733047938",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x5466d7e7850ca36fcc61e84066025ee8e41f5a9f6c9856e3c24b9e0dbb331846",
+      "selected_token_id": "8878155493983134809614556764868562356198446756753167836136449046081127106912",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xecd01d927dec25c3271ec785a437560380d40e600d07a955db55d0787a030732",
+      "selected_token_id": "30059479909687882684492760308261057762219773595921217647555394295160167862246",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x0965211c2c3181dff5183dc92c855d66c9f4b073d7adc783cd4997db833a0e18",
+      "selected_token_id": "60041232239693428402169177204429206535803895813023267763558312131005369293287",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x134327393939b406fd1c4b25fe532e3341a724a804af4e5c3107fb677222768c",
+      "selected_token_id": "101423735059688288384981729379800637167920078076483783961866654163576263929315",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xc6afd7cfa62ac43176aaec9701fa7bb3b293b65dca99567ef22cfb812ca46d25",
+      "selected_token_id": "98555746725418546198974480576145119536668435802735515294335412934749131206890",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x1b0c8838f7d60f8a8c7917d808174782f193ec53bc59a3a29223939e22f213a8",
+      "selected_token_id": "41567266399157427727533751587061876606781782167789633147690989194722042844372",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xb8b2b2afd5425dc9c16a4c02f3e3964ed49f830b1a0f677b78d3a0c9cdb65673",
+      "selected_token_id": "57496583041399467665999350031122062733672681157453216537600743531701868949307",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xdcc1c4e3c0821ff30853c834ea9a1292734deb01bd11f4571cb286c4790af3ce",
+      "selected_token_id": "55034383143381241462589073750231258772794811504713717377124148764272185354434",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x7a9778fbe0b1d94b5d0c650d697666d8668b3af071505f13bc6cd7c28fd2c41d",
+      "selected_token_id": "110051786780793585696962446205762319873257398455135506498165914881665161409321",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x46aaee828f342d85701ccc416c2d58f197eadeb7b127d873fc04039401647500",
+      "selected_token_id": "102855750151809581903508901226925416515475454107945409657628063421278030203017",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x9acdf09f3b08e56fce1c5d14ba9b0918c6b02c03fa4f1ddb94c293aaa2c3a1df",
+      "selected_token_id": "104326369366798425931145049274733082236835157921234541978810229827519903642153",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x757db8cb4d0b818f5dbc7a5a34d1f965f73a84784e5c339519b43dd2657ec500",
+      "selected_token_id": "102488632892429134235554442286748347138057151476933717126721287731325812533175",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xab597805456cc164e83afe5874e143218ccceef641f5acb9740747310840d73f",
+      "selected_token_id": "102056347393180777721009122016395338612317595201960614754059264818267363223234",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x46a736c36e3a0c19587d70692dde6ee12ade4b2065212ac7a3cd717ee95bce37",
+      "selected_token_id": "13271944441477568070629045981810188200715181342637403538534272789138660200705",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xdadf160e68b16828f12359bf722012518c28d377354cce61a84bd8bfb1260014",
+      "selected_token_id": "57804322562524795499833181872935034722100199379001411980153604168578199322855",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xf361da4b9f8b7373a4f8b160ccb9c34e8d781b2749f38e2948a63ab3f6fbc732",
+      "selected_token_id": "106795510765526981428390448120950390022516583003136027532593277324421668703831",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x015453a660314139435c20a43366891a108fed43893976f631871636bcb8f69f",
+      "selected_token_id": "29689935078616641509490282569133435012257539336085169867943714494124790398997",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x4077bd6ebfa160ffcaab02ad00100d046727a379278ce61ae428bf875786b43e",
+      "selected_token_id": "24071172643681550959944830210455571639724184379139034876931179443870572064355",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x522e0efea091ceea233d417a31b014b17cbf27124dca342c63dbce685b9dcea6",
+      "selected_token_id": "18047344841699966852329962748558642130352380090268041096608758279389775646996",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x8605f685e57e2ab2e31f0452f111197be977577c384948b70976d4bd229bff14",
+      "selected_token_id": "81292202748335410372340881390425758057914547945727410283815242566725514902325",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xf56a6b0ffc0d5f0d83b9ca34ae648e529af37fb612b567754d5cd045cc3c23de",
+      "selected_token_id": "112990210387208046905923050001360502989769370717568629056452123414500275613602",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x1612f7148b325917a31d9c5d732806e425e01843ec1a8e188f696319dafacbf8",
+      "selected_token_id": "91318169382661476659093359893139097380743647759296038017629186235322065684332",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x2c53c272a2db5e1bae89ab9c04ffa342b10d7f9a21d0a2f9caf0195825073680",
+      "selected_token_id": "62864060363942540848108859350108944317958301409847663247578579886131244485294",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xbc563661dce250dfd5bb72efeacb4a72dc369a27bd025a48da759f5c9741aa03",
+      "selected_token_id": "92170968408904248443156441343046231510109151357239333139462722204294706393864",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xb0242608f39dddbe30a60df45ba95309cb413bdf5a2206d5aebd5898a5bfa2aa",
+      "selected_token_id": "13503136304292061062758075652731067985998269497499043011860926798018595176037",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xafb83310c296e6e4eefd7821ae41292551f35bf3262e42063ab25d358f9aab22",
+      "selected_token_id": "96208996230560696379893941331744403641576949893708488325839575392566126187558",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x1f606e1a62e3ce27bb811a66f1f2c61e8bf5c9f431808932ab527d75e69e2277",
+      "selected_token_id": "48482359646971562137227351260584538009538835345103298741422495325917192427164",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xe784fa06dbae68e45d78a908db45a564428fb17ba194777014eea3d766da990d",
+      "selected_token_id": "28574565820444542156898521010061143647896860688356925646664663452922176893638",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xfe45f36fdf1036e8e0dc7cc6abc493b6b9686c46620df5290e0525cf6cc2a2a4",
+      "selected_token_id": "81201449486305285094620555443943455927833418082954678858648460691603970101904",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xcfa28f1b86601ace2dbbf3078203b71e997dd3f8268049885ef163c8ad1ed472",
+      "selected_token_id": "49511425688137500347833422669953388157278225486815516963763333369762860055461",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x2351f08ce2eb23792e66c4ff279128ffa3485efebb441e338ce69affee33e996",
+      "selected_token_id": "69313286162076004236270903511383597466393044546358042631934104831955309530349",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x056876d0bb210ce286a7046a5c0d16173ec9111fdcc86c5bf924aef2e3e450e6",
+      "selected_token_id": "24640148774223098187680220784151500163116218749609901095538510309625979794364",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x6b986e5c1d0bd7fbe576cd6b70c49fcd1fd3b88b5724ac7fdf00ccb6e44d00b5",
+      "selected_token_id": "36174785120594006871275493084396004685717795264627229938145022588650837479386",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x285f5e8a65ee919d9a29601e07a3b13bb281752683111f696c34eb9d94d39c0c",
+      "selected_token_id": "70615151732445520912615619373002698252362063376829460764509082429116134270063",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xa2ebda6c8c212360e5d27a1dcb2f5599bc61d9c720ba1e6d474295937480e6d6",
+      "selected_token_id": "84105816211789024497030359349745675132508295438075505226260965033244761026831",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xe3702fbccda78870195192f0e1d662b51fa41fc1b5c82c68beef1f357586232c",
+      "selected_token_id": "102693965099876315420069377628172863673143889013874013494565927358342305716976",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xf416e48fb99005c74c6229bb9dbf53ce98261bfe86282d23804d489a8cfa4f0b",
+      "selected_token_id": "110594788281689869938868187904393048899561624505773433394058046010526153263859",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x95a3dd67226f307e3c106045bb7551e0adb144497fa1147c9be56fbde71ea8a4",
+      "selected_token_id": "10788399586046301170280574252280689897168590789468216529463859671142836336370",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x39a441e0781850d65697acae11f2b11542a88e38eaf68c6b5db20966ecda56b4",
+      "selected_token_id": "48602870153323164851550158157591732284630140864047912939432592572317974967263",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x8ec4849cb6afabdb366e3186e19a5a218922f460542044c0a8c4394342f0fa96",
+      "selected_token_id": "32384638176966358617988110275888197953275988625582052600503565788431886108662",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x613c543ede9d9ad7e2c42e07c1b32a26754819024d793d1aa2dd7d2bb293735c",
+      "selected_token_id": "78758209232215278210636369158838722971291789428238116927671556099823910758748",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x65c01293ec00e1bfee28c17e14a8f8d81fa6511f0f28411e9f0bf05228c11db7",
+      "selected_token_id": "54997942021216749897658077973291510630837189055747085320283655420405054763890",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xad1e56b662f299af25702e76a26dfb9769741bf9ea5ebe4cb624fbbd190bb125",
+      "selected_token_id": "53513174982264701754571546501830910171180844213262075717961586742265153318648",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x7d1f838c727c58f48f831647e0c8ba6d0c768c074c83ffa940abc555f1e5db74",
+      "selected_token_id": "100187868834282251047857178085104325563401881131700690968464389210910189506954",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x59afc6b7f20efb07c82293563ffceea9dccd720c907f8c1a0bff64efc740bf3c",
+      "selected_token_id": "101584513788253395790432099809422920843021919719052910751042378593774678905605",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xb19ac4e20daf6b1c0e62da493beed583d51001d3f5e160205a213aeba16e0299",
+      "selected_token_id": "25036306968354657132039109088059217330657075232760817892179541635641034463848",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x07edcf0468b4c4f2577fc41d012bbe5d4fab350da39f55c4ae0745650d366063",
+      "selected_token_id": "15264544972843510849831714702576097313864456754288597211374140962979770822463",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xac07b939c7b6cb65c16fd0f2a76489a629f4bf7d36f7e1b26f67605019a80f6e",
+      "selected_token_id": "15395473976234183820989616192536422846502351607335146702165230901411999453238",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xca51fcd1bcd1d09a4b5d11c097454b8ad1b7109276ebe07aef15f2dadd4defb3",
+      "selected_token_id": "12612887796206274348884983311034596639717436047573855538064309951497432865236",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xb31a7554d58f43af6adc2e6f588aec98a08ed0cb137390e9a9839102b52769b8",
+      "selected_token_id": "93341119899270712828261435450306338044945256072094008759021276871912338185393",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x29e1d65b3e04497c7cb4ef6a1aef2249a7d1b59e3ad7c50e5ffc676c8919b7e9",
+      "selected_token_id": "76094494337629062094134380961117673033252079689440263762966617377407513214026",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xbe3f81d6e3887c8be3435e6d4e85739af73878e1a5405963d4be60db2d773c1b",
+      "selected_token_id": "56725663537597819334606910709973578574898557109430056717526350239632959710527",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x23584719b7bb28c22cf267518b97a7ec9ea9dc7d46e870acdf44af0c2191db7e",
+      "selected_token_id": "112183333769099300682114545398189445055754754666287570652663574639764340441318",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xf03e6a9060e5d96b0ce7c0b81ec672b6e567b125ec6fd9f68978cc249907fe1d",
+      "selected_token_id": "27727721052478372793007437778541710644703507479813461558895743242599111597583",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x902b2108612f9b5a4ee1eb4c26b65e921a10c7e425a91fded5ef4a28251deb39",
+      "selected_token_id": "58905638530612694792052922877490209472202094062799925756602256509694705374998",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x5cdcddc3fab4b449c1eb2cfe3b9beb056db57e407bd6198cfe6812902e07f9a3",
+      "selected_token_id": "17006836466768458641226963330342703308333796236103052951119488190174784932383",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xf0cf191bb29daa1b6fe041523b606018a6bbb50cd77b843ec6e49694f12a49b4",
+      "selected_token_id": "21142881494075047109943660685207407586634671837644974516904167046584993017641",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x58f07836b22c6348e7016b24d77099cc2bcaeb0ebfc23db2e983ae3f8249c90e",
+      "selected_token_id": "75764468125365869333400107611864125211671302884093130330594521403809014987354",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xa8cdc958ccc79fd1f89c702896571275d9dba4fe86c9d28da6fb8ca905459384",
+      "selected_token_id": "32120869205029926664269430223978034131739680173776927402225292799961636757736",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x42bbf7a68f140ac20ea310416e8e8197c52d1103ff6f0ea78df8f79ec742fdd8",
+      "selected_token_id": "36574050875634459020936732362743151568854147346512995586311277140468295786509",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xeb4bac50bea058eb18b31fb59fc83699baa944bee11ec6365ec820661cf0cc43",
+      "selected_token_id": "71969026239354244607022638452428204719537655076062502437371832676918133118947",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x727bf58ed281ba17284aa46c1409d8d2173d4deeeae9e56e63a1555e32a14d69",
+      "selected_token_id": "61682047227201419833736615626752973159307508974293415168756512735049139254164",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xca805f02209abf312fafd70fdcb8dce6220cee71f64518f339868cb8e7f5b991",
+      "selected_token_id": "4758749168975843876582337943412396634054403799476804782141948268648109010368",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xd43bd78d60a7be7f6a72ca3a88d03b879521391910ad8d91a1d5893ff3f7c523",
+      "selected_token_id": "48104119267484610500624707538241350984363778815236752463332275301889289026523",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xc0b9c5c1b1ff012681ee8be6e1dda2c9cae9b6cb14714a1092c6af078f4e0288",
+      "selected_token_id": "34085394955400382544056119310071218115504865950759308852848004366047826431369",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xcd89e47cb70bcc279840a9e6dfc7cdf3413495d0ffc330120e60ef289f92486e",
+      "selected_token_id": "255872796515134460207835992635189528769397442434167648312636588527108785764",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xab7597ff75d5a8e2a91d8f4db8b76e2ae445818039d525d22560bdbf6f774df9",
+      "selected_token_id": "20941372450969656413527528371360952967040421477922219254085824145376756372758",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x65ac18708d672b8a99c7b7e9405981e0c5ab8252379db874ab120e5a19d71586",
+      "selected_token_id": "54406032049606566784742873970492582387619867456773302388204840090331955440567",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x10538a0425aeb40079151c3bd26cb16193fd81c10879dc1da54debd7b2185d43",
+      "selected_token_id": "112660629251014132657415680107046396398421248142262394702919538680683327861783",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x381eb9645a08cf712f3f199339f086c733ac6145ae43ca249274e0c664d0b289",
+      "selected_token_id": "97923253698854710979638680603656097637354607866949410237035348630792974044353",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xaa665045f4345f24802020892b3f00a94bfbecf218a54aa024716fdee21a9cc7",
+      "selected_token_id": "59963370800633952933002651226404043819980490253722573715818058190758395518848",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x87167f2ecb85ccc9b4247a5fed37e9fca026cfc3af2b043b2cf7e852d5265547",
+      "selected_token_id": "36889701606568482422476691148260676348020189818597909075676082438370507743504",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x564db69ada0bf89769aecc721775a1c80ac8f8385985576582efdf44e974b1c5",
+      "selected_token_id": "56291533920703667010638153367475882527121157566482176586772631975235136194838",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x6e40c8bce6e6160fbff0293b7e4a3d1a00b4788dce5c1cfa09703b442a27c588",
+      "selected_token_id": "64594912921320431157494489928199759376372687478608115324344693552314796528342",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xef205923b376c848aad611081331de1b298b175437f84bf41bd539e3450fa536",
+      "selected_token_id": "37016141353785297724176125337052099230523164615684430947332235316497578595174",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x3ade26dd1bd61cf4043eef25a454a85bf27d4e846354ff492656624bdfe06aac",
+      "selected_token_id": "24963482525195159638874521768602706736499074604832992527559321780573356581387",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xc24bdf523d250542e57d859957d10cad63685b9a4a6a3945dfe00898047a12d6",
+      "selected_token_id": "1347148307528865141475392947383339717695637722912280556814521797978776903032",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x9c6423544d8b3053cb6ce54483d01ef67b83c944d6b417a9ebdcbf30fd930a88",
+      "selected_token_id": "38166848773691438307754686547058693561947883060650905282372623611956973218958",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xac4f38fea0bdbe6cd9ba1d13307b66b5dd7089b0846c5723cdb75f09604c619c",
+      "selected_token_id": "11795645892542072137228252330917120147807943535754637244325969665018340522611",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xb82c3175a118fb606789dd56970932c9ad2e71964fa692e1cc5b4919009e73cb",
+      "selected_token_id": "61273315164508795457787338703573100477350553726454238347636224454645561450782",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x6eb0b8c081f4da7f3802a7a92f6f79bfdb24efa9266ebb2d79878977de6af4a4",
+      "selected_token_id": "71387767824425729788244082084633356877104100910336791044181772805406215067395",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x3a9475585a0718a2e5de8102a02c7b30386b63d24fd85485f8b7ecc80da38985",
+      "selected_token_id": "72133476812919317842276717314353679017167472031400714691144366884431076569739",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xea0f58c2997e9c71e983d5d2497885ebb9c58e9fbde10fe7d276f870a1a412c9",
+      "selected_token_id": "47215151754786067685542118991572866767894914546599344549772773550437847582590",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x8ae7875f573103a8220125432cf1bfb5bed53c7a36af68ddd239513a442ad653",
+      "selected_token_id": "2944159372481654729028014732541513834353200133094116929031356019556363378398",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x067369717e6a5e1c5faefaf4513df803d363572d1ad8318b47bd2523525d3ef0",
+      "selected_token_id": "50596416464539457988561712556497818633848376232374162133015552707524298933447",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xfe4ba50adc4073d3012e84fb530f8a40ba6d16ea77a36619c8176c1781b0cfd1",
+      "selected_token_id": "106192532062967256272606145524446901738148897994849445518450637225741086701571",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x2ace1a16f687119be1fbfedffdfbb7e54e5d8cbacfa6f58493e249e0c4823fcc",
+      "selected_token_id": "11646036963312263970130580763410126907152803736256123727917522690238597216196",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x8e0bc46395dc4b73308dc31e06ed6d89d7bb198c2f9a9ae8eea2089126387048",
+      "selected_token_id": "58260323447263183755716474121600840819024825474475032282817218127452431554404",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0xbd49e6acb0bf3e8b39a13df84bb75938e75bb7d6f8de7d65a483ab33a0ed8c80",
+      "selected_token_id": "92627134221926943469431904171667286991020602395063741978118977028283162320937",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0xe566e774491edc9e0b55450e5ccd5cef45f6cb350a6c4ecb7aa8187da5151ace",
+      "selected_token_id": "63939889765942381844950806898251439516604673886158785531368870666318752747537",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x4b851066db53a70952d3b8c4c091b8c5823d7994af495fdf2b5a97cefd1356f5",
+      "selected_token_id": "108314218003878800469057483264962042603918314787464025946324125043321537537344",
+      "label": "WIN",
+      "reason": "WINNER_IS_SELECTED_TOKEN"
+    },
+    {
+      "condition_id": "0x21859fceeb6749905f85eddb629658a175563e14624bc4427415c040d9ff917b",
+      "selected_token_id": "15709413325939650145396529770430808517401582204820443298235591085122967264304",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x8c87e81553bdd77f3375f15ba9a80e053beaf279669c8a60483744954c853eda",
+      "selected_token_id": "64147677376064570784437984455862357832093732961339676021153589063370012411582",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    },
+    {
+      "condition_id": "0x1c46e8746a7f11a731e53c0e2636da130b940467116c14b47865e546d104052b",
+      "selected_token_id": "76644798907126690500864616735016417809283718534846814571127699829052233555183",
+      "label": "LOSS",
+      "reason": "OPPOSITE_TOKEN_WINS"
+    }
+  ]
+}
