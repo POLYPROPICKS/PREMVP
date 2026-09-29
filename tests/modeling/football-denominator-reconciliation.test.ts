@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { readPartitionedSourceDate } from "../../scripts/modeling/build-football-denominator-reconciliation-v2";
+import {
+  marketTypeLineageBreakdown,
+  readPartitionedSourceDate,
+} from "../../scripts/modeling/build-football-denominator-reconciliation-v2";
 import {
   buildOverlayRecord,
   buildPeriodStats,
@@ -82,6 +85,58 @@ describe("bounded denominator source partitions", () => {
     await expect(readPartitionedSourceDate("2026-08-04", async (prefix) =>
       prefix === "0x0" || prefix === "0x1" ? [duplicate] : [], 3,
     )).rejects.toThrow("RECON_SOURCE_DUPLICATE_IDENTITY:2026-08-04");
+  });
+});
+
+describe("market type lineage summary accounting", () => {
+  it("counts unresolved and conflict once and preserves identity/event invariants", () => {
+    const resolved = row({
+      condition_id: "C_RESOLVED",
+      selected_token_id: "T_RESOLVED",
+      provider_event_id: "E_RESOLVED",
+      canonical_row: { sportFamily: "soccer", marketTypeRaw: "moneyline" },
+    });
+    const unresolved = row({
+      condition_id: "C_UNRESOLVED",
+      selected_token_id: "T_UNRESOLVED",
+      provider_event_id: "E_UNRESOLVED",
+      canonical_row: { sportFamily: "soccer" },
+    });
+    const conflict = row({
+      condition_id: "C_CONFLICT",
+      selected_token_id: "T_CONFLICT",
+      provider_event_id: "E_CONFLICT",
+      canonical_row: { sportFamily: "soccer" },
+    });
+    const conflictIndex: MarketTypeResolverIndex = {
+      researchContextExact: new Map(),
+      fireModelHintExact: new Map(),
+      conditionStatic: new Map(),
+      evidencePageExact: new Map(),
+      gspExact: new Map(),
+      conflictingConditions: new Set(["C_CONFLICT"]),
+    };
+    const overlays = [resolved, unresolved].map((source) => buildOverlayRecord(source, new Map(), new Map()));
+    overlays.push(buildOverlayRecord(conflict, new Map(), new Map(), conflictIndex));
+
+    const summary = marketTypeLineageBreakdown(overlays);
+    for (const level of [summary.IDENTITY, summary.PHYSICAL_EVENT]) {
+      expect(level.UNRESOLVED_N).toBe(1);
+      expect(level.CONFLICT_N).toBe(1);
+      expect(level.RESOLVED_N).toBe(1);
+      expect(level.RESOLVED_N + level.UNRESOLVED_N + level.CONFLICT_N).toBe(level.CANONICAL_SOCCER_N);
+      const sourceAttributionN = [
+        "FROM_CANONICAL_ROW_N",
+        "FROM_RESEARCH_CONTEXT_EXACT_N",
+        "FROM_FIREMODEL_HINT_EXACT_N",
+        "FROM_CONDITION_STATIC_RECOVERY_N",
+        "FROM_EVIDENCE_PAGE_N",
+        "FROM_GSP_N",
+        "CONFLICT_N",
+        "UNRESOLVED_N",
+      ].reduce((sum, key) => sum + level[key], 0);
+      expect(sourceAttributionN).toBe(level.CANONICAL_SOCCER_N);
+    }
   });
 });
 

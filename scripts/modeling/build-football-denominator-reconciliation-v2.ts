@@ -365,7 +365,7 @@ const LINEAGE_REPORT_NAMES: Record<MarketTypeSource, string> = {
   MARKET_TYPE_UNRESOLVED: "UNRESOLVED_N",
 };
 
-function marketTypeLineageBreakdown(rows: OverlayRecord[]): MarketTypeLineageBreakdown {
+export function marketTypeLineageBreakdown(rows: OverlayRecord[]): MarketTypeLineageBreakdown {
   const rank = new Map(LINEAGE_SOURCES.map((source, i) => [source, i]));
   const summarize = (groups: Map<string, OverlayRecord[]>): Record<string, number> => {
     const result: Record<string, number> = Object.fromEntries(Object.values(LINEAGE_REPORT_NAMES).map((name) => [name, 0]));
@@ -376,11 +376,16 @@ function marketTypeLineageBreakdown(rows: OverlayRecord[]): MarketTypeLineageBre
     for (const group of groups.values()) {
       const selectedSource = group.map((r) => r.market_type_source).sort((a, b) => rank.get(a)! - rank.get(b)!)[0];
       result[LINEAGE_REPORT_NAMES[selectedSource]]++;
-      if (selectedSource === "MARKET_TYPE_CONFLICT") result.CONFLICT_N++;
-      else if (selectedSource === "MARKET_TYPE_UNRESOLVED") result.UNRESOLVED_N++;
-      else result.RESOLVED_N++;
+      if (selectedSource !== "MARKET_TYPE_CONFLICT" && selectedSource !== "MARKET_TYPE_UNRESOLVED") {
+        result.RESOLVED_N++;
+      }
       if (group.some((r) => r.reconciled_market_type === "soccer_exact_score")) result.EXACT_SCORE_N++;
       if (group.some((r) => r.reconciled_market_type !== null && r.reconciled_market_type !== "soccer_exact_score")) result.PROVEN_ORDINARY_N++;
+    }
+    const attributed = Object.values(LINEAGE_REPORT_NAMES).reduce((sum, name) => sum + result[name], 0);
+    if (result.RESOLVED_N + result.UNRESOLVED_N + result.CONFLICT_N !== result.CANONICAL_SOCCER_N
+      || attributed !== result.CANONICAL_SOCCER_N) {
+      throw new Error("RECON_MARKET_TYPE_LINEAGE_SUMMARY_INVARIANT");
     }
     return result;
   };
