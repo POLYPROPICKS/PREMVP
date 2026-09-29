@@ -104,6 +104,9 @@ test("clone snapshot RLS keeps the exact ledger private", () => {
 test("CAPITAL dashboard fetches live shadow without cache and labels static data as fallback", () => {
   const html = readFileSync(join(root, "modeling/evidence/modeling-dashboard-v1/MODELING_DASHBOARD.html"), "utf8");
   assert.match(html, /fetch\("\/api\/founder\/modeling\/shadow", \{ cache: "no-store" \}\)/);
+  assert.match(html, /SHADOW_RUNTIME\.historicalDaily/);
+  assert.match(html, /D\.meta\.latestDashboardDate = historicalDaily\.latestDashboardDate/);
+  assert.match(html, /Historical daily through " \+ meta\.latestDashboardDate/);
   assert.match(html, /STATIC FALLBACK ONLY/);
   assert.match(html, /LAST REFRESH/);
   assert.match(html, /SETTLEMENT FRESH THROUGH/);
@@ -113,6 +116,9 @@ test("CAPITAL dashboard fetches live shadow without cache and labels static data
 
 test("30-minute job command is defined without scheduling nightly modeling work", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
-  assert.equal(pkg.scripts["modeling:shadow-cycle"], "tsx scripts/modeling/live-shadow-cycle.ts");
-  assert.doesNotMatch(pkg.scripts["modeling:shadow-cycle"], /model-ready|modeling-dashboard:refresh/);
+  assert.equal(
+    pkg.scripts["modeling:shadow-cycle"],
+    "tsx scripts/modeling/live-shadow-cycle.ts && tsx scripts/modeling/refresh-modeling-dashboard.ts --runtime-only",
+  );
+  assert.match(pkg.scripts["modeling:shadow-cycle"], /--runtime-only/);
 });

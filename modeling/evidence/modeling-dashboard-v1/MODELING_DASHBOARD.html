@@ -326,6 +326,19 @@
   } catch (shadowError) {
     SHADOW_RUNTIME = null;
   }
+  var historicalDaily = SHADOW_RUNTIME && SHADOW_RUNTIME.historicalDaily;
+  if (historicalDaily && Array.isArray(historicalDaily.daily)) {
+    var seenDaily = {};
+    D.daily = (D.daily || []).concat(historicalDaily.daily).filter(function (row) {
+      var key = row.date + "|" + row.model;
+      if (seenDaily[key]) return false;
+      seenDaily[key] = true;
+      return true;
+    }).sort(function (a, b) { return a.date.localeCompare(b.date) || a.model.localeCompare(b.model); });
+    if (historicalDaily.latestDashboardDate > D.meta.latestDashboardDate) {
+      D.meta.latestDashboardDate = historicalDaily.latestDashboardDate;
+    }
+  }
   var meta = D.meta, models = D.models, uncappedModels = D.uncappedModels || {};
 
   // ---- Tabs ----
@@ -1001,7 +1014,7 @@
     "<dt>Combined refresh command</dt><dd><code>" + esc(p.combinedRefreshCommand) + "</code></dd>";
 
   document.getElementById("footer").textContent =
-    "Generated " + D.GENERATED_AT + " · " + D.ARTIFACT + (LIVE ? " · live snapshot " + LIVE.GENERATED_AT : "") + " · Aggregate metrics only, no raw event rows.";
+    "Generated " + D.GENERATED_AT + " · " + D.ARTIFACT + " · Historical daily through " + meta.latestDashboardDate + (LIVE ? " · live snapshot " + LIVE.GENERATED_AT : "") + " · Aggregate metrics only, no raw event rows.";
 })();
 </script>
 </body>

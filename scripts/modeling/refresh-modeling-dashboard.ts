@@ -238,8 +238,24 @@ async function main(): Promise<void> {
     return;
   }
 
+  const runtimeOnly = process.argv.includes("--runtime-only");
   const data = loadDashboardData(DATA_FILE);
-  const lastDate = lastDashboardDate(data);
+  const staticEndpointDate = lastDashboardDate(data);
+  let currentSnapshot: Record<string, any> = {};
+  if (runtimeOnly) {
+    const { data: row, error } = await db.from("prospective_selection_shadow_runtime")
+      .select("snapshot_payload")
+      .eq("row_key", "CURRENT")
+      .eq("row_kind", "SNAPSHOT")
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(`READ_RUNTIME_SNAPSHOT:${error.code ?? error.message}`);
+    if (row?.snapshot_payload && typeof row.snapshot_payload === "object") currentSnapshot = row.snapshot_payload;
+  }
+  const priorHistory = currentSnapshot.historicalDaily ?? {};
+  const lastDate = runtimeOnly && typeof priorHistory.latestDashboardDate === "string"
+    ? (priorHistory.latestDashboardDate > staticEndpointDate ? priorHistory.latestDashboardDate : staticEndpointDate)
+    : staticEndpointDate;
   const todayIso = new Date().toISOString().slice(0, 10);
 
   const { data: dayRows, error: dayErr } = await db
@@ -255,13 +271,32 @@ async function main(): Promise<void> {
     .map((r: { model_date: string }) => r.model_date)
     .sort();
 
-  if (newDates.length === 0) {
+  if (newDates.length === 0 && !runtimeOnly) {
     console.log("NO_NEW_CLOSED_DAYS");
     process.exitCode = 0;
     return;
   }
 
-  const rawRows = await fetchRowsForDates(db, newDates);
+  if (newDates.length === 0 && runtimeOnly) {
+    const daily = (Array.isArray(priorHistory.daily) ? priorHistory.daily : [])
+      .filter((row: { date: string }) => row.date > staticEndpointDate);
+    const latestDashboardDate = daily.reduce((latest: string, row: { date: string }) => row.date > latest ? row.date : latest, staticEndpointDate);
+    const refreshedAt = new Date().toISOString();
+    const { error } = await db.from("prospective_selection_shadow_runtime").upsert({
+      row_key: "CURRENT",
+      row_kind: "SNAPSHOT",
+      snapshot_payload: {
+        ...currentSnapshot,
+        historicalDaily: { staticEndpointDate, latestDashboardDate, refreshedAt, daily },
+      },
+      updated_at: refreshedAt,
+    }, { onConflict: "row_key" });
+    if (error) throw new Error(`WRITE_RUNTIME_DAILY:${error.code ?? error.message}`);
+    console.log(JSON.stringify({ MODE: "RUNTIME_HISTORICAL_DAILY", APPENDED_DATES: [], APPENDED_ROW_N: 0, DAILY_ROW_N: daily.length, STATIC_ENDPOINT_DATE: staticEndpointDate, RUNTIME_ENDPOINT_DATE: latestDashboardDate }));
+    return;
+  }
+
+  const rawRows = newDates.length ? await fetchRowsForDates(db, newDates) : [];
   // SELECTION_BEFORE_SETTLEMENT_V1: candidates carry no outcome/labelAsOf field at
   // all — settlement is looked up only after selection+cap, via settlementByCandidateIdentity.
   const { candidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rawRows);
@@ -280,6 +315,33 @@ async function main(): Promise<void> {
         cap50: toCapBucket(perCapDaily[2][i]),
       });
     }
+  }
+
+  if (runtimeOnly) {
+    const daily = [...(Array.isArray(priorHistory.daily) ? priorHistory.daily : []), ...appended]
+      .filter((row) => row.date > staticEndpointDate)
+      .sort((a, b) => a.date.localeCompare(b.date) || MODEL_ORDER.indexOf(a.model) - MODEL_ORDER.indexOf(b.model));
+    const latestDashboardDate = daily.reduce((latest, row) => row.date > latest ? row.date : latest, staticEndpointDate);
+    const refreshedAt = new Date().toISOString();
+    const { error } = await db.from("prospective_selection_shadow_runtime").upsert({
+      row_key: "CURRENT",
+      row_kind: "SNAPSHOT",
+      snapshot_payload: {
+        ...currentSnapshot,
+        historicalDaily: { staticEndpointDate, latestDashboardDate, refreshedAt, daily },
+      },
+      updated_at: refreshedAt,
+    }, { onConflict: "row_key" });
+    if (error) throw new Error(`WRITE_RUNTIME_DAILY:${error.code ?? error.message}`);
+    console.log(JSON.stringify({
+      MODE: "RUNTIME_HISTORICAL_DAILY",
+      APPENDED_DATES: newDates,
+      APPENDED_ROW_N: appended.length,
+      DAILY_ROW_N: daily.length,
+      STATIC_ENDPOINT_DATE: staticEndpointDate,
+      RUNTIME_ENDPOINT_DATE: latestDashboardDate,
+    }));
+    return;
   }
 
   // Deterministic order: date ASC, then MODEL_ORDER. Frozen Aug04-Sep20 daily[] entries (none seeded — see

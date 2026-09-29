@@ -47,6 +47,11 @@ import type {
 } from "./contractADecisions";
 import { resolveContractAProviderPhysicalEventIdentity } from "./contractADecisions";
 import {
+  buildContractARejectionEvidence,
+  type ContractARejectionEvidenceRow,
+  type ContractARejectionEvidenceWritePort,
+} from "./contractARejectionEvidence";
+import {
   LIVE_RESERVATION_ALLOCATION_V1,
   LIVE_RESERVATION_PORTFOLIO_BROAD_V2,
   LIVE_RESERVATION_MIX_GUARD_FOOTBALL_ONLY_V1,
@@ -595,6 +600,8 @@ export interface ReservationPlan {
    * to the filesystem diagnostic report so the JSONB column is not enlarged.
    */
   fullmatch_rejection: FullmatchRejectionEvidenceReport;
+  /** Rejected Contract A decisions only; selected evidence stays in reservations. */
+  rejection_evidence?: readonly ContractARejectionEvidenceRow[];
   diagnostics: {
     universe_size: number;
     // ── Upstream authority boundary ──────────────────────────────────────
@@ -2696,6 +2703,12 @@ export async function buildContractAReservationPlan(
     plan_date_minsk: window.planDateMinsk,
     window,
     reservations: built.reservations,
+    rejection_evidence: buildContractARejectionEvidence({
+      planRunId,
+      decidedAtIso: new Date(nowMs).toISOString(),
+      results,
+      sourceRows: rows,
+    }),
     fullmatch_rejection: buildFullmatchRejectionEvidence([]),
     diagnostics: contractAPlanDiagnostics({
       window,
@@ -2821,6 +2834,7 @@ export async function runReservationCronWithEvidence(
     jobEvidence?: SchedulerJobEvidencePort;
     targetPhysicalEventKeyHash?: string;
     hashPhysicalEventKey?: (key: string) => string;
+    contractARejectionEvidencePort?: ContractARejectionEvidenceWritePort;
   } = {}
 ): Promise<{ plan: ReservationPlan; persisted: PersistReservationsResult }> {
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
@@ -2843,6 +2857,16 @@ export async function runReservationCronWithEvidence(
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
       : await persistReservationPlan(plan, opts);
+    // Persist rejection telemetry only after the reservation write has returned.
+    // This optional carrier is fail-open and cannot affect candidate selection or money flow.
+    if (plan.rejection_evidence?.length) {
+      try {
+        const { persistContractARejectionEvidenceFailOpen } = await import("./contractARejectionEvidenceWriter");
+        await persistContractARejectionEvidenceFailOpen(plan.rejection_evidence, deps.contractARejectionEvidencePort);
+      } catch {
+        // A telemetry import or write failure must never block Reservation processing.
+      }
+    }
     const finishedAt = new Date().toISOString();
     await jobEvidence.writeJobRun({
       source: "night-event-reservations",
