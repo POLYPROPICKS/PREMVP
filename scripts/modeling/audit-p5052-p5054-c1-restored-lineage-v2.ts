@@ -20,7 +20,7 @@ function periodOf(date: string): typeof PERIODS[number] {
 }
 
 function row(candidates: StructuralCandidate[], settlement: Map<string, CorpusLabel>, qualifies: (c: StructuralCandidate) => boolean) {
-  const selected = runStandaloneStrict(candidates, (evaluated) => qualifies(evaluated as StructuralCandidate));
+  const selected = runStandaloneStrict(candidates, (evaluated) => qualifies(evaluated as unknown as StructuralCandidate));
   const { settledBets, openN, otherNonterminalN } = settledBetsOnly(selected, settlement);
   const metrics = metricsFor(settledBets);
   return {

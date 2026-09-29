@@ -1,0 +1,49 @@
+{
+  "snapshotRunId": "f94429cb-eb8e-4607-a06d-701208b8ceb3",
+  "target": "canonical exact condition_id + selected_token_id WIN/LOSS, joined after sibling selection; OPEN retained",
+  "cohort": "S2_WIDE_SCORER soccer, snapshot_at < game_start_iso, fixed snapshot run",
+  "split": {
+    "train": "game_start_iso < 2026-09-29T00:00:00Z",
+    "heldOut": "game_start_iso >= 2026-09-29T00:00:00Z",
+    "unit": "physical event_id"
+  },
+  "M0": [
+    "selected_price_num",
+    "researchContext.marketType"
+  ],
+  "M1": [
+    "selected_price_num",
+    "researchContext.marketType",
+    "scoreObservation.scoreValue",
+    "data_coverage_num",
+    "game_start_iso - snapshot_at"
+  ],
+  "M2": [
+    "selected_price_num",
+    "researchContext.marketType",
+    "scoreObservation.scoreValue",
+    "data_coverage_num",
+    "game_start_iso - snapshot_at",
+    "price1hAgo",
+    "price6hAgo",
+    "delta1hPp",
+    "delta6hPp"
+  ],
+  "missingFeature": "fail closed for M1/M2 paired comparison; never impute from future observations",
+  "selection": "one exact identity per event; compareChronologically versus actual compareCandidateQuality; no outcome in selector",
+  "metrics": [
+    "selected",
+    "settled",
+    "open",
+    "W",
+    "L",
+    "hit_rate",
+    "Brier",
+    "log_loss",
+    "reference_pnl_u",
+    "reference_roi_pct",
+    "max_dd_u",
+    "paired_M2_minus_M1"
+  ],
+  "modelMethodStatus": "NO_CANONICAL_M0_M1_M2_ESTIMATOR_IDENTIFIED; no arbitrary fitted model introduced"
+}
