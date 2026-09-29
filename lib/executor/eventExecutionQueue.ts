@@ -285,6 +285,7 @@ export function buildQueueRow(
     idempotency_key: idempotencyKey,
     diagnostics: {
       hours_to_start: best.diagnostics.hours_to_start_now,
+      model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
       timing_bucket: best.timing_bucket,
       smart_money: best.diagnostics.smart_money,
       entry_price: best.diagnostics.entry_price,
@@ -351,6 +352,7 @@ function buildQueueRowFromFinalIdentity(
     diagnostics: {
       physical_event_id: physicalEventId,
       event_start_iso: eventStartIso,
+      model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
       contract_a_decision_version: decision.decision_version,
       contract_a_final_identity: {
         physical_event_id: decision.physical_event_id,
@@ -1225,6 +1227,7 @@ function buildQueueRowFromExactCandidate(
     status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
     diagnostics: {
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
+      model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
       source_lineage: { generated_signal_pair_id: selected.id },
       selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
       selected_score_contract_version: selected.scoreContractVersion,
