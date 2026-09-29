@@ -104,24 +104,75 @@ function eachDate(startIso: string, endIso: string): string[] {
   return out;
 }
 
-/** Same per-day paginated read strategy as v1 (avoids a global ORDER BY timeout), extended through RANGE_END. */
+type CanonicalSourceIdentity = Pick<SourceRow,
+  "model_date" | "population_id" | "condition_id" | "selected_token_id" | "decision_at">;
+
+const HEX = "0123456789abcdef";
+
+function compareSourceIdentity(a: CanonicalSourceIdentity, b: CanonicalSourceIdentity): number {
+  for (const key of ["population_id", "condition_id", "selected_token_id", "decision_at"] as const) {
+    const compared = a[key].localeCompare(b[key]);
+    if (compared !== 0) return compared;
+  }
+  return 0;
+}
+
+/** Read condition-id hex-prefix buckets, splitting saturated first-level buckets once. */
+export async function readPartitionedSourceDate<T extends CanonicalSourceIdentity>(
+  date: string,
+  fetchBucket: (prefix: string) => Promise<T[]>,
+  pageSize = PAGE,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (const first of HEX) {
+    const prefix = `0x${first}`;
+    const bucket = await fetchBucket(prefix);
+    if (bucket.length < pageSize) {
+      rows.push(...bucket);
+      continue;
+    }
+    for (const second of HEX) {
+      const childPrefix = `${prefix}${second}`;
+      const child = await fetchBucket(childPrefix);
+      if (child.length >= pageSize) {
+        throw new Error(`RECON_SOURCE_PARTITION_TOO_LARGE:${date}:${childPrefix}`);
+      }
+      rows.push(...child);
+    }
+  }
+
+  rows.sort(compareSourceIdentity);
+  const seen = new Set<string>();
+  for (const row of rows) {
+    const identity = [row.model_date, row.population_id, row.condition_id, row.selected_token_id, row.decision_at].join("::");
+    if (seen.has(identity)) throw new Error(`RECON_SOURCE_DUPLICATE_IDENTITY:${date}:${identity}`);
+    seen.add(identity);
+  }
+  return rows;
+}
+
+async function readPartitionedSourceDateFromDb(db: any, date: string): Promise<SourceRow[]> {
+  return readPartitionedSourceDate(date, async (prefix) => {
+    const { data, error } = await db
+      .from("research_model_ready_rows")
+      .select(SOURCE_ROW_SELECT)
+      .eq("model_date", date)
+      .like("condition_id", `${prefix}%`)
+      .order("population_id")
+      .order("condition_id")
+      .order("selected_token_id")
+      .order("decision_at")
+      .limit(PAGE);
+    if (error) throw new Error(`RECON_SOURCE_READ:${date}:${error.code ?? error.message}`);
+    return ((data ?? []) as Record<string, unknown>[]).map(reconstructSourceRow);
+  });
+}
+
+/** Per-day bounded prefix reads avoid offset pagination over the date range. */
 async function readAllSourceRows(db: any): Promise<SourceRow[]> {
   const rows: SourceRow[] = [];
   for (const d of eachDate(RANGE_START, RANGE_END)) {
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await db
-        .from("research_model_ready_rows")
-        .select(SOURCE_ROW_SELECT)
-        .eq("model_date", d)
-        .order("population_id")
-        .order("condition_id")
-        .order("selected_token_id")
-        .order("decision_at")
-        .range(from, from + PAGE - 1);
-      if (error) throw new Error(`RECON_SOURCE_READ:${d}:${error.code ?? error.message}`);
-      rows.push(...((data ?? []).map((row: Record<string, unknown>) => reconstructSourceRow(row))));
-      if ((data?.length ?? 0) < PAGE) break;
-    }
+    rows.push(...await readPartitionedSourceDateFromDb(db, d));
     console.error(JSON.stringify({ STAGE: "SOURCE_READ", MODEL_DATE: d, ROWS_SO_FAR: rows.length }));
   }
   return rows;

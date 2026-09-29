@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { readPartitionedSourceDate } from "../../scripts/modeling/build-football-denominator-reconciliation-v2";
 import {
   buildOverlayRecord,
   buildPeriodStats,
@@ -29,6 +30,60 @@ function row(overrides: Partial<SourceRow> & { canonical_row?: Record<string, un
     ...overrides,
   };
 }
+
+describe("bounded denominator source partitions", () => {
+  const sourceRow = (population_id: string, condition_id: string): SourceRow => ({
+    model_date: "2026-08-04",
+    population_id,
+    condition_id,
+    selected_token_id: "TOKEN",
+    decision_at: "2026-08-04T00:00:00.000Z",
+    provider_event_id: null,
+    sport_family: null,
+    settlement_label: null,
+    entry_price_num: null,
+    canonical_row: {},
+  });
+
+  it("merges first-level buckets and returns deterministic identity order", async () => {
+    const calls: string[] = [];
+    const result = await readPartitionedSourceDate("2026-08-04", async (prefix) => {
+      calls.push(prefix);
+      if (prefix === "0x0") return [sourceRow("POP_B", "0x01")];
+      if (prefix === "0x1") return [sourceRow("POP_A", "0x10")];
+      return [];
+    }, 3);
+    expect(calls).toHaveLength(16);
+    expect(result.map((item) => item.population_id)).toEqual(["POP_A", "POP_B"]);
+  });
+
+  it("splits only a saturated first-level bucket into second-level prefixes", async () => {
+    const calls: string[] = [];
+    const result = await readPartitionedSourceDate("2026-08-04", async (prefix) => {
+      calls.push(prefix);
+      if (prefix === "0x0") return [sourceRow("OVERFLOW_A", "0x00"), sourceRow("OVERFLOW_B", "0x01")];
+      if (prefix === "0x00") return [sourceRow("POP_0", "0x0001")];
+      if (prefix === "0x01") return [sourceRow("POP_1", "0x0101")];
+      return [];
+    }, 2);
+    expect(calls).toHaveLength(32);
+    expect(calls.slice(0, 17)).toEqual(["0x0", ...Array.from("0123456789abcdef", (digit) => `0x0${digit}`)]);
+    expect(result.map((item) => item.condition_id)).toEqual(["0x0001", "0x0101"]);
+  });
+
+  it("fails closed when a second-level prefix remains saturated", async () => {
+    await expect(readPartitionedSourceDate("2026-09-04", async (prefix) =>
+      prefix === "0x0" || prefix === "0x00" ? [sourceRow("POP", `${prefix}01`)] : [], 1,
+    )).rejects.toThrow("RECON_SOURCE_PARTITION_TOO_LARGE:2026-09-04:0x00");
+  });
+
+  it("rejects duplicate canonical identities after partition merging", async () => {
+    const duplicate = sourceRow("POP", "0x01");
+    await expect(readPartitionedSourceDate("2026-08-04", async (prefix) =>
+      prefix === "0x0" || prefix === "0x1" ? [duplicate] : [], 3,
+    )).rejects.toThrow("RECON_SOURCE_DUPLICATE_IDENTITY:2026-08-04");
+  });
+});
 
 describe("explicit sport carrier resolution", () => {
   it("preserves an explicit sport when all present carriers agree", () => {
