@@ -1,13 +1,11 @@
 /**
- * FOOTBALL_STRUCTURAL_AUTHORITY_V1 — deterministic founder-facing football
+ * FOOTBALL_STRUCTURAL_AUTHORITY_V2 — deterministic founder-facing football
  * structural authority for 2026-08-04..2026-09-24 (AUG / SEP_1_12 /
  * SEP_13_24 / COMBINED).
  *
  * Reuses, verbatim, without reimplementing any economics/settlement rule:
- *   - Denominator + fail-closed sport/market reconciliation:
- *     build-football-denominator-reconciliation.ts /
- *     build-football-denominator-reconciliation-v2.ts (this run's v2
- *     extension through 2026-09-24).
+ *   - Frozen denominator + fail-closed sport/market reconciliation:
+ *     football-denominator-reconciliation-v2 Git-owned overlay.
  *   - SELECTION_BEFORE_SETTLEMENT_V1 decision-time-only selection, one
  *     physicalEventKey -> maximum one selected bet per tested cell, and the
  *     OPEN/settled split: runStandaloneStrict / classifySettlement /
@@ -37,7 +35,6 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import {
-  runReconciliationV2,
   AUG_END,
   SEP_1_12_END,
   SEP_13_24_START,
@@ -45,6 +42,7 @@ import {
   RANGE_END,
   SEP_START,
 } from "./build-football-denominator-reconciliation-v2";
+import { loadFrozenFootballDenominatorV2 } from "./load-frozen-football-denominator-v2";
 import { obj, EXPECTED_CLONE_REF, type SourceRow, type OverlayRecord } from "./build-football-denominator-reconciliation";
 import {
   runStandaloneStrict,
@@ -250,6 +248,7 @@ export interface CellMetrics {
   N_OTHER_NONTERMINAL: number;
   WINS: number;
   LOSSES: number;
+  HIT_RATE_PCT: number | null;
   REFERENCE_PNL_U: number;
   REFERENCE_ROI_SETTLED_PCT: number;
   MAX_DD_U: number;
@@ -273,6 +272,7 @@ export function computeCell(
     N_OTHER_NONTERMINAL: otherNonterminalN,
     WINS: m.wins,
     LOSSES: m.losses,
+    HIT_RATE_PCT: m.wins + m.losses > 0 ? Math.round((m.wins / (m.wins + m.losses)) * 10_000) / 100 : null,
     REFERENCE_PNL_U: m.pnl_u,
     REFERENCE_ROI_SETTLED_PCT: m.roi_pct,
     MAX_DD_U: m.max_drawdown_u,
@@ -430,7 +430,7 @@ export interface StructuralAuthorityArtifact {
 }
 
 export async function buildArtifact(db: any): Promise<StructuralAuthorityArtifact> {
-  const recon = await runReconciliationV2(db);
+  const recon = await loadFrozenFootballDenominatorV2(db);
   const { candidates, settlementByCandidateIdentity } = buildStructuralCandidates(recon.sourceRows, recon.overlay);
 
   const oddsGrid = buildOddsGrid(candidates, settlementByCandidateIdentity);
@@ -440,7 +440,7 @@ export async function buildArtifact(db: any): Promise<StructuralAuthorityArtifac
   const interactionCells = buildStructuralInteractionCells(candidates, settlementByCandidateIdentity);
 
   return {
-    MISSION: "FOOTBALL_STRUCTURAL_AUTHORITY_V1",
+    MISSION: "FOOTBALL_STRUCTURAL_AUTHORITY_V2",
     RANGE: `${RANGE_START}..${RANGE_END}`,
     PERIODS: {
       AUG: `${RANGE_START}..${AUG_END}`,
@@ -455,7 +455,7 @@ export async function buildArtifact(db: any): Promise<StructuralAuthorityArtifac
       STAKE: "flat 1u (lib/modeling/research-engine/settlement.ts settleBetU)",
       ODDS: "DISPLAY_ODDS = 1 / entry_price (BETTING_ECONOMICS_CONTRACT_V2.md #DISPLAY_ODDS)",
       EXACT_SCORE: "soccer_exact_score kept OUTSIDE ordinary HOLD (odds/timing grids, daily supply); reported only as its own market-structure/daily-supply diagnostic bucket",
-      UNRESOLVED_MARKET_TYPE: "FAIL_CLOSED: a row whose market type cannot be resolved via the canonical_row.marketTypeRaw / generated_signal_pairs.diagnostics fallback lineage is PROVEN neither Exact-Score nor an ordinary market, so it is excluded from every ordinary-HOLD odds/timing/daily-supply cell (isOrdinaryHold requires bucket !== 'soccer_exact_score' AND bucket !== 'UNRESOLVED'). It is reported only in MARKET_STRUCTURE_GRID.<period>.UNRESOLVED_MARKET_TYPE, which is COVERAGE_LIMITED, not a seventh admitted market bucket.",
+      UNRESOLVED_MARKET_TYPE: "FAIL_CLOSED: market types still unresolved in the frozen denominator overlay are excluded from every ordinary-HOLD odds/timing/daily-supply cell and reported only in MARKET_STRUCTURE_GRID.<period>.UNRESOLVED_MARKET_TYPE.",
       PNL_LABEL: "REFERENCE_PNL / NOT_EXECUTION_AUTHORITY (BETTING_ECONOMICS_CONTRACT_V2.md #2)",
     },
     DENOMINATOR: {
@@ -479,10 +479,10 @@ function canonicalStringify(value: unknown): string {
 }
 
 function mdTable(rows: Array<[string, CellMetrics]>): string {
-  const header = "| Bucket | N_SELECTED | N_SETTLED | N_OPEN | WINS | LOSSES | REFERENCE_PNL_U | ROI_SETTLED_% | MAX_DD_U | MEAN_ODDS | MEDIAN_ODDS |\n|---|---|---|---|---|---|---|---|---|---|---|";
+  const header = "| Bucket | N_SELECTED | N_SETTLED | N_OPEN | WINS | LOSSES | HIT_RATE_% | REFERENCE_PNL_U | ROI_SETTLED_% | MAX_DD_U | MEAN_ODDS | MEDIAN_ODDS |\n|---|---|---|---|---|---|---|---|---|---|---|---|";
   const lines = rows.map(
     ([label, m]) =>
-      `| ${label} | ${m.N_SELECTED} | ${m.N_SETTLED} | ${m.N_OPEN} | ${m.WINS} | ${m.LOSSES} | ${m.REFERENCE_PNL_U} | ${m.REFERENCE_ROI_SETTLED_PCT} | ${m.MAX_DD_U} | ${m.MEAN_DISPLAY_ODDS ?? "-"} | ${m.MEDIAN_DISPLAY_ODDS ?? "-"} |`,
+      `| ${label} | ${m.N_SELECTED} | ${m.N_SETTLED} | ${m.N_OPEN} | ${m.WINS} | ${m.LOSSES} | ${m.HIT_RATE_PCT ?? "-"} | ${m.REFERENCE_PNL_U} | ${m.REFERENCE_ROI_SETTLED_PCT} | ${m.MAX_DD_U} | ${m.MEAN_DISPLAY_ODDS ?? "-"} | ${m.MEDIAN_DISPLAY_ODDS ?? "-"} |`,
   );
   return [header, ...lines].join("\n");
 }
@@ -501,6 +501,11 @@ function buildMarkdown(a: StructuralAuthorityArtifact): string {
     sections.push(mdTable(rows));
   }
   for (const p of PERIOD_IDS) {
+    sections.push(`\n## 1.75-2.00 odds × timing — ${p}\n`);
+    const rows: Array<[string, CellMetrics]> = TIMING_BUCKETS.map((b) => [b.label, (a.ODDS_TIMING_GRID as any)[p]["1_75_2_00"][b.id]]);
+    sections.push(mdTable(rows));
+  }
+  for (const p of PERIOD_IDS) {
     sections.push(`\n## Market structure grid — ${p}\n`);
     const rows: Array<[string, CellMetrics]> = [...MARKET_BUCKET_IDS, "UNRESOLVED_MARKET_TYPE"].map((id) => [id, (a.MARKET_STRUCTURE_GRID as any)[p][id]]);
     sections.push(mdTable(rows));
@@ -516,12 +521,8 @@ function buildMarkdown(a: StructuralAuthorityArtifact): string {
   }
   sections.push([supplyHeader, ...supplyRows].join("\n"));
   sections.push(`\n## Structural interaction cells (reference reconciliation targets)\n`);
-  const icHeader = "| Cell | N_SELECTED | N_SETTLED | REFERENCE_PNL_U | ROI_SETTLED_% |\n|---|---|---|---|---|";
-  const icRows = Object.entries(a.STRUCTURAL_INTERACTION_CELLS as Record<string, CellMetrics>).map(
-    ([k, m]) => `| ${k} | ${m.N_SELECTED} | ${m.N_SETTLED} | ${m.REFERENCE_PNL_U} | ${m.REFERENCE_ROI_SETTLED_PCT} |`,
-  );
-  sections.push([icHeader, ...icRows].join("\n"));
-  sections.push(`\n## Scope and non-claims\n\n- \`${a.REFERENCE_PNL_LABEL}\`\n- All odds are \`DISPLAY_ODDS\` (BETTING_ECONOMICS_CONTRACT_V2.md), never AVAILABLE/FILL/NET odds.\n- \`soccer_exact_score\` is excluded from every odds/timing grid cell and from ORDINARY_HOLD daily supply.\n- **FAIL_CLOSED / COVERAGE_LIMITED**: rows whose market type cannot be resolved via the canonical_row.marketTypeRaw / generated_signal_pairs.diagnostics fallback lineage are PROVEN neither Exact-Score nor an ordinary market, and are excluded from every ordinary-HOLD odds/timing/daily-supply cell. They are reported only in the market-structure grid's \`UNRESOLVED_MARKET_TYPE\` diagnostic bucket, never silently folded into ordinary HOLD. For SEP_1_12 in particular, \`canonical_row.marketTypeRaw\` was not populated at the source and \`generated_signal_pairs.diagnostics\` carries no \`marketType\` field for that window, so market-structure attribution (moneyline/totals/spreads/etc breakdown) is COVERAGE_LIMITED for SEP_1_12 — the odds/timing grids themselves remain valid over the admitted (proven non-Exact-Score) rows.\n- No production write, no model ranking/promotion performed here.\n`);
+  sections.push(mdTable(Object.entries(a.STRUCTURAL_INTERACTION_CELLS as Record<string, CellMetrics>)));
+  sections.push(`\n## Scope and non-claims\n\n- \`${a.REFERENCE_PNL_LABEL}\`\n- All odds are \`DISPLAY_ODDS\` (BETTING_ECONOMICS_CONTRACT_V2.md), never AVAILABLE/FILL/NET odds.\n- \`soccer_exact_score\` is excluded from every odds/timing grid cell and from ORDINARY_HOLD daily supply.\n- Market types still unresolved in the frozen denominator overlay are excluded from ordinary HOLD and reported only in the \`UNRESOLVED_MARKET_TYPE\` diagnostic bucket.\n- The denominator overlay is the accepted Git-owned artifact; this run reads only projected source rows from the clone.\n- No production write, no model ranking/promotion performed here.\n`);
   return sections.join("\n");
 }
 

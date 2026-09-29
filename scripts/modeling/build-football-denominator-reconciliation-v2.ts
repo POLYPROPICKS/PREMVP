@@ -171,7 +171,7 @@ async function readPartitionedSourceDateFromDb(db: any, date: string): Promise<S
 }
 
 /** Per-day bounded prefix reads avoid offset pagination over the date range. */
-async function readAllSourceRows(db: any): Promise<SourceRow[]> {
+export async function readAllSourceRows(db: any): Promise<SourceRow[]> {
   const rows: SourceRow[] = [];
   for (const d of eachDate(RANGE_START, RANGE_END)) {
     rows.push(...await readPartitionedSourceDateFromDb(db, d));
