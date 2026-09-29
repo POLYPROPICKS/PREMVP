@@ -271,6 +271,66 @@ async function persistExecutionReconciliation(
   return reconciliation;
 }
 
+/** Materialize a confirmed venue fill once, keyed by its persisted order-event UUID. */
+async function materializeMatchedExecution(reconciliation: ExecutionReconciliationV1): Promise<void> {
+  if (reconciliation.fill_status !== "MATCHED_CONFIRMED") return;
+  const [{ data: event, error: eventError }, { data: queue, error: queueError }] = await Promise.all([
+    supabaseAdmin.from("executor_order_events").select("*").eq("id", reconciliation.order_event_id).single(),
+    supabaseAdmin.from("event_execution_queue").select("*").eq("id", reconciliation.queue_id).single(),
+  ]);
+  if (eventError || queueError || !event || !queue) throw new Error("LEDGER_SOURCE_READ_FAILED");
+  const order = event as Record<string, unknown>;
+  const source = queue as EventExecutionQueueRow;
+  const diagnostics = source.diagnostics ?? {};
+  const lineage = diagnostics.model_lineage_v1 && typeof diagnostics.model_lineage_v1 === "object"
+    ? diagnostics.model_lineage_v1 as Record<string, unknown> : {};
+  const candidate = order.candidate_snapshot_json && typeof order.candidate_snapshot_json === "object"
+    ? order.candidate_snapshot_json as Record<string, unknown> : {};
+  const raw = order.raw_event_json && typeof order.raw_event_json === "object"
+    ? order.raw_event_json as Record<string, unknown> : {};
+  const fill = raw.economic_telemetry_v1 && typeof raw.economic_telemetry_v1 === "object"
+    ? raw.economic_telemetry_v1 as Record<string, unknown> : raw;
+  const actualFee = fill.fee_source === "CLOB_TRADES" ? num(fill.fee_usd) : null;
+  const { error } = await supabaseAdmin.from("bet_execution_ledger").insert({
+    id: reconciliation.order_event_id,
+    policy_version: str(lineage.policy_version),
+    model_name: str(lineage.model_name),
+    model_variant: str(lineage.model_variant),
+    model_role: str(lineage.model_role),
+    signal_id: reconciliation.source_signal_pair_id ?? str(order.signal_id),
+    event_id: reconciliation.provider_event_id,
+    condition_id: reconciliation.condition_id,
+    token_id: reconciliation.token_id,
+    selected_side: reconciliation.side,
+    sport: source.sport,
+    league: source.league,
+    event_title: source.event_title,
+    market_title: source.market_title,
+    market_family: source.market_family,
+    game_start_iso: source.game_start_iso,
+    signal_entry_price: num(candidate.entry_price) ?? num(diagnostics.entry_price),
+    limit_price: num(order.submitted_price),
+    fill_price: num(fill.average_fill_price) ?? num(fill.actual_fill_price) ?? num(fill.filled_price),
+    planned_stake: source.stake_usd,
+    executed_stake: num(fill.executed_notional_usd),
+    fee_paid_real: actualFee,
+    real_slippage_cost: null,
+    bet_status: "FILLED",
+    exchange_order_id: reconciliation.clob_order_id,
+    filled_at: str(fill.filled_at),
+    settled_at: null,
+    result_side: null,
+    gross_pnl: null,
+    real_pnl: null,
+    real_roi_on_stake: null,
+    raw_signal: { candidate_snapshot_json: order.candidate_snapshot_json, queue_diagnostics: diagnostics },
+    raw_order: { executor_order_event: order },
+  });
+  // The ledger PK is the order-event PK, so retries and concurrent callbacks
+  // converge on the same immutable execution row.
+  if (error && error.code !== "23505") throw new Error(`LEDGER_INSERT_FAILED: ${error.message}`);
+}
+
 /**
  * Wires the real Supabase-backed read/write primitives to the narrow
  * OrderEventDbPort the pure orchestration in executorCallbackContract.ts
@@ -547,6 +607,7 @@ export async function POST(request: NextRequest) {
     try {
       economicTelemetry = await persistEconomicTelemetry(raw, outcome.row.id);
       reconciliation = await persistExecutionReconciliation(raw, outcome.row.id);
+      await materializeMatchedExecution(reconciliation);
     } catch (error) {
       console.error(
         "[executor/order-events] Economic telemetry persistence failed:",
