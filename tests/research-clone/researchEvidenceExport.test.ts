@@ -343,8 +343,10 @@ test("production primary_evidence_outbox is no longer a generic raw SYNC_SPECS t
   const specs = SCRIPT.slice(SCRIPT.indexOf("const SPECS"), SCRIPT.indexOf("const EMPTY_TABLE_EVIDENCE"));
   assert.equal(specs.includes('table: "primary_evidence_outbox"'), false);
   assert.equal(/\|\s*"primary_evidence_outbox"/.test(SCRIPT), false, "TableName no longer includes primary_evidence_outbox");
-  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v4", args\)/);
-  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?",/.test(SCRIPT), false, "runtime never calls v1/v2/v3");
+  assert.match(SCRIPT, /source\.rpc\(rpcName, args\)/);
+  assert.match(SCRIPT, /let rpcName = "research_evidence_page_v5"/);
+  assert.match(SCRIPT, /research_evidence_page_v4/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?"/.test(SCRIPT), false, "runtime never calls v1/v2/v3");
   assert.match(SCRIPT, /syncResearchEvidencePage\(target, source, bootstrapSince\)/);
   assert.match(SCRIPT, /onConflict: CLONE_EVIDENCE_CONFLICT_KEY/);
   assert.match(SCRIPT, /source_kind: CLONE_EVIDENCE_SOURCE_KIND/);
@@ -615,7 +617,7 @@ test("multi-envelope boundary: a boundary that cuts an envelope leaves later env
   assert.equal(target.rows.size, SRC_TOTAL, "two-plus-page union equals the source item count");
   assert.equal(r.ROWS_WRITTEN, SRC_TOTAL);
   assert.equal(r.APPEND_PENDING, false);
-  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v4"));
+  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v5"));
   assert.ok(source.calls.every((c) => c.args.p_max_rows === 500 && typeof c.args.p_until === "string"));
   assert.equal(new Set(source.calls.map((c) => c.args.p_until)).size, 1, "one fixed p_until for the whole run");
   assert.deepEqual(r.CURSOR_AFTER, { observedAt: envC.at, observationId: envC.id, itemObservationId: envC.items[9] });
@@ -676,12 +678,14 @@ test("--repair-since overrides the forward cursor for repair ONLY, and never tou
   assert.equal(again.APPEND_PENDING, false);
 });
 
-test("repair mode is finitely bounded and resumable; runtime uses v4 only", () => {
+test("repair mode is finitely bounded and resumable; runtime uses v5 first with a v4 fallback", () => {
   const src = readFileSync(repoRoot + "scripts/research-clone-daily-sync.ts", "utf8");
   assert.match(src, /MAX_REPAIR_EVIDENCE_PAGES = 500/);
   assert.ok(500 * RESEARCH_EVIDENCE_V3_MAX_ROWS >= 194090, "repair page budget covers the measured window");
-  assert.match(src, /source\.rpc\("research_evidence_page_v4", args\)/);
-  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?",/.test(src), false);
+  assert.match(src, /source\.rpc\(rpcName, args\)/);
+  assert.match(src, /let rpcName = "research_evidence_page_v5"/);
+  assert.match(src, /research_evidence_page_v4/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v3|_v2)?"/.test(src), false);
   assert.match(src, /checkpoint:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
   assert.match(src, /repair-cursor:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
 });

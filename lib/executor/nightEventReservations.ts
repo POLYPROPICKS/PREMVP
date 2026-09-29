@@ -47,6 +47,11 @@ import type {
 } from "./contractADecisions";
 import { resolveContractAProviderPhysicalEventIdentity } from "./contractADecisions";
 import {
+  buildContractARejectionEvidence,
+  type ContractARejectionEvidenceRow,
+  type ContractARejectionEvidenceWritePort,
+} from "./contractARejectionEvidence";
+import {
   LIVE_RESERVATION_ALLOCATION_V1,
   LIVE_RESERVATION_PORTFOLIO_BROAD_V2,
   LIVE_RESERVATION_MIX_GUARD_FOOTBALL_ONLY_V1,
@@ -595,6 +600,14 @@ export interface ReservationPlan {
    * to the filesystem diagnostic report so the JSONB column is not enlarged.
    */
   fullmatch_rejection: FullmatchRejectionEvidenceReport;
+  /**
+   * DATA_CAPTURE_V2_REJECTION_EVIDENCE_V1: durable per-candidate rejected
+   * evidence built from the exact same ContractARejectionTraces this plan
+   * produced. Pure telemetry — never read by Reservation/Queue/Ireland,
+   * never persisted into night_event_reservations, never inside job_runs.
+   * Absent on the legacy path.
+   */
+  rejection_evidence?: readonly ContractARejectionEvidenceRow[];
   diagnostics: {
     universe_size: number;
     // ── Upstream authority boundary ──────────────────────────────────────
@@ -2696,6 +2709,12 @@ export async function buildContractAReservationPlan(
     plan_date_minsk: window.planDateMinsk,
     window,
     reservations: built.reservations,
+    rejection_evidence: buildContractARejectionEvidence({
+      planRunId,
+      decidedAtIso: new Date(nowMs).toISOString(),
+      results,
+      sourceRows: rows as Record<string, unknown>[],
+    }),
     fullmatch_rejection: buildFullmatchRejectionEvidence([]),
     diagnostics: contractAPlanDiagnostics({
       window,
@@ -2821,6 +2840,7 @@ export async function runReservationCronWithEvidence(
     jobEvidence?: SchedulerJobEvidencePort;
     targetPhysicalEventKeyHash?: string;
     hashPhysicalEventKey?: (key: string) => string;
+    contractARejectionEvidencePort?: ContractARejectionEvidenceWritePort;
   } = {}
 ): Promise<{ plan: ReservationPlan; persisted: PersistReservationsResult }> {
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
@@ -2843,6 +2863,20 @@ export async function runReservationCronWithEvidence(
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
       : await persistReservationPlan(plan, opts);
+    // DATA_CAPTURE_V2_REJECTION_EVIDENCE: persisted only AFTER the Reservation
+    // writes their own plan; the money contour always precedes telemetry.
+    // Fail-open evidence-only — a persistence failure must never change which
+    // event is selected or reserved, and rejection_key keeps a later retry of
+    // this same plan_run idempotent.
+    if (plan.rejection_evidence && plan.rejection_evidence.length > 0) {
+      try {
+        const { persistContractARejectionEvidenceFailOpen } = await import("./contractARejectionEvidenceWriter");
+        await persistContractARejectionEvidenceFailOpen(plan.rejection_evidence, deps.contractARejectionEvidencePort);
+      } catch {
+        // fail-open: telemetry must never affect the money contour
+      }
+    }
+
     const finishedAt = new Date().toISOString();
     await jobEvidence.writeJobRun({
       source: "night-event-reservations",

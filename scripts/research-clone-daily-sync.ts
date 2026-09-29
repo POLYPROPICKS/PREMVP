@@ -624,8 +624,19 @@ export async function syncResearchEvidencePage(
   let drained = false;
   while (pages < maxPages) {
     const args = buildEvidencePageV3Args(cursor, until, RESEARCH_EVIDENCE_V3_MAX_ROWS);
-    const { data, error } = await source.rpc("research_evidence_page_v4", args);
-    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v4:${safeError(error)}`);
+    let rpcName = "research_evidence_page_v5";
+    let { data, error } = await source.rpc(rpcName, args);
+    if (error && rpcName === "research_evidence_page_v5" &&
+        typeof error.message === "string" && error.message.includes("research_evidence_page_v5")) {
+      // v5 not yet applied: fall back to v4 on the SAME cursor and p_until.
+      // Telemetry columns stay null for this page; cursor semantics unchanged.
+      rpcName = "research_evidence_page_v4";
+      const v4 = await source.rpc(rpcName, args);
+      if (v4.error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v4:${safeError(v4.error)}`);
+      data = v4.data;
+      error = null;
+    }
+    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_${rpcName}:${safeError(error)}`);
     const rows = (data ?? []) as NarrowEvidenceRow[];
     pages++;
     if (rows.length === 0) {
