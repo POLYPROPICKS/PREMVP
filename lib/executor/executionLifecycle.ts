@@ -31,6 +31,7 @@ export interface ExecutionLifecycleEventRow {
 export interface ExecutionLifecycleDbPort {
   loadEvents(options: { eventIds?: string[]; limit: number }): Promise<ExecutionLifecycleEventRow[]>;
   persistEvent(input: { id: string; idempotency_key: string; clob_order_id: string; executor_meta: Record<string, unknown> }): Promise<void>;
+  mirrorLedgerSettlement?(eventId: string, reconciliation: ExecutionReconciliationV1): Promise<void>;
 }
 
 export type ExecutionLifecycleResolver = (input: {
@@ -59,7 +60,11 @@ export async function reconcileExecutionLifecycleWithPort(
   const resolver = options.resolver ?? defaultResolver;
   for (const row of eventRows) {
     const prior = readExecutionReconciliation(row.executor_meta);
-    if (!prior || prior.settlement_status === "SETTLED_RECONCILED") continue;
+    if (!prior) continue;
+    if (prior.settlement_status === "SETTLED_RECONCILED") {
+      if (options.writeMode) await port.mirrorLedgerSettlement?.(row.id, prior);
+      continue;
+    }
     summary.eligible++;
     let next: ExecutionReconciliationV1;
     try {
@@ -86,7 +91,11 @@ export async function reconcileExecutionLifecycleWithPort(
         winning_token_id: outcome.candidateWinningTokenId,
       });
     }
-    if (JSON.stringify(next) === JSON.stringify(prior)) continue;
+    if (JSON.stringify(next) === JSON.stringify(prior)) {
+      if (options.writeMode && (next.result_status === "WON" || next.result_status === "LOST"))
+        await port.mirrorLedgerSettlement?.(row.id, next);
+      continue;
+    }
     if (!options.writeMode) { summary.would_update++; continue; }
     await port.persistEvent({
       id: row.id,
@@ -94,6 +103,8 @@ export async function reconcileExecutionLifecycleWithPort(
       clob_order_id: prior.clob_order_id,
       executor_meta: mergeExecutionReconciliationMeta(row.executor_meta, next),
     });
+    if (next.result_status === "WON" || next.result_status === "LOST")
+      await port.mirrorLedgerSettlement?.(row.id, next);
     summary.updated++;
   }
   return summary;
@@ -112,6 +123,38 @@ function createSupabaseExecutionLifecyclePort(supabase: any): ExecutionLifecycle
     async persistEvent(input) {
       const { data, error } = await supabase.from("executor_order_events").update({ executor_meta: input.executor_meta }).eq("id", input.id).eq("idempotency_key", input.idempotency_key).eq("clob_order_id", input.clob_order_id).select("id").single();
       if (error || !data) throw new Error("EXECUTION_RECONCILIATION_UPDATE_FAILED");
+    },
+    async mirrorLedgerSettlement(eventId, reconciliation) {
+      if ((reconciliation.result_status !== "WON" && reconciliation.result_status !== "LOST") ||
+          !reconciliation.resolved_at || reconciliation.gross_pnl_usd == null) return;
+      const { data: ledger, error: readError } = await supabase.from("bet_execution_ledger")
+        .select("id,executed_stake,raw_order").eq("id", eventId).maybeSingle();
+      if (readError) throw new Error(`LEDGER_SETTLEMENT_READ_FAILED: ${readError.message}`);
+      // Historical events without a materialized execution row are outside
+      // this mission; never create one during settlement.
+      if (!ledger) return;
+      const feeReported = reconciliation.fee_status === "REPORTED" && reconciliation.fee_usd != null;
+      const realPnl = feeReported ? reconciliation.net_pnl_usd : null;
+      const executedStake = Number(ledger.executed_stake);
+      const roi = realPnl != null && ledger.executed_stake != null && Number.isFinite(executedStake) && executedStake > 0
+        ? realPnl / executedStake * 100 : null;
+      const rawOrder = ledger.raw_order && typeof ledger.raw_order === "object" && !Array.isArray(ledger.raw_order)
+        ? ledger.raw_order as Record<string, unknown> : {};
+      const { data: updated, error: writeError } = await supabase.from("bet_execution_ledger").update({
+        bet_status: reconciliation.result_status,
+        settled_at: reconciliation.resolved_at,
+        gross_pnl: reconciliation.gross_pnl_usd,
+        fee_paid_real: feeReported ? reconciliation.fee_usd : null,
+        real_pnl: realPnl,
+        real_roi_on_stake: roi,
+        result_side: null,
+        raw_order: { ...rawOrder, settlement_v1: {
+          reconciliation,
+          winning_outcome: reconciliation.winning_outcome,
+          winning_token_id: reconciliation.winning_token_id,
+        } },
+      }).eq("id", eventId).select("id").single();
+      if (writeError || !updated) throw new Error(`LEDGER_SETTLEMENT_WRITE_FAILED: ${writeError?.message ?? "missing row"}`);
     },
   };
 }
