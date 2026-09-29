@@ -1,0 +1,256 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "SORT": "snapshot event_id ascending (text); greedy prefix; an event is never split; cost = visible source rows + A tie-set rows",
+  "RAW_ROW_CAP": 200,
+  "TOTAL_COMPLETE_EVENT_N": 65,
+  "TOTAL_COMPLETE_SOURCE_ROW_N": 1679,
+  "TOTAL_COMPLETE_A_TIE_ROW_N": 926,
+  "TOTAL_BATCH_N_REQUIRED": 20,
+  "BATCHES": [
+    {
+      "batch": 1,
+      "event_n": 17,
+      "source_row_n": 176,
+      "a_row_n": 18,
+      "raw_row_n": 194,
+      "event_ids": [
+        "1026759",
+        "1026761",
+        "1027448",
+        "1027450",
+        "1027452",
+        "1027454",
+        "1027456",
+        "1027458",
+        "1027462",
+        "1027464",
+        "1027468",
+        "1027472",
+        "1027476",
+        "1028721",
+        "1028723",
+        "1028724",
+        "1028725"
+      ]
+    },
+    {
+      "batch": 2,
+      "event_n": 13,
+      "source_row_n": 135,
+      "a_row_n": 19,
+      "raw_row_n": 154,
+      "event_ids": [
+        "1028726",
+        "1028727",
+        "1028729",
+        "1028730",
+        "1028731",
+        "1028734",
+        "1028736",
+        "1028738",
+        "1028739",
+        "1028740",
+        "1028742",
+        "1028744",
+        "1028746"
+      ]
+    },
+    {
+      "batch": 3,
+      "event_n": 3,
+      "source_row_n": 146,
+      "a_row_n": 16,
+      "raw_row_n": 162,
+      "event_ids": [
+        "1028818",
+        "1028819",
+        "1028821"
+      ]
+    },
+    {
+      "batch": 4,
+      "event_n": 10,
+      "source_row_n": 176,
+      "a_row_n": 18,
+      "raw_row_n": 194,
+      "event_ids": [
+        "1028822",
+        "1028823",
+        "1029454",
+        "1029455",
+        "1029458",
+        "1066555",
+        "1066556",
+        "1066558",
+        "1069137",
+        "1069138"
+      ]
+    },
+    {
+      "batch": 5,
+      "event_n": 1,
+      "source_row_n": 61,
+      "a_row_n": 52,
+      "raw_row_n": 113,
+      "event_ids": [
+        "1077167"
+      ]
+    },
+    {
+      "batch": 6,
+      "event_n": 1,
+      "source_row_n": 61,
+      "a_row_n": 52,
+      "raw_row_n": 113,
+      "event_ids": [
+        "1077168"
+      ]
+    },
+    {
+      "batch": 7,
+      "event_n": 1,
+      "source_row_n": 61,
+      "a_row_n": 52,
+      "raw_row_n": 113,
+      "event_ids": [
+        "1077169"
+      ]
+    },
+    {
+      "batch": 8,
+      "event_n": 1,
+      "source_row_n": 57,
+      "a_row_n": 48,
+      "raw_row_n": 105,
+      "event_ids": [
+        "1077170"
+      ]
+    },
+    {
+      "batch": 9,
+      "event_n": 1,
+      "source_row_n": 61,
+      "a_row_n": 52,
+      "raw_row_n": 113,
+      "event_ids": [
+        "1077171"
+      ]
+    },
+    {
+      "batch": 10,
+      "event_n": 1,
+      "source_row_n": 61,
+      "a_row_n": 52,
+      "raw_row_n": 113,
+      "event_ids": [
+        "1077172"
+      ]
+    },
+    {
+      "batch": 11,
+      "event_n": 1,
+      "source_row_n": 65,
+      "a_row_n": 56,
+      "raw_row_n": 121,
+      "event_ids": [
+        "1077173"
+      ]
+    },
+    {
+      "batch": 12,
+      "event_n": 1,
+      "source_row_n": 61,
+      "a_row_n": 52,
+      "raw_row_n": 113,
+      "event_ids": [
+        "1077174"
+      ]
+    },
+    {
+      "batch": 13,
+      "event_n": 1,
+      "source_row_n": 71,
+      "a_row_n": 62,
+      "raw_row_n": 133,
+      "event_ids": [
+        "1077175"
+      ]
+    },
+    {
+      "batch": 14,
+      "event_n": 1,
+      "source_row_n": 57,
+      "a_row_n": 48,
+      "raw_row_n": 105,
+      "event_ids": [
+        "1077176"
+      ]
+    },
+    {
+      "batch": 15,
+      "event_n": 1,
+      "source_row_n": 61,
+      "a_row_n": 52,
+      "raw_row_n": 113,
+      "event_ids": [
+        "1077177"
+      ]
+    },
+    {
+      "batch": 16,
+      "event_n": 1,
+      "source_row_n": 65,
+      "a_row_n": 56,
+      "raw_row_n": 121,
+      "event_ids": [
+        "1077178"
+      ]
+    },
+    {
+      "batch": 17,
+      "event_n": 1,
+      "source_row_n": 53,
+      "a_row_n": 44,
+      "raw_row_n": 97,
+      "event_ids": [
+        "1077179"
+      ]
+    },
+    {
+      "batch": 18,
+      "event_n": 1,
+      "source_row_n": 63,
+      "a_row_n": 54,
+      "raw_row_n": 117,
+      "event_ids": [
+        "1077180"
+      ]
+    },
+    {
+      "batch": 19,
+      "event_n": 1,
+      "source_row_n": 69,
+      "a_row_n": 60,
+      "raw_row_n": 129,
+      "event_ids": [
+        "1077181"
+      ]
+    },
+    {
+      "batch": 20,
+      "event_n": 7,
+      "source_row_n": 119,
+      "a_row_n": 63,
+      "raw_row_n": 182,
+      "event_ids": [
+        "1077182",
+        "1092292",
+        "1092293",
+        "1092307",
+        "1092310",
+        "1095269",
+        "1095270"
+      ]
+    }
+  ]
+}
