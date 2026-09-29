@@ -1,0 +1,16 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "SNAPSHOT_RUN_ID": "f94429cb-eb8e-4607-a06d-701208b8ceb3",
+  "S2_IDENTITY_N": 3276,
+  "NON_EMPTY_IDENTITY_N": 3276,
+  "BATCH_SIZE": 50,
+  "TOTAL_BATCH_N_REQUIRED": 66,
+  "LAST_BATCH_SIZE": 26,
+  "BATCH_1": "frozen sample membership (ranks 1..50)",
+  "KEYSET_RULE": "order by (condition_id, selected_token_id) ASC; next page = rows strictly greater than the previous page's last key; UNIQUE(snapshot_run_id, condition_id, selected_token_id) makes the order total",
+  "KEYSET_PROBE_ROWS_RETURNED": 1,
+  "IDENTITIES_RETRIEVABLE_DETERMINISTICALLY": true,
+  "GAMMA_LOOKUPS_PER_BATCH_MAX": 50,
+  "TOTAL_GAMMA_LOOKUPS_FULL_CLOSURE": 3276,
+  "REMAINING_BATCHES_EXECUTED": 0
+}
