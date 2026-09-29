@@ -455,7 +455,11 @@ async function main(): Promise<void> {
     },
     models: todaySelection,
   };
-  await persistRuntimeSnapshot(clone, snapshot, nowIso);
+  await persistRuntimeSnapshot(
+    clone,
+    priorSnapshot?.historicalDaily ? { ...snapshot, historicalDaily: priorSnapshot.historicalDaily } : snapshot,
+    nowIso,
+  );
 
   console.log(JSON.stringify({
     LIVE_SHADOW_CYCLE: "SUCCESS",
