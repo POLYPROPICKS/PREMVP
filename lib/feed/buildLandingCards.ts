@@ -1983,9 +1983,15 @@ async function enrichMarket(
   // PREMVP15 rescue: skip slow CLOB spread/order-book enrichment in the live landing route.
   // The feed already has enough P0 evidence from Gamma volume, current price, trades and holders.
   // Spread/order-book calls were causing 60s local requests and abort noise.
-  const spread: { min: number; max: number } | null = null;
-  diagnostics.spread = null;
-  warnings.push("Spread lookup skipped for landing-feed performance");
+  let spread: { min: number; max: number } | null = null;
+  if (useResearchPriceHistory && selectedOutcome.tokenId) {
+    spread = await fetchSpreadSafe(selectedOutcome.tokenId);
+    if (spread && Number.isFinite(spread.min) && Number.isFinite(spread.max) && spread.max >= spread.min) {
+      diagnostics.spread = roundNumber(spread.max - spread.min);
+    }
+  } else {
+    warnings.push("Spread lookup skipped for landing-feed performance");
+  }
 
   const orderBook = null;
 
