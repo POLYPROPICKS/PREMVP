@@ -190,6 +190,18 @@ export async function runAppendSync<Row extends SyncRow>(
     port.targetMaxWatermark(),
     port.readCheckpoint(),
   ]);
+  if (sourceMaxWatermark === null) {
+    return {
+      sourceMaxWatermark,
+      targetBefore,
+      targetAfter: targetBefore,
+      newRows: 0,
+      updatedRows: 0,
+      duplicateN: 0,
+      pages: 0,
+      pending: false,
+    };
+  }
   let cursor = resolveBootstrapWatermark(targetBefore, checkpoint, fields, bootstrapSince);
   let newRows = 0;
   let updatedRows = 0;

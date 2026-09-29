@@ -15,6 +15,35 @@ import {
 const older: Watermark = { created_at: "2026-09-01T00:00:00.000Z", id: "00000000-0000-0000-0000-000000000001" };
 const newer: Watermark = { created_at: "2026-09-01T00:00:00.000Z", id: "00000000-0000-0000-0000-000000000002" };
 
+test("empty source completes without fetching or writing", async () => {
+  const result = await runAppendSync(["created_at", "id"], 2, {
+    async sourceMaxWatermark() { return null; },
+    async targetMaxWatermark() { return null; },
+    async readCheckpoint() { return null; },
+    async fetchSourcePage() { throw new Error("unexpected fetch"); },
+    async upsertTargetRows() { throw new Error("unexpected write"); },
+    async writeCheckpoint() { throw new Error("unexpected checkpoint"); },
+  });
+  assert.deepEqual(result, {
+    sourceMaxWatermark: null, targetBefore: null, targetAfter: null,
+    newRows: 0, updatedRows: 0, duplicateN: 0, pages: 0, pending: false,
+  });
+});
+
+test("nonempty source still requires bootstrap authority for an empty target", async () => {
+  await assert.rejects(runAppendSync(["created_at", "id"], 2, {
+    async sourceMaxWatermark() { return newer; },
+    async targetMaxWatermark() { return null; },
+    async readCheckpoint() { return null; },
+    async fetchSourcePage(after) {
+      assert.equal(after, null);
+      throw new Error("RESEARCH_CLONE_INITIAL_WATERMARK_REQUIRED_test");
+    },
+    async upsertTargetRows() { throw new Error("unexpected write"); },
+    async writeCheckpoint() { throw new Error("unexpected checkpoint"); },
+  }), /RESEARCH_CLONE_INITIAL_WATERMARK_REQUIRED_test/);
+});
+
 test("uses tuple ordering for generated_signal_pairs checkpoints", () => {
   assert.equal(compareWatermarks(older, newer, ["created_at", "id"]), -1);
   assert.equal(compareWatermarks(newer, older, ["created_at", "id"]), 1);
