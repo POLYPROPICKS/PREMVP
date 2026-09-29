@@ -1,0 +1,410 @@
+[
+  {
+    "condition_id": "0x019072c1249d964ebd9ca51be4203fb4741342790ebc3e50c175181d879555f7",
+    "selected_token_id": "30859206040534207379002297392740303621081042655084016816605453944492984696161",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x022e3c29fb8dea7c417977cf91aef40f75bbedab0d4c64385e18c8e8c656279f",
+    "selected_token_id": "23853358566041095636447700277301453709224126466087346758883266895811972085184",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x026b6210ccf5b2e2dd2c927103af7bf02465ae3f42d72d2136747407c619c91c",
+    "selected_token_id": "115582177136222103982361949387091063261446670178472820248526895713985653423916",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x029d4867e0cd95537d3d3ec1842259a8c346220ee910440bf2b68b83d34d183f",
+    "selected_token_id": "24249552813815766453574527516057208782809181967239583160169513131206515439583",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x05cdc295c50acf6b4284fe730774d413e62670c84965de3bc0d7a77b0bfba5aa",
+    "selected_token_id": "16536609395069303270106994562872206911426818505841426813699085664781389761631",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x06a5704941e9e155bbdf743fbf7d6d904b52c5e7f4c844b921a018b8112dc436",
+    "selected_token_id": "29174051991182273287318894343834564438532651739760174179526571004961235586681",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x06bf3c6634b39e9fab73b768fe7b3fe643bed3b2d4abd7b8cd01e1a1138e6c6a",
+    "selected_token_id": "11856101388939422082793891035158773347578118312069658396156738633229406543678",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x06fe7811f10254bb7258ae920bbf02116dc8a396433d41c96eb82b03fe759415",
+    "selected_token_id": "40930864242744741845646603241264019633404384878753563150798764729674200179863",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x070981f0e442312992978c2289188a37aad53f610c65224c8df46f002d76efb8",
+    "selected_token_id": "50642782530305262706380714304391221697074955042708560435629106563978975192093",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x07a3107a48f0ad1e282b6e85631672e74dd38c5253867f715d146e9ea3742541",
+    "selected_token_id": "86143255678829714738346035927148088142621126256380000355349832495805446884964",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x07a6dd2e0887520904a53853919724d71b8fc72dfa4552a6c8ba7eafc89b9bab",
+    "selected_token_id": "51240324398285668296965787495544520599590377292498449981973895835039192036829",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x09029625e1e074606d434527305bc6a8a365ec87e3c24922a8d97ca764dcc503",
+    "selected_token_id": "92962301149934587611596469628994636717301424578283220756098149775018593937817",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x0c3b8b4365ad2691cd424fb88de85eec4d7ad10ea6b981a6a724f962d140e3ec",
+    "selected_token_id": "58893083736758174146030296767606435622099573939205712824386601604556409846629",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x0d1dfa5f09e298aef592fd4f42841a2299a7dd2aa56102b0ac69d34290e031d3",
+    "selected_token_id": "20656469898395804668241007591237680677105792572055314160971678961951916979287",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x11f8a48250f9ac4cae395aef8bc674eba0692ba94398820339dae830d0c59419",
+    "selected_token_id": "38826304322911999898574796699623621565016403706387346286181485644043264117600",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x19238987f8e0a1c61185d79d367800bfc3461472231386d1ddee3eaa6bc96370",
+    "selected_token_id": "60522938446492347932062568388684834657289875485538669029964981947219656301643",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x1c8554bdccfee93f4d4bf285e11e4e011bcc58f5fb59eef5a0ce90239b37276e",
+    "selected_token_id": "32873011465196913999425137951061667476774253541346510159545517782843100164209",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x1e87f0b738d7a19c494a4d6d29e785e258f5a2d8da95e8529a3b097854e94eee",
+    "selected_token_id": "34770985606840007029004507200056388365587178894913319005645257267360612563788",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x229c3f9521ca1fa9768aa00c6fb0716419902e84ad068c7be634692eaa80b37f",
+    "selected_token_id": "40847785143859606982353505852232776445286520898440584499360664100205499574677",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x254d92fe991e7ec51f79c4f5615712d424f3610b4e26176996379e903344459f",
+    "selected_token_id": "25935277307195398646813766166732698063452740514207250609438272451253991262369",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x2ad6e2c74f1f24e9a72117d0f5484832bf06eff85cd021c678e29b5e26199c2b",
+    "selected_token_id": "70260777491475914869625570868264866259979326373999680096114092604889751902168",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x2f324e6633d498a596d37725330ba2a5037af7d09772bf9ef955d9d88dfcdfc3",
+    "selected_token_id": "34203274853079449238475031182458696819012238941470590662891866831354847118555",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x312fa078fb153022c202ad4ccc741bcd7439bbec1a3d97688c5377130d6047e4",
+    "selected_token_id": "15337987770379986714368733461317909991141101084838880120012298041666099216505",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x334a0b537fe232d44391b2bdfee5960829a368d40b50e212cec7931ba1165482",
+    "selected_token_id": "27517491441591750761234857943940840045818888660119242554376432642517467043918",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x3b98fa1ec1b6e56b84d811349cd0c0c8208747b35e473bd26c39f77d38e12d58",
+    "selected_token_id": "71791877672234920785055534310384410019826920699726185998854725755626537700467",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x40321451d03ed4261a8c69fb7dc84ba5b67fe1cc1ff7c8a2df74bbf8af5d7e03",
+    "selected_token_id": "50708692415530881309859719005936856758713306799254125199218879390412302666110",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x40a16aefbe90ecf953ca79950ab42f88ee8160516952ad89c26d6135e18f0413",
+    "selected_token_id": "32657257582455181701095010563583804907339998841043306526743756183297221279315",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x40d06f068037eb3944cae354d91be09a7dee8ffff34b54a9753a4a0df3c83cd7",
+    "selected_token_id": "18191657923170593024465399982662951595736796195404968895801740247501841843040",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x46ef0b574fc03ef823b876ba72d2f2c51910e9c24bdc0866d17d89c4fef3b946",
+    "selected_token_id": "66160016786901944848712775791912060829746013535140091028761472470580823809086",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x4f2d3a6283f91542200c113ae28f959f5f8664ab099bb71d9d6379ad5f3d1341",
+    "selected_token_id": "46143014930566242202916205715215466201572566325009580745599724473212546767809",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x5c0e0c0b81021f0eee3f9ba80427fd5a1a042cc2c7296dfc86ce390c8feae286",
+    "selected_token_id": "26864289383822448688287816247151807749089464894605807824449139278411088955988",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x5cb1f139424655facc4d1d86e52971df5f8d7658f1a53718df4cdfe086d26969",
+    "selected_token_id": "60247660451015077387080120361251702800452336264869590160757503213771209301286",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x6bfb10899c196a94d95520931ef73ddf0b03478fff9622f76c7df8a70ebd9725",
+    "selected_token_id": "65949486264307015166870648045067642414776175877538373359069060143528955214494",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x6f0e9da3edb2eaf91faa909f0b457565204ba955fee978ce82db08fd42512efc",
+    "selected_token_id": "26477429736970026304262890494671528735871257825539078557389068765760612295721",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x6f678a26eb444ba9aefddf0b3e88016866dc81273e67e52a7b6f5dcff359a934",
+    "selected_token_id": "14880211233417763747944296155979183560746157038991313882390103958108824861699",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x781882a55cd48ac524c2722fbf2d3f4cc1e7e684b6995092438f19d4eb1f26e7",
+    "selected_token_id": "92256946514825068265788166254349611657069122413543828070745071589988989979677",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x78acfc5b6beacb0388426c0077c5abbf55ee6bf567c0ba2608a0c083b23914ad",
+    "selected_token_id": "53591117623769385312859527330017120933787395510598256250030753704354694391744",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x7f2c5e9423e4c8c3f935ca5bf50cd2a45fe3c1ddfcf716f6adcd8acffd77c395",
+    "selected_token_id": "103924263871231895301006287273347457551987438304517201653832165526224787319399",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x82be69d660f617ce873ec7fdc3365b3dc3a1c2a71c67f51e5d9ba46f96837ce2",
+    "selected_token_id": "34402234047647336300429985569883095112252111596900905399259078995344659372871",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x85815a7ae52d025a8cfa4da701b0eb80575137eb5376b13a39f9c2b2d91fd31b",
+    "selected_token_id": "10405051017162271336255672543138702602557664207612669090818694116885257224552",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x90db4db9a98fc98e5f06a1e99aa707ebae48ee0bfef2a86d5d1e09b442a37a80",
+    "selected_token_id": "50874602438290080180121485229599366114717179675546470156524697405956017833212",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x93acdabca7d1c7ba5fcde0b2bfaaa54bdafa0f15186f55214b6703402966ab6b",
+    "selected_token_id": "73349418698102551964761202038248044171826763438160855190492767481839039143673",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x957f8b29fcdb0cf5647dcdbd2440e36fe42c9fe08defbaa553230c0e0a463cd9",
+    "selected_token_id": "30708185225031104864454877859592054672477779036064332085634132834247463833537",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x973b0305c566c207af709eac7319a58446cc256250a55e79e8f6cee61c88e79f",
+    "selected_token_id": "110333815653681206584537859439854143822304333147262875300100769252529848720891",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0x9fc8f0bde4c7ee467916ffd904eb6e6575a27ae4858b25888760ef5acb5a6f49",
+    "selected_token_id": "94477681511942849724766072908705994313635453609575519613344898214285573947434",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xa0f8864fe884b541ef1465203d0555343e7b30c5d27b4a0303e2714b365b469b",
+    "selected_token_id": "60680009887887951852927932838159876661033365852724568249935103881918692123179",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xa1883f4c997b70946fe3cf19407ed721af8dd9da4634c6fa1a9e827529b64ec9",
+    "selected_token_id": "13481487068269630759130505506084561282627247054299420181519747754230450195265",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xa926787774f31d34ce529fcf12c4c835aa509f2fa627630774f638353779ef20",
+    "selected_token_id": "60271709269458723647704091004951008688887760860156684434580789162978155597241",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xad6c5072c6974d2e5554e75481196cc2c27bc4ead3fb833bb3e2782f48d83507",
+    "selected_token_id": "23424690629447420648017796750167393691114648893934592478823147283832932878398",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xb1ff3693400df6c1323ff405b529088ee4df9a75bdfd5e5e60f0f84da308c209",
+    "selected_token_id": "102953117842569003975491311784367429737047310048783566600819866210017675496556",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xba37863cde3992c684ac4bea07360960f4dccede08588b321a2010597fe12b71",
+    "selected_token_id": "20838931185816643199351790211381681246646535666988774763504222469994195038714",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xc1d5f75f99f0c040eb1324346ff3bd1bd589164d119a2253b66f729c7f6ce476",
+    "selected_token_id": "79184171226749143767560423402643467555184944146988583564856568962937262811342",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xc308ec9b0c27f89cc4f46cd49091bd8cd31083e3f13d35f471f6e21c1695778a",
+    "selected_token_id": "32422181456413874394998345289269740041114492737294622864121680921510173673188",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xc34b4c9c814fbbc796d7855aa89c26f5c0d16916700c247ed6d359114f2d524e",
+    "selected_token_id": "30381999810523595158838003135035614864151979936980594567593298949985657510429",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xc475a042b34469ef27ab4c32cfbe619b6143e1ff07f85600f529861d71db9788",
+    "selected_token_id": "903124804438083374216073889753532059266749970589769942623451352470433887351",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xc4fd913ac42d90214605d2d2869821558a5c33962c3809755bdedb981e01d9c5",
+    "selected_token_id": "23828173020140953556451004135715808359751521528665993756644054131643364988688",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xc7713a2bb4f0f86425971d79760529b83586ff76d7cdfddc2e3b7d3c2ad9fa6a",
+    "selected_token_id": "16557754688171402806235845087525666781880434302768219363956970731565845859373",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xcc43ad1af11a4422291544fc01cc43e998f1711493b73c6e464d60089aa2a10f",
+    "selected_token_id": "113529750564804536233327487110108393871833047404907227620516279979328832983777",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xccd8364750a76d0c7ff4303defbffc6cc044fcbbb0f86cef5b70b4ad74ed464e",
+    "selected_token_id": "112394329908935435422547045496381273193099844945972387110627125259734232865186",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xd33908e0f6562d48afe680c0c4620566d0d556e215164b5219db729301220a55",
+    "selected_token_id": "68990633170516177753318441106593011259723552887664079567914828562459566365898",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xd7d9f88c98d8434a2b4a6d558fc5d010bda792fe84390bd1cd343ef6aa46d8d1",
+    "selected_token_id": "107093055495847907377554464366336693661339778633670745682947022457013733232669",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xd8669cc5661d91d895de6918861236ec004fd71649014732c59e7d454d259fbe",
+    "selected_token_id": "13967574183259237877848043770092134011197196092672271247144635033676841099059",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xdd678bd0b6cf7c370dc3aa5762bdb85a8ff8ee7a30b8f3683a9374c604c63410",
+    "selected_token_id": "5120795237549750528611721389050071729495455506227924662256058599341637488045",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xe63f0d5bc30577fd8e460187d9c143823f0e83f6e367dab1b84500289853bbc7",
+    "selected_token_id": "100502443924171076562615713622412578121555079424996020225895832998952375475584",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xea7a469374543767259e392297a9f22cb7cc6a3bbc4d453768dee3468b48e92e",
+    "selected_token_id": "111808490223487401961734359082762998506025431753992804771824863520225271716742",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xeee689ab9f0b35415a4344bf1f903cffd09f7bac93f2c76023af050507caae75",
+    "selected_token_id": "12387692701721708984633146172043414793921281687986301688451852612414751912572",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xef4ea3f944702c9606d166fe3bcef6bd7e7075c5bee613f4d6eec3c6963dfa47",
+    "selected_token_id": "15920849628537573150262379356738764790683300082272634809920915408152899812663",
+    "terminal": "WIN",
+    "resolver_state": "resolved_candidate"
+  },
+  {
+    "condition_id": "0xffac0328c3d0e2b0cd3c2f7f17a12ca26ea4da3eab7047b272660f5c6ac8ac9b",
+    "selected_token_id": "59631804346440387798727564378957639576786322155589757690716252898024410302467",
+    "terminal": "LOSS",
+    "resolver_state": "resolved_candidate"
+  }
+]
