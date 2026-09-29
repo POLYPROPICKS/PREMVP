@@ -16,6 +16,7 @@ import {
   type StructuralCandidate,
 } from "../../scripts/modeling/football-structural-authority";
 import type { SourceRow, OverlayRecord } from "../../scripts/modeling/build-football-denominator-reconciliation";
+import { reconstructSourceRow } from "../../scripts/modeling/build-football-denominator-reconciliation-v2";
 import type { CorpusLabel } from "../../lib/modeling/research-corpus/rollingCorpus";
 
 // ── odds bucket boundaries ──────────────────────────────────────────────────
@@ -174,6 +175,34 @@ function overlayFor(r: SourceRow, reconciledSportFamily: string | null, reconcil
     volume_available: false,
   };
 }
+
+test("projected V2 source rows retain eventStart for structural candidate construction", () => {
+  const eventStart = "2026-08-05T18:00:00.000Z";
+  const projected = reconstructSourceRow({
+    model_date: "2026-08-05",
+    population_id: "POP_PROJECTED",
+    condition_id: "COND_PROJECTED",
+    selected_token_id: "TOKEN_PROJECTED",
+    decision_at: "2026-08-05T10:00:00.000Z",
+    provider_event_id: "EVENT_PROJECTED",
+    sport_family: "soccer",
+    settlement_label: "WIN",
+    entry_price_num: 0.5,
+    canonical_sport_family: "soccer",
+    canonical_provider_sport_family: null,
+    canonical_provider_sport_code: null,
+    canonical_market_type_raw: "moneyline",
+    canonical_lead_time_hours: 8,
+    canonical_score_level: 1,
+    canonical_data_coverage: 1,
+    canonical_volume_usd: 100,
+    canonical_event_start: eventStart,
+  });
+  assert.equal(projected.canonical_row.eventStart, eventStart);
+  const { candidates } = buildStructuralCandidates([projected], [overlayFor(projected, "soccer")]);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].eventStart, eventStart);
+});
 
 const EMPTY_SERIES = { observationCount: 0, firstEligibleValue: null, firstEligibleObservedAt: null, lastEligibleValue: null, lastEligibleObservedAt: null, delta: null };
 

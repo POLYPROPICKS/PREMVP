@@ -63,6 +63,7 @@ export const SOURCE_ROW_SELECT = [
   "canonical_score_level:canonical_row->scoreLevel",
   "canonical_data_coverage:canonical_row->dataCoverage",
   "canonical_volume_usd:canonical_row->volumeUsd",
+  "canonical_event_start:canonical_row->eventStart",
 ].join(",");
 
 export function reconstructSourceRow(row: Record<string, unknown>): SourceRow {
@@ -85,6 +86,7 @@ export function reconstructSourceRow(row: Record<string, unknown>): SourceRow {
       scoreLevel: row.canonical_score_level,
       dataCoverage: row.canonical_data_coverage,
       volumeUsd: row.canonical_volume_usd,
+      eventStart: row.canonical_event_start,
     },
   };
 }
