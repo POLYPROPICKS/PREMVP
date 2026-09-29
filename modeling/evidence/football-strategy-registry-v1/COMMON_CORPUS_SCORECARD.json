@@ -1,0 +1,493 @@
+{
+  "SCORECARD_ID": "FOOTBALL_COMMON_CORPUS_SCORECARD_V1",
+  "DATASET": {
+    "DATASET_ID": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+    "DATE_FROM": "2026-08-04",
+    "DATE_TO": "2026-09-24",
+    "CALENDAR_DAY_N": 52,
+    "SOURCE_ROW_N": 75743,
+    "UNIQUE_PHYSICAL_EVENT_N": 5030,
+    "MANIFEST_FILE_SHA256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+    "MANIFEST_OVERLAY_CONTENT_SHA256": "ca2929fd30e16cbb188350ccceadc75c19055ef45f5a8d990881b4c13c40fcf3",
+    "OVERLAY_SHA256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+    "OVERLAY_CONTENT_SHA256": "ca2929fd30e16cbb188350ccceadc75c19055ef45f5a8d990881b4c13c40fcf3",
+    "SOURCE_COMMIT_SHA": "0ff47c9c9d486c78af27cec1224c79d4cdb0f441",
+    "DENOMINATOR_MANIFEST_PATH": "modeling/evidence/football-denominator-reconciliation-v2/MANIFEST_2026-08-04_2026-09-24.json",
+    "DENOMINATOR_OVERLAY_PATH": "modeling/evidence/football-denominator-reconciliation-v2/FOOTBALL_DENOMINATOR_OVERLAY_2026-08-04_2026-09-24.jsonl.gz"
+  },
+  "SORT": "COMMON_CORPUS pnl_u DESC",
+  "FORMULAS": "FORMULAS.md",
+  "PNL_LABEL": "REFERENCE_PNL / NOT_EXECUTION_AUTHORITY",
+  "ROWS": [
+    {
+      "pnl_rank": 1,
+      "strategy_id": "FOOTBALL_ODDS_185_200_REPAIRED",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 1386,
+        "settled_n": 988,
+        "open_n": 398,
+        "other_nonterminal_n": 0,
+        "wins": 595,
+        "losses": 393,
+        "pnl_u": 178.31,
+        "roi_pct": 18.0472,
+        "max_dd_u": -12.48,
+        "bets_per_calendar_day": 26.65,
+        "distinct_physical_events_selected": 1386
+      }
+    },
+    {
+      "pnl_rank": 2,
+      "strategy_id": "FOOTBALL_ODDS_192_200_REPAIRED_SAFE",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 1141,
+        "settled_n": 800,
+        "open_n": 341,
+        "other_nonterminal_n": 0,
+        "wins": 490,
+        "losses": 310,
+        "pnl_u": 170.05,
+        "roi_pct": 21.256,
+        "max_dd_u": -14.69,
+        "bets_per_calendar_day": 21.94,
+        "distinct_physical_events_selected": 1141
+      }
+    },
+    {
+      "pnl_rank": 3,
+      "strategy_id": "FOOTBALL_ORDINARY_STRUCTURED_ODDS_175_200",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 726,
+        "settled_n": 566,
+        "open_n": 160,
+        "other_nonterminal_n": 0,
+        "wins": 367,
+        "losses": 199,
+        "pnl_u": 135.21,
+        "roi_pct": 23.8889,
+        "max_dd_u": -8.65,
+        "bets_per_calendar_day": 13.96,
+        "distinct_physical_events_selected": 726
+      }
+    },
+    {
+      "pnl_rank": 4,
+      "strategy_id": "FOOTBALL_SPREADS_ODDS_185_200_AUDIT_REQUIRED",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 250,
+        "settled_n": 201,
+        "open_n": 49,
+        "other_nonterminal_n": 0,
+        "wins": 165,
+        "losses": 36,
+        "pnl_u": 122.14,
+        "roi_pct": 60.7674,
+        "max_dd_u": -6,
+        "bets_per_calendar_day": 4.81,
+        "distinct_physical_events_selected": 250
+      }
+    },
+    {
+      "pnl_rank": 5,
+      "strategy_id": "FOOTBALL_MONEYLINE_TOTALS_SPREADS_ODDS_185_200",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 514,
+        "settled_n": 438,
+        "open_n": 76,
+        "other_nonterminal_n": 0,
+        "wins": 285,
+        "losses": 153,
+        "pnl_u": 117.05,
+        "roi_pct": 26.7248,
+        "max_dd_u": -10.46,
+        "bets_per_calendar_day": 9.88,
+        "distinct_physical_events_selected": 514
+      }
+    },
+    {
+      "pnl_rank": 6,
+      "strategy_id": "FOOTBALL_ODDS_192_200_PRICE_BAND",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 476,
+        "settled_n": 416,
+        "open_n": 60,
+        "other_nonterminal_n": 0,
+        "wins": 266,
+        "losses": 150,
+        "pnl_u": 110.05,
+        "roi_pct": 26.4535,
+        "max_dd_u": -14.57,
+        "bets_per_calendar_day": 9.15,
+        "distinct_physical_events_selected": 476
+      }
+    },
+    {
+      "pnl_rank": 7,
+      "strategy_id": "FOOTBALL_ODDS_185_200_PRICE_BAND",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 637,
+        "settled_n": 554,
+        "open_n": 83,
+        "other_nonterminal_n": 0,
+        "wins": 335,
+        "losses": 219,
+        "pnl_u": 100.25,
+        "roi_pct": 18.0956,
+        "max_dd_u": -11.46,
+        "bets_per_calendar_day": 12.25,
+        "distinct_physical_events_selected": 637
+      }
+    },
+    {
+      "pnl_rank": 8,
+      "strategy_id": "FOOTBALL_ORDINARY_STRUCTURED_NO_ODDS_FILTER",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 3763,
+        "settled_n": 2486,
+        "open_n": 1277,
+        "other_nonterminal_n": 0,
+        "wins": 951,
+        "losses": 1535,
+        "pnl_u": 29.54,
+        "roi_pct": 1.1882,
+        "max_dd_u": -97.24,
+        "bets_per_calendar_day": 72.37,
+        "distinct_physical_events_selected": 3763
+      }
+    },
+    {
+      "pnl_rank": 9,
+      "strategy_id": "FOOTBALL_TOTAL_CORNERS_ODDS_225_250",
+      "dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24",
+      "dataset_manifest_sha256": "88faef7c94b0e2d6a47c580be3963d0e3440c55eda88796c6145ff073c871f5e",
+      "dataset_overlay_sha256": "944d45b4a5c8dcffbbc12a54fbe4926a1bba269fad1fefc592ca7db2e4ce1665",
+      "date_from": "2026-08-04",
+      "date_to": "2026-09-24",
+      "total_unique_football_matches": 5030,
+      "metrics": {
+        "selected_n": 118,
+        "settled_n": 77,
+        "open_n": 41,
+        "other_nonterminal_n": 0,
+        "wins": 42,
+        "losses": 35,
+        "pnl_u": 22.78,
+        "roi_pct": 29.5894,
+        "max_dd_u": -7,
+        "bets_per_calendar_day": 2.27,
+        "distinct_physical_events_selected": 118
+      }
+    }
+  ],
+  "LEGACY_RECONCILIATION": [
+    {
+      "strategy_id": "FOOTBALL_ODDS_192_200_REPAIRED_SAFE",
+      "legacy_label": "LEGACY_FROZEN_RUNNER_PRE_BACKFILL",
+      "legacy": {
+        "selected": 1015,
+        "settled": 716,
+        "open": 299,
+        "pnl_u": 131.79,
+        "roi_pct": 18.41,
+        "max_dd_u": -14.69,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-20"
+      },
+      "common": {
+        "selected_n": 1141,
+        "settled_n": 800,
+        "open_n": 341,
+        "other_nonterminal_n": 0,
+        "wins": 490,
+        "losses": 310,
+        "pnl_u": 170.05,
+        "roi_pct": 21.256,
+        "max_dd_u": -14.69,
+        "bets_per_calendar_day": 21.94,
+        "distinct_physical_events_selected": 1141
+      },
+      "same_span_and_settlement": false,
+      "exact_match": null
+    },
+    {
+      "strategy_id": "FOOTBALL_ODDS_192_200_REPAIRED_SAFE",
+      "legacy_label": "LEGACY_WITH_POLYMARKET_299_BACKFILL",
+      "legacy": {
+        "selected": 1015,
+        "settled": 953,
+        "open": 62,
+        "pnl_u": 182.8,
+        "roi_pct": 19.1815,
+        "max_dd_u": null,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-20"
+      },
+      "common": {
+        "selected_n": 1141,
+        "settled_n": 800,
+        "open_n": 341,
+        "other_nonterminal_n": 0,
+        "wins": 490,
+        "losses": 310,
+        "pnl_u": 170.05,
+        "roi_pct": 21.256,
+        "max_dd_u": -14.69,
+        "bets_per_calendar_day": 21.94,
+        "distinct_physical_events_selected": 1141
+      },
+      "same_span_and_settlement": false,
+      "exact_match": null
+    },
+    {
+      "strategy_id": "FOOTBALL_ODDS_185_200_REPAIRED",
+      "legacy_label": "LEGACY_FROZEN_RUNNER",
+      "legacy": {
+        "selected": 1223,
+        "settled": 881,
+        "open": 342,
+        "pnl_u": 143.61,
+        "roi_pct": 16.3008,
+        "max_dd_u": -12.48,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-20"
+      },
+      "common": {
+        "selected_n": 1386,
+        "settled_n": 988,
+        "open_n": 398,
+        "other_nonterminal_n": 0,
+        "wins": 595,
+        "losses": 393,
+        "pnl_u": 178.31,
+        "roi_pct": 18.0472,
+        "max_dd_u": -12.48,
+        "bets_per_calendar_day": 26.65,
+        "distinct_physical_events_selected": 1386
+      },
+      "same_span_and_settlement": false,
+      "exact_match": null
+    },
+    {
+      "strategy_id": "FOOTBALL_ORDINARY_STRUCTURED_ODDS_175_200",
+      "legacy_label": "STRUCTURAL_AUTHORITY_V2_COMBINED",
+      "legacy": {
+        "selected": 726,
+        "settled": 566,
+        "open": 160,
+        "pnl_u": 135.21,
+        "roi_pct": 23.8889,
+        "max_dd_u": -8.65,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-24"
+      },
+      "common": {
+        "selected_n": 726,
+        "settled_n": 566,
+        "open_n": 160,
+        "other_nonterminal_n": 0,
+        "wins": 367,
+        "losses": 199,
+        "pnl_u": 135.21,
+        "roi_pct": 23.8889,
+        "max_dd_u": -8.65,
+        "bets_per_calendar_day": 13.96,
+        "distinct_physical_events_selected": 726
+      },
+      "same_span_and_settlement": true,
+      "exact_match": true
+    },
+    {
+      "strategy_id": "FOOTBALL_MONEYLINE_TOTALS_SPREADS_ODDS_185_200",
+      "legacy_label": "RESTORED_LINEAGE_AUDIT_V2_LIVE_POLICY_REPLAY",
+      "legacy": {
+        "selected": 514,
+        "settled": 438,
+        "open": 76,
+        "pnl_u": 117.05,
+        "roi_pct": 26.72,
+        "max_dd_u": -10.46,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-24"
+      },
+      "common": {
+        "selected_n": 514,
+        "settled_n": 438,
+        "open_n": 76,
+        "other_nonterminal_n": 0,
+        "wins": 285,
+        "losses": 153,
+        "pnl_u": 117.05,
+        "roi_pct": 26.7248,
+        "max_dd_u": -10.46,
+        "bets_per_calendar_day": 9.88,
+        "distinct_physical_events_selected": 514
+      },
+      "same_span_and_settlement": true,
+      "exact_match": true
+    },
+    {
+      "strategy_id": "FOOTBALL_ODDS_192_200_PRICE_BAND",
+      "legacy_label": "RESTORED_LINEAGE_AUDIT_V2_COMBINED",
+      "legacy": {
+        "selected": 476,
+        "settled": 416,
+        "open": 60,
+        "pnl_u": 110.05,
+        "roi_pct": 26.45,
+        "max_dd_u": -14.57,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-24"
+      },
+      "common": {
+        "selected_n": 476,
+        "settled_n": 416,
+        "open_n": 60,
+        "other_nonterminal_n": 0,
+        "wins": 266,
+        "losses": 150,
+        "pnl_u": 110.05,
+        "roi_pct": 26.4535,
+        "max_dd_u": -14.57,
+        "bets_per_calendar_day": 9.15,
+        "distinct_physical_events_selected": 476
+      },
+      "same_span_and_settlement": true,
+      "exact_match": true
+    },
+    {
+      "strategy_id": "FOOTBALL_ODDS_185_200_PRICE_BAND",
+      "legacy_label": "RESTORED_LINEAGE_AUDIT_V2_COMBINED",
+      "legacy": {
+        "selected": 637,
+        "settled": 554,
+        "open": 83,
+        "pnl_u": 100.25,
+        "roi_pct": 18.1,
+        "max_dd_u": -11.46,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-24"
+      },
+      "common": {
+        "selected_n": 637,
+        "settled_n": 554,
+        "open_n": 83,
+        "other_nonterminal_n": 0,
+        "wins": 335,
+        "losses": 219,
+        "pnl_u": 100.25,
+        "roi_pct": 18.0956,
+        "max_dd_u": -11.46,
+        "bets_per_calendar_day": 12.25,
+        "distinct_physical_events_selected": 637
+      },
+      "same_span_and_settlement": true,
+      "exact_match": true
+    },
+    {
+      "strategy_id": "FOOTBALL_TOTAL_CORNERS_ODDS_225_250",
+      "legacy_label": "STRUCTURAL_AUTHORITY_V2_INTERACTION_CELL",
+      "legacy": {
+        "selected": 118,
+        "settled": 77,
+        "open": 41,
+        "pnl_u": 22.78,
+        "roi_pct": 29.5894,
+        "max_dd_u": -7,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-24"
+      },
+      "common": {
+        "selected_n": 118,
+        "settled_n": 77,
+        "open_n": 41,
+        "other_nonterminal_n": 0,
+        "wins": 42,
+        "losses": 35,
+        "pnl_u": 22.78,
+        "roi_pct": 29.5894,
+        "max_dd_u": -7,
+        "bets_per_calendar_day": 2.27,
+        "distinct_physical_events_selected": 118
+      },
+      "same_span_and_settlement": true,
+      "exact_match": true
+    },
+    {
+      "strategy_id": "FOOTBALL_SPREADS_ODDS_185_200_AUDIT_REQUIRED",
+      "legacy_label": "RESTORED_LINEAGE_AUDIT_V2_LIVE_POLICY_REPLAY_SPREADS",
+      "legacy": {
+        "selected": 250,
+        "settled": 201,
+        "open": 49,
+        "pnl_u": 122.14,
+        "roi_pct": 60.77,
+        "max_dd_u": -6,
+        "date_from": "2026-08-04",
+        "date_to": "2026-09-24"
+      },
+      "common": {
+        "selected_n": 250,
+        "settled_n": 201,
+        "open_n": 49,
+        "other_nonterminal_n": 0,
+        "wins": 165,
+        "losses": 36,
+        "pnl_u": 122.14,
+        "roi_pct": 60.7674,
+        "max_dd_u": -6,
+        "bets_per_calendar_day": 4.81,
+        "distinct_physical_events_selected": 250
+      },
+      "same_span_and_settlement": true,
+      "exact_match": true
+    }
+  ]
+}

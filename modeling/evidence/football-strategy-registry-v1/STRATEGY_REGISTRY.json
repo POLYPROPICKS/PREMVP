@@ -1,0 +1,574 @@
+{
+  "REGISTRY_ID": "FOOTBALL_STRATEGY_REGISTRY_V1",
+  "REGISTRY_VERSION": "1.0.0",
+  "EXECUTABLE_STRATEGY_N": 9,
+  "PRIMARY_OPTIMIZATION_METRIC": "ABSOLUTE_PNL_U",
+  "CHAMPION_SELECTED": false,
+  "STRATEGIES": [
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_ODDS_192_200_REPAIRED_SAFE",
+      "plain_language_rule": "ставим на футбольные рынки при коэффициенте примерно 1.92–2.00 (исторический «SAFE» отбор: сначала все виды спорта, потом футбол)",
+      "plain_language_rule_en": "Football bets at decimal odds about 1.92-2.00 using the repaired SAFE selection (all-sport SAFE selection first, football subset after).",
+      "market_scope": [
+        "all reconciled soccer markets (exact score excluded)"
+      ],
+      "price_min": 0.5,
+      "price_min_inclusive": true,
+      "price_max": 0.52,
+      "price_max_inclusive": false,
+      "decimal_odds_min": 1.9231,
+      "decimal_odds_max": 2,
+      "decimal_odds_bounds": "(1.9231, 2.00]",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1 on the ALL-SPORT SAFE universe (v2 reconciled authority, exact-score excluded, safe-tennis gate) -> runStandaloneStrict -> THEN football subset; settlement joined after selection",
+      "legacy_aliases": [
+        "P50_52_SAFE"
+      ],
+      "implementation_symbol": "selectFootballOdds192200RepairedSafe",
+      "source_provenance": [
+        "scripts/modeling/football-verification-review-a.ts",
+        "scripts/modeling/tennis-safe-comparable-leaderboard.ts",
+        "modeling/evidence/safe-authority-review-a-repair-v1/CANONICAL_RECONCILIATION_P50_52.md"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "LEGACY_FROZEN_RUNNER_PRE_BACKFILL",
+          "selected": 1015,
+          "settled": 716,
+          "open": 299,
+          "pnl_u": 131.79,
+          "roi_pct": 18.41,
+          "max_dd_u": -14.69,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-20",
+          "source_path": "modeling/evidence/safe-authority-review-a-repair-v1/FOOTBALL_VERIFICATION.md",
+          "source_commit": "ebe3383c505ffe33c0ef3de1375131a37c2b0e11",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1",
+          "note": "v1 overlay, Aug04..Sep20"
+        },
+        {
+          "label": "LEGACY_WITH_POLYMARKET_299_BACKFILL",
+          "selected": 1015,
+          "settled": 953,
+          "open": 62,
+          "pnl_u": 182.8,
+          "roi_pct": 19.1815,
+          "max_dd_u": null,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-20",
+          "source_path": "modeling/evidence/safe-authority-review-a-repair-v1/POLYMARKET_RESOLUTION_BACKFILL_299.md",
+          "source_commit": "ebe3383c505ffe33c0ef3de1375131a37c2b0e11",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1",
+          "note": "Valid LEGACY_REPORTED result: special 237-of-299 Polymarket backfill applied to this strategy only. NOT the common-corpus metric."
+        }
+      ],
+      "status": "CANDIDATE",
+      "common_corpus_metrics": {
+        "selected_n": 1141,
+        "settled_n": 800,
+        "open_n": 341,
+        "other_nonterminal_n": 0,
+        "wins": 490,
+        "losses": 310,
+        "pnl_u": 170.05,
+        "roi_pct": 21.256,
+        "max_dd_u": -14.69,
+        "bets_per_calendar_day": 21.94,
+        "distinct_physical_events_selected": 1141
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_ODDS_185_200_REPAIRED",
+      "plain_language_rule": "ставим на футбольные рынки при коэффициенте примерно 1.85–2.00 (исторический «SAFE» отбор: сначала все виды спорта, потом футбол)",
+      "plain_language_rule_en": "Football bets at decimal odds about 1.85-2.00 using the repaired SAFE selection (all-sport SAFE selection first, football subset after).",
+      "market_scope": [
+        "all reconciled soccer markets (exact score excluded)"
+      ],
+      "price_min": 0.5,
+      "price_min_inclusive": true,
+      "price_max": 0.54,
+      "price_max_inclusive": false,
+      "decimal_odds_min": 1.8519,
+      "decimal_odds_max": 2,
+      "decimal_odds_bounds": "(1.8519, 2.00]",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1 on the ALL-SPORT SAFE universe (v2 reconciled authority, exact-score excluded, safe-tennis gate) -> runStandaloneStrict -> THEN football subset; settlement joined after selection",
+      "legacy_aliases": [
+        "P50_54_SAFE"
+      ],
+      "implementation_symbol": "selectFootballOdds185200Repaired",
+      "source_provenance": [
+        "scripts/modeling/football-verification-review-a.ts",
+        "scripts/modeling/tennis-safe-comparable-leaderboard.ts"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "LEGACY_FROZEN_RUNNER",
+          "selected": 1223,
+          "settled": 881,
+          "open": 342,
+          "pnl_u": 143.61,
+          "roi_pct": 16.3008,
+          "max_dd_u": -12.48,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-20",
+          "source_path": "modeling/evidence/safe-authority-review-a-repair-v1/FOOTBALL_VERIFICATION.md",
+          "source_commit": "ebe3383c505ffe33c0ef3de1375131a37c2b0e11",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1",
+          "note": "v1 overlay, Aug04..Sep20"
+        }
+      ],
+      "status": "CANDIDATE",
+      "common_corpus_metrics": {
+        "selected_n": 1386,
+        "settled_n": 988,
+        "open_n": 398,
+        "other_nonterminal_n": 0,
+        "wins": 595,
+        "losses": 393,
+        "pnl_u": 178.31,
+        "roi_pct": 18.0472,
+        "max_dd_u": -12.48,
+        "bets_per_calendar_day": 26.65,
+        "distinct_physical_events_selected": 1386
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_ORDINARY_STRUCTURED_ODDS_175_200",
+      "plain_language_rule": "ставим на обычные футбольные рынки при коэффициенте 1.75–2.00",
+      "plain_language_rule_en": "Ordinary structured soccer markets at decimal odds 1.75-2.00 (exact score and unresolved market types excluded).",
+      "market_scope": [
+        "moneyline",
+        "totals",
+        "spreads",
+        "total_corners",
+        "other structured (exact score and unresolved excluded)"
+      ],
+      "price_min": 0.5,
+      "price_min_inclusive": false,
+      "price_max": 0.571429,
+      "price_max_inclusive": true,
+      "decimal_odds_min": 1.75,
+      "decimal_odds_max": 2,
+      "decimal_odds_bounds": "[1.75, 2.00)",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1: predicate over canonical soccer candidates (denominator v2) -> chronological -> first qualifying row claims the physicalEventKey (runStandaloneStrict); settlement joined after selection",
+      "legacy_aliases": [
+        "ODDS_1_75_2_00"
+      ],
+      "implementation_symbol": "selectFootballOrdinaryStructuredOdds175200",
+      "source_provenance": [
+        "modeling/evidence/football-structural-authority-v2/FOOTBALL_STRUCTURAL_AUTHORITY_2026-08-04_2026-09-24.json ODDS_GRID.COMBINED.1_75_2_00",
+        "scripts/modeling/football-structural-authority.ts"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "STRUCTURAL_AUTHORITY_V2_COMBINED",
+          "selected": 726,
+          "settled": 566,
+          "open": 160,
+          "pnl_u": 135.21,
+          "roi_pct": 23.8889,
+          "max_dd_u": -8.65,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-24",
+          "source_path": "modeling/evidence/football-structural-authority-v2/FOOTBALL_STRUCTURAL_AUTHORITY_2026-08-04_2026-09-24.json",
+          "source_commit": "f2a9e3fe9b38881102b97f546814662f8c9b0a01",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1"
+        }
+      ],
+      "status": "CANDIDATE",
+      "common_corpus_metrics": {
+        "selected_n": 726,
+        "settled_n": 566,
+        "open_n": 160,
+        "other_nonterminal_n": 0,
+        "wins": 367,
+        "losses": 199,
+        "pnl_u": 135.21,
+        "roi_pct": 23.8889,
+        "max_dd_u": -8.65,
+        "bets_per_calendar_day": 13.96,
+        "distinct_physical_events_selected": 726
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_MONEYLINE_TOTALS_SPREADS_ODDS_185_200",
+      "plain_language_rule": "ставим только на победителя/тоталы/форы при коэффициенте примерно 1.85–2.00",
+      "plain_language_rule_en": "Soccer moneyline/totals/spreads only, entry price 0.50 <= p < 0.54 (decimal odds about 1.85-2.00).",
+      "market_scope": [
+        "moneyline",
+        "totals",
+        "spreads"
+      ],
+      "price_min": 0.5,
+      "price_min_inclusive": true,
+      "price_max": 0.54,
+      "price_max_inclusive": false,
+      "decimal_odds_min": 1.8519,
+      "decimal_odds_max": 2,
+      "decimal_odds_bounds": "(1.8519, 2.00]",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1: predicate over canonical soccer candidates (denominator v2) -> chronological -> first qualifying row claims the physicalEventKey (runStandaloneStrict); settlement joined after selection",
+      "legacy_aliases": [
+        "CURRENT_LIVE_FOOTBALL_REFERENCE"
+      ],
+      "implementation_symbol": "selectFootballMoneylineTotalsSpreadsOdds185200",
+      "source_provenance": [
+        "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json LIVE_POLICY_REPLAY.TOTAL",
+        "scripts/modeling/audit-p5052-p5054-c1-restored-lineage-v2.ts"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "RESTORED_LINEAGE_AUDIT_V2_LIVE_POLICY_REPLAY",
+          "selected": 514,
+          "settled": 438,
+          "open": 76,
+          "pnl_u": 117.05,
+          "roi_pct": 26.72,
+          "max_dd_u": -10.46,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-24",
+          "source_path": "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json",
+          "source_commit": "992348be4818f0214c677fed1637b51b504da40e",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1"
+        }
+      ],
+      "status": "CANDIDATE",
+      "common_corpus_metrics": {
+        "selected_n": 514,
+        "settled_n": 438,
+        "open_n": 76,
+        "other_nonterminal_n": 0,
+        "wins": 285,
+        "losses": 153,
+        "pnl_u": 117.05,
+        "roi_pct": 26.7248,
+        "max_dd_u": -10.46,
+        "bets_per_calendar_day": 9.88,
+        "distinct_physical_events_selected": 514
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_ODDS_192_200_PRICE_BAND",
+      "plain_language_rule": "ставим на обычные футбольные рынки при коэффициенте примерно 1.92–2.00 (цена входа 0.50–0.52)",
+      "plain_language_rule_en": "Ordinary soccer markets, entry price 0.50 <= p < 0.52 (decimal odds about 1.923-2.00), football-first selection.",
+      "market_scope": [
+        "ordinary structured soccer markets (exact score and unresolved excluded)"
+      ],
+      "price_min": 0.5,
+      "price_min_inclusive": true,
+      "price_max": 0.52,
+      "price_max_inclusive": false,
+      "decimal_odds_min": 1.9231,
+      "decimal_odds_max": 2,
+      "decimal_odds_bounds": "(1.9231, 2.00]",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1: predicate over canonical soccer candidates (denominator v2) -> chronological -> first qualifying row claims the physicalEventKey (runStandaloneStrict); settlement joined after selection",
+      "legacy_aliases": [
+        "P50_52"
+      ],
+      "implementation_symbol": "selectFootballOdds192200PriceBand",
+      "source_provenance": [
+        "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json MODELS.P50_52.COMBINED_FULL_AUG04_SEP24",
+        "scripts/modeling/audit-p5052-p5054-c1-restored-lineage-v2.ts"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "RESTORED_LINEAGE_AUDIT_V2_COMBINED",
+          "selected": 476,
+          "settled": 416,
+          "open": 60,
+          "pnl_u": 110.05,
+          "roi_pct": 26.45,
+          "max_dd_u": -14.57,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-24",
+          "source_path": "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json",
+          "source_commit": "992348be4818f0214c677fed1637b51b504da40e",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1"
+        }
+      ],
+      "status": "CANDIDATE",
+      "common_corpus_metrics": {
+        "selected_n": 476,
+        "settled_n": 416,
+        "open_n": 60,
+        "other_nonterminal_n": 0,
+        "wins": 266,
+        "losses": 150,
+        "pnl_u": 110.05,
+        "roi_pct": 26.4535,
+        "max_dd_u": -14.57,
+        "bets_per_calendar_day": 9.15,
+        "distinct_physical_events_selected": 476
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_ODDS_185_200_PRICE_BAND",
+      "plain_language_rule": "ставим на обычные футбольные рынки при коэффициенте примерно 1.85–2.00 (цена входа 0.50–0.54)",
+      "plain_language_rule_en": "Ordinary soccer markets, entry price 0.50 <= p < 0.54 (decimal odds about 1.852-2.00), football-first selection.",
+      "market_scope": [
+        "ordinary structured soccer markets (exact score and unresolved excluded)"
+      ],
+      "price_min": 0.5,
+      "price_min_inclusive": true,
+      "price_max": 0.54,
+      "price_max_inclusive": false,
+      "decimal_odds_min": 1.8519,
+      "decimal_odds_max": 2,
+      "decimal_odds_bounds": "(1.8519, 2.00]",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1: predicate over canonical soccer candidates (denominator v2) -> chronological -> first qualifying row claims the physicalEventKey (runStandaloneStrict); settlement joined after selection",
+      "legacy_aliases": [
+        "P50_54"
+      ],
+      "implementation_symbol": "selectFootballOdds185200PriceBand",
+      "source_provenance": [
+        "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json MODELS.P50_54.COMBINED_FULL_AUG04_SEP24",
+        "scripts/modeling/audit-p5052-p5054-c1-restored-lineage-v2.ts"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "RESTORED_LINEAGE_AUDIT_V2_COMBINED",
+          "selected": 637,
+          "settled": 554,
+          "open": 83,
+          "pnl_u": 100.25,
+          "roi_pct": 18.1,
+          "max_dd_u": -11.46,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-24",
+          "source_path": "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json",
+          "source_commit": "992348be4818f0214c677fed1637b51b504da40e",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1"
+        }
+      ],
+      "status": "CANDIDATE",
+      "common_corpus_metrics": {
+        "selected_n": 637,
+        "settled_n": 554,
+        "open_n": 83,
+        "other_nonterminal_n": 0,
+        "wins": 335,
+        "losses": 219,
+        "pnl_u": 100.25,
+        "roi_pct": 18.0956,
+        "max_dd_u": -11.46,
+        "bets_per_calendar_day": 12.25,
+        "distinct_physical_events_selected": 637
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_ORDINARY_STRUCTURED_NO_ODDS_FILTER",
+      "plain_language_rule": "ставим на все обычные футбольные рынки БЕЗ ограничения по коэффициенту (базовая линия)",
+      "plain_language_rule_en": "All canonically resolved ordinary structured soccer markets with NO odds filter (exact score, unresolved and conflicting market types excluded). Baseline, not a money recommendation.",
+      "market_scope": [
+        "ordinary structured soccer markets (exact score and unresolved excluded)"
+      ],
+      "price_min": 0,
+      "price_min_inclusive": false,
+      "price_max": 1,
+      "price_max_inclusive": false,
+      "decimal_odds_min": 1,
+      "decimal_odds_max": "Infinity",
+      "decimal_odds_bounds": "no odds filter (0 < p < 1)",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1: predicate over canonical soccer candidates (denominator v2) -> chronological -> first qualifying row claims the physicalEventKey (runStandaloneStrict); settlement joined after selection",
+      "legacy_aliases": [
+        "FOOTBALL_ALL_BASELINE"
+      ],
+      "implementation_symbol": "selectFootballOrdinaryStructuredNoOddsFilter",
+      "source_provenance": [
+        "isOrdinaryHold in scripts/modeling/football-structural-authority.ts (Founder/Architect decision: existing canonical ordinary universe as baseline)"
+      ],
+      "legacy_reported_metrics": [],
+      "status": "BASELINE",
+      "common_corpus_metrics": {
+        "selected_n": 3763,
+        "settled_n": 2486,
+        "open_n": 1277,
+        "other_nonterminal_n": 0,
+        "wins": 951,
+        "losses": 1535,
+        "pnl_u": 29.54,
+        "roi_pct": 1.1882,
+        "max_dd_u": -97.24,
+        "bets_per_calendar_day": 72.37,
+        "distinct_physical_events_selected": 3763
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_TOTAL_CORNERS_ODDS_225_250",
+      "plain_language_rule": "ставим только на тотал угловых при коэффициенте 2.25–2.50",
+      "plain_language_rule_en": "Soccer total-corners markets only at decimal odds 2.25-2.50.",
+      "market_scope": [
+        "total_corners"
+      ],
+      "price_min": 0.4,
+      "price_min_inclusive": false,
+      "price_max": 0.444444,
+      "price_max_inclusive": true,
+      "decimal_odds_min": 2.25,
+      "decimal_odds_max": 2.5,
+      "decimal_odds_bounds": "[2.25, 2.50)",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1: predicate over canonical soccer candidates (denominator v2) -> chronological -> first qualifying row claims the physicalEventKey (runStandaloneStrict); settlement joined after selection",
+      "legacy_aliases": [
+        "2_25_2_50__TOTAL_CORNERS"
+      ],
+      "implementation_symbol": "selectFootballTotalCornersOdds225250",
+      "source_provenance": [
+        "modeling/evidence/football-structural-authority-v2/FOOTBALL_STRUCTURAL_AUTHORITY_2026-08-04_2026-09-24.json STRUCTURAL_INTERACTION_CELLS.2_25_2_50__TOTAL_CORNERS",
+        "scripts/modeling/football-structural-authority.ts buildStructuralInteractionCells"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "STRUCTURAL_AUTHORITY_V2_INTERACTION_CELL",
+          "selected": 118,
+          "settled": 77,
+          "open": 41,
+          "pnl_u": 22.78,
+          "roi_pct": 29.5894,
+          "max_dd_u": -7,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-24",
+          "source_path": "modeling/evidence/football-structural-authority-v2/FOOTBALL_STRUCTURAL_AUTHORITY_2026-08-04_2026-09-24.json",
+          "source_commit": "f2a9e3fe9b38881102b97f546814662f8c9b0a01",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1"
+        }
+      ],
+      "status": "SLEEVE_CANDIDATE",
+      "common_corpus_metrics": {
+        "selected_n": 118,
+        "settled_n": 77,
+        "open_n": 41,
+        "other_nonterminal_n": 0,
+        "wins": 42,
+        "losses": 35,
+        "pnl_u": 22.78,
+        "roi_pct": 29.5894,
+        "max_dd_u": -7,
+        "bets_per_calendar_day": 2.27,
+        "distinct_physical_events_selected": 118
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    },
+    {
+      "sport": "soccer",
+      "one_physical_event_max": true,
+      "implementation_file": "scripts/modeling/football-strategy-registry.ts",
+      "executable": true,
+      "semantic_version": "1.0.0",
+      "strategy_id": "FOOTBALL_SPREADS_ODDS_185_200_AUDIT_REQUIRED",
+      "plain_language_rule": "ставим только на форы (гандикапы) при коэффициенте примерно 1.85–2.00",
+      "plain_language_rule_en": "Soccer spreads/handicaps only, entry price 0.50 <= p < 0.54 (decimal odds about 1.85-2.00). AUDIT_REQUIRED, not live authority.",
+      "market_scope": [
+        "spreads"
+      ],
+      "price_min": 0.5,
+      "price_min_inclusive": true,
+      "price_max": 0.54,
+      "price_max_inclusive": false,
+      "decimal_odds_min": 1.8519,
+      "decimal_odds_max": 2,
+      "decimal_odds_bounds": "(1.8519, 2.00]",
+      "selector_semantics": "SELECTION_BEFORE_SETTLEMENT_V1: predicate over canonical soccer candidates (denominator v2) -> chronological -> first qualifying row claims the physicalEventKey (runStandaloneStrict); settlement joined after selection",
+      "legacy_aliases": [
+        "LIVE_POLICY_REPLAY.spreads"
+      ],
+      "implementation_symbol": "selectFootballSpreadsOdds185200AuditRequired",
+      "source_provenance": [
+        "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json LIVE_POLICY_REPLAY.BY_FAMILY.spreads",
+        "scripts/modeling/audit-p5052-p5054-c1-restored-lineage-v2.ts"
+      ],
+      "legacy_reported_metrics": [
+        {
+          "label": "RESTORED_LINEAGE_AUDIT_V2_LIVE_POLICY_REPLAY_SPREADS",
+          "selected": 250,
+          "settled": 201,
+          "open": 49,
+          "pnl_u": 122.14,
+          "roi_pct": 60.77,
+          "max_dd_u": -6,
+          "date_from": "2026-08-04",
+          "date_to": "2026-09-24",
+          "source_path": "modeling/evidence/p5052-p5054-c1-restored-lineage-audit-v2/AUDIT_REPORT.json",
+          "source_commit": "992348be4818f0214c677fed1637b51b504da40e",
+          "formula_version": "BETTING_ECONOMICS_CONTRACT_V2/flat-1u/SELECTION_BEFORE_SETTLEMENT_V1"
+        }
+      ],
+      "status": "AUDIT_REQUIRED_NOT_LIVE_AUTHORITY",
+      "common_corpus_metrics": {
+        "selected_n": 250,
+        "settled_n": 201,
+        "open_n": 49,
+        "other_nonterminal_n": 0,
+        "wins": 165,
+        "losses": 36,
+        "pnl_u": 122.14,
+        "roi_pct": 60.7674,
+        "max_dd_u": -6,
+        "bets_per_calendar_day": 4.81,
+        "distinct_physical_events_selected": 250
+      },
+      "common_corpus_dataset_id": "FOOTBALL_DENOMINATOR_V2_2026-08-04_2026-09-24"
+    }
+  ],
+  "LEGACY_UNREPRODUCIBLE_REFERENCES": [
+    {
+      "id": "LEGACY_UNREPRODUCIBLE_REFERENCE_ALL_FOOTBALL_3835",
+      "legacy_reference": {
+        "selected": 3835,
+        "settled": 2522,
+        "open": 1313,
+        "pnl_u": -0.73,
+        "status": "LEGACY_UNREPRODUCIBLE_REFERENCE",
+        "executable": false
+      },
+      "status": "NOT_EXECUTABLE / NOT_MODEL_AUTHORITY",
+      "executable": false,
+      "replaced_by": "FOOTBALL_ORDINARY_STRUCTURED_NO_ODDS_FILTER",
+      "note": "No reproducible implementation exists in Git or evidence. Founder/Architect decision: preserved as metadata only; never blocks the registry."
+    }
+  ]
+}
