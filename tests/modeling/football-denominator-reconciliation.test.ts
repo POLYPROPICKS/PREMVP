@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   marketTypeLineageBreakdown,
+  readExactGspMarketTypeEntries,
   readPartitionedSourceDate,
 } from "../../scripts/modeling/build-football-denominator-reconciliation-v2";
 import {
@@ -137,6 +138,81 @@ describe("market type lineage summary accounting", () => {
       ].reduce((sum, key) => sum + level[key], 0);
       expect(sourceAttributionN).toBe(level.CANONICAL_SOCCER_N);
     }
+  });
+});
+
+describe("exact-pair GSP market type reads", () => {
+  const entry = (
+    condition_id: string,
+    selected_token_id: string,
+    id: string,
+    created_at = "2026-08-05T10:00:00.000Z",
+    market_type: string | null = "moneyline",
+  ): GspMarketTypeEntry => ({ id, condition_id, selected_token_id, created_at, market_type });
+
+  it("accepts only requested exact condition/token pairs", async () => {
+    const result = await readExactGspMarketTypeEntries(
+      [{ condition_id: "C1", selected_token_id: "T1" }],
+      async () => [entry("C1", "T1", "wanted"), entry("C2", "T2", "unrequested")],
+    );
+    expect(result.map((item) => item.id)).toEqual(["wanted"]);
+  });
+
+  it("does not admit an unrelated sibling token under the same condition", async () => {
+    const result = await readExactGspMarketTypeEntries(
+      [{ condition_id: "C1", selected_token_id: "T1" }],
+      async () => [entry("C1", "T1", "wanted"), entry("C1", "T2", "sibling")],
+    );
+    expect(result.map((item) => item.selected_token_id)).toEqual(["T1"]);
+  });
+
+  it("ignores rows without a string marketType", async () => {
+    const result = await readExactGspMarketTypeEntries(
+      [{ condition_id: "C1", selected_token_id: "T1" }],
+      async () => [entry("C1", "T1", "null-type", "2026-08-05T10:00:00.000Z", null)],
+    );
+    expect(result).toEqual([]);
+  });
+
+  it("sorts results deterministically by exact identity, creation time, and id", async () => {
+    const result = await readExactGspMarketTypeEntries(
+      [
+        { condition_id: "C2", selected_token_id: "T2" },
+        { condition_id: "C1", selected_token_id: "T1" },
+      ],
+      async () => [
+        entry("C2", "T2", "last-pair"),
+        entry("C1", "T1", "b", "2026-08-05T11:00:00.000Z"),
+        entry("C1", "T1", "a", "2026-08-05T11:00:00.000Z"),
+        entry("C1", "T1", "first", "2026-08-05T09:00:00.000Z"),
+      ],
+    );
+    expect(result.map((item) => item.id)).toEqual(["first", "a", "b", "last-pair"]);
+  });
+
+  it("splits a saturated multi-pair chunk recursively", async () => {
+    const calls: string[][] = [];
+    const pairs = [
+      { condition_id: "C1", selected_token_id: "T1" },
+      { condition_id: "C2", selected_token_id: "T2" },
+    ];
+    const result = await readExactGspMarketTypeEntries(pairs, async (chunk) => {
+      calls.push(chunk.map((pair) => `${pair.condition_id}::${pair.selected_token_id}`));
+      if (chunk.length === 2) return [entry("C1", "T1", "one"), entry("C2", "T2", "two")];
+      const pair = chunk[0];
+      return [entry(pair.condition_id, pair.selected_token_id, pair.condition_id)];
+    }, 2);
+    expect(calls).toHaveLength(3);
+    expect(calls[0]).toHaveLength(2);
+    expect(result.map((item) => item.id)).toEqual(["C1", "C2"]);
+  });
+
+  it("fails closed when a single exact pair reaches the response limit", async () => {
+    await expect(readExactGspMarketTypeEntries(
+      [{ condition_id: "C1", selected_token_id: "T1" }],
+      async () => [entry("C1", "T1", "one"), entry("C1", "T1", "two")],
+      2,
+    )).rejects.toThrow("RECON_GSP_EXACT_PAIR_TOO_LARGE:C1:T1");
   });
 });
 

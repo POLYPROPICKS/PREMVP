@@ -180,43 +180,98 @@ async function readAllSourceRows(db: any): Promise<SourceRow[]> {
   return rows;
 }
 
-async function readGspMarketTypeIndex(db: any, keys: Set<string>): Promise<Map<string, GspMarketTypeEntry[]>> {
-  const index = new Map<string, GspMarketTypeEntry[]>();
-  if (keys.size === 0) return index;
-  const conditionIds = [...new Set([...keys].map((k) => k.split("::")[0]))].sort();
-  for (let i = 0; i < conditionIds.length; i += GSP_PAGE) {
-    const chunk = conditionIds.slice(i, i + GSP_PAGE);
-    for (let from = 0; ; from += PAGE) {
-      const { data, error } = await db
-        .from("generated_signal_pairs")
-        .select("id,condition_id,selected_token_id,created_at,diagnostics")
-        .in("condition_id", chunk)
-        .order("condition_id")
-        .order("selected_token_id")
-        .order("created_at")
-        .order("id")
-        .range(from, from + PAGE - 1);
-      if (error) throw new Error(`RECON_GSP_READ:${error.code ?? error.message}`);
-      for (const raw of data ?? []) {
-        const r = obj(raw);
-        const conditionId = String(r.condition_id ?? "");
-        const selectedTokenId = String(r.selected_token_id ?? "");
-        const key = `${conditionId}::${selectedTokenId}`;
-        const d2 = obj(r.diagnostics);
-        const entry: GspMarketTypeEntry = {
-          id: String(r.id ?? ""),
-          condition_id: conditionId,
-          selected_token_id: selectedTokenId,
-          created_at: String(r.created_at ?? ""),
-          market_type: typeof d2.marketType === "string" ? d2.marketType : null,
-        };
-        if (!index.has(key)) index.set(key, []);
-        index.get(key)!.push(entry);
-      }
-      if ((data?.length ?? 0) < PAGE) break;
+type GspExactPair = Pick<GspMarketTypeEntry, "condition_id" | "selected_token_id">;
+
+export async function readExactGspMarketTypeEntries(
+  pairs: GspExactPair[],
+  fetchChunk: (chunk: GspExactPair[]) => Promise<GspMarketTypeEntry[]>,
+  pageSize = PAGE,
+  chunkSize = 50,
+  onChunkComplete?: (lastPair: GspExactPair, entries: GspMarketTypeEntry[]) => void,
+): Promise<GspMarketTypeEntry[]> {
+  const orderedPairs = pairs.map((pair) => {
+    if (!/^[A-Za-z0-9_-]+$/.test(pair.condition_id) || !/^[A-Za-z0-9_-]+$/.test(pair.selected_token_id)) {
+      throw new Error("RECON_GSP_READ_INVALID_EXACT_ID");
     }
-    console.error(JSON.stringify({ STAGE: "GSP_READ", CONDITION_CHUNK_END: chunk.at(-1), KEYS_SO_FAR: index.size }));
+    return pair;
+  }).sort((a, b) => a.condition_id.localeCompare(b.condition_id)
+    || a.selected_token_id.localeCompare(b.selected_token_id));
+  const readChunk = async (chunk: GspExactPair[]): Promise<GspMarketTypeEntry[]> => {
+    const exactPairs = new Set(chunk.map((pair) => `${pair.condition_id}::${pair.selected_token_id}`));
+    const data = await fetchChunk(chunk);
+    if (data.length >= pageSize) {
+      if (chunk.length === 1) {
+        throw new Error(`RECON_GSP_EXACT_PAIR_TOO_LARGE:${chunk[0].condition_id}:${chunk[0].selected_token_id}`);
+      }
+      const middle = Math.floor(chunk.length / 2);
+      return [
+        ...await readChunk(chunk.slice(0, middle)),
+        ...await readChunk(chunk.slice(middle)),
+      ];
+    }
+    const entries: GspMarketTypeEntry[] = [];
+    for (const entry of data) {
+      if (!exactPairs.has(`${entry.condition_id}::${entry.selected_token_id}`)) continue;
+      if (typeof entry.market_type !== "string") continue;
+      entries.push(entry);
+    }
+    return entries;
+  };
+
+  const entries: GspMarketTypeEntry[] = [];
+  for (let i = 0; i < orderedPairs.length; i += chunkSize) {
+    const chunk = orderedPairs.slice(i, i + chunkSize);
+    const chunkEntries = await readChunk(chunk);
+    entries.push(...chunkEntries);
+    onChunkComplete?.(chunk[chunk.length - 1], chunkEntries);
   }
+  return entries.sort((a, b) => a.condition_id.localeCompare(b.condition_id)
+    || a.selected_token_id.localeCompare(b.selected_token_id)
+    || a.created_at.localeCompare(b.created_at)
+    || a.id.localeCompare(b.id));
+}
+
+async function readGspMarketTypeIndex(db: any, keys: Set<string>): Promise<Map<string, GspMarketTypeEntry[]>> {
+  const pairs = [...keys].sort().map((key) => {
+    const separator = key.indexOf("::");
+    const condition_id = key.slice(0, separator);
+    const selected_token_id = key.slice(separator + 2);
+    if (separator <= 0) throw new Error("RECON_GSP_READ_INVALID_EXACT_ID");
+    return { condition_id, selected_token_id };
+  });
+  console.error(JSON.stringify({ STAGE: "GSP_READ_START", CANDIDATE_IDENTITIES: pairs.length }));
+  const progressKeys = new Set<string>();
+  const entries = await readExactGspMarketTypeEntries(pairs, async (chunk) => {
+    const exactPairFilter = chunk
+      .map(({ condition_id, selected_token_id }) => `and(condition_id.eq.${condition_id},selected_token_id.eq.${selected_token_id})`)
+      .join(",");
+    const { data, error } = await db
+      .from("generated_signal_pairs")
+      .select("id,condition_id,selected_token_id,created_at,market_type:diagnostics->marketType")
+      .or(exactPairFilter)
+      .limit(PAGE);
+    if (error) throw new Error(`RECON_GSP_READ:${error.code ?? error.message}`);
+    return (data ?? []).map((raw: unknown) => {
+      const r = obj(raw);
+      return {
+        id: String(r.id ?? ""),
+        condition_id: String(r.condition_id ?? ""),
+        selected_token_id: String(r.selected_token_id ?? ""),
+        created_at: String(r.created_at ?? ""),
+        market_type: typeof r.market_type === "string" ? r.market_type : null,
+      } satisfies GspMarketTypeEntry;
+    });
+  }, PAGE, 50, (lastPair, chunkEntries) => {
+    for (const entry of chunkEntries) progressKeys.add(`${entry.condition_id}::${entry.selected_token_id}`);
+    console.error(JSON.stringify({ STAGE: "GSP_READ", EXACT_PAIR_CHUNK_END: `${lastPair.condition_id}::${lastPair.selected_token_id}`, KEYS_SO_FAR: progressKeys.size }));
+  });
+  const index = new Map<string, GspMarketTypeEntry[]>();
+  for (const entry of entries) {
+      const key = `${entry.condition_id}::${entry.selected_token_id}`;
+      if (!index.has(key)) index.set(key, []);
+      index.get(key)!.push(entry);
+  }
+  console.error(JSON.stringify({ STAGE: "GSP_READ_COMPLETE", IDENTITIES: index.size }));
   return index;
 }
 
