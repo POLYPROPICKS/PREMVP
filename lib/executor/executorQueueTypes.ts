@@ -180,6 +180,7 @@ export interface IrelandQueueCandidate {
    * Null when the row predates this lineage stamp.
    */
   signal_pair_id: string | null;
+  model_lineage_v1: Record<string, unknown> | null;
   match_family_key: string;
   /** Canonical alias for legacy match_family_key occurrence storage. */
   physical_event_id: string | null;
@@ -305,6 +306,9 @@ export function mapQueueRowToIrelandCandidate(
     rebalance_run_id: row.rebalance_run_id,
     reservation_id: row.reservation_id ?? null,
     signal_pair_id: signalPairId,
+    model_lineage_v1: row.diagnostics?.model_lineage_v1 && typeof row.diagnostics.model_lineage_v1 === "object"
+      ? row.diagnostics.model_lineage_v1 as Record<string, unknown>
+      : null,
     match_family_key: row.match_family_key,
     physical_event_id:
       (typeof row.diagnostics?.physical_event_id === "string" && row.diagnostics.physical_event_id) ||
