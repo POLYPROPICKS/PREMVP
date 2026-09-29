@@ -1,0 +1,45 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "GATE_VERSION": "CANDIDATE_V3_SHADOW_UNIVERSE_GATE_V1",
+  "PURITY": "no env, no DB, no network; reads only structured diagnostics; never reads winning_outcome / real_pnl_usd / any outcome field; no title/slug/text inference",
+  "INPUT": "generated_signal_pairs-like export row",
+  "OUTPUT": {
+    "allowed": "boolean",
+    "reason_code": ["ALLOWED", "SPORT_FAMILY_MISSING", "SPORT_FAMILY_NOT_SOCCER", "MARKET_TYPE_UNRESOLVED", "MARKET_TYPE_CONTRADICTION", "MARKET_CLASS_NOT_ALLOWED"],
+    "normalized_sport_family": "string | null",
+    "raw_market_type": "string | null",
+    "canonical_market_class": "MarketClass | null"
+  },
+  "EVALUATION_ORDER": ["sport", "market_type_resolution", "canonical_market_class"],
+  "SPORT_GATE": {
+    "SURFACE": "diagnostics.providerSportFamily (must be a non-empty string; diagnostics must be a non-array object)",
+    "NORMALIZER": "normalizeProviderSportFamily (football -> soccer)",
+    "REQUIRE": "normalized === 'soccer'",
+    "MISSING_OR_UNRESOLVED": "SPORT_FAMILY_MISSING (fail closed)",
+    "NON_SOCCER": "SPORT_FAMILY_NOT_SOCCER (fail closed)"
+  },
+  "MARKET_TYPE_RESOLUTION": {
+    "PRECEDENCE": ["diagnostics.researchContext.marketType", "diagnostics.marketType"],
+    "VALUE_RULE": "non-empty string, trimmed",
+    "NEITHER_PRESENT": "MARKET_TYPE_UNRESOLVED",
+    "BOTH_PRESENT_AND_DIFFERENT": "MARKET_TYPE_CONTRADICTION",
+    "CONTRADICTION_DEFINITION": "normalizeMarketText(nested) !== normalizeMarketText(flat) (case/whitespace/punctuation/diacritic-insensitive equality passes; anything else fails closed)",
+    "OUTCOME_FIELDS_READ": false
+  },
+  "CANONICAL_MARKET_CLASS": {
+    "AUTHORITY": "lib/contur3/taxonomy.ts",
+    "CLASSIFIER": "classifyMarketText(resolved market type)",
+    "ALLOW_RULE": "isAllowedFullMatchMarketClass(class) === true",
+    "ALLOWED_CLASSES": ["allowed_fullmatch_moneyline", "allowed_fullmatch_spread", "allowed_fullmatch_total"],
+    "ALL_OTHER_CLASSES": "MARKET_CLASS_NOT_ALLOWED (forbidden_*, esports_non_policy, unknown)",
+    "NO_CUSTOM_REGEX": true,
+    "NO_DUPLICATED_TAXONOMY": true,
+    "NO_LITERAL_BINARY_CHECK": true,
+    "LITERAL_BINARY_NOTE": "A structured market type of the literal string 'BINARY' classifies as unknown and is rejected. The producer's own top-level BINARY check is unchanged and independent."
+  },
+  "COMPOSITION": {
+    "HELPER": "runCandidateV3Selector(rows, asOfIso)",
+    "RETURNS": ["acceptedDecisions", "producerRejections", "universeGateRejectionCounts", "universeGateRejections", "acceptedMarketClassCounts", "universeAllowedCount", "universeRejectedCount", "inputCount", "asOfIso", "gateVersion"],
+    "ACCEPTED_CLASS_COUNT_SOURCE": "canonical class of the exact T-90 snapshot row the producer selected (observationId + created_at)"
+  }
+}

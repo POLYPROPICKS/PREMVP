@@ -1,0 +1,23 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "RESEARCH_ONLY": true,
+  "IDENTITY": "condition_id + selected_token_id",
+  "LABELS": [
+    "WIN",
+    "LOSS",
+    "OPEN",
+    "LOOKUP_UNAVAILABLE",
+    "INVALID_TOKEN_IDENTITY"
+  ],
+  "RULES": {
+    "A": "returned conditionId must equal requested; else LOOKUP_UNAVAILABLE/CONDITION_ID_MISMATCH",
+    "B": "selected_token_id must be in clobTokenIds; else INVALID_TOKEN_IDENTITY, never LOSS",
+    "C": "WIN iff selected token is the single winning token; LOSS iff selected token valid and opposite token wins; OPEN iff matched market not closed",
+    "D": "null lookup, malformed response, closed without single >=0.99 winner => LOOKUP_UNAVAILABLE; never OPEN, never inferred"
+  },
+  "REUSES": [
+    "fetchGammaMarketByConditionId (Gamma + CLOB fallback)",
+    "resolveProviderMarketWinner"
+  ],
+  "PRODUCTION_RESOLVER_MODIFIED": false
+}

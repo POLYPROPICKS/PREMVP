@@ -1,0 +1,38 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "STATUS": "AMENDED_CANDIDATE_FOR_FINAL_DELTA_REVIEW_NOT_LIVE_AUTHORIZATION",
+  "CANDIDATE_NAME": "CANDIDATE_V3_CONTRACT_A_NO_MOMENTUM",
+  "AMENDS": "modeling/evidence/candidate-v3-freeze-v1/CANDIDATE_V3_CONTRACT.json",
+  "AMENDS_SHA256": "3f88b1947e4a116332abcaa6c19348dd4540a0ef4cd0c9732214d834f57d52a9",
+  "SUPERSEDES_ONLY_THESE_FIELDS": ["UNIVERSE.SPORT_SCOPE enforcement", "ELIGIBILITY_GATES.MARKET_TYPE / MARKET_ELIGIBILITY"],
+  "EVERYTHING_ELSE": "EXACTLY_AS_CANDIDATE_V3_FREEZE_V1",
+  "SPORT_SCOPE": {
+    "SCOPE": "SOCCER_FOOTBALL_ONLY",
+    "ENFORCEMENT": "structured normalized diagnostics.providerSportFamily == soccer, fail closed",
+    "NORMALIZER": "normalizeProviderSportFamily (lib/feed/sportScoreOwnership.ts)",
+    "ENFORCEMENT_LAYER": "scripts/modeling/candidate-v3-shadow-universe-gate.ts, upstream of produceFrozenModelV2ShadowDecisions",
+    "SUPERSEDES": "freeze-v1 UNIVERSE.ENFORCEMENT_LAYER note that relied on an unspecified 'committed fail-closed football classifier'",
+    "TEXT_INFERENCE": false
+  },
+  "MARKET_ELIGIBILITY": {
+    "RULE": "resolved structured market type (diagnostics.researchContext.marketType, else diagnostics.marketType) classified through canonical lib/contur3/taxonomy.ts; only allowed_fullmatch_moneyline / allowed_fullmatch_spread / allowed_fullmatch_total",
+    "FAIL_CLOSED": ["missing", "contradictory surfaces", "forbidden_*", "esports_non_policy", "unknown"],
+    "SUPERSEDES": "freeze-v1 'BINARY only' surface-level taxonomy description and OPEN_ITEM_MARKET_TYPE_ABSENT_ADMITTED",
+    "PRODUCER_TOP_LEVEL_BINARY_CHECK": "unchanged and still applied by the producer to rows the gate admits"
+  },
+  "UNCHANGED_FROM_FREEZE_V1": {
+    "MODEL_VERSION": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+    "SCORE_THRESHOLD": 65,
+    "PRICE_FLOOR": 0.30,
+    "TIMING": "0 < minutes_until_start <= 1440",
+    "T90_SNAPSHOT_RULE": "unchanged",
+    "ESPORTS_EXCLUSION": "unchanged",
+    "ONE_PER_PHYSICAL_EVENT": "unchanged (producer buildEventGroupKey + compareForTieBreak)",
+    "FINAL_MARKET_SELECTOR": "produceFrozenModelV2ShadowDecisions",
+    "MOMENTUM_POLICY": "EXCLUDED",
+    "SETTLEMENT_POLICY": "unchanged (strict terminal resolver, research only)",
+    "HISTORICAL_ROI_POLICY": "unchanged (not encoded as authority)",
+    "RESEARCH_FREEZE": "unchanged"
+  },
+  "COMPOSITION_ENTRYPOINT": "runCandidateV3Selector (scripts/modeling/candidate-v3-shadow-universe-gate.ts)"
+}

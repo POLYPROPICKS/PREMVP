@@ -1,0 +1,15 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "PLANNING_OWNER": "buildReservationPlan / CONTRACT_A_PLANNING_V1 / compareCandidateQuality (physical-event reservation ranking; lib/executor/nightEventReservations.ts:947,1151)",
+  "FINAL_MARKET_OWNER": "Contract A final (CONTRACT_A_V1 / FROZEN_MODEL_V2)",
+  "FINAL_MARKET_FUNCTION": "produceFrozenModelV2ShadowDecisions (lib/modeling/frozenModelProducerV2Shadow.ts:269)",
+  "FINAL_MARKET_STAGE": "T-70..T-3 rebalance authoritative identity (buildContractAV1Candidates, lib/executor/buildFireModelCandidates.ts:1399-1415; consumed at lib/executor/eventExecutionQueue.ts:1563-1640)",
+  "EXECUTION_RULE": "eventExecutionQueue validates the exact authoritative identity for Contract A reservations and must not replace it via compareCandidateQuality (eventExecutionQueue.ts:1563)",
+  "REPLAY_AS_OF_ISO": "2026-09-28T10:34:08.835Z",
+  "SNAPSHOT_RUN_ID": "f94429cb-eb8e-4607-a06d-701208b8ceb3",
+  "SELECTOR_A": "CHRONOLOGICAL_FIRST",
+  "SELECTOR_B": "CONTRACT_A_FINAL:produceFrozenModelV2ShadowDecisions",
+  "PRIOR_BINDING": "step4c-selector-momentum-v1 B=compareCandidateQuality: RESEARCH_BINDING_SUPERSEDED (provenance only)",
+  "AS_OF_SEAM": "produceFrozenModelV2ShadowDecisions(rows, asOfIso) explicit; no production code patched; wall clock not used",
+  "A_COMPARATOR": "compareChronologically over frozen snapshot siblings (decisionTimestamp=snapshot_at, eventStart=game_start_iso, entryPrice=selected_price_num); siblings restricted to the exact minimum-entryPrice tie set, which is the first discriminating comparator field"
+}

@@ -1,0 +1,140 @@
+{
+  "MARKET_TYPE_ROWS": [
+    {
+      "market_type": "soccer_starting_eleven",
+      "n": 851,
+      "events": 16
+    },
+    {
+      "market_type": "soccer_second_half_team_totals",
+      "n": 319,
+      "events": 24
+    },
+    {
+      "market_type": "soccer_team_totals",
+      "n": 313,
+      "events": 24
+    },
+    {
+      "market_type": "soccer_first_half_team_totals",
+      "n": 302,
+      "events": 24
+    },
+    {
+      "market_type": "soccer_team_total_corners",
+      "n": 261,
+      "events": 23
+    },
+    {
+      "market_type": "spreads",
+      "n": 196,
+      "events": 43
+    },
+    {
+      "market_type": "total_corners",
+      "n": 195,
+      "events": 24
+    },
+    {
+      "market_type": "second_half_totals",
+      "n": 188,
+      "events": 24
+    },
+    {
+      "market_type": "first_half_totals",
+      "n": 141,
+      "events": 24
+    },
+    {
+      "market_type": "moneyline",
+      "n": 139,
+      "events": 42
+    },
+    {
+      "market_type": "soccer_second_half_result",
+      "n": 128,
+      "events": 24
+    },
+    {
+      "market_type": "totals",
+      "n": 122,
+      "events": 34
+    },
+    {
+      "market_type": "soccer_halftime_result",
+      "n": 120,
+      "events": 24
+    },
+    {
+      "market_type": "soccer_first_half_total_corners",
+      "n": 111,
+      "events": 19
+    },
+    {
+      "market_type": "soccer_second_half_total_corners",
+      "n": 110,
+      "events": 19
+    },
+    {
+      "market_type": "soccer_first_to_score",
+      "n": 86,
+      "events": 20
+    },
+    {
+      "market_type": "both_teams_to_score",
+      "n": 48,
+      "events": 24
+    },
+    {
+      "market_type": "both_teams_to_score_second_half",
+      "n": 43,
+      "events": 24
+    },
+    {
+      "market_type": "soccer_game_corners_odd_even",
+      "n": 38,
+      "events": 19
+    },
+    {
+      "market_type": "soccer_first_corner",
+      "n": 38,
+      "events": 19
+    },
+    {
+      "market_type": "soccer_exact_score",
+      "n": 25,
+      "events": 5
+    },
+    {
+      "market_type": "both_teams_to_score_first_half",
+      "n": 10,
+      "events": 7
+    }
+  ],
+  "TIMING_ROWS": [
+    {
+      "bucket": "LT_1H",
+      "n": 127
+    },
+    {
+      "bucket": "1_3H",
+      "n": 0
+    },
+    {
+      "bucket": "3_6H",
+      "n": 805
+    },
+    {
+      "bucket": "6_12H",
+      "n": 1969
+    },
+    {
+      "bucket": "12_24H",
+      "n": 856
+    },
+    {
+      "bucket": "GE_24H",
+      "n": 27
+    }
+  ]
+}

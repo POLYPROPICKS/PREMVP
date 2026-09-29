@@ -1,0 +1,7 @@
+{
+  "RAW_DB_ROWS_READ_N": 52,
+  "RAW_DB_ROWS_BREAKDOWN": "50 frozen sample identities + 1 keyset-probe row + 1 pre-flight range probe row; S2 count and non-empty count were HEAD aggregates (0 rows)",
+  "GAMMA_LOOKUP_N": 28,
+  "GAMMA_LOOKUP_NOTE": "one lookup per distinct conditionId (28) covering all 50 exact identities; the reversed pass reused cached responses",
+  "PRODUCTION_WRITES": 0
+}

@@ -1,0 +1,275 @@
+{
+  "NOT_EXECUTION_AUTHORITY": true,
+  "FOLDS": [
+    {
+      "FOLD": 1,
+      "TRAIN_N": 48,
+      "TEST_N": 24,
+      "TRAIN_RANGE": [
+        0,
+        48
+      ],
+      "TEST_RANGE": [
+        48,
+        72
+      ],
+      "M0": {
+        "LOG_LOSS": 0.7791895291455195,
+        "BRIER": 0.28992383283186113,
+        "ACCURACY": 0.4583333333333333,
+        "ITERATIONS": 5,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "totals"
+        ]
+      },
+      "M1": {
+        "LOG_LOSS": 0.7856577759632272,
+        "BRIER": 0.2939469646773027,
+        "ACCURACY": 0.4166666666666667,
+        "ITERATIONS": 6,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "totals"
+        ]
+      },
+      "M2": {
+        "LOG_LOSS": 0.8433303754747419,
+        "BRIER": 0.2941959676803147,
+        "ACCURACY": 0.4583333333333333,
+        "ITERATIONS": 7,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "totals"
+        ]
+      }
+    },
+    {
+      "FOLD": 2,
+      "TRAIN_N": 72,
+      "TEST_N": 24,
+      "TRAIN_RANGE": [
+        0,
+        72
+      ],
+      "TEST_RANGE": [
+        72,
+        96
+      ],
+      "M0": {
+        "LOG_LOSS": 0.6432782749513407,
+        "BRIER": 0.22901994837778658,
+        "ACCURACY": 0.5833333333333334,
+        "ITERATIONS": 5,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_game_corners_odd_even",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_team_totals",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "totals"
+        ]
+      },
+      "M1": {
+        "LOG_LOSS": 0.6117065211178853,
+        "BRIER": 0.2134974721659334,
+        "ACCURACY": 0.5416666666666666,
+        "ITERATIONS": 5,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_game_corners_odd_even",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_team_totals",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "totals"
+        ]
+      },
+      "M2": {
+        "LOG_LOSS": 0.6321880703325921,
+        "BRIER": 0.22225000766313488,
+        "ACCURACY": 0.5416666666666666,
+        "ITERATIONS": 6,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_game_corners_odd_even",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_team_totals",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "totals"
+        ]
+      }
+    },
+    {
+      "FOLD": 3,
+      "TRAIN_N": 96,
+      "TEST_N": 25,
+      "TRAIN_RANGE": [
+        0,
+        96
+      ],
+      "TEST_RANGE": [
+        96,
+        121
+      ],
+      "M0": {
+        "LOG_LOSS": 0.6020300334252636,
+        "BRIER": 0.20644930910442433,
+        "ACCURACY": 0.64,
+        "ITERATIONS": 5,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_game_corners_odd_even",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_team_totals",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "total_corners",
+          "totals"
+        ]
+      },
+      "M1": {
+        "LOG_LOSS": 0.5912593261720608,
+        "BRIER": 0.1988631525800127,
+        "ACCURACY": 0.76,
+        "ITERATIONS": 5,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_game_corners_odd_even",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_team_totals",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "total_corners",
+          "totals"
+        ]
+      },
+      "M2": {
+        "LOG_LOSS": 0.5953290407714981,
+        "BRIER": 0.20110644829853402,
+        "ACCURACY": 0.72,
+        "ITERATIONS": 6,
+        "TRAIN_MARKET_TYPE_VOCAB": [
+          "first_half_totals",
+          "moneyline",
+          "second_half_totals",
+          "soccer_exact_score",
+          "soccer_first_corner",
+          "soccer_first_half_team_totals",
+          "soccer_first_half_total_corners",
+          "soccer_first_to_score",
+          "soccer_game_corners_odd_even",
+          "soccer_halftime_result",
+          "soccer_second_half_result",
+          "soccer_second_half_team_totals",
+          "soccer_second_half_total_corners",
+          "soccer_starting_eleven",
+          "soccer_team_total_corners",
+          "soccer_team_totals",
+          "spreads",
+          "total_corners",
+          "totals"
+        ]
+      }
+    }
+  ]
+}
