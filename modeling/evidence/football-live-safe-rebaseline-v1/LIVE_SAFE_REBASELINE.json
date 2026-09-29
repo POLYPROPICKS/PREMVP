@@ -16,7 +16,7 @@
     ],
     "price_min": 0.5,
     "price_min_inclusive": false,
-    "price_max": 0.571429,
+    "price_max": 0.5714285714285714,
     "price_max_inclusive": true,
     "decimal_odds_min": 1.75,
     "decimal_odds_max": 2,

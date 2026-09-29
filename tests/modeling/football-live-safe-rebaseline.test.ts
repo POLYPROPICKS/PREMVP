@@ -27,6 +27,7 @@ test("strategy def is stable, live-only scope, and old registry is untouched", (
   assert.equal(LIVE_B_STRATEGY.strategy_id, "FOOTBALL_LIVE_MLTS_ODDS_175_200");
   assert.equal(LIVE_B_ID, LIVE_B_STRATEGY.strategy_id);
   assert.deepEqual(LIVE_B_STRATEGY.market_scope, ["moneyline", "totals", "spreads"]);
+  assert.equal(LIVE_B_STRATEGY.price_max, 4 / 7);
   assert.equal(STRATEGY_REGISTRY.length, 9);
   assert.ok(!STRATEGY_REGISTRY.some((d) => d.strategy_id === LIVE_B_ID));
 });

@@ -74,7 +74,7 @@ export const LIVE_B_STRATEGY: StrategyDef = {
   plain_language_rule_en: "Soccer moneyline/totals/spreads only (canonical market type), decimal odds 1.75-2.00 (0.50 < p <= 4/7). Live-executable subset of FOOTBALL_ORDINARY_STRUCTURED_ODDS_175_200.",
   sport: "soccer",
   market_scope: ["moneyline", "totals", "spreads"],
-  price_min: 0.5, price_min_inclusive: false, price_max: Math.round((4 / 7) * 1e6) / 1e6, price_max_inclusive: true,
+  price_min: 0.5, price_min_inclusive: false, price_max: 4 / 7, price_max_inclusive: true,
   decimal_odds_min: 1.75, decimal_odds_max: 2, decimal_odds_bounds: "[1.75, 2.00)",
   selector_semantics: SEL,
   one_physical_event_max: true,
