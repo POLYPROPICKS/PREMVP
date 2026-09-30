@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations } from "../../lib/executor/reservationMarketBaseline";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
@@ -46,6 +47,23 @@ test("every market observation produces S1/S2/S3 scalar-only rows", () => {
   assert.equal(rows[2].maker_band_state, "NOT_DEFINED_YET");
   assert.equal(rows[2].maker_band_min_price, null);
   assert.equal(JSON.stringify(rows).includes("forbidden"), false);
+});
+
+test("persisted strategy reread carries measured LIVE_GUARD ask depth into S1", () => {
+  const source = readFileSync(new URL("../../lib/executor/reservationMarketBaseline.ts", import.meta.url), "utf8");
+  const projection = source.match(/\.select\("([^"]+)"\)\s*\.eq\("capture_run_id", run\.id\)/)?.[1];
+  assert.ok(projection, "persisted observation reread projection exists");
+  assert.ok(projection.split(",").includes("ask_depth_relevant_usd"));
+  const persisted = {
+    id: "m-live", capture_run_id: "r", reservation_id: "q", physical_event_id: "p",
+    condition_id: "c", token_id: "t", side: "Yes", observation_phase: "LIVE_GUARD",
+    observed_at: "2026-09-30T23:30:00Z", minutes_to_start: 30,
+    ask_depth_relevant_usd: 1.61,
+  };
+  const reread = Object.fromEntries(Object.entries(persisted).filter(([key]) => projection.split(",").includes(key)));
+  const rows = strategyRowsForMarketObservations([reread]);
+  assert.equal(rows[0].strategy_variant, "S1_TAKER_HOLD");
+  assert.equal(rows[0].executable_depth_usd, 1.61);
 });
 
 test("baseline IDs and incomplete market accounting are deterministic", () => {

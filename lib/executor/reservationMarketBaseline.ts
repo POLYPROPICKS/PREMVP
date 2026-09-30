@@ -233,7 +233,7 @@ async function defaultWriter(run: Record<string, unknown>, observations: Record<
   let lastId = "00000000-0000-0000-0000-000000000000";
   for (;;) {
     const { data, error } = await supabaseAdmin.from("reservation_market_observations")
-      .select("id,capture_run_id,reservation_id,physical_event_id,condition_id,token_id,side,observation_phase,observed_at,minutes_to_start,best_ask,ask_decimal_odds,spread_abs")
+      .select("id,capture_run_id,reservation_id,physical_event_id,condition_id,token_id,side,observation_phase,observed_at,minutes_to_start,best_ask,ask_decimal_odds,spread_abs,ask_depth_relevant_usd")
       .eq("capture_run_id", run.id).gt("id", lastId).order("id").limit(200);
     if (error) throw new Error("STRATEGY_SOURCE_READ_FAILED");
     const page = (data ?? []) as Record<string, unknown>[];
