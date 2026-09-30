@@ -30,8 +30,8 @@ import type { FetchOrderBookResult } from "../../lib/liquidity/types";
 import { liveGuardTelemetryRows } from "../../lib/executor/reservationMarketBaseline";
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
-// T-60m from a 19:00Z kickoff, inside the T-70..T-3 rebalance window.
-const IN_WINDOW_MS = Date.parse("2026-07-19T18:00:00.000Z");
+// T-8m from a 19:00Z kickoff, inside the final Queue window.
+const IN_WINDOW_MS = Date.parse("2026-07-19T18:52:00.000Z");
 const PHYSICAL_EVENT_ID = "provider:polymarket:esp-arg-2026-07-19:2026-07-19";
 
 function b2Reservation(overrides: Partial<NightEventReservationRow> = {}): NightEventReservationRow {
@@ -390,7 +390,7 @@ test("RFM-7: a legacy Reservation with no candidate_manifest_version preserves t
     },
   });
   const repo = makeInstrumentedRepo([legacyReservation]);
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
 
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   assert.equal(repo.gspLoadCallCount, 1, "a legacy Reservation must still use the GSP-anchor loader exactly as before");
@@ -446,7 +446,7 @@ test("RFM-8: the B2 manifest path and the legacy GSP path produce byte-identical
   })]);
 
   await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: b2Repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
-  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: legacyRepo });
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo: legacyRepo, fetchExactTokenOrderbook: passingOrderbookFetcher });
 
   const b2Row = b2Repo.queueRows[0];
   const legacyRow = legacyRepo.queueRows[0];
