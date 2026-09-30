@@ -1,0 +1,51 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline } from "../../lib/executor/reservationMarketBaseline";
+import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+
+test("baseline IDs and incomplete market accounting are deterministic", () => {
+  assert.equal(stableTelemetryId("r", "phase", "v1"), stableTelemetryId("r", "phase", "v1"));
+  assert.notEqual(stableTelemetryId("r", "phase", "v1"), stableTelemetryId("r2", "phase", "v1"));
+  const market = { provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" };
+  const set = inventoryTokens([market]);
+  assert.equal(set.expected, 2);
+  assert.equal(set.tokens.length, 2);
+  assert.deepEqual(baselineCompleteness({ markets: 1, siblingCounts: [1], expected: 2, observed: 2, failed: 0, missingIdentity: 0 }), { complete: false, status: "INCOMPLETE_MARKET_SET" });
+});
+
+test("one reservation records distinct tokens and survives one failed orderbook", async () => {
+  const market = { provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" };
+  const reservation = { id: "11111111-1111-4111-8111-111111111111", plan_run_id: "plan", physical_event_id: "provider:polymarket:e:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "e", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
+  let savedRun: Record<string, unknown> | null = null;
+  let savedRows: Record<string, unknown>[] = [];
+  await captureReservationMarketBaseline(reservation, {
+    observedAt: "2026-09-30T00:00:00Z",
+    readInventory: async () => [market],
+    fetchBooks: async () => [
+      { ok: true, tokenId: "t1", latencyMs: 12, book: { tokenId: "t1", bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }], raw: {} } },
+      { ok: false, tokenId: "t2", latencyMs: 99, errorCode: "TIMEOUT", errorMessage: "timeout" },
+    ],
+    write: async (run, rows) => { savedRun = run; savedRows = rows; },
+  });
+  assert.equal(savedRun?.market_tokens_expected_n, 2);
+  assert.equal(savedRun?.orderbooks_success_n, 1);
+  assert.equal(savedRun?.orderbooks_failed_n, 1);
+  assert.equal(savedRows.length, 2);
+  assert.notEqual(savedRows[0].id, savedRows[1].id);
+  assert.equal(savedRows[1].orderbook_failure_reason, "TIMEOUT");
+});
+
+test("all supplied books succeeding still leaves source-set completeness unproven", async () => {
+  const reservation = { id: "22222222-2222-4222-8222-222222222222", plan_run_id: "plan", physical_event_id: "provider:polymarket:e:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "e", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
+  let run: Record<string, unknown> = {};
+  await captureReservationMarketBaseline(reservation, {
+    observedAt: "2026-09-30T00:00:00Z",
+    readInventory: async () => [{ provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" }],
+    fetchBooks: async (ids) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1, book: { tokenId, bids: [{ price: 0.4, size: 1 }], asks: [{ price: 0.5, size: 1 }], raw: {} } })),
+    write: async (captureRun) => { run = captureRun; },
+  });
+  assert.equal(run.market_tokens_expected_n, 2);
+  assert.equal(run.orderbooks_success_n, 2);
+  assert.equal(run.capture_complete, false);
+  assert.equal(run.capture_status, "INCOMPLETE_MARKET_SET");
+});
