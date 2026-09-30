@@ -29,7 +29,7 @@ test("service-scoped config exists only at a non-auto-discovered path and target
   const contents = readFileSync(scopedPath, "utf8");
   assert.match(
     contents,
-    /startCommand\s*=\s*"npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct"/,
+    /startCommand\s*=\s*"npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only"/,
   );
   assert.match(contents, /cronSchedule\s*=\s*"0 2 \* \* \*"/);
   assert.match(contents, /restartPolicyType\s*=\s*"NEVER"/);

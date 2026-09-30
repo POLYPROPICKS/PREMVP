@@ -457,7 +457,12 @@ async function main(): Promise<void> {
   };
   await persistRuntimeSnapshot(
     clone,
-    priorSnapshot?.historicalDaily ? { ...snapshot, historicalDaily: priorSnapshot.historicalDaily } : snapshot,
+    {
+      ...snapshot,
+      ...(priorSnapshot?.historicalDaily ? { historicalDaily: priorSnapshot.historicalDaily } : {}),
+      // Nightly D-1 conveyor rollups live in the same runtime row; this cycle must not drop them.
+      ...(priorSnapshot?.strategyRollups ? { strategyRollups: priorSnapshot.strategyRollups } : {}),
+    },
     nowIso,
   );
 

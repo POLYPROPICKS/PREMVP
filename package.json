@@ -12,6 +12,7 @@
     "research-clone:sync": "tsx scripts/research-clone-daily-sync.ts",
     "research-clone:model-ready": "tsx scripts/modeling/clone-model-ready-pipeline.ts",
     "research-clone:model-ready-direct": "tsx scripts/modeling/materialize-research-model-ready.ts",
+    "research-clone:modeling-conveyor": "tsx scripts/modeling/run-d1-modeling-conveyor.ts",
     "research-clone:scoreboard": "tsx scripts/modeling/unified-core-scoreboard.ts",
     "research-clone:football-structural-authority": "tsx scripts/modeling/football-structural-authority.ts",
     "research-clone:modeling-dashboard-refresh": "tsx scripts/modeling/refresh-modeling-dashboard.ts",
