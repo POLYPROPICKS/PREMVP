@@ -153,7 +153,7 @@ export async function readPartitionedSourceDate<T extends CanonicalSourceIdentit
   return rows;
 }
 
-async function readPartitionedSourceDateFromDb(db: any, date: string): Promise<SourceRow[]> {
+export async function readPartitionedSourceDateFromDb(db: any, date: string): Promise<SourceRow[]> {
   return readPartitionedSourceDate(date, async (prefix) => {
     const { data, error } = await db
       .from("research_model_ready_rows")
@@ -231,7 +231,7 @@ export async function readExactGspMarketTypeEntries(
     || a.id.localeCompare(b.id));
 }
 
-async function readGspMarketTypeIndex(db: any, keys: Set<string>): Promise<Map<string, GspMarketTypeEntry[]>> {
+export async function readGspMarketTypeIndex(db: any, keys: Set<string>): Promise<Map<string, GspMarketTypeEntry[]>> {
   const pairs = [...keys].sort().map((key) => {
     const separator = key.indexOf("::");
     const condition_id = key.slice(0, separator);
@@ -275,7 +275,7 @@ async function readGspMarketTypeIndex(db: any, keys: Set<string>): Promise<Map<s
   return index;
 }
 
-async function readSnapshotMarketTypes(db: any, keys: Set<string>): Promise<SnapshotMarketTypeEntry[]> {
+export async function readSnapshotMarketTypes(db: any, keys: Set<string>): Promise<SnapshotMarketTypeEntry[]> {
   const conditionIds = [...new Set([...keys].map((k) => k.split("::")[0]))].sort();
   const entries: SnapshotMarketTypeEntry[] = [];
   for (let i = 0; i < conditionIds.length; i += GSP_PAGE) {
@@ -312,7 +312,7 @@ async function readSnapshotMarketTypes(db: any, keys: Set<string>): Promise<Snap
   return entries;
 }
 
-async function readEvidencePageMarketTypes(db: any, keys: Set<string>): Promise<EvidenceMarketTypeEntry[]> {
+export async function readEvidencePageMarketTypes(db: any, keys: Set<string>): Promise<EvidenceMarketTypeEntry[]> {
   const tokensByCondition = new Map<string, Set<string>>();
   for (const key of keys) {
     const separator = key.indexOf("::");
