@@ -718,12 +718,12 @@ test('every Evolution artifact another session needs is present and machine-read
     const full = path.join(REPO_ROOT, EVOLUTION_DIR, rel);
     assert.ok(fs.existsSync(full), `missing ${rel}`);
     // Same JSON-compatible YAML subset as the rest of the control plane.
-    JSON.parse(fs.readFileSync(full, 'utf8'));
+    JSON.parse(fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, ''));
   }
   for (const rel of schemaFiles) {
     const full = path.join(REPO_ROOT, EVOLUTION_DIR, 'schemas', rel);
     assert.ok(fs.existsSync(full), `missing schema ${rel}`);
-    JSON.parse(fs.readFileSync(full, 'utf8'));
+    JSON.parse(fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, ''));
   }
   assert.ok(fs.existsSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'prompts/DAILY_EVOLUTION_REVIEW.md')));
   assert.ok(fs.existsSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'README.md')));

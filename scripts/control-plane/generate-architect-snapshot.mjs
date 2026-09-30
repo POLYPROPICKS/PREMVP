@@ -116,7 +116,7 @@ export function renderSnapshot(root = REPO_ROOT) {
   // --- 6. Prompt contract ---------------------------------------------------------------
   w('## 6. Prompt contract');
   w();
-  w('Short Founder presentation + one executor block only. Every task invokes `premvp.command.execution_precheck.v1`; no default/substitution. Missing hard-boundary input → `PROMPT_GATE_BLOCKED`.');
+  w('One Founder summary and executor block. Invoke `premvp.command.execution_precheck.v1`; no default executor. Missing boundary → `PROMPT_GATE_BLOCKED`.');
   w();
 
   // --- 7. Reviewers ---------------------------------------------------------------------
@@ -163,7 +163,7 @@ export function renderSnapshot(root = REPO_ROOT) {
   w(`- Proven passes: ${state.proven_passes.map((p) => p.id).join(', ')}`);
   w(`- External checkpoints: ${state.external_accepted_checkpoints.map((c) => c.id).join(', ')}`);
   w(`- Freshness: ${state.evidence_freshness.max_age_days} days from ${state.updated_at}`);
-  w(`- Stale when: ${state.stale_when.join('; ')}`);
+  w('- Stale when: baseline is not an ancestor of live origin/main (STATE_STALE), or changed paths leave the state-bootstrap allowlist (STATE_REFRESH_REQUIRED). See CURRENT_STATE.yaml.stale_when.');
   w();
 
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd() + '\n';

@@ -801,7 +801,7 @@ test('every Stage 2 Governor artifact another session needs is present and machi
   for (const rel of schemaFiles) {
     const full = path.join(REPO_ROOT, EVOLUTION_DIR, 'schemas', rel);
     assert.ok(fs.existsSync(full), `missing schema ${rel}`);
-    JSON.parse(fs.readFileSync(full, 'utf8'));
+    JSON.parse(fs.readFileSync(full, 'utf8').replace(/^\uFEFF/, ''));
   }
   assert.ok(fs.existsSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'prompts/AUTOMATION_ROADMAP_GOVERNOR.md')));
   assert.ok(fs.existsSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'roadmap-proposals/README.md')));

@@ -155,7 +155,7 @@ export function validateControlPlane(root = REPO_ROOT) {
     raw[key] = readText(root, rel);
     if (rel.endsWith('.yaml') || rel.endsWith('.json')) {
       try {
-        parsed[key] = JSON.parse(raw[key]);
+        parsed[key] = JSON.parse(raw[key].startsWith('\uFEFF') ? raw[key].slice(1) : raw[key]);
       } catch (e) {
         err(`NOT_JSON_PARSEABLE: ${CONTROL_PLANE_DIR}/${rel} — ${e.message}`);
       }

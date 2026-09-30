@@ -27,11 +27,10 @@ test("service-scoped config exists only at a non-auto-discovered path and target
   assert.equal(existsSync(scopedPath), true, "expected ops/railway/research-clone-daily-sync.toml");
 
   const contents = readFileSync(scopedPath, "utf8");
-  assert.match(
-    contents,
-    /startCommand\s*=\s*"npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only"/,
-  );
-  assert.match(contents, /cronSchedule\s*=\s*"0 2 \* \* \*"/);
+  assert.match(contents, /startCommand\s*=.*date -u \+%H/);
+  assert.match(contents, /then npm run research-clone:sync && npm run research-clone:model-ready;/);
+  assert.match(contents, /else npm run research-clone:sync -- --telemetry-only;/);
+  assert.match(contents, /cronSchedule\s*=\s*"0 \* \* \* \*"/);
   assert.match(contents, /restartPolicyType\s*=\s*"NEVER"/);
 });
 

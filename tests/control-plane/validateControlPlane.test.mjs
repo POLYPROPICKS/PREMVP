@@ -34,7 +34,8 @@ function withMutatedRoot(file, mutate) {
     }
   }
   const target = path.join(dest, file);
-  const doc = JSON.parse(fs.readFileSync(target, 'utf8'));
+  const text = fs.readFileSync(target, 'utf8');
+  const doc = JSON.parse(text.startsWith('\uFEFF') ? text.slice(1) : text);
   mutate(doc);
   fs.writeFileSync(target, JSON.stringify(doc, null, 2) + '\n', 'utf8');
   return tmp;
@@ -48,6 +49,17 @@ test('1. valid control-plane artifacts pass', () => {
   const result = validateControlPlane(REPO_ROOT);
   assert.equal(result.ok, true, errorsFrom(result));
   assert.deepEqual(result.errors, []);
+});
+
+test('leading BOM is accepted but malformed JSON after it is rejected', () => {
+  const root = withMutatedRoot('CURRENT_STATE.yaml', () => {});
+  const target = path.join(root, DIR, 'CURRENT_STATE.yaml');
+  fs.writeFileSync(target, '\uFEFF' + fs.readFileSync(target, 'utf8'), 'utf8');
+  assert.equal(validateControlPlane(root).ok, true);
+  fs.writeFileSync(target, '\uFEFF{ malformed', 'utf8');
+  const result = validateControlPlane(root);
+  assert.equal(result.ok, false);
+  assert.match(errorsFrom(result), /NOT_JSON_PARSEABLE:.*CURRENT_STATE\.yaml/);
 });
 
 test('2. missing next value step fails', () => {

@@ -8,6 +8,10 @@ import {
   rowWatermark,
   runAppendSync,
   runReconcileSweep,
+  purgeConfirmedTelemetry,
+  TELEMETRY_PURGE_ORDER,
+  type TelemetryPurgeCursor,
+  type TelemetryTable,
   type SyncRow,
   type Watermark,
 } from "../lib/research-clone/dailySync";
@@ -32,6 +36,13 @@ import {
 const EXPECTED_PRODUCTION_REF = "nbnldzfsxffztsfrrxqy";
 const EXPECTED_CLONE_REF = "nppznoujvnyjargjkmnv";
 const PAGE_SIZE = 250;
+const TELEMETRY_PAGE_SIZE = 200;
+const TELEMETRY_MAX_PAGES = 8;
+const TELEMETRY_BOOTSTRAP_SINCE = "2026-09-30T00:00:00.000Z";
+const TELEMETRY_PURGE_FLOOR = "1970-01-01T00:00:00.000Z";
+const CAPTURE_RUN_PROJECTION = "id,reservation_id,plan_run_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,source_version,source_observed_at,markets_discovered_n,market_tokens_expected_n,market_tokens_observed_n,orderbooks_success_n,orderbooks_failed_n,capture_complete,capture_status,failure_reason,created_at";
+const MARKET_OBSERVATION_PROJECTION = "id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,condition_id,token_id,side,outcome,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,live_policy_eligibility,live_policy_rejection_reason,best_bid,best_ask,mid_price,bid_decimal_odds,ask_decimal_odds,spread_abs,spread_bps,bid_depth_relevant_usd,ask_depth_relevant_usd,tick_size,minimum_order_size,orderbook_fetch_latency_ms,orderbook_fetch_status,orderbook_failure_reason,source_version,created_at";
+const STRATEGY_OBSERVATION_PROJECTION = "id,market_observation_id,capture_run_id,reservation_id,physical_event_id,condition_id,token_id,side,observation_phase,evaluated_at,minutes_to_start,strategy_variant,strategy_version,evaluation_state,eligible,rejection_reason,available_best_ask,available_decimal_odds,spread_abs,executable_depth_usd,maker_target_price,maker_target_decimal_odds,maker_target_state,target_policy_version,target_touched,maker_band_min_price,maker_band_max_price,maker_band_min_odds,maker_band_max_odds,maker_band_state,maker_band_version,acceptable_band_observed,created_at";
 const RESERVATION_PARENT_PROJECTION = [
   "id",
   "plan_run_id",
@@ -80,7 +91,10 @@ type TableName =
   | "night_event_reservations"
   | "event_execution_queue"
   | "executor_order_events"
-  | "bet_execution_ledger";
+  | "bet_execution_ledger"
+  | "reservation_market_capture_runs"
+  | "reservation_market_observations"
+  | "reservation_strategy_observations";
 
 export type TableSpec = {
   table: TableName;
@@ -106,6 +120,8 @@ export type TableSpec = {
    * the three tables that already sync successfully today.
    */
   optional?: boolean;
+  projection?: string;
+  telemetry?: boolean;
 };
 
 type TableEvidence = {
@@ -166,6 +182,9 @@ export const SPECS: readonly TableSpec[] = [
       return targetBefore.created_at > recent ? recent : targetBefore.created_at;
     },
   },
+  { table: "reservation_market_capture_runs", fields: ["observed_at", "id"], appendOnly: true, projection: CAPTURE_RUN_PROJECTION, telemetry: true, optional: true },
+  { table: "reservation_market_observations", fields: ["observed_at", "id"], appendOnly: true, projection: MARKET_OBSERVATION_PROJECTION, telemetry: true, optional: true },
+  { table: "reservation_strategy_observations", fields: ["evaluated_at", "id"], appendOnly: true, projection: STRATEGY_OBSERVATION_PROJECTION, telemetry: true, optional: true },
   // primary_evidence_outbox is deliberately NOT a generic raw SYNC_SPEC: the
   // generic sourcePage() reads select("*") (full evidence_rows JSON) with no
   // bound. Current evidence is transported by syncResearchEvidencePage() below
@@ -230,15 +249,19 @@ function checkpointFromDiagnostics(value: unknown, fields: readonly string[]): W
 }
 
 async function maxWatermark(client: Client, spec: TableSpec): Promise<Watermark | null> {
-  const { data, error } = await client
-    .from(spec.table)
-    .select(spec.fields.join(","))
+  const { data, error } = await readySourceQuery(client, spec, spec.fields.join(","))
     .order(spec.fields[0], { ascending: false })
     .order(spec.fields[1], { ascending: false })
     .limit(1);
   if (error) throw new Error(`RESEARCH_CLONE_MAX_WATERMARK_${spec.table}:${safeError(error)}`);
   const row = data?.[0] as SyncRow | undefined;
   return row ? rowWatermark(row, spec.fields) : null;
+}
+
+function readySourceQuery(client: Client, spec: TableSpec, projection: string) {
+  const query = client.from(spec.table).select(projection);
+  return spec.table === "reservation_market_capture_runs"
+    ? query.neq("capture_status", "WRITE_INCOMPLETE") : query;
 }
 
 async function sourcePage(client: Client, spec: TableSpec, after: Watermark | null): Promise<SyncRow[]> {
@@ -248,23 +271,19 @@ async function sourcePage(client: Client, spec: TableSpec, after: Watermark | nu
   // form against production GSP. Preserve the same (timestamp,id) keyset safely
   // in two indexed bounded reads: drain the equal-timestamp tie, then advance by
   // strictly greater timestamp. No unbounded offset or full-table scan is used.
-  const tie = await client
-    .from(spec.table)
-    .select("*")
+  const tie = await readySourceQuery(client, spec, spec.projection ?? "*")
     .eq(spec.fields[0], after[spec.fields[0]])
     .gt(spec.fields[1], after[spec.fields[1]])
     .order(spec.fields[1], { ascending: true })
-    .limit(PAGE_SIZE);
+    .limit(spec.telemetry ? TELEMETRY_PAGE_SIZE : PAGE_SIZE);
   if (tie.error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_${spec.table}:${safeError(tie.error)}`);
   if ((tie.data ?? []).length > 0) return tie.data as SyncRow[];
 
-  const { data, error } = await client
-    .from(spec.table)
-    .select("*")
+  const { data, error } = await readySourceQuery(client, spec, spec.projection ?? "*")
     .gt(spec.fields[0], after[spec.fields[0]])
     .order(spec.fields[0], { ascending: true })
     .order(spec.fields[1], { ascending: true })
-    .limit(PAGE_SIZE);
+    .limit(spec.telemetry ? TELEMETRY_PAGE_SIZE : PAGE_SIZE);
   if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_${spec.table}:${safeError(error)}`);
   return (data ?? []) as SyncRow[];
 }
@@ -310,7 +329,7 @@ async function existingById(target: Client, spec: TableSpec, rows: SyncRow[]): P
   const idField = idFieldOf(spec);
   const ids = rows.map((row) => rowId(spec, row));
   if (new Set(ids).size !== ids.length) throw new Error(`RESEARCH_CLONE_DUPLICATE_SOURCE_ID_${spec.table}`);
-  const { data, error } = await target.from(spec.table).select("*").in(idField, ids);
+  const { data, error } = await target.from(spec.table).select(spec.projection ?? "*").in(idField, ids);
   if (error) throw new Error(`RESEARCH_CLONE_TARGET_READ_${spec.table}:${safeError(error)}`);
   return new Map(((data ?? []) as SyncRow[]).map((row) => [rowId(spec, row), row]));
 }
@@ -678,7 +697,7 @@ async function syncTable(
   const beforeQueueChildWrite = spec.table === "event_execution_queue"
     ? (rows: SyncRow[]) => repairQueueReservationParents(target, source, rows)
     : undefined;
-  const append = await runAppendSync(spec.fields, MAX_APPEND_PAGES, {
+  const append = await runAppendSync(spec.fields, spec.telemetry ? TELEMETRY_MAX_PAGES : MAX_APPEND_PAGES, {
     sourceMaxWatermark: () => maxWatermark(source, spec),
     targetMaxWatermark: () => maxWatermark(target, spec),
     readCheckpoint: () => readCheckpoint(target, spec, checkpointSource(spec)),
@@ -686,7 +705,7 @@ async function syncTable(
     beforeUpsertTargetRows: beforeQueueChildWrite,
     upsertTargetRows: (rows) => applyRows(target, spec, rows),
     writeCheckpoint: (watermark) => writeCheckpoint(target, spec, checkpointSource(spec), watermark),
-  }, bootstrapSince);
+  }, spec.telemetry ? (bootstrapSince ?? TELEMETRY_BOOTSTRAP_SINCE) : bootstrapSince);
   const reconciliation = await reconcileRecent(target, source, spec, append.targetBefore, beforeQueueChildWrite);
   return {
     SOURCE_MAX_WATERMARK: append.sourceMaxWatermark,
@@ -698,6 +717,68 @@ async function syncTable(
     APPEND_PENDING: append.pending,
     RECONCILIATION_PENDING: reconciliation.pending,
   };
+}
+
+function telemetryTimeField(table: TelemetryTable): string {
+  return table === "reservation_strategy_observations" ? "evaluated_at" : "observed_at";
+}
+
+async function purgeTelemetry(target: Client, source: Client, nowMs: number) {
+  return purgeConfirmedTelemetry(nowMs, {
+    async readCursor(table) {
+      const field = telemetryTimeField(table);
+      const watermark = await readCheckpoint(target, { table, fields: [field, "id"], appendOnly: true }, `${SYNC_VERSION}:purge:${table}`);
+      return watermark ? { timestamp: watermark[field], id: watermark.id } : null;
+    },
+    async fetchStalePage(table, cutoff, after, limit) {
+      const field = telemetryTimeField(table);
+      const base = () => source.from(table).select(`id,${field}`).lte(field, cutoff);
+      let data: Array<Record<string, string>> | null = null;
+      let error: unknown = null;
+      if (after) {
+        const tie = await base().eq(field, after.timestamp).gt("id", after.id).order("id").limit(limit);
+        if (tie.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(tie.error)}`);
+        if ((tie.data ?? []).length) data = tie.data;
+      }
+      if (!data) {
+        const page = await (after ? base().gt(field, after.timestamp) : base())
+          .order(field).order("id").limit(limit);
+        data = page.data;
+        error = page.error;
+      }
+      if (error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(error)}`);
+      return (data ?? []).map((row) => ({ id: row.id, timestamp: row[field] }));
+    },
+    async exactCloneIds(table, ids) {
+      if (!ids.length) return [];
+      const { data, error } = await target.from(table).select("id").in("id", [...ids]);
+      if (error) throw new Error(`TELEMETRY_PURGE_CLONE_CONFIRM_${table}:${safeError(error)}`);
+      return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
+    },
+    async withoutProductionChildren(table, ids) {
+      if (!ids.length || table === "reservation_strategy_observations") return [...ids];
+      const childTable = table === "reservation_market_observations"
+        ? "reservation_strategy_observations" : "reservation_market_observations";
+      const childKey = table === "reservation_market_observations" ? "market_observation_id" : "capture_run_id";
+      const { data, error } = await source.from(childTable).select(childKey).in(childKey, [...ids]).limit(1000);
+      if (error) throw new Error(`TELEMETRY_PURGE_CHILD_READ_${table}:${safeError(error)}`);
+      if ((data ?? []).length >= 1000) return [];
+      const blocked = new Set(((data ?? []) as Array<Record<string, string>>).map((row) => row[childKey]));
+      return ids.filter((id) => !blocked.has(id));
+    },
+    async deleteProductionIds(table, ids) {
+      if (!ids.length) return;
+      const { error } = await source.from(table).delete().in("id", [...ids]);
+      if (error) throw new Error(`TELEMETRY_PURGE_DELETE_${table}:${safeError(error)}`);
+    },
+    async writeCursor(table, cursor) {
+      const field = telemetryTimeField(table);
+      await writeCheckpoint(target, { table, fields: [field, "id"], appendOnly: true }, `${SYNC_VERSION}:purge:${table}`, {
+        [field]: cursor?.timestamp ?? TELEMETRY_PURGE_FLOOR,
+        id: cursor?.id ?? "00000000-0000-0000-0000-000000000000",
+      });
+    },
+  }, TELEMETRY_PAGE_SIZE, TELEMETRY_MAX_PAGES);
 }
 
 // MAKE_RESEARCH_CLONE_SYNC_SELF_DIAGNOSTIC_V1 — structured, secret-free causal
@@ -916,6 +997,19 @@ export async function main(): Promise<void> {
       return;
     }
 
+    if (process.argv.includes("--telemetry-only")) {
+      const tables = {} as Record<TelemetryTable, TableEvidence>;
+      for (const table of TELEMETRY_PURGE_ORDER.slice().reverse()) {
+        const spec = SPECS.find((entry) => entry.table === table)!;
+        tables[table] = await syncTable(target, source, spec, TELEMETRY_BOOTSTRAP_SINCE);
+      }
+      const purge = await purgeTelemetry(target, source, Date.now());
+      const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING);
+      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, PURGE: purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
+      if (pending) process.exitCode = 75;
+      return;
+    }
+
     const outboxProbe = await probeCloneOutbox(target);
     diagnostics.CLONE_OUTBOX_TABLE_EXISTS = outboxProbe.tableExists;
     diagnostics.CLONE_OUTBOX_ROW_N = outboxProbe.rowN;
@@ -974,6 +1068,8 @@ export async function main(): Promise<void> {
     }
     diagnostics.SCHEMA_PENDING_TABLES = schemaPendingTables;
     const researchEvidence = await syncResearchEvidencePage(target, source, bootstrapSince);
+    const telemetrySchemasReady = TELEMETRY_PURGE_ORDER.every((table) => !schemaPendingTables.includes(table));
+    const telemetryPurge = telemetrySchemasReady ? await purgeTelemetry(target, source, Date.now()) : null;
     const pendingTables: string[] = (Object.keys(tables) as TableName[]).filter(
       (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
     );
@@ -982,6 +1078,7 @@ export async function main(): Promise<void> {
       JSON.stringify({
         TABLES: tables,
         RESEARCH_EVIDENCE_PAGE: researchEvidence,
+        TELEMETRY_PURGE: telemetryPurge,
         PENDING_TABLES: pendingTables,
         RESUME_PENDING: pendingTables.length > 0,
         DURATION_MS: Date.now() - startedAt,

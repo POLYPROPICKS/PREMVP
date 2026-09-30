@@ -1,6 +1,63 @@
 export type SyncRow = Record<string, unknown> & { id: string };
 export type Watermark = Record<string, string>;
 
+export const TELEMETRY_PURGE_ORDER = [
+  "reservation_strategy_observations",
+  "reservation_market_observations",
+  "reservation_market_capture_runs",
+] as const;
+export type TelemetryTable = typeof TELEMETRY_PURGE_ORDER[number];
+export type TelemetryPurgeRow = { id: string; timestamp: string };
+export type TelemetryPurgeCursor = { timestamp: string; id: string };
+export interface TelemetryPurgePort {
+  readCursor(table: TelemetryTable): Promise<TelemetryPurgeCursor | null>;
+  fetchStalePage(table: TelemetryTable, cutoff: string, after: TelemetryPurgeCursor | null, limit: number): Promise<TelemetryPurgeRow[]>;
+  exactCloneIds(table: TelemetryTable, ids: readonly string[]): Promise<readonly string[]>;
+  withoutProductionChildren(table: TelemetryTable, ids: readonly string[]): Promise<readonly string[]>;
+  deleteProductionIds(table: TelemetryTable, ids: readonly string[]): Promise<void>;
+  writeCursor(table: TelemetryTable, cursor: TelemetryPurgeCursor | null): Promise<void>;
+}
+
+export async function purgeConfirmedTelemetry(
+  nowMs: number,
+  port: TelemetryPurgePort,
+  pageSize = 200,
+  maxPagesPerTable = 8,
+): Promise<Record<TelemetryTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>> {
+  if (pageSize < 1 || pageSize > 200 || maxPagesPerTable < 1 || maxPagesPerTable > 8) throw new Error("TELEMETRY_PURGE_BUDGET_INVALID");
+  const cutoff = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
+  const totals = {} as Record<TelemetryTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>;
+  for (const table of TELEMETRY_PURGE_ORDER) {
+    const result = { eligible_stale_n: 0, confirmed_in_clone_n: 0, deleted_n: 0, not_confirmed_n: 0, purge_pending: false };
+    let cursor = await port.readCursor(table);
+    for (let page = 0; page < maxPagesPerTable; page++) {
+      const rows = await port.fetchStalePage(table, cutoff, cursor, pageSize);
+      if (rows.length > pageSize || rows.some((row) => !Number.isFinite(Date.parse(row.timestamp)) || Date.parse(row.timestamp) > nowMs - 24 * 60 * 60 * 1000)) throw new Error("TELEMETRY_PURGE_SOURCE_BOUND_VIOLATION");
+      if (rows.length === 0) { await port.writeCursor(table, null); break; }
+      const ids = rows.map((row) => row.id);
+      if (new Set(ids).size !== ids.length) throw new Error("TELEMETRY_PURGE_DUPLICATE_SOURCE_ID");
+      result.eligible_stale_n += ids.length;
+      const confirmed = new Set(await port.exactCloneIds(table, ids));
+      if ([...confirmed].some((id) => !ids.includes(id))) throw new Error("TELEMETRY_PURGE_CLONE_CONFIRMATION_MISMATCH");
+      result.confirmed_in_clone_n += confirmed.size;
+      result.not_confirmed_n += ids.length - confirmed.size;
+      const eligible = ids.filter((id) => confirmed.has(id));
+      const deletable = new Set(await port.withoutProductionChildren(table, eligible));
+      if ([...deletable].some((id) => !eligible.includes(id))) throw new Error("TELEMETRY_PURGE_CHILD_CHECK_MISMATCH");
+      const safeIds = eligible.filter((id) => deletable.has(id));
+      if (safeIds.length) await port.deleteProductionIds(table, safeIds);
+      result.deleted_n += safeIds.length;
+      if (safeIds.length !== ids.length) result.purge_pending = true;
+      cursor = { timestamp: rows[rows.length - 1].timestamp, id: rows[rows.length - 1].id };
+      await port.writeCursor(table, rows.length < pageSize ? null : cursor);
+      if (rows.length < pageSize) break;
+      if (page === maxPagesPerTable - 1) result.purge_pending = true;
+    }
+    totals[table] = result;
+  }
+  return totals;
+}
+
 /**
  * True for a PostgREST/Postgres "table does not exist" error. Used to let an
  * optional synced table (one introduced after its clone-side schema exists,

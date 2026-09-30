@@ -33,12 +33,12 @@ buildCommand = "npm ci --ignore-scripts"
 # it has no dependency on that run's sync/legacy-pipeline exit code, so it is
 # separated with `;` and always attempts to run, even when the legacy sync or
 # legacy pipeline step fails or is still catching up.
-startCommand = "npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only"
+startCommand = "sh -c 'if [ \"$(date -u +%H)\" = \"02\" ]; then npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only; else npm run research-clone:sync -- --telemetry-only; fi'"
 #
 # AUTOMATED_D1_MODELING_CONVEYOR_V1: the two final steps are chained with `&&`
 # to the DIRECT model-ready step ONLY, so they run exclusively after it
 # succeeded. The conveyor scores the new D-1 day incrementally (never a full
 # rebuild), reconciles settlement, refreshes rollups/dashboard runtime and exits
 # non-zero (Railway FAILED) if modeling is stale behind MODEL_READY.
-cronSchedule = "0 2 * * *"
+cronSchedule = "0 * * * *"
 restartPolicyType = "NEVER"

@@ -2399,6 +2399,7 @@ export async function runEventRebalanceWithEvidence(
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     jobEvidence?: SchedulerJobEvidencePort;
+    captureMilestones?: (nowMs: number) => Promise<void>;
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
@@ -2409,6 +2410,17 @@ export async function runEventRebalanceWithEvidence(
       repo: deps.repo,
       fetchCandidates: deps.fetchCandidates,
     });
+    if (write && !opts.targetReservationId && (!deps.repo || deps.captureMilestones)) {
+      try {
+        if (deps.captureMilestones) await deps.captureMilestones(nowMs);
+        else {
+          const { captureReservationMarketMilestones } = await import("./reservationMarketBaseline");
+          await captureReservationMarketMilestones(nowMs);
+        }
+      } catch {
+        console.error("[event-rebalance] milestone telemetry failed");
+      }
+    }
     if (write) {
       const finishedAt = new Date().toISOString();
       await jobEvidence.writeJobRun({
