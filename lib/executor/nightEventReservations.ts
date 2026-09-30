@@ -2851,6 +2851,7 @@ export async function runReservationCronWithEvidence(
     targetPhysicalEventKeyHash?: string;
     hashPhysicalEventKey?: (key: string) => string;
     contractARejectionEvidencePort?: ContractARejectionEvidenceWritePort;
+    captureBaseline?: (reservation: NightEventReservationRow) => Promise<void>;
   } = {}
 ): Promise<{ plan: ReservationPlan; persisted: PersistReservationsResult }> {
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
@@ -2873,6 +2874,28 @@ export async function runReservationCronWithEvidence(
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
       : await persistReservationPlan(plan, opts);
+    // Capture only newly inserted natural Reservations, after their database IDs exist.
+    // This telemetry is deliberately fail-open for Reservation and live execution.
+    if (!opts.force && persisted.written_count > 0 && (!deps.repo || deps.captureBaseline)) {
+      for (const row of persisted.reservations.filter((r) => !r.id)) {
+        try {
+          const saved = deps.repo?.findByPhysicalEventId
+            ? await deps.repo.findByPhysicalEventId(row.physical_event_id!)
+            : await createSupabaseReservationRepoPort().findByPhysicalEventId!(row.physical_event_id!);
+          if (!saved?.id || saved.physical_event_id !== row.physical_event_id ||
+              Date.parse(saved.event_start_iso ?? "") !== Date.parse(row.event_start_iso ?? "")) {
+            throw new Error("BASELINE_PERSISTED_IDENTITY_UNRESOLVED");
+          }
+          if (deps.captureBaseline) await deps.captureBaseline(saved);
+          else {
+            const { captureReservationMarketBaseline } = await import("./reservationMarketBaseline");
+            await captureReservationMarketBaseline(saved);
+          }
+        } catch (error) {
+          console.warn("[reservation-baseline] capture failed:", error instanceof Error ? error.message : "UNKNOWN");
+        }
+      }
+    }
     // Persist rejection telemetry only after the reservation write has returned.
     // This optional carrier is fail-open and cannot affect candidate selection or money flow.
     if (plan.rejection_evidence?.length) {
