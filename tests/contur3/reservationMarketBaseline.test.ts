@@ -1,9 +1,38 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations } from "../../lib/executor/reservationMarketBaseline";
+import { BASELINE_SOURCE_VERSION, baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations } from "../../lib/executor/reservationMarketBaseline";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
+test("Reservation baseline writes only a V2 reference envelope without market or book work", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "55555555-5555-4555-8555-555555555555", plan_run_id: "plan",
+    physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start,
+    diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: start } },
+  } as unknown as NightEventReservationRow;
+  let writes = 0;
+  let run: Record<string, unknown> = {};
+  await captureReservationMarketBaseline(reservation, {
+    observedAt: "2026-09-30T23:30:00Z",
+    readInventory: async () => { throw new Error("inventory forbidden"); },
+    readExactEvent: async () => { throw new Error("provider forbidden"); },
+    fetchBooks: async () => { throw new Error("books forbidden"); },
+    write: async (captureRun, rows, strategies = []) => {
+      writes++; run = captureRun;
+      assert.equal(rows.length, 0);
+      assert.equal(strategies.length, 0);
+    },
+  });
+  assert.equal(writes, 1);
+  assert.equal(run.capture_status, "REFERENCE_ONLY");
+  assert.equal(run.source_version, BASELINE_SOURCE_VERSION);
+  assert.equal(BASELINE_SOURCE_VERSION, "RESERVATION_REFERENCE_BASELINE_V2");
+  assert.equal(run.market_tokens_observed_n, 0);
+  assert.equal(run.markets_discovered_n, 0);
+  assert.equal(run.orderbooks_success_n, 0);
+  assert.equal(run.orderbooks_failed_n, 0);
+  assert.equal(run.provider_event_id, "123");
+});
 test("T30, T10 and T3 each fetch the one reserved event and preserve every supplied token", async () => {
   const start = "2026-10-01T00:00:00Z";
   const reservation = { id: "33333333-3333-4333-8333-333333333333", plan_run_id: "plan",
@@ -130,14 +159,15 @@ test("baseline IDs and incomplete market accounting are deterministic", () => {
   assert.deepEqual(baselineCompleteness({ markets: 1, siblingCounts: [1], expected: 2, observed: 2, failed: 0, missingIdentity: 0 }), { complete: false, status: "INCOMPLETE_MARKET_SET" });
 });
 
-test("one reservation records distinct tokens and survives one failed orderbook", async () => {
+test("one T30 snapshot records distinct tokens and survives one failed orderbook", async () => {
   const market = { provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" };
   const reservation = { id: "11111111-1111-4111-8111-111111111111", plan_run_id: "plan", physical_event_id: "provider:polymarket:e:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "e", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
   let savedRun: Record<string, unknown> | null = null;
   let savedRows: Record<string, unknown>[] = [];
-  await captureReservationMarketBaseline(reservation, {
+  await captureReservationMarketObservation(reservation, "T_MINUS_30", {
     observedAt: "2026-09-30T00:00:00Z",
-    readInventory: async () => [market],
+    alreadyCaptured: async () => false,
+    readExactEvent: async () => [market],
     fetchBooks: async () => [
       { ok: true, tokenId: "t1", latencyMs: 12, book: { tokenId: "t1", bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }], raw: {} } },
       { ok: false, tokenId: "t2", latencyMs: 99, errorCode: "TIMEOUT", errorMessage: "timeout" },
@@ -153,12 +183,13 @@ test("one reservation records distinct tokens and survives one failed orderbook"
   assert.equal(savedRows[1].orderbook_failure_reason, "TIMEOUT");
 });
 
-test("all supplied books succeeding still leaves source-set completeness unproven", async () => {
+test("all supplied T10 books succeeding still leaves source-set completeness unproven", async () => {
   const reservation = { id: "22222222-2222-4222-8222-222222222222", plan_run_id: "plan", physical_event_id: "provider:polymarket:e:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "e", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
   let run: Record<string, unknown> = {};
-  await captureReservationMarketBaseline(reservation, {
+  await captureReservationMarketObservation(reservation, "T_MINUS_10", {
     observedAt: "2026-09-30T00:00:00Z",
-    readInventory: async () => [{ provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" }],
+    alreadyCaptured: async () => false,
+    readExactEvent: async () => [{ provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" }],
     fetchBooks: async (ids) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1, book: { tokenId, bids: [{ price: 0.4, size: 1 }], asks: [{ price: 0.5, size: 1 }], raw: {} } })),
     write: async (captureRun) => { run = captureRun; },
   });
