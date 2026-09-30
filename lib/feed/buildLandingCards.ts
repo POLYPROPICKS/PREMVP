@@ -814,7 +814,7 @@ interface EnrichedMarket {
   parentMeta: ParentEventMeta;
   selectedOutcome: { name: string; tokenId: string | null; price: number };
   priceHistory: PolymarketPricePoint[] | null;
-  spread: { min: number; max: number } | null;
+  spread: number | null;
   orderBook: { bids: Array<[string, string]>; asks: Array<[string, string]> } | null;
   trades: PolymarketTrade[] | null;
   holders: PolymarketHolder[] | null;
@@ -1983,12 +1983,10 @@ async function enrichMarket(
   // PREMVP15 rescue: skip slow CLOB spread/order-book enrichment in the live landing route.
   // The feed already has enough P0 evidence from Gamma volume, current price, trades and holders.
   // Spread/order-book calls were causing 60s local requests and abort noise.
-  let spread: { min: number; max: number } | null = null;
+  let spread: number | null = null;
   if (useResearchPriceHistory && selectedOutcome.tokenId) {
     spread = await fetchSpreadSafe(selectedOutcome.tokenId);
-    if (spread && Number.isFinite(spread.min) && Number.isFinite(spread.max) && spread.max >= spread.min) {
-      diagnostics.spread = roundNumber(spread.max - spread.min);
-    }
+    diagnostics.spread = spread;
   } else {
     warnings.push("Spread lookup skipped for landing-feed performance");
   }

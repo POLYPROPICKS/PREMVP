@@ -489,18 +489,18 @@ export async function fetchResearchPriceHistorySafe(
  */
 export async function fetchSpreadSafe(
   tokenId: string
-): Promise<{ min: number; max: number } | null> {
+): Promise<number | null> {
   if (!tokenId) return null;
 
   const url = `${CLOB_API_BASE}/spread?token_id=${encodeURIComponent(tokenId)}`;
 
-  const data = await safeFetch<{ min: string; max: string }>(url);
-  if (!data) return null;
-
-  return {
-    min: parseFloat(data.min),
-    max: parseFloat(data.max),
-  };
+  const data = await safeFetch<unknown>(url);
+  if (!data || typeof data !== "object" || !("spread" in data)) return null;
+  const raw = data.spread;
+  if (typeof raw !== "number" && typeof raw !== "string") return null;
+  if (typeof raw === "string" && raw.trim() === "") return null;
+  const spread = Number(raw);
+  return Number.isFinite(spread) && spread >= 0 ? spread : null;
 }
 
 /**
