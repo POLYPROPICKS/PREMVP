@@ -1,6 +1,76 @@
 {
   "ARTIFACT": "MARKET_PRIORITY_POLICY_V1",
-  "STATUS": "NOT_BETTER_THAN_CURRENT_BASELINE",
+  "STATUS": "FOUNDER_ACCEPTED_CONCRETE_MARKET_PRIORITY_V1",
+  "FOUNDER_DECISION": {
+    "ACCEPTED_MARKET_PRIORITY_V1": [
+      {
+        "rank": 1,
+        "market": "SPREADS",
+        "label_ru": "ФОРЫ",
+        "odds_band": "1.85-2.00",
+        "settled": 246,
+        "wins": 197,
+        "losses": 49,
+        "pnl_u": 139.69,
+        "roi_pct": 56.79,
+        "max_dd_u": -5.0,
+        "flag": "AUDIT_REQUIRED"
+      },
+      {
+        "rank": 2,
+        "market": "TOTAL_CORNERS",
+        "label_ru": "ТОТАЛ УГЛОВЫХ",
+        "odds_band": "2.25-2.50",
+        "settled": 117,
+        "wins": 59,
+        "losses": 58,
+        "pnl_u": 22.64,
+        "roi_pct": 19.35,
+        "max_dd_u": -7.0,
+        "flag": null
+      },
+      {
+        "rank": 3,
+        "market": "MONEYLINE",
+        "label_ru": "ПОБЕДИТЕЛЬ",
+        "odds_band": "1.85-2.00",
+        "settled": 158,
+        "wins": 89,
+        "losses": 69,
+        "pnl_u": 13.85,
+        "roi_pct": 8.77,
+        "max_dd_u": -5.5,
+        "flag": null
+      },
+      {
+        "rank": 4,
+        "market": "TOTALS",
+        "label_ru": "ТОТАЛ ГОЛОВ",
+        "odds_band": "1.85-2.00",
+        "settled": 167,
+        "wins": 90,
+        "losses": 77,
+        "pnl_u": 8.16,
+        "roi_pct": 4.89,
+        "max_dd_u": -9.28,
+        "flag": null
+      }
+    ],
+    "POLICY_SEMANTICS": "For one reserved physical football match: SPREADS 1.85-2.00 -> else TOTAL_CORNERS 2.25-2.50 -> else MONEYLINE 1.85-2.00 -> else TOTALS 1.85-2.00 -> else SKIP / existing fallback outside this policy. One physical match = maximum one economic bet. Tie-break inside the chosen market: existing canonical deterministic tie-break. Settlement/outcome is never used to choose.",
+    "TERMINOLOGY": {
+      "SAFE": "eligibility/filter layer, not a market",
+      "ORDINARY_STRUCTURED": "umbrella basket, not a market",
+      "WINNER_TOTALS_SPREADS": "combined portfolio, not a market",
+      "other_structured": "observation-only catch-all until a concrete subtype has sufficient evidence"
+    },
+    "REMOVED_FROM_PRIORITY_ORDER": [
+      "SAFE",
+      "ORDINARY_STRUCTURED",
+      "WINNER_TOTALS_SPREADS"
+    ],
+    "AUTHORITY": "Founder-accepted concrete market guide; overrides the earlier interpretation. Artifact/guide correction only; no selector/runner change, no DB query, no recomputation."
+  },
+  "SECONDARY_RESEARCH_EVIDENCE_NOTE": "Fields below (ARTIFACT onward) are the previous same-event experiment (prior status NOT_BETTER_THAN_CURRENT_BASELINE). Secondary research evidence only; it does NOT override FOUNDER_DECISION.",
   "ORIGIN_MAIN": "e60bc6c5d1d93cec1388ae21a95030d9f84024b2",
   "CLONE_PROJECT_REF": "nppznoujvnyjargjkmnv",
   "EVIDENCE_DATE_RANGE": "2026-08-04..2026-09-25",

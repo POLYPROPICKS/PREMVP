@@ -1,4 +1,35 @@
-# MARKET_PRIORITY_POLICY_V1 — NOT_BETTER_THAN_CURRENT_BASELINE
+# MARKET_PRIORITY_POLICY_V1 — FOUNDER_ACCEPTED_CONCRETE_MARKET_PRIORITY_V1
+
+## Founder-accepted concrete market priority V1 (authoritative)
+Status: FOUNDER_ACCEPTED_CONCRETE_MARKET_PRIORITY_V1. Supersedes the earlier Founder-facing interpretation below; artifact/guide correction only (no DB query, no modeling rerun, no selector/runner change).
+
+| # | Market | Odds band | Settled | W/L | P&L u | ROI % | MaxDD u | Flag |
+|---|---|---|---|---|---|---|---|---|
+| 1 | SPREADS / ФОРЫ | 1.85-2.00 | 246 | 197/49 | +139.69 | 56.79 | -5.00 | AUDIT_REQUIRED |
+| 2 | TOTAL_CORNERS / ТОТАЛ УГЛОВЫХ | 2.25-2.50 | 117 | 59/58 | +22.64 | 19.35 | -7.00 |  |
+| 3 | MONEYLINE / ПОБЕДИТЕЛЬ | 1.85-2.00 | 158 | 89/69 | +13.85 | 8.77 | -5.50 |  |
+| 4 | TOTALS / ТОТАЛ ГОЛОВ | 1.85-2.00 | 167 | 90/77 | +8.16 | 4.89 | -9.28 |  |
+
+Final order: 1) SPREADS / ФОРЫ → 2) TOTAL_CORNERS / ТОТАЛ УГЛОВЫХ → 3) MONEYLINE / ПОБЕДИТЕЛЬ → 4) TOTALS / ТОТАЛ ГОЛОВ.
+
+### Policy semantics
+For one reserved physical football match:
+SPREADS 1.85-2.00
+→ else TOTAL_CORNERS 2.25-2.50
+→ else MONEYLINE 1.85-2.00
+→ else TOTALS 1.85-2.00
+→ else SKIP / existing fallback outside this policy. One physical match = maximum one economic bet. Tie-break inside the chosen market: existing canonical deterministic tie-break. Settlement/outcome is never used to choose.
+
+### Terminology
+SAFE, ORDINARY STRUCTURED and WINNER+TOTALS+SPREADS are removed from the priority ORDER: they are filters/baskets/portfolio strategies, not concrete market classes.
+- SAFE = eligibility/filter layer, not a market.
+- ordinary structured = umbrella basket, not a market.
+- winner+totals+spreads = combined portfolio, not a market.
+- other_structured = observation-only catch-all until a concrete subtype has sufficient evidence.
+
+---
+## Secondary research evidence — previous same-event experiment (does NOT override the guide above)
+Original title/status: MARKET_PRIORITY_POLICY_V1 — NOT_BETTER_THAN_CURRENT_BASELINE. Its "TOTALS > MONEYLINE > SPREADS" frozen order was a re-test hypothesis only and is not the Founder guide.
 Evidence: 2026-08-04..2026-09-25 (sliced from cached read; no new DB scan). Unique physical events in choice set: 4364. Saturated GSP conditions 5, excluded events 1.
 
 Frozen ordered priority (RE-TEST HYPOTHESIS ONLY, not adopted; live stays early-pin): TOTALS > MONEYLINE > SPREADS (then TOTAL_CORNERS, OTHER_STRUCTURED after core; corners has 0 same-event overlap, so no evidence). Tie-break: existing chronological comparator order — decisionTimestamp, entryPrice, conditionId, tokenId; no outcome used.
