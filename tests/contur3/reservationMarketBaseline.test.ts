@@ -4,6 +4,60 @@ import { readFileSync } from "node:fs";
 import { baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations } from "../../lib/executor/reservationMarketBaseline";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
+test("T30, T10 and T3 each fetch the one reserved event and preserve every supplied token", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "33333333-3333-4333-8333-333333333333", plan_run_id: "plan",
+    physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start,
+    diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: start } },
+  } as unknown as NightEventReservationRow;
+  const originalFetch = globalThis.fetch;
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    urls.push(String(input));
+    return new Response(JSON.stringify({ id: "123", endDate: start, markets: [
+      { conditionId: "money", clobTokenIds: '["m1","m2"]', outcomes: '["Home","Away"]', sportsMarketType: "moneyline", slug: "match-money" },
+      { conditionId: "corners", clobTokenIds: '["c1","c2"]', outcomes: '["Yes","No"]', sportsMarketType: "corners", slug: "corners" },
+    ] }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  try {
+    const snapshots: Array<{ run: Record<string, unknown>; rows: Record<string, unknown>[]; strategies: Record<string, unknown>[] }> = [];
+    for (const [phase, minutes] of [["T_MINUS_30", 30], ["T_MINUS_10", 10], ["T_MINUS_3", 8]] as const) {
+      await captureReservationMarketObservation(reservation, phase, {
+        observedAt: new Date(Date.parse(start) - minutes * 60_000).toISOString(),
+        alreadyCaptured: async () => false,
+        fetchBooks: async (ids) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1,
+          book: { tokenId, bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }] } })),
+        write: async (run, rows, strategies = []) => { snapshots.push({ run, rows, strategies }); },
+      });
+    }
+    assert.deepEqual(urls, Array(3).fill("https://gamma-api.polymarket.com/events/123"));
+    assert.equal(snapshots.length, 3);
+    assert.equal(new Set(snapshots.map((s) => s.run.id)).size, 3);
+    for (const snapshot of snapshots) {
+      assert.equal(snapshot.rows.length, 4);
+      assert.equal(snapshot.strategies.length, 12);
+      assert.deepEqual(new Set(snapshot.rows.map((row) => row.provider_market_type_raw)), new Set(["moneyline", "corners"]));
+      for (const row of snapshot.rows) assert.equal(snapshot.strategies.filter((s) => s.market_observation_id === row.id).length, 3);
+    }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("empty exact event records a typed source failure", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "44444444-4444-4444-8444-444444444444", plan_run_id: "plan",
+    physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start,
+    diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: start } },
+  } as unknown as NightEventReservationRow;
+  let run: Record<string, unknown> = {};
+  await captureReservationMarketObservation(reservation, "T_MINUS_30", {
+    observedAt: "2026-09-30T23:30:00Z", alreadyCaptured: async () => false,
+    readExactEvent: async () => [], fetchBooks: async () => [],
+    write: async (captureRun) => { run = captureRun; },
+  });
+  assert.equal(run.failure_reason, "RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
+  assert.equal(run.markets_discovered_n, 0);
+});
+
 test("milestone windows have deterministic non-overlapping boundaries", () => {
   const start = "2026-10-01T00:00:00Z";
   const at = (minutes: number) => Date.parse(start) - minutes * 60_000;

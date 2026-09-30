@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
 import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from "../liquidity/orderbookMath";
+import { fetchPolymarketEventById } from "../feed/polymarketClient";
 
 export const BASELINE_SOURCE_VERSION = "RESERVATION_MARKET_BASELINE_V1";
 const PHASE = "RESERVATION_BASELINE";
@@ -64,7 +65,8 @@ function stringArray(value: unknown): string[] {
   if (typeof value === "string") {
     try { return stringArray(JSON.parse(value)); } catch { return []; }
   }
-  return Array.isArray(value) ? value.map((v) => typeof v === "string" ? v : "") : [];
+  return Array.isArray(value) ? value.map((v) => typeof v === "string" ? v :
+    v && typeof v === "object" && typeof v.name === "string" ? v.name : "") : [];
 }
 
 export function inventoryTokens(markets: readonly InventoryMarket[]): { tokens: Token[]; expected: number; missingIdentity: number } {
@@ -105,6 +107,7 @@ export async function captureReservationMarketBaseline(
   reservation: NightEventReservationRow,
   deps: {
     readInventory?: (providerEventId: string, eventStartIso: string) => Promise<InventoryMarket[]>;
+    readExactEvent?: (providerEventId: string, eventStartIso: string) => Promise<InventoryMarket[]>;
     fetchBooks?: typeof fetchOrderBooksConcurrent;
     write?: (run: Record<string, unknown>, observations: Record<string, unknown>[], strategies?: Record<string, unknown>[]) => Promise<void>;
     observedAt?: string;
@@ -118,6 +121,7 @@ export async function captureReservationMarketObservation(
   phase: ReservationMarketPhase,
   deps: {
     readInventory?: (providerEventId: string, eventStartIso: string) => Promise<InventoryMarket[]>;
+    readExactEvent?: (providerEventId: string, eventStartIso: string) => Promise<InventoryMarket[]>;
     fetchBooks?: typeof fetchOrderBooksConcurrent;
     write?: (run: Record<string, unknown>, observations: Record<string, unknown>[], strategies?: Record<string, unknown>[]) => Promise<void>;
     observedAt?: string;
@@ -131,7 +135,9 @@ export async function captureReservationMarketObservation(
   const start = reservation.event_start_iso;
   const observedAt = deps.observedAt ?? new Date().toISOString();
   const runId = stableTelemetryId(reservation.id, phase, BASELINE_SOURCE_VERSION);
-  const readInventory = deps.readInventory ?? defaultInventoryReader;
+  const readMarkets = phase === PHASE
+    ? deps.readInventory ?? defaultInventoryReader
+    : deps.readExactEvent ?? defaultExactEventReader;
   let markets: InventoryMarket[] = [];
   let failureReason: string | null = null;
   const expectedPhysicalId = providerEventId && start
@@ -140,10 +146,13 @@ export async function captureReservationMarketObservation(
   if (providerEventId && start && Number.isFinite(Date.parse(start)) &&
       Date.parse(start) === Date.parse(String(lineage?.provider_event_start_iso)) &&
       reservation.physical_event_id === expectedPhysicalId) {
-    try { markets = await readInventory(providerEventId, start); }
-    catch { failureReason = "INVENTORY_READ_FAILED"; }
+    try { markets = await readMarkets(providerEventId, start); }
+    catch { failureReason = phase === PHASE ? "INVENTORY_READ_FAILED" : "RESERVED_EVENT_MARKET_SET_UNAVAILABLE"; }
   } else {
     failureReason = "PROVIDER_EVENT_IDENTITY_UNRESOLVED";
+  }
+  if (phase !== PHASE && markets.length === 0 && !failureReason) {
+    failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
   }
   const { tokens, expected, missingIdentity } = inventoryTokens(markets);
   const books = await (deps.fetchBooks ?? fetchOrderBooksConcurrent)(tokens.map((t) => t.tokenId), 5);
@@ -213,6 +222,29 @@ async function defaultInventoryReader(providerEventId: string, eventStartIso: st
     if ((data ?? []).length < 500) break;
   }
   return rows;
+}
+
+async function defaultExactEventReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
+  const event = await fetchPolymarketEventById(providerEventId);
+  if (!event) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
+  const eventTimes = [event.endDate, event.endDateIso, event.startTime]
+    .map((value) => Date.parse(value ?? ""))
+    .filter(Number.isFinite);
+  if (!eventTimes.includes(Date.parse(eventStartIso))) {
+    throw new Error("RESERVED_EVENT_START_MISMATCH");
+  }
+  const observedAt = new Date().toISOString();
+  return event.markets.map((market) => ({
+    provider_event_id: providerEventId,
+    event_start_iso: eventStartIso,
+    condition_id: market.conditionId ?? null,
+    clob_token_ids: market.clobTokenIds ?? [],
+    outcomes: market.outcomes ?? [],
+    sports_market_type: market.sportsMarketType ?? null,
+    provider_market_slug: market.slug ?? null,
+    sibling_market_count: event.markets.length,
+    last_observed_at: observedAt,
+  }));
 }
 
 async function defaultWriter(run: Record<string, unknown>, observations: Record<string, unknown>[], _strategies: Record<string, unknown>[] = []): Promise<void> {

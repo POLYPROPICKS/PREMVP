@@ -12,6 +12,15 @@ const GAMMA_API_BASE = "https://gamma-api.polymarket.com";
 const CLOB_API_BASE = "https://clob.polymarket.com";
 const DATA_API_BASE = "https://data-api.polymarket.com";
 
+/** One current Gamma event by its persisted provider ID; never discovers siblings by title. */
+export async function fetchPolymarketEventById(eventId: string): Promise<PolymarketRawEvent | null> {
+  if (!/^\d+$/.test(eventId)) return null;
+  const event = await safeFetch<PolymarketRawEvent>(
+    `${GAMMA_API_BASE}/events/${encodeURIComponent(eventId)}`, {}, 8000,
+  );
+  return event && String(event.id) === eventId && Array.isArray(event.markets) ? event : null;
+}
+
 // Helper for safe fetch with timeout
 async function safeFetch<T>(
   url: string,
