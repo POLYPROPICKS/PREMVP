@@ -2493,10 +2493,6 @@ export async function runEventRebalanceWithEvidence(
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
   const startedAt = new Date().toISOString();
   try {
-    const result = await runEventRebalance(nowMs, opts, {
-      repo: deps.repo,
-      fetchCandidates: deps.fetchCandidates,
-    });
     if (write && !opts.targetReservationId && (!deps.repo || deps.captureMilestones)) {
       try {
         if (deps.captureMilestones) await deps.captureMilestones(nowMs);
@@ -2508,6 +2504,10 @@ export async function runEventRebalanceWithEvidence(
         console.error("[event-rebalance] milestone telemetry failed");
       }
     }
+    const result = await runEventRebalance(nowMs, opts, {
+      repo: deps.repo,
+      fetchCandidates: deps.fetchCandidates,
+    });
     if (write) {
       const finishedAt = new Date().toISOString();
       await jobEvidence.writeJobRun({

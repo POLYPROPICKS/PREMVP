@@ -446,6 +446,18 @@ test("milestone telemetry failure leaves the write-mode rebalance result unchang
   assert.equal(jobEvidence.calls.length, 1);
 });
 
+test("write-mode milestone capture precedes final Queue selection", async () => {
+  const repo = makeFakeRepo([baseReservation()]);
+  const order: string[] = [];
+  const loadActiveReservations = repo.loadActiveReservations.bind(repo);
+  repo.loadActiveReservations = async () => { order.push("rebalance"); return loadActiveReservations(); };
+  await runEventRebalanceWithEvidence(IN_WINDOW_MS, { write: true }, {
+    repo, jobEvidence: makeFakeJobEvidence(),
+    captureMilestones: async () => { order.push("capture"); },
+  });
+  assert.deepEqual(order.slice(0, 2), ["capture", "rebalance"]);
+});
+
 test("P0 queue-start parity: a stale-only candidate is skipped instead of creating READY", async () => {
   const reservation = baseReservation({
     id: "97e7766c-75d4-4d52-9894-196e1f334d22",
