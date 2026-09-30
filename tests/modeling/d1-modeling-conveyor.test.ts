@@ -266,3 +266,50 @@ test("14. causal portfolio has a distinct version and never retro-replaces an ea
   assert.equal(facts.length, 1);
   assert.equal(facts[0].model_date, D1);
 });
+
+function openDeps(n: number) {
+  const c = cand({ date: D1, event: "e0", cond: "c0", p: 0.52, at: `${D1}T10:00:00.000Z` });
+  const deps = fakeDeps({ ready: [D1, D2], daily: [D1, D2], dashboardDay: D2 });
+  for (let i = 0; i < n; i++) {
+    const id = `c${i}::tok::${D1}T10:00:00.000Z`;
+    deps.bets.set(`S|${D1}|e${i}`, { ...({} as SelectedBetFact), model_date: i % 2 ? D1 : D2, strategy_id: "S", strategy_version: "1", physical_event_id: `e${i}`, candidate_identity: id, condition_id: `c${i}`, selected_token_id: "tok", decision_at: c.decisionTimestamp, entry_price_num: 0.5, settlement_label: "OPEN", pnl_u: null });
+  }
+  return deps;
+}
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+test("15. settlement resolution is bounded-concurrent (not serial, never above 16)", async () => {
+  const deps = openDeps(60);
+  let active = 0, peak = 0;
+  deps.resolveTerminal = async () => { active++; peak = Math.max(peak, active); await sleep(10); active--; return "WIN"; };
+  const t0 = Date.now();
+  const res = await runConveyor(deps, { bootstrapThrough: null });
+  assert.ok(peak > 1 && peak <= 16, `peak=${peak}`);
+  assert.ok(Date.now() - t0 < 60 * 10, "serial would need >= 600ms for the lookups alone");
+  assert.equal(res.counts.resolved_win_n, 60);
+  assert.equal(res.counts.deferred_open_n, 0);
+});
+
+test("16. stage budget leaves remaining identities OPEN and freshness does not depend on them", async () => {
+  const deps = openDeps(40);
+  deps.resolveTerminal = async () => { await sleep(20); return "LOSS"; };
+  const res = await runConveyor(deps, { bootstrapThrough: null, settlementConcurrency: 4, settlementBudgetMs: 50 });
+  assert.ok(res.counts.deferred_open_n > 0);
+  assert.equal(res.counts.resolved_loss_n + res.counts.still_open_n + res.counts.deferred_open_n, 40);
+  assert.equal([...deps.bets.values()].filter((b) => b.settlement_label === "OPEN").length, res.counts.deferred_open_n);
+  assert.equal(res.ok, true);
+});
+
+test("17. timeout/unresolved stays OPEN; recent dates are resolved first; identity and rerun stable", async () => {
+  const deps = openDeps(6);
+  const order: string[] = [];
+  deps.resolveTerminal = async (ref) => { order.push(ref.model_date); return null; };
+  const before = [...deps.bets.values()].map((b) => b.candidate_identity).sort();
+  const res = await runConveyor(deps, { bootstrapThrough: null });
+  assert.deepEqual(order, [...order].sort().reverse());
+  assert.equal(res.counts.still_open_n, 6);
+  assert.ok([...deps.bets.values()].every((b) => b.settlement_label === "OPEN" && b.pnl_u === null));
+  await runConveyor(deps, { bootstrapThrough: null });
+  assert.deepEqual([...deps.bets.values()].map((b) => b.candidate_identity).sort(), before);
+  assert.equal(deps.bets.size, 6);
+});

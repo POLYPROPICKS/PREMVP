@@ -278,8 +278,14 @@ export function evaluateFreshness(f: FreshnessInput): { pass: boolean; stale: st
 
 // ── Mode / planning ─────────────────────────────────────────────────────────
 
+export const SETTLEMENT_CONCURRENCY = 16;
+export const SETTLEMENT_STAGE_BUDGET_SECONDS = 150;
+
 export interface ConveyorOptions {
   bootstrapThrough: string | null;
+  /** Test/ops overrides; defaults are the constants above. */
+  settlementConcurrency?: number;
+  settlementBudgetMs?: number;
 }
 
 export function parseConveyorArgs(argv: string[]): ConveyorOptions {
@@ -414,17 +420,37 @@ export async function runConveyor(
 
     // ── Settlement reconciliation: selection immutable, settlement only.
     await timed("settlement-reconcile", async () => {
-      const open = await deps.listOpenBets();
-      counts.open_checked = open.length;
-      let settled = 0;
-      for (const ref of open) {
-        const terminal = await deps.resolveTerminal(ref);
-        if (terminal === null) continue;
-        await deps.applySettlement(ref, terminal, settledPnlU(terminal, ref.entry_price_num), computedAt);
-        touched.add(ref.model_date);
-        settled++;
-      }
-      counts.newly_settled = settled;
+      const t0 = Date.now();
+      const concurrency = opts.settlementConcurrency ?? SETTLEMENT_CONCURRENCY;
+      const budgetMs = opts.settlementBudgetMs ?? SETTLEMENT_STAGE_BUDGET_SECONDS * 1000;
+      // Fresh/recent settlements first.
+      const open = [...(await deps.listOpenBets())].sort(
+        (a, b) => b.model_date.localeCompare(a.model_date) || a.candidate_identity.localeCompare(b.candidate_identity),
+      );
+      let cursor = 0;
+      let attempted = 0;
+      let win = 0;
+      let loss = 0;
+      const worker = async () => {
+        // Past the budget: no NEW lookups are scheduled; in-flight ones finish.
+        while (cursor < open.length && Date.now() - t0 < budgetMs) {
+          const ref = open[cursor++];
+          attempted++;
+          const terminal = await deps.resolveTerminal(ref); // null = timeout/lookup failure/active/unresolved => stays OPEN
+          if (terminal === null) continue;
+          await deps.applySettlement(ref, terminal, settledPnlU(terminal, ref.entry_price_num), computedAt);
+          touched.add(ref.model_date);
+          if (terminal === "WIN") win++; else loss++;
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(concurrency, open.length) }, worker));
+      counts.open_identity_n = open.length;
+      counts.resolved_win_n = win;
+      counts.resolved_loss_n = loss;
+      counts.still_open_n = attempted - win - loss;
+      counts.deferred_open_n = open.length - attempted;
+      counts.settlement_stage_seconds = Math.round((Date.now() - t0) / 100) / 10;
+      deps.log({ STAGE: "settlement-summary", ...counts });
     });
 
     // ── Daily aggregates for every touched date (zero rows kept so freshness is provable).

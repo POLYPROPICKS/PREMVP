@@ -216,14 +216,21 @@ export function createDbDeps(db: SupabaseClient): ConveyorDeps {
       return buildRunContext(frozen.sourceRows, frozen.overlay, lookup);
     },
 
-    upsertBets: (rows: SelectedBetFact[]) =>
-      upsertChunked("research_strategy_selected_bets", rows, "strategy_id,strategy_version,model_date,physical_event_id"),
+    // Selection is immutable and terminal settlement monotonic: an existing fact is never rewritten
+    // by a rescoring pass (ignoreDuplicates); settlement moves only through applySettlement.
+    upsertBets: async (rows: SelectedBetFact[]) => {
+      for (const c of chunks(rows, WRITE_PAGE)) {
+        const { error } = await db.from("research_strategy_selected_bets")
+          .upsert(c, { onConflict: "strategy_id,strategy_version,model_date,physical_event_id", ignoreDuplicates: true });
+        if (error) throw new Error(`CONVEYOR_WRITE_research_strategy_selected_bets:${error.code ?? error.message}`);
+      }
+    },
 
     async listOpenBets() {
       const rows = await readBetPages(db, (q) => q.eq("settlement_label", "OPEN"), "model_date,strategy_id,strategy_version,physical_event_id,candidate_identity,condition_id,selected_token_id,entry_price_num");
       const uniq = new Map<string, OpenBetRef>();
       for (const r of rows) uniq.set(r.candidate_identity, r as OpenBetRef);
-      return [...uniq.values()];
+      return [...uniq.values()].sort((a, b) => b.model_date.localeCompare(a.model_date) || a.candidate_identity.localeCompare(b.candidate_identity));
     },
     async resolveTerminal(ref) {
       const r = await withTimeout(resolveGammaTerminal(ref.condition_id, ref.selected_token_id, ref.entry_price_num), GAMMA_TIMEOUT_MS);
