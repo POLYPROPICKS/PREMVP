@@ -4,7 +4,8 @@ import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
 import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from "../liquidity/orderbookMath";
 import { fetchPolymarketEventById } from "../feed/polymarketClient";
 
-export const BASELINE_SOURCE_VERSION = "RESERVATION_MARKET_BASELINE_V1";
+export const BASELINE_SOURCE_VERSION = "RESERVATION_REFERENCE_BASELINE_V2";
+const MARKET_SOURCE_VERSION = "RESERVATION_MARKET_BASELINE_V1";
 const PHASE = "RESERVATION_BASELINE";
 export type ReservationMarketPhase = typeof PHASE | "T_MINUS_30" | "T_MINUS_10" | "T_MINUS_3" | "LIVE_GUARD";
 
@@ -113,7 +114,26 @@ export async function captureReservationMarketBaseline(
     observedAt?: string;
   } = {},
 ): Promise<void> {
-  return captureReservationMarketObservation(reservation, PHASE, deps);
+  if (!reservation.id) throw new Error("BASELINE_RESERVATION_ID_MISSING");
+  if (!reservation.event_start_iso || !Number.isFinite(Date.parse(reservation.event_start_iso))) {
+    throw new Error("BASELINE_EVENT_START_MISSING");
+  }
+  const lineage = reservation.diagnostics?.source_lineage as { provider_event_id?: unknown } | undefined;
+  const observedAt = deps.observedAt ?? new Date().toISOString();
+  const run = {
+    id: stableTelemetryId(reservation.id, PHASE, BASELINE_SOURCE_VERSION),
+    reservation_id: reservation.id, plan_run_id: reservation.plan_run_id,
+    physical_event_id: reservation.physical_event_id,
+    provider_event_id: typeof lineage?.provider_event_id === "string" ? lineage.provider_event_id : null,
+    event_start_iso: reservation.event_start_iso, observation_phase: PHASE,
+    observed_at: observedAt,
+    minutes_to_start: (Date.parse(reservation.event_start_iso) - Date.parse(observedAt)) / 60_000,
+    source_version: BASELINE_SOURCE_VERSION, source_observed_at: null,
+    markets_discovered_n: 0, market_tokens_expected_n: 0, market_tokens_observed_n: 0,
+    orderbooks_success_n: 0, orderbooks_failed_n: 0,
+    capture_complete: true, capture_status: "REFERENCE_ONLY", failure_reason: null,
+  };
+  await (deps.write ?? defaultWriter)(run, [], []);
 }
 
 export async function captureReservationMarketObservation(
@@ -128,16 +148,15 @@ export async function captureReservationMarketObservation(
     alreadyCaptured?: (reservationId: string, phase: ReservationMarketPhase, sourceVersion: string) => Promise<boolean>;
   } = {},
 ): Promise<void> {
+  if (phase === PHASE) return captureReservationMarketBaseline(reservation, deps);
   if (!reservation.id) throw new Error("BASELINE_RESERVATION_ID_MISSING");
-  if (phase !== PHASE && await (deps.alreadyCaptured ?? defaultAlreadyCaptured)(reservation.id, phase, BASELINE_SOURCE_VERSION)) return;
+  if (await (deps.alreadyCaptured ?? defaultAlreadyCaptured)(reservation.id, phase, MARKET_SOURCE_VERSION)) return;
   const lineage = reservation.diagnostics?.source_lineage as { provider_event_id?: unknown; provider_event_start_iso?: unknown } | undefined;
   const providerEventId = typeof lineage?.provider_event_id === "string" ? lineage.provider_event_id : null;
   const start = reservation.event_start_iso;
   const observedAt = deps.observedAt ?? new Date().toISOString();
-  const runId = stableTelemetryId(reservation.id, phase, BASELINE_SOURCE_VERSION);
-  const readMarkets = phase === PHASE
-    ? deps.readInventory ?? defaultInventoryReader
-    : deps.readExactEvent ?? defaultExactEventReader;
+  const runId = stableTelemetryId(reservation.id, phase, MARKET_SOURCE_VERSION);
+  const readMarkets = deps.readExactEvent ?? defaultExactEventReader;
   let markets: InventoryMarket[] = [];
   let failureReason: string | null = null;
   const expectedPhysicalId = providerEventId && start
@@ -147,11 +166,11 @@ export async function captureReservationMarketObservation(
       Date.parse(start) === Date.parse(String(lineage?.provider_event_start_iso)) &&
       reservation.physical_event_id === expectedPhysicalId) {
     try { markets = await readMarkets(providerEventId, start); }
-    catch { failureReason = phase === PHASE ? "INVENTORY_READ_FAILED" : "RESERVED_EVENT_MARKET_SET_UNAVAILABLE"; }
+    catch { failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE"; }
   } else {
     failureReason = "PROVIDER_EVENT_IDENTITY_UNRESOLVED";
   }
-  if (phase !== PHASE && markets.length === 0 && !failureReason) {
+  if (markets.length === 0 && !failureReason) {
     failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
   }
   const { tokens, expected, missingIdentity } = inventoryTokens(markets);
@@ -180,7 +199,7 @@ export async function captureReservationMarketObservation(
       orderbook_fetch_latency_ms: result?.latencyMs ?? null,
       orderbook_fetch_status: result?.ok ? "SUCCESS" : "FAILED",
       orderbook_failure_reason: result?.ok ? null : result?.errorCode ?? "UNKNOWN_FAILURE",
-      source_version: BASELINE_SOURCE_VERSION,
+      source_version: MARKET_SOURCE_VERSION,
     };
   });
   const failed = observations.filter((row) => row.orderbook_fetch_status === "FAILED").length;
@@ -189,7 +208,7 @@ export async function captureReservationMarketObservation(
     id: runId, reservation_id: reservation.id, plan_run_id: reservation.plan_run_id,
     physical_event_id: reservation.physical_event_id, provider_event_id: providerEventId,
     event_start_iso: start, observation_phase: phase, observed_at: observedAt, minutes_to_start: minutesToStart,
-    source_version: BASELINE_SOURCE_VERSION,
+    source_version: MARKET_SOURCE_VERSION,
     source_observed_at: markets.length ? markets.reduce((latest, m) => m.last_observed_at > latest ? m.last_observed_at : latest, markets[0].last_observed_at) : null,
     markets_discovered_n: markets.length, market_tokens_expected_n: expected,
     market_tokens_observed_n: observations.length, orderbooks_success_n: observations.length - failed,
@@ -207,21 +226,6 @@ async function defaultAlreadyCaptured(reservationId: string, phase: ReservationM
     .eq("source_version", sourceVersion).limit(1);
   if (error) throw new Error("MILESTONE_CAPTURE_EXISTENCE_CHECK_FAILED");
   return (data ?? []).some((row) => row.capture_status !== "WRITE_INCOMPLETE");
-}
-
-async function defaultInventoryReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
-  const { supabaseAdmin } = await import("../supabase/server");
-  const rows: InventoryMarket[] = [];
-  for (let offset = 0; ; offset += 500) {
-    const { data, error } = await supabaseAdmin.from("sports_event_market_inventory")
-      .select("provider_event_id,event_start_iso,condition_id,clob_token_ids,outcomes,sports_market_type,provider_market_slug,sibling_market_count,last_observed_at")
-      .eq("provider", "polymarket").eq("provider_event_id", providerEventId).eq("event_start_iso", eventStartIso)
-      .order("provider_market_id").range(offset, offset + 499);
-    if (error) throw new Error("BASELINE_INVENTORY_READ_FAILED");
-    rows.push(...((data ?? []) as InventoryMarket[]));
-    if ((data ?? []).length < 500) break;
-  }
-  return rows;
 }
 
 async function defaultExactEventReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
@@ -249,6 +253,12 @@ async function defaultExactEventReader(providerEventId: string, eventStartIso: s
 
 async function defaultWriter(run: Record<string, unknown>, observations: Record<string, unknown>[], _strategies: Record<string, unknown>[] = []): Promise<void> {
   const { supabaseAdmin } = await import("../supabase/server");
+  if (run.observation_phase === PHASE) {
+    const { error } = await supabaseAdmin.from("reservation_market_capture_runs")
+      .upsert(run, { onConflict: "reservation_id,observation_phase,source_version", ignoreDuplicates: true });
+    if (error) throw new Error("REFERENCE_BASELINE_WRITE_FAILED");
+    return;
+  }
   const { error: runError } = await supabaseAdmin.from("reservation_market_capture_runs").upsert(
     { ...run, capture_status: "WRITE_INCOMPLETE" },
     { onConflict: "reservation_id,observation_phase,source_version", ignoreDuplicates: true },
