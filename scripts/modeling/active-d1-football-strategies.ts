@@ -24,7 +24,16 @@ export interface ActiveStrategy {
   strategy_version: string;
   /** Frozen selector applied to ONE day's context (already stripped of previously claimed physical events). */
   select: (ctx: RunContext) => SelectedCandidate[];
+  /**
+   * Forward-causal composition: the selector is applied one model_date at a time
+   * (ascending), so an earlier-day selection is never replaced by a later-day one.
+   * Standalone chronological first-claim selectors do not need this.
+   */
+  dayCausal?: boolean;
 }
+
+/** Semantic version of the forward-causal D-1 portfolio (distinct from the historical full-corpus composition). */
+export const D1_CAUSAL_PORTFOLIO_VERSION = "D1_CAUSAL_V1";
 
 export const ACTIVE_REGISTRY_STRATEGY_IDS = [
   "FOOTBALL_ODDS_185_200_REPAIRED",
@@ -48,8 +57,9 @@ function registryStrategy(id: string): ActiveStrategy {
 
 /**
  * LIVE_B first, MLTS_185_200 fills events LIVE_B has not claimed. Applied per
- * day on a context already stripped of previously claimed events, so the
- * composition is causal (an earlier-day fallback bet is never retro-replaced).
+ * day (see `dayCausal`) on a context already stripped of previously claimed
+ * events: FORWARD-CAUSAL, so an earlier-day fallback bet is never retro-replaced.
+ * This intentionally can differ from the historical full-corpus composition.
  */
 export const selectLiveSafePortfolioDay = (ctx: RunContext): SelectedCandidate[] =>
   composePriority(selectFootballLiveMltsOdds175200(ctx), selectFootballMoneylineTotalsSpreadsOdds185200(ctx)).portfolio;
@@ -57,7 +67,7 @@ export const selectLiveSafePortfolioDay = (ctx: RunContext): SelectedCandidate[]
 export const ACTIVE_D1_FOOTBALL_STRATEGIES: ActiveStrategy[] = [
   ...ACTIVE_REGISTRY_STRATEGY_IDS.map(registryStrategy),
   { strategy_id: LIVE_B_ID, strategy_version: LIVE_B_STRATEGY.semantic_version, select: selectFootballLiveMltsOdds175200 },
-  { strategy_id: LIVE_SAFE_PORTFOLIO_ID, strategy_version: "1.0.0", select: selectLiveSafePortfolioDay },
+  { strategy_id: LIVE_SAFE_PORTFOLIO_ID, strategy_version: D1_CAUSAL_PORTFOLIO_VERSION, select: selectLiveSafePortfolioDay, dayCausal: true },
 ];
 
 export const strategyKey = (id: string, version: string): string => `${id}@${version}`;

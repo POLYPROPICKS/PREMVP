@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 
 import { marketBucketOf } from "./football-structural-authority";
 import { settledPnlU, roiPct, type RunContext } from "./football-strategy-registry";
+import type { SelectedCandidate } from "./daily-portfolio-frontier";
 import { ACTIVE_D1_FOOTBALL_STRATEGIES, strategyKey, type ActiveStrategy } from "./active-d1-football-strategies";
 import type { CorpusLabel } from "@/lib/modeling/research-corpus/rollingCorpus";
 
@@ -63,6 +64,25 @@ export function stripClaimed(ctx: RunContext, claimed: ReadonlySet<string>): Run
   };
 }
 
+/** Apply a day-causal selector one model_date at a time, accumulating its own claims. */
+export function selectDayCausal(s: ActiveStrategy, ctx: RunContext, initialClaimed: ReadonlySet<string>): SelectedCandidate[] {
+  const dates = [...new Set([...ctx.structural, ...ctx.safeUniverse].map((c) => c.modelDate))].sort();
+  const claimed = new Set(initialClaimed);
+  const out: SelectedCandidate[] = [];
+  for (const d of dates) {
+    const dayCtx: RunContext = {
+      ...ctx,
+      structural: ctx.structural.filter((c) => c.modelDate === d),
+      safeUniverse: ctx.safeUniverse.filter((c) => c.modelDate === d),
+    };
+    for (const sel of s.select(stripClaimed(dayCtx, claimed))) {
+      claimed.add(sel.physicalEventKey);
+      out.push(sel);
+    }
+  }
+  return out;
+}
+
 /**
  * Score a context (one day incrementally, or the frozen corpus once at bootstrap). Selection uses the frozen selectors; the
  * previously claimed physical events are removed BEFORE selection (identical to
@@ -80,7 +100,7 @@ export function scoreContext(
   for (const s of strategies) {
     const key = strategyKey(s.strategy_id, s.strategy_version);
     const claimed = claimedByStrategy.get(key) ?? new Set<string>();
-    const selected = s.select(stripClaimed(ctx, claimed));
+    const selected = s.dayCausal ? selectDayCausal(s, ctx, claimed) : s.select(stripClaimed(ctx, claimed));
     const seen = new Set<string>();
     for (const sel of selected) {
       if (claimed.has(sel.physicalEventKey)) throw new Error(`CONVEYOR_CLAIMED_EVENT_RESELECTED:${key}:${sel.physicalEventKey}`);

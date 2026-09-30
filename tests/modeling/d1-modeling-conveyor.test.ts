@@ -254,3 +254,15 @@ test("13. dashboard runtime is fed from rollups and needs no daily Git artifact 
     assert.doesNotMatch(src, /writeFileSync|mkdirSync|appendFileSync/, f);
   }
 });
+
+test("14. causal portfolio has a distinct version and never retro-replaces an earlier-day fallback", () => {
+  const port = ACTIVE_D1_FOOTBALL_STRATEGIES.find((s) => s.strategy_id === "FOOTBALL_LIVE_MLTS_175_200_THEN_MLTS_185_200")!;
+  assert.equal(port.strategy_version, "D1_CAUSAL_V1");
+  assert.equal(port.dayCausal, true);
+  // Same physical event on two days: the day-1 selection stays; the day-2 row must not replace it.
+  const d1 = cand({ date: D1, event: "eX", cond: "c1", p: 0.52, at: `${D1}T10:00:00.000Z`, market: "moneyline" });
+  const d2 = cand({ date: D2, event: "eX", cond: "c2", p: 0.55, at: `${D2}T10:00:00.000Z`, market: "moneyline" });
+  const facts = scoreContext(ctxOf([d1, d2]), new Map(), "t", [port]);
+  assert.equal(facts.length, 1);
+  assert.equal(facts[0].model_date, D1);
+});
