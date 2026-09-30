@@ -162,6 +162,18 @@ test('wiring: apply-premvp-approved-migration.mjs has a --target-only branch tha
   assert.doesNotMatch(src, /'--include-all'/); // never passed as an argv token
 });
 
+test('wiring: target-only selects one context for ledger, dry-run, apply, and post-apply ledger', () => {
+  const src = readFileSync(path.join(root, 'scripts/control-plane/apply-premvp-approved-migration.mjs'), 'utf8');
+  const targetOnly = src.slice(src.indexOf('async function runTargetOnly()'), src.indexOf('\nfunction fail('));
+  assert.match(targetOnly, /let contextArgs = \['--linked'\]/);
+  assert.match(targetOnly, /isRecoverableLinkedContextError\(listOut\)/);
+  assert.match(targetOnly, /contextArgs = resolveProjectContextArgs\(childEnv\)/);
+  assert.equal((targetOnly.match(/\['migration', 'list', \.\.\.contextArgs\]/g) || []).length, 3);
+  assert.match(targetOnly, /\['db', 'push', \.\.\.contextArgs, '--dry-run'\]/);
+  assert.match(targetOnly, /\['db', 'push', \.\.\.contextArgs, '--yes'\]/);
+  assert.doesNotMatch(targetOnly, /\['db', 'push', '--linked'/);
+});
+
 test('wiring: the real merged target file hashes to the value the wallet migration PR shipped', () => {
   const sql = readFileSync(path.join(root, 'supabase/migrations', TARGET), 'utf8');
   assert.equal(sha256OfText(sql), '319c4fc024c194d10aa078460a76ec4101d0915ce31cfca637f6fc48ddeb16cf');

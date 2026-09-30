@@ -33,6 +33,12 @@ export function isNotLinkedError(error) {
   return NOT_LINKED_MARKERS.some((marker) => text.includes(marker));
 }
 
+/** Linked CLI context failures that a direct Postgres transport can recover. */
+export function isRecoverableLinkedContextError(error) {
+  const output = `${error?.stdout || ''}\n${error?.stderr || ''}\n${error?.message || ''}`;
+  return isNotLinkedError(error) || /LinkAuthTokenError|(?:management api|access token).*(?:unauthorized|forbidden|missing|invalid|required|401|403)/i.test(output);
+}
+
 /**
  * Resolves the direct Postgres connection URL for the fallback route, preferring an
  * explicitly provisioned SUPABASE_DB_URL and otherwise deriving it from

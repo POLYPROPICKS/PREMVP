@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readAndValidateMigration } from './lib/premvp-application-migration-release.mjs';
-import { runDbPushWithFallback, redactSecrets } from './lib/premvp-migration-adapter-connection.mjs';
+import { runDbPushWithFallback, redactSecrets, resolveProjectContextArgs, isRecoverableLinkedContextError, extractCausalFailure, sanitizeDiagnosticText } from './lib/premvp-migration-adapter-connection.mjs';
 import { assertCleanMigrationDirectory } from './lib/migration-directory-preflight.mjs';
 import { bridgePersistentUserEnv, describeBridge, SUPABASE_ENV_NAMES } from './lib/windows-user-env-bridge.mjs';
 import {
@@ -63,7 +63,7 @@ async function runTargetOnly() {
     fail('TARGET_ONLY_PROJECT_AUTHORITY_MISMATCH', { observed_ref_present: Boolean(observedRef), allowlist: PREMVP_PRODUCTION_PROJECT_REFS });
   }
   const secrets = [childEnv.SUPABASE_DB_PASSWORD, childEnv.SUPABASE_ACCESS_TOKEN, childEnv.SUPABASE_DB_URL].filter(Boolean);
-  const sanitize = (t) => redactSecrets(String(t ?? ''), secrets);
+  const sanitize = (t) => sanitizeDiagnosticText(t, secrets);
   const supa = (cliArgs, cwd) => {
     assertNoIncludeAll(cliArgs);
     try {
@@ -82,8 +82,18 @@ async function runTargetOnly() {
   };
 
   // 1. remote-ledger-tracked versions -> local files required for CLI consistency
-  const listOut = supa(['migration', 'list', '--linked'], root);
-  if (listOut && listOut.__failed) fail('TARGET_ONLY_MIGRATION_LIST_FAILED', listOut.stderr.slice(0, 300));
+  let contextArgs = ['--linked'];
+  let listOut = supa(['migration', 'list', ...contextArgs], root);
+  if (listOut && listOut.__failed && isRecoverableLinkedContextError(listOut)) {
+    try {
+      contextArgs = resolveProjectContextArgs(childEnv);
+      secrets.push(contextArgs[1]);
+    } catch (error) {
+      fail('TARGET_ONLY_DIRECT_DB_CONTEXT_FAILED', extractCausalFailure(error, secrets));
+    }
+    listOut = supa(['migration', 'list', ...contextArgs], root);
+  }
+  if (listOut && listOut.__failed) fail('TARGET_ONLY_MIGRATION_LIST_FAILED', extractCausalFailure(listOut, secrets));
   const tracked = trackedRemoteVersions(firstJson(listOut));
   const { resolved: trackedFiles, missing } = resolveTrackedLocalFiles(tracked, path.join(root, 'supabase', 'migrations'));
   if (missing.length) fail('TARGET_ONLY_REMOTE_TRACKED_FILE_MISSING_LOCALLY', missing);
@@ -95,7 +105,7 @@ async function runTargetOnly() {
     isolatedFiles = materializeIsolatedView({ repoRootAbs: root, viewRootAbs: view, trackedFiles, targetBasename });
 
     // 3. dry-run gate
-    const dryRaw = supa(['db', 'push', '--linked', '--dry-run'], view);
+    const dryRaw = supa(['db', 'push', ...contextArgs, '--dry-run'], view);
     const dry = classifyTargetOnlyDryRun({
       stdout: dryRaw && dryRaw.__failed ? dryRaw.stdout : String(dryRaw),
       stderr: dryRaw && dryRaw.__failed ? dryRaw.stderr : '',
@@ -119,9 +129,11 @@ async function runTargetOnly() {
     if (!args.includes('--confirm') || process.env.PREMVP_TARGET_ONLY_APPLY_CONFIRM !== '1') {
       fail('TARGET_ONLY_APPLY_CONFIRMATION_REQUIRED', 'pass --confirm and set PREMVP_TARGET_ONLY_APPLY_CONFIRM=1');
     }
-    const applyRaw = supa(['db', 'push', '--linked', '--yes'], view);
-    if (applyRaw && applyRaw.__failed) fail('TARGET_ONLY_APPLY_FAILED', applyRaw.stderr.slice(0, 300));
-    const afterList = trackedRemoteVersions(firstJson(supa(['migration', 'list', '--linked'], root)));
+    const applyRaw = supa(['db', 'push', ...contextArgs, '--yes'], view);
+    if (applyRaw && applyRaw.__failed) fail('TARGET_ONLY_APPLY_FAILED', extractCausalFailure(applyRaw, secrets));
+    const afterRaw = supa(['migration', 'list', ...contextArgs], root);
+    if (afterRaw && afterRaw.__failed) fail('TARGET_ONLY_POST_APPLY_LIST_FAILED', extractCausalFailure(afterRaw, secrets));
+    const afterList = trackedRemoteVersions(firstJson(afterRaw));
     const targetVersion = targetBasename.match(/^\d{14}/)?.[0];
     if (!afterList.includes(targetVersion)) fail('TARGET_ONLY_APPLY_NOT_RECORDED', targetVersion);
     const ev = buildTargetOnlyEvidence({ mode: 'applied', declaration, targetBasename, isolatedFiles, dryRun: dry, applied: true, ledgerAfter: afterList });
