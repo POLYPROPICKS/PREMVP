@@ -38,7 +38,7 @@ import { MIGRATION_MODE, validateApprovedMigrationRelease } from '../../scripts/
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const routingDoc = JSON.parse(fs.readFileSync(
-  path.join(REPO_ROOT, 'docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml'), 'utf8'));
+  path.join(REPO_ROOT, 'docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml'), 'utf8').replace(/^\uFEFF/, ''));
 const pipelineSpec = JSON.parse(fs.readFileSync(
   path.join(REPO_ROOT, 'docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_PIPELINE_V1.yaml'), 'utf8'));
 const releaseRunSchema = JSON.parse(fs.readFileSync(

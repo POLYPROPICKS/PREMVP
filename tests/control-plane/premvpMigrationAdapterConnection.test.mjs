@@ -23,6 +23,7 @@ import {
   isNotLinkedError,
   resolveDirectDbUrl,
   resolveProjectContextArgs,
+  isRecoverableLinkedContextError,
   redactSecrets,
   runDbPushWithFallback,
   extractCausalFailure,
@@ -33,6 +34,15 @@ test('isNotLinkedError recognizes the known not-linked failure signatures', () =
   assert.equal(isNotLinkedError({ stderr: 'LegacyProjectNotLinkedError: no linked project' }), true);
   assert.equal(isNotLinkedError({ message: 'Cannot find project ref. Have you run supabase link?' }), true);
   assert.equal(isNotLinkedError({ stderr: 'permission denied' }), false);
+});
+
+test('linked ledger recovery is limited to link and Management API authorization failures', () => {
+  assert.equal(isRecoverableLinkedContextError({ stderr: 'LinkAuthTokenError: access token required' }), true);
+  assert.equal(isRecoverableLinkedContextError({ stderr: 'LegacyProjectNotLinkedError' }), true);
+  assert.equal(isRecoverableLinkedContextError({ stderr: 'Management API returned 403 forbidden' }), true);
+  for (const stderr of ['migration history mismatch', 'permission denied for schema public', 'database authentication failed', 'syntax error in migration']) {
+    assert.equal(isRecoverableLinkedContextError({ stderr }), false, stderr);
+  }
 });
 
 test('resolveDirectDbUrl fails closed when env is incomplete', () => {

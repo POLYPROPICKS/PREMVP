@@ -17,6 +17,7 @@ import assert from "node:assert/strict";
 
 import {
   runEventRebalance,
+  fullStakeExecutableVwap,
   type RebalanceRepoPort,
 } from "../../lib/executor/eventExecutionQueue";
 import {
@@ -26,6 +27,7 @@ import {
   type NightEventReservationRow,
 } from "../../lib/executor/executorQueueTypes";
 import type { FetchOrderBookResult } from "../../lib/liquidity/types";
+import { liveGuardTelemetryRows } from "../../lib/executor/reservationMarketBaseline";
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 // T-60m from a 19:00Z kickoff, inside the T-70..T-3 rebalance window.
@@ -464,6 +466,80 @@ test("RFM-8: the B2 manifest path and the legacy GSP path produce byte-identical
 });
 
 // ── H: RESTORE_B2_FINAL_IDENTITY_ORDERBOOK_GUARD_V1 -- live mechanical guard ──
+
+test("LIVE_GUARD PASS records frozen lineage and the same fetched multi-level book once", async () => {
+  const reservation = b2Reservation();
+  const repo = makeInstrumentedRepo([reservation]);
+  const recorded: ReturnType<typeof liveGuardTelemetryRows>[] = [];
+  let fetches = 0;
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => {
+      fetches++;
+      return { ok: true, tokenId, latencyMs: 12, book: {
+        tokenId, bids: [{ price: 0.49, size: 100 }],
+        asks: [{ price: 0.51, size: 0.5 / 0.51 }, { price: 0.53, size: 10 }],
+      } };
+    },
+    writeGuardTelemetry: async (row, input) => { recorded.push(liveGuardTelemetryRows(row, input)); },
+  });
+  assert.equal(result.queued_count, 1);
+  assert.equal(fetches, 1);
+  assert.equal(recorded.length, 1);
+  const { run, observation, strategies } = recorded[0];
+  assert.equal(run.observation_phase, "LIVE_GUARD");
+  assert.equal(observation.live_policy_eligibility, true);
+  assert.equal(observation.reference_entry_price, 0.42);
+  assert.equal(observation.execution_price_cap, QUEUE_MAX_ENTRY_PRICE);
+  assert.equal(observation.requested_stake_usd, EXECUTABLE_STAKE_USD);
+  assert.equal(observation.best_ask, 0.51);
+  assert.ok(Math.abs(Number(observation.full_stake_executable_vwap) - (2.5 / (0.5 / 0.51 + 2 / 0.53))) < 1e-9);
+  assert.deepEqual(strategies.map((row) => row.strategy_variant), ["S1_TAKER_HOLD", "S2_FIXED_MAKER_HOLD", "S3_MAKER_VALUE_BAND_HOLD"]);
+  assert.equal(strategies[0].executable_depth_usd, observation.ask_depth_relevant_usd);
+});
+
+test("LIVE_GUARD REJECT records exact reason, measured cap depth, and null full-stake VWAP", async () => {
+  const reservation = b2Reservation();
+  const repo = makeInstrumentedRepo([reservation]);
+  const recorded: ReturnType<typeof liveGuardTelemetryRows>[] = [];
+  let fetches = 0;
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchExactTokenOrderbook: async (tokenId) => {
+      fetches++;
+      return { ok: true, tokenId, latencyMs: 12, book: {
+        tokenId, bids: [{ price: 0.51, size: 100 }],
+        asks: [{ price: 0.535, size: 2 }, { price: 0.54, size: 1 }, { price: 0.55, size: 100 }],
+      } };
+    },
+    writeGuardTelemetry: async (row, input) => { recorded.push(liveGuardTelemetryRows(row, input)); },
+  });
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(fetches, 1);
+  assert.equal(recorded.length, 1);
+  const { observation, strategies } = recorded[0];
+  assert.equal(observation.live_policy_eligibility, false);
+  assert.equal(observation.live_policy_rejection_reason, result.outcomes[0].reason?.replace(/^B2_LIVE_ORDERBOOK_GUARD_FAILED: /, ""));
+  assert.ok(Math.abs(Number(observation.ask_depth_relevant_usd) - 1.61) < 1e-9);
+  assert.equal(observation.full_stake_executable_vwap, null);
+  assert.equal(strategies.length, 3);
+});
+
+test("full-stake VWAP never uses liquidity above the cap or reports partial fills", () => {
+  assert.equal(fullStakeExecutableVwap([{ price: 0.51, size: 1 }, { price: 0.55, size: 100 }], 0.54, 2.5), null);
+  assert.ok(Math.abs(Number(fullStakeExecutableVwap([{ price: 0.53, size: 10 }, { price: 0.51, size: 0.5 / 0.51 }], 0.54, 2.5)) - (2.5 / (0.5 / 0.51 + 2 / 0.53))) < 1e-9);
+});
+
+test("LIVE_GUARD telemetry write failure preserves the existing guard decision", async () => {
+  const repo = makeInstrumentedRepo([b2Reservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo, fetchExactTokenOrderbook: passingOrderbookFetcher,
+    writeGuardTelemetry: async () => { throw new Error("telemetry unavailable"); },
+  });
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+});
 
 test("RFM-9: a token no longer executable at the current price (best ask above max_entry_price) SKIPS the reservation and writes no Queue row -- never substitutes another manifest entry", async () => {
   const repo = makeInstrumentedRepo([b2Reservation()]);

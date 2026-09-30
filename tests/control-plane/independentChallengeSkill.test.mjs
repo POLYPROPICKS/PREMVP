@@ -8,8 +8,8 @@ const root = path.resolve(import.meta.dirname, '..', '..');
 const skillPath = '.agents/skills/polypropicks-independent-challenge/SKILL.md';
 const invocation = '$polypropicks-independent-challenge';
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const registry = JSON.parse(read('docs/ai-context/control-plane/AGENT_REGISTRY.yaml'));
-const routing = JSON.parse(read('docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml'));
+const registry = JSON.parse(read('docs/ai-context/control-plane/AGENT_REGISTRY.yaml').replace(/^\uFEFF/, ''));
+const routing = JSON.parse(read('docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml').replace(/^\uFEFF/, ''));
 const capabilities = read('docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml');
 const skill = read(skillPath);
 

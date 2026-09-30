@@ -65,7 +65,7 @@ R5 fails closed: default verdict `BLOCKED`, no eligible executor, no permitted r
 
 ## 6. Prompt contract
 
-Short Founder presentation + one executor block only. Every task invokes `premvp.command.execution_precheck.v1`; no default/substitution. Missing hard-boundary input → `PROMPT_GATE_BLOCKED`.
+One Founder summary and executor block. Invoke `premvp.command.execution_precheck.v1`; no default executor. Missing boundary → `PROMPT_GATE_BLOCKED`.
 
 ## 7. Reviewers and agents
 
@@ -97,4 +97,4 @@ Recoverable root/state/dependency/PR/deployment conditions are executor-owned; E
 - Proven passes: CLOUD_REPO_READ, CLOUD_NPM_CI, CLOUD_SUPABASE_SELECT, CLOUD_TYPECHECK, CLOUD_BUILD, CODEX_WEATHER_REVIEWER_PRESENT, CODEX_CONTUR_REVIEWER_PRESENT, CONTROL_PLANE_PHASE_1_2_MERGED, CLOUD_PRODUCTION_BUILD_PROVENANCE_READ, PROMPT_CONTRACT_PR96
 - External checkpoints: CHK-C1-20260803, CHK-CLOUD-CAPABILITY, CHK-CODEX-INVENTORY
 - Freshness: 7 days from 2026-09-15T07:59:07Z
-- Stale when: main.origin_main_sha is NOT an ancestor of live origin/main (STATE_STALE); main.origin_main_sha IS an ancestor of live origin/main, live origin/main is ahead of it, and any path changed between them falls outside stale_state_behavior.state_bootstrap_allowlist in ARCHITECT_CONTROL_PLANE.yaml (STATE_REFRESH_REQUIRED); updated_at is older than evidence_freshness.max_age_days; an accepted completion envelope exists whose completion_id is newer than last_accepted_completion_id; a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when
+- Stale when: baseline is not an ancestor of live origin/main (STATE_STALE), or changed paths leave the state-bootstrap allowlist (STATE_REFRESH_REQUIRED). See CURRENT_STATE.yaml.stale_when.

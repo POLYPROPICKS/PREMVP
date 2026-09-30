@@ -21,7 +21,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const DIR = 'docs/ai-context/control-plane';
 
 function readJson(rel) {
-  return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, DIR, rel), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(REPO_ROOT, DIR, rel), 'utf8').replace(/^\uFEFF/, ''));
 }
 
 test('parity: both PREMVP executors are eligible for R0-R4', () => {

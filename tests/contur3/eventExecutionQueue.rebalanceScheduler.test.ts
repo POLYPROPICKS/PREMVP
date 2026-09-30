@@ -366,6 +366,19 @@ test("B6: a dry-run rebalance invocation records zero job_runs evidence", async 
   assert.equal(repo.queueRows.length, 0);
 });
 
+test("milestone telemetry failure leaves the write-mode rebalance result unchanged", async () => {
+  const repo = makeFakeRepo([baseReservation()]);
+  const jobEvidence = makeFakeJobEvidence();
+  const result = await runEventRebalanceWithEvidence(IN_WINDOW_MS, { write: true }, {
+    repo, jobEvidence,
+    fetchCandidates: async () => { throw new Error("legacy candidate load must not run"); },
+    captureMilestones: async () => { throw new Error("telemetry unavailable"); },
+  });
+  assert.equal(result.queued_count, 0);
+  assert.equal(result.first_rejection_code, "RESERVATION_REQUIRED_USE_EVENT_REBALANCE");
+  assert.equal(jobEvidence.calls.length, 1);
+});
+
 test("P0 queue-start parity: a stale-only candidate is skipped instead of creating READY", async () => {
   const reservation = baseReservation({
     id: "97e7766c-75d4-4d52-9894-196e1f334d22",

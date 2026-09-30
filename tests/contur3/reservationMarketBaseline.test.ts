@@ -1,7 +1,70 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline } from "../../lib/executor/reservationMarketBaseline";
+import { readFileSync } from "node:fs";
+import { baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations } from "../../lib/executor/reservationMarketBaseline";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+
+test("milestone windows have deterministic non-overlapping boundaries", () => {
+  const start = "2026-10-01T00:00:00Z";
+  const at = (minutes: number) => Date.parse(start) - minutes * 60_000;
+  assert.equal(classifyReservationMarketPhase(start, at(30)), "T_MINUS_30");
+  assert.equal(classifyReservationMarketPhase(start, at(20)), null);
+  assert.equal(classifyReservationMarketPhase(start, at(15)), "T_MINUS_10");
+  assert.equal(classifyReservationMarketPhase(start, at(9)), "T_MINUS_3");
+  assert.equal(classifyReservationMarketPhase(start, at(3)), null);
+});
+
+test("persisted milestone skips inventory and CLOB on a repeated tick", async () => {
+  const reservation = { id: "33333333-3333-4333-8333-333333333333" } as NightEventReservationRow;
+  await captureReservationMarketObservation(reservation, "T_MINUS_30", {
+    alreadyCaptured: async () => true,
+    readInventory: async () => { throw new Error("unexpected inventory read"); },
+    fetchBooks: async () => { throw new Error("unexpected CLOB read"); },
+  });
+});
+
+test("QUEUED and SKIPPED persisted reservations remain in the telemetry cohort", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const captured: string[] = [];
+  for (const [status, minutes, expected] of [["QUEUED", 10, "T_MINUS_10"], ["SKIPPED", 5, "T_MINUS_3"]] as const) {
+    const row = { id: status, status, event_start_iso: start } as unknown as NightEventReservationRow;
+    await captureReservationMarketMilestones(Date.parse(start) - minutes * 60_000, {
+      load: async () => [row],
+      capture: async (reservation, phase) => { captured.push(`${reservation.status}:${phase}`); },
+    });
+    assert.equal(captured.at(-1), `${status}:${expected}`);
+    assert.equal(row.status, status);
+  }
+});
+
+test("every market observation produces S1/S2/S3 scalar-only rows", () => {
+  const rows = strategyRowsForMarketObservations([{ id: "m1", capture_run_id: "r", reservation_id: "q", physical_event_id: "p", condition_id: "c", token_id: "t", side: "Yes", observation_phase: "T_MINUS_30", observed_at: "2026-09-30T23:30:00Z", minutes_to_start: 30, best_ask: 0.5, ask_decimal_odds: 2, spread_abs: 0.1, raw: { forbidden: true } }]);
+  assert.deepEqual(rows.map((row) => row.strategy_variant), ["S1_TAKER_HOLD", "S2_FIXED_MAKER_HOLD", "S3_MAKER_VALUE_BAND_HOLD"]);
+  assert.equal(rows[0].market_observation_id, "m1");
+  assert.equal(rows[0].available_best_ask, 0.5);
+  assert.equal(rows[1].maker_target_state, "NOT_DEFINED_YET");
+  assert.equal(rows[1].maker_target_price, null);
+  assert.equal(rows[2].maker_band_state, "NOT_DEFINED_YET");
+  assert.equal(rows[2].maker_band_min_price, null);
+  assert.equal(JSON.stringify(rows).includes("forbidden"), false);
+});
+
+test("persisted strategy reread carries measured LIVE_GUARD ask depth into S1", () => {
+  const source = readFileSync(new URL("../../lib/executor/reservationMarketBaseline.ts", import.meta.url), "utf8");
+  const projection = source.match(/\.select\("([^"]+)"\)\s*\.eq\("capture_run_id", run\.id\)/)?.[1];
+  assert.ok(projection, "persisted observation reread projection exists");
+  assert.ok(projection.split(",").includes("ask_depth_relevant_usd"));
+  const persisted = {
+    id: "m-live", capture_run_id: "r", reservation_id: "q", physical_event_id: "p",
+    condition_id: "c", token_id: "t", side: "Yes", observation_phase: "LIVE_GUARD",
+    observed_at: "2026-09-30T23:30:00Z", minutes_to_start: 30,
+    ask_depth_relevant_usd: 1.61,
+  };
+  const reread = Object.fromEntries(Object.entries(persisted).filter(([key]) => projection.split(",").includes(key)));
+  const rows = strategyRowsForMarketObservations([reread]);
+  assert.equal(rows[0].strategy_variant, "S1_TAKER_HOLD");
+  assert.equal(rows[0].executable_depth_usd, 1.61);
+});
 
 test("baseline IDs and incomplete market accounting are deterministic", () => {
   assert.equal(stableTelemetryId("r", "phase", "v1"), stableTelemetryId("r", "phase", "v1"));
@@ -27,9 +90,10 @@ test("one reservation records distinct tokens and survives one failed orderbook"
     ],
     write: async (run, rows) => { savedRun = run; savedRows = rows; },
   });
-  assert.equal(savedRun?.market_tokens_expected_n, 2);
-  assert.equal(savedRun?.orderbooks_success_n, 1);
-  assert.equal(savedRun?.orderbooks_failed_n, 1);
+  const capturedRun = savedRun as Record<string, unknown> | null;
+  assert.equal(capturedRun?.market_tokens_expected_n, 2);
+  assert.equal(capturedRun?.orderbooks_success_n, 1);
+  assert.equal(capturedRun?.orderbooks_failed_n, 1);
   assert.equal(savedRows.length, 2);
   assert.notEqual(savedRows[0].id, savedRows[1].id);
   assert.equal(savedRows[1].orderbook_failure_reason, "TIMEOUT");

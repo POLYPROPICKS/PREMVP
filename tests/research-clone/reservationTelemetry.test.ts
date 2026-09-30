@@ -1,0 +1,75 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { SPECS } from "../../scripts/research-clone-daily-sync";
+import { purgeConfirmedTelemetry, runAppendSync, TELEMETRY_PURGE_ORDER, type TelemetryTable, type TelemetryPurgeRow, type TelemetryPurgeCursor, type Watermark } from "../../lib/research-clone/dailySync";
+
+test("all three telemetry datasets use narrow append-only keysets", () => {
+  const expected = [
+    ["reservation_market_capture_runs", "observed_at"],
+    ["reservation_market_observations", "observed_at"],
+    ["reservation_strategy_observations", "evaluated_at"],
+  ];
+  for (const [table, timestamp] of expected) {
+    const spec = SPECS.find((entry) => entry.table === table);
+    assert.ok(spec);
+    assert.deepEqual(spec.fields, [timestamp, "id"]);
+    assert.equal(spec.appendOnly, true);
+    assert.equal(spec.telemetry, true);
+    assert.match(spec.projection ?? "", /(^|,)id(,|$)/);
+    assert.doesNotMatch(spec.projection ?? "", /\*|json|payload|book_levels/i);
+  }
+  const marketProjection = SPECS.find((entry) => entry.table === "reservation_market_observations")?.projection ?? "";
+  for (const field of ["reference_entry_price", "execution_price_cap", "requested_stake_usd", "full_stake_executable_vwap"]) {
+    assert.match(marketProjection, new RegExp(`(^|,)${field}(,|$)`));
+  }
+});
+
+test("all three telemetry keysets are idempotent across repeated syncs", async () => {
+  for (const spec of SPECS.filter((entry) => entry.telemetry)) {
+    const time = spec.fields[0];
+    const row = { id: "11111111-1111-4111-8111-111111111111", [time]: "2026-09-30T12:00:00.000Z" };
+    const target = new Map<string, typeof row>();
+    let checkpoint: Watermark | null = null;
+    const sync = () => runAppendSync(spec.fields, 2, {
+      async sourceMaxWatermark() { return { [time]: row[time], id: row.id }; },
+      async targetMaxWatermark() { return target.size ? { [time]: row[time], id: row.id } : null; },
+      async readCheckpoint() { return checkpoint; },
+      async fetchSourcePage(after) { return !after || after[time] < row[time] ? [row] : []; },
+      async upsertTargetRows(rows) { for (const item of rows) target.set(item.id, item); return { newRows: rows.length, updatedRows: 0, duplicateN: 0 }; },
+      async writeCheckpoint(value) { checkpoint = value; },
+    }, "2026-09-30T00:00:00.000Z");
+    assert.equal((await sync()).newRows, 1, spec.table);
+    assert.equal((await sync()).newRows, 0, spec.table);
+    assert.equal(target.size, 1, spec.table);
+  }
+});
+
+test("24h purge deletes only exact clone-confirmed old IDs and preserves recent or unconfirmed IDs", async () => {
+  const now = Date.parse("2026-10-02T00:00:00.000Z");
+  const old = "2026-09-30T12:00:00.000Z";
+  const recent = "2026-10-01T12:00:00.000Z";
+  const rows = Object.fromEntries(TELEMETRY_PURGE_ORDER.map((table) => [table, [
+    { id: `${table}:confirmed`, timestamp: old },
+    { id: `${table}:missing`, timestamp: old },
+    { id: `${table}:recent`, timestamp: recent },
+  ]])) as Record<TelemetryTable, TelemetryPurgeRow[]>;
+  const deleted: string[] = [];
+  const cursor = {} as Record<TelemetryTable, TelemetryPurgeCursor | null>;
+  const results = await purgeConfirmedTelemetry(now, {
+    async readCursor(table) { return cursor[table] ?? null; },
+    async fetchStalePage(table, cutoff, after, limit) {
+      return rows[table].filter((row) => row.timestamp <= cutoff && (!after || row.timestamp > after.timestamp || (row.timestamp === after.timestamp && row.id > after.id))).slice(0, limit);
+    },
+    async exactCloneIds(_table, ids) { return ids.filter((id) => id.endsWith(":confirmed")); },
+    async withoutProductionChildren(_table, ids) { return ids; },
+    async deleteProductionIds(table, ids) { deleted.push(...ids); rows[table] = rows[table].filter((row) => !ids.includes(row.id)); },
+    async writeCursor(table, value) { cursor[table] = value; },
+  });
+  assert.equal(deleted.length, 3);
+  for (const table of TELEMETRY_PURGE_ORDER) {
+    assert.equal(results[table].deleted_n, 1);
+    assert.equal(results[table].not_confirmed_n, 1);
+    assert.equal(rows[table].some((row) => row.id.endsWith(":missing")), true);
+    assert.equal(rows[table].some((row) => row.id.endsWith(":recent")), true);
+  }
+});
