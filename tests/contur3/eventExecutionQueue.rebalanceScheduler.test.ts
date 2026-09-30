@@ -33,7 +33,7 @@ const KICKOFF_MS = Date.parse(KICKOFF_ISO);
 
 // T-70..T-3 window for a 19:00Z kickoff = 17:50Z..18:57Z.
 const BEFORE_WINDOW_MS = Date.parse("2026-07-19T17:00:00.000Z"); // T-120m
-const IN_WINDOW_MS = Date.parse("2026-07-19T18:00:00.000Z"); // T-60m
+const IN_WINDOW_MS = Date.parse("2026-07-19T18:52:00.000Z"); // T-8m, final window
 const AFTER_WINDOW_MS = Date.parse("2026-07-19T18:59:00.000Z"); // T-1m
 
 const PARITY_RESERVATION_START = "2026-07-29T16:35:00Z";
@@ -275,6 +275,73 @@ test("B1: before T-70, zero queue rows are created", async () => {
   assert.equal(result.due_count, 0);
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
+});
+
+test("T-30 and T-10 write runs wait without resolving identity or mutating the Reservation", async () => {
+  const reservation = baseReservation();
+  const repo = makeFakeRepo([reservation]);
+  let identityAttempts = 0;
+  for (const minutes of [30, 10]) {
+    const result = await runEventRebalance(KICKOFF_MS - minutes * 60_000, { write: true }, {
+      repo,
+      onFinalIdentityAttempt: () => { identityAttempts += 1; },
+      fetchExactTokenOrderbook: async () => { throw new Error("early LIVE_GUARD forbidden"); },
+    });
+    assert.equal(result.queued_count, 0);
+    assert.equal(result.skipped_count, 0);
+    assert.equal(result.outcomes[0]?.result, "WAITING_FINAL_REBALANCE");
+    assert.equal(reservation.status, "RESERVED");
+  }
+  assert.equal(identityAttempts, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(repo.skippedCalls.length, 0);
+  assert.equal(repo.queuedStatusCalls.length, 0);
+});
+
+test("T-8 final write requires LIVE_GUARD and queues once on PASS", async () => {
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const repo = makeFakeRepo([authority.reservation]);
+  let guardCalls = 0;
+  const telemetry: Array<{ pass: boolean; tokenId: string }> = [];
+  const finalNow = IN_WINDOW_MS;
+  const result = await runEventRebalance(finalNow, { write: true }, {
+    repo,
+    fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows,
+    fetchExactTokenOrderbook: async (tokenId) => {
+      guardCalls += 1;
+      return authority.fetchExactTokenOrderbook();
+    },
+    writeGuardTelemetry: async (_reservation, input) => { telemetry.push({ pass: input.pass, tokenId: input.tokenId }); },
+  });
+  assert.equal(guardCalls, 1, JSON.stringify(result.outcomes));
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  assert.equal(authority.reservation.status, "QUEUED");
+  assert.deepEqual(telemetry, [{ pass: true, tokenId: "token-esp-arg-spain" }]);
+  assert.equal(repo.queueRows[0].diagnostics?.current_executable_price, 0.4);
+});
+
+test("T-8 GSP guard REJECT writes telemetry and no Queue", async () => {
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const repo = makeFakeRepo([authority.reservation]);
+  let guardCalls = 0;
+  const telemetry: Array<{ pass: boolean; reason: string | null }> = [];
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows,
+    fetchExactTokenOrderbook: async (tokenId) => {
+      guardCalls += 1;
+      return { ok: true, tokenId, latencyMs: 1, book: { tokenId, bids: [{ price: 0.4, size: 100 }], asks: [{ price: 0.8, size: 100 }] } };
+    },
+    writeGuardTelemetry: async (_reservation, input) => { telemetry.push({ pass: input.pass, reason: input.rejectionReason }); },
+  });
+  assert.equal(guardCalls, 1);
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /^B2_LIVE_ORDERBOOK_GUARD_FAILED:/);
+  assert.equal(telemetry.length, 1);
+  assert.equal(telemetry[0].pass, false);
+  assert.ok(telemetry[0].reason);
 });
 
 test("B2: inside T-70..T-3, a canonical READY queue row is created", async () => {

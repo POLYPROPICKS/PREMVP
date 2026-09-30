@@ -1,7 +1,7 @@
 import type { FireModelCandidate } from "../../../lib/executor/buildFireModelCandidates";
 import type { NightEventReservationRow } from "../../../lib/executor/executorQueueTypes";
 
-const ONE_HOUR_MS = 60 * 60 * 1000;
+const FINAL_WINDOW_MS = 8 * 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
 export function createQueueAuthorityFixture(
@@ -10,7 +10,7 @@ export function createQueueAuthorityFixture(
   candidate: FireModelCandidate,
   sourceId = "11111111-1111-4111-8111-111111111111",
 ) {
-  const eventStartIso = new Date(nowMs + ONE_HOUR_MS).toISOString();
+  const eventStartIso = new Date(nowMs + FINAL_WINDOW_MS).toISOString();
   const eventSlug = candidate.event_slug || reservation.event_slug || "queue-authority-fixture-event";
   const providerEventId = "provider-event-esp-arg";
   // Production-shaped exact provider market text: the bridge must enter the

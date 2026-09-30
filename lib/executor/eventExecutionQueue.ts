@@ -459,7 +459,7 @@ function buildBlockedCandidateDiag(c: FireModelCandidate): BlockedCandidateDiag 
 export interface RebalanceOutcome {
   match_family_key: string;
   reservation_id: string | null;
-  result: "QUEUED" | "SKIPPED" | "ALREADY_QUEUED";
+  result: "QUEUED" | "SKIPPED" | "ALREADY_QUEUED" | "WAITING_FINAL_REBALANCE";
   reason: string;
   queue_row?: EventExecutionQueueRow;
   blocked_candidates?: BlockedCandidateDiag[];
@@ -1256,7 +1256,9 @@ async function selectQueueRowFromContractAReservation(
   reservation: NightEventReservationRow,
   rebalanceRunId: string,
   _nowMs: number,
-  loadRows: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>
+  loadRows: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>,
+  fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>,
+  writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>,
 ): Promise<DueReservationSelection> {
   const eventStartIso = reservation.event_start_iso;
   const physicalEventId = reservation.physical_event_id;
@@ -1292,10 +1294,25 @@ async function selectQueueRowFromContractAReservation(
   }
   const selected = selectByPlanningFinalIdentityEvidence(candidates, planningIdentity);
   if (!selected) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_SET", queueRow: null };
+  const guard = fetchExactTokenOrderbook ? await evaluateLiveOrderbookGuard(selected, fetchExactTokenOrderbook) : null;
+  if (guard && reservation.id && writeGuardTelemetry) {
+    try {
+      await writeGuardTelemetry(reservation, {
+        ...guard.telemetry, attemptId: randomUUID(), conditionId: selected.conditionId,
+        side: selected.side, marketSlug: selected.marketSlug,
+        referenceEntryPrice: selected.entryPrice,
+      });
+    } catch {
+      console.error("[live-guard-telemetry] persistence failed");
+    }
+  }
+  if (guard && !guard.pass) {
+    return { outcome: "SKIPPED", reason: `B2_LIVE_ORDERBOOK_GUARD_FAILED: ${guard.reason}`, queueRow: null };
+  }
   const row = buildQueueRowFromExactCandidate(reservation, rebalanceRunId, physicalEventId, eventStartIso, selected, {
     sourceAuthority: "GSP_ANCHOR_SIBLING",
-    mechanicalGuardTrace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "PLANNING_FINAL_IDENTITY_VALIDATED", "IDENTITY_COMPLETE"],
-  });
+    mechanicalGuardTrace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "PLANNING_FINAL_IDENTITY_VALIDATED", "IDENTITY_COMPLETE", ...(guard?.pass ? guard.trace : [])],
+  }, guard?.pass ? guard.evidence : undefined);
   return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_PLANNING_FINAL_IDENTITY_V1", queueRow: row };
 }
 
@@ -1855,6 +1872,16 @@ export async function runEventRebalance(
     due = matched ? [matched] : [];
     expired = [];
   }
+  // The broad Rebalance window remains available for comparisons. Only the
+  // final 3 < minutes_to_start <= 9 window may freeze an economic instruction.
+  // Keep early reservations active; do not resolve identity, run LIVE_GUARD,
+  // write Queue, or mark a terminal Reservation state for them.
+  const waitingForFinal = write ? due.filter((r) =>
+    (Date.parse(r.game_start_iso) - nowMs) / 60_000 > 9
+  ) : [];
+  if (write) due = due.filter((r) =>
+    (Date.parse(r.game_start_iso) - nowMs) / 60_000 <= 9
+  );
   const upcoming = all
     .filter((r) => {
       const startMs = Date.parse(r.game_start_iso);
@@ -1879,7 +1906,12 @@ export async function runEventRebalance(
   const next_check_after_seconds: number | null =
     next_due_reservations.length > 0 ? next_due_reservations[0].next_check_after_seconds : null;
 
-  const outcomes: RebalanceOutcome[] = [];
+  const outcomes: RebalanceOutcome[] = waitingForFinal.map((reservation) => ({
+    match_family_key: reservation.match_family_key,
+    reservation_id: reservation.id ?? null,
+    result: "WAITING_FINAL_REBALANCE",
+    reason: "FINAL_REBALANCE_WINDOW_NOT_OPEN",
+  }));
 
   // ── PREMVP-owned READY Queue deadline sweep ───────────────────────────────
   // Runs BEFORE loadQueuedReservationIds() (the active-Queue blocking/dedupe
@@ -2000,7 +2032,9 @@ export async function runEventRebalance(
                 reservation,
                 rebalanceRunId,
                 nowMs,
-                fetchFinalIdentitySourceRows
+                fetchFinalIdentitySourceRows,
+                fetchExactTokenOrderbook,
+                write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined)) : undefined,
               )
             : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     // Founder-authorized money envelope ($4.00 stake / 0.62 price). The
