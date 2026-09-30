@@ -1,0 +1,3153 @@
+{
+  "ARTIFACT": "MARKET_PRIORITY_POLICY_V1",
+  "STATUS": "NOT_BETTER_THAN_CURRENT_BASELINE",
+  "ORIGIN_MAIN": "e60bc6c5d1d93cec1388ae21a95030d9f84024b2",
+  "CLONE_PROJECT_REF": "nppznoujvnyjargjkmnv",
+  "EVIDENCE_DATE_RANGE": "2026-08-04..2026-09-25",
+  "MODEL_READY_MAX_DATE": "2026-09-29",
+  "CHOICE_SET_DEFINITION": "PRE-SELECTION: per physicalEventKey (=provider_event_id), all ORDINARY rows (resolved non-Exact-Score market type, canonical soccer) sharing the event's FIRST decision timestamp T0; deduped by conditionId::tokenId::decisionAt. Source: research_model_ready_rows via frozen v2 reconciliation extended range — NOT research_strategy_selected_bets.",
+  "BASELINE": "CURRENT_EARLY_PIN: first row of the T0 ordinary choice set under the tie-break (equals runStandaloneStrict chronological-first for isOrdinaryHold rows).",
+  "TIE_BREAK": "decisionTimestamp asc -> entryPrice asc -> conditionId asc -> tokenId asc -> candidateIdentity asc (decision-time-only; no outcome).",
+  "FAIL_CLOSED": [
+    "null physicalEventKey",
+    "UNRESOLVED market type",
+    "soccer_exact_score",
+    "entryPrice outside (0,1)",
+    "non-canonical-soccer",
+    "event missing a required family for pair policies -> not in domain (no bet)",
+    "empty choice set -> no bet"
+  ],
+  "SELECTION_RULE_FROZEN": {
+    "DOMAIN": "policy in ALL_ORDINARY_EVENTS or PAIR domain",
+    "MIN_BOTH_SETTLED_DIFFER_N": 100,
+    "MIN_TOTAL_DELTA_PNL_U": 0.0001,
+    "MIN_Z": 1.64,
+    "MIN_SPLITS_WITH_POSITIVE_DELTA": 3,
+    "MAX_TOP_CODE_SHARE_OF_POSITIVE_DELTA": 0.4,
+    "MAX_DD_NOT_WORSE_THAN_BASELINE_BY": 0.25
+  },
+  "VERDICTS": [
+    {
+      "policy": "SPREADS_FIRST",
+      "pass": false,
+      "checks": {
+        "n": 169,
+        "delta": -3.0235,
+        "z": -0.1051,
+        "splitsPositive": 1,
+        "topCodeShare": 0.1357,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "MONEYLINE_FIRST",
+      "pass": false,
+      "checks": {
+        "n": 193,
+        "delta": 12.5067,
+        "z": 0.3753,
+        "splitsPositive": 1,
+        "topCodeShare": 0.1021,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "TOTALS_FIRST",
+      "pass": false,
+      "checks": {
+        "n": 179,
+        "delta": 24.8672,
+        "z": 0.8278,
+        "splitsPositive": 2,
+        "topCodeShare": 0.0995,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "SPREAD_OVER_ML",
+      "pass": false,
+      "checks": {
+        "n": 97,
+        "delta": -1.0704,
+        "z": -0.0466,
+        "splitsPositive": 1,
+        "topCodeShare": 0.2227,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "ML_OVER_SPREAD",
+      "pass": false,
+      "checks": {
+        "n": 121,
+        "delta": 14.4599,
+        "z": 0.5081,
+        "splitsPositive": 1,
+        "topCodeShare": 0.132,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "SPREAD_OVER_TOTALS",
+      "pass": false,
+      "checks": {
+        "n": 111,
+        "delta": 4.0331,
+        "z": 0.1741,
+        "splitsPositive": 1,
+        "topCodeShare": 0.2062,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "TOTALS_OVER_SPREAD",
+      "pass": false,
+      "checks": {
+        "n": 135,
+        "delta": 23.2791,
+        "z": 0.8498,
+        "splitsPositive": 3,
+        "topCodeShare": 0.0933,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "ML_OVER_TOTALS",
+      "pass": false,
+      "checks": {
+        "n": 148,
+        "delta": 18.5969,
+        "z": 0.5932,
+        "splitsPositive": 1,
+        "topCodeShare": 0.1057,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "TOTALS_OVER_ML",
+      "pass": false,
+      "checks": {
+        "n": 110,
+        "delta": 31.046,
+        "z": 1.2081,
+        "splitsPositive": 2,
+        "topCodeShare": 0.0841,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "CORE_OVER_CORNERS",
+      "pass": false,
+      "checks": {
+        "n": 0,
+        "delta": 0,
+        "z": 0,
+        "splitsPositive": 0,
+        "topCodeShare": 0,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "CORNERS_OVER_CORE",
+      "pass": false,
+      "checks": {
+        "n": 0,
+        "delta": 0,
+        "z": 0,
+        "splitsPositive": 0,
+        "topCodeShare": 0,
+        "ddOk": true
+      }
+    },
+    {
+      "policy": "CORE_OVER_OTHER",
+      "pass": false,
+      "checks": {
+        "n": 53,
+        "delta": 7.245,
+        "z": 0.4701,
+        "splitsPositive": 1,
+        "topCodeShare": 0.3537,
+        "ddOk": false
+      }
+    },
+    {
+      "policy": "OTHER_OVER_CORE",
+      "pass": false,
+      "checks": {
+        "n": 34,
+        "delta": -8.9011,
+        "z": -0.6567,
+        "splitsPositive": 1,
+        "topCodeShare": 0.4965,
+        "ddOk": true
+      }
+    }
+  ],
+  "CHOICE_SET_EVENT_N_TOTAL": 4364,
+  "SAME_EVENT_FAMILY_OVERLAP_T0": {
+    "spreads&moneyline": 291,
+    "spreads&totals": 379,
+    "spreads&total_corners": 0,
+    "spreads&other_structured": 59,
+    "moneyline&totals": 371,
+    "moneyline&total_corners": 0,
+    "moneyline&other_structured": 37,
+    "totals&total_corners": 0,
+    "totals&other_structured": 85,
+    "total_corners&other_structured": 13
+  },
+  "SAME_EVENT_FAMILY_OVERLAP_ANY_TIME_DIAGNOSTIC": {
+    "spreads&moneyline": 436,
+    "spreads&totals": 695,
+    "spreads&total_corners": 0,
+    "spreads&other_structured": 147,
+    "moneyline&totals": 460,
+    "moneyline&total_corners": 0,
+    "moneyline&other_structured": 46,
+    "totals&total_corners": 0,
+    "totals&other_structured": 311,
+    "total_corners&other_structured": 148
+  },
+  "POLICIES": [
+    {
+      "policy": "SPREADS_FIRST",
+      "domain": "ALL_ORDINARY_EVENTS",
+      "exact_priority": [
+        "spreads",
+        "moneyline",
+        "totals",
+        "total_corners",
+        "other_structured"
+      ],
+      "requireAll": [],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 4364,
+      "SELECTED_FAMILY_MIX": {
+        "totals": 784,
+        "spreads": 783,
+        "moneyline": 1239,
+        "other_structured": 1179,
+        "total_corners": 379
+      },
+      "POLICY": {
+        "SELECTED_N": 4364,
+        "SETTLED_N": 2501,
+        "OPEN_N": 1863,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 987,
+        "LOSSES": 1514,
+        "PNL_U": 33.85,
+        "ROI_PCT": 1.3535,
+        "MAX_DD_U": -98.62,
+        "BETS_PER_DAY": 94.8696,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 626,
+            "SETTLED_N": 539,
+            "OPEN_N": 87,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 234,
+            "LOSSES": 305,
+            "PNL_U": 51.2,
+            "ROI_PCT": 9.4989,
+            "MAX_DD_U": -23.55,
+            "BETS_PER_DAY": 28.4545
+          },
+          "SEP01_12": {
+            "SELECTED_N": 1833,
+            "SETTLED_N": 1095,
+            "OPEN_N": 738,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 428,
+            "LOSSES": 667,
+            "PNL_U": -17.14,
+            "ROI_PCT": -1.5652,
+            "MAX_DD_U": -64.95,
+            "BETS_PER_DAY": 166.6364
+          },
+          "SEP13_24": {
+            "SELECTED_N": 1304,
+            "SETTLED_N": 809,
+            "OPEN_N": 495,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 288,
+            "LOSSES": 521,
+            "PNL_U": -15.4,
+            "ROI_PCT": -1.904,
+            "MAX_DD_U": -68.91,
+            "BETS_PER_DAY": 108.6667
+          },
+          "SEP25_29": {
+            "SELECTED_N": 601,
+            "SETTLED_N": 58,
+            "OPEN_N": 543,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 21,
+            "PNL_U": 15.19,
+            "ROI_PCT": 26.1971,
+            "MAX_DD_U": -5.49,
+            "BETS_PER_DAY": 601
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 4212,
+            "SETTLED_N": 2419,
+            "OPEN_N": 1793,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 962,
+            "LOSSES": 1457,
+            "PNL_U": 38.37,
+            "ROI_PCT": 1.5861,
+            "MAX_DD_U": -98.62,
+            "BETS_PER_DAY": 110.8421
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 152,
+            "SETTLED_N": 82,
+            "OPEN_N": 70,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 25,
+            "LOSSES": 57,
+            "PNL_U": -4.52,
+            "ROI_PCT": -5.5079,
+            "MAX_DD_U": -15.48,
+            "BETS_PER_DAY": 15.2
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 4364,
+        "SETTLED_N": 2543,
+        "OPEN_N": 1821,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 986,
+        "LOSSES": 1557,
+        "PNL_U": 41.5,
+        "ROI_PCT": 1.6317,
+        "MAX_DD_U": -98.15,
+        "BETS_PER_DAY": 94.8696,
+        "FAMILY_MIX": {
+          "totals": 955,
+          "spreads": 543,
+          "moneyline": 1266,
+          "other_structured": 1224,
+          "total_corners": 376
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 626,
+            "SETTLED_N": 534,
+            "OPEN_N": 92,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 233,
+            "LOSSES": 301,
+            "PNL_U": 58.37,
+            "ROI_PCT": 10.9312,
+            "MAX_DD_U": -21.94,
+            "BETS_PER_DAY": 28.4545
+          },
+          "SEP01_12": {
+            "SELECTED_N": 1833,
+            "SETTLED_N": 1097,
+            "OPEN_N": 736,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 429,
+            "LOSSES": 668,
+            "PNL_U": -6.63,
+            "ROI_PCT": -0.6044,
+            "MAX_DD_U": -57.18,
+            "BETS_PER_DAY": 166.6364
+          },
+          "SEP13_24": {
+            "SELECTED_N": 1304,
+            "SETTLED_N": 854,
+            "OPEN_N": 450,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 287,
+            "LOSSES": 567,
+            "PNL_U": -25.44,
+            "ROI_PCT": -2.9791,
+            "MAX_DD_U": -90.68,
+            "BETS_PER_DAY": 108.6667
+          },
+          "SEP25_29": {
+            "SELECTED_N": 601,
+            "SETTLED_N": 58,
+            "OPEN_N": 543,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 21,
+            "PNL_U": 15.19,
+            "ROI_PCT": 26.1971,
+            "MAX_DD_U": -5.49,
+            "BETS_PER_DAY": 601
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 337,
+        "BOTH_SETTLED_N": 169,
+        "MEAN_DELTA_PNL_U": -0.0179,
+        "TOTAL_DELTA_PNL_U": -3.0235,
+        "Z": -0.1051,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 17,
+            "DELTA_PNL_U": -2.1736
+          },
+          "SEP01_12": {
+            "N": 35,
+            "DELTA_PNL_U": -10.0701
+          },
+          "SEP13_24": {
+            "N": 117,
+            "DELTA_PNL_U": 9.2202
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "sea",
+          "share": 0.1357
+        }
+      }
+    },
+    {
+      "policy": "MONEYLINE_FIRST",
+      "domain": "ALL_ORDINARY_EVENTS",
+      "exact_priority": [
+        "moneyline",
+        "spreads",
+        "totals",
+        "total_corners",
+        "other_structured"
+      ],
+      "requireAll": [],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 4364,
+      "SELECTED_FAMILY_MIX": {
+        "totals": 784,
+        "spreads": 492,
+        "moneyline": 1530,
+        "other_structured": 1179,
+        "total_corners": 379
+      },
+      "POLICY": {
+        "SELECTED_N": 4364,
+        "SETTLED_N": 2551,
+        "OPEN_N": 1813,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 1001,
+        "LOSSES": 1550,
+        "PNL_U": 45.64,
+        "ROI_PCT": 1.789,
+        "MAX_DD_U": -85.84,
+        "BETS_PER_DAY": 94.8696,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 626,
+            "SETTLED_N": 540,
+            "OPEN_N": 86,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 234,
+            "LOSSES": 306,
+            "PNL_U": 50.2,
+            "ROI_PCT": 9.2961,
+            "MAX_DD_U": -23.55,
+            "BETS_PER_DAY": 28.4545
+          },
+          "SEP01_12": {
+            "SELECTED_N": 1833,
+            "SETTLED_N": 1095,
+            "OPEN_N": 738,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 428,
+            "LOSSES": 667,
+            "PNL_U": -17.69,
+            "ROI_PCT": -1.6158,
+            "MAX_DD_U": -64.95,
+            "BETS_PER_DAY": 166.6364
+          },
+          "SEP13_24": {
+            "SELECTED_N": 1304,
+            "SETTLED_N": 858,
+            "OPEN_N": 446,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 302,
+            "LOSSES": 556,
+            "PNL_U": -2.06,
+            "ROI_PCT": -0.2405,
+            "MAX_DD_U": -62.3,
+            "BETS_PER_DAY": 108.6667
+          },
+          "SEP25_29": {
+            "SELECTED_N": 601,
+            "SETTLED_N": 58,
+            "OPEN_N": 543,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 21,
+            "PNL_U": 15.19,
+            "ROI_PCT": 26.1971,
+            "MAX_DD_U": -5.49,
+            "BETS_PER_DAY": 601
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 4212,
+            "SETTLED_N": 2468,
+            "OPEN_N": 1744,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 976,
+            "LOSSES": 1492,
+            "PNL_U": 51.15,
+            "ROI_PCT": 2.0727,
+            "MAX_DD_U": -85.84,
+            "BETS_PER_DAY": 110.8421
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 152,
+            "SETTLED_N": 83,
+            "OPEN_N": 69,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 25,
+            "LOSSES": 58,
+            "PNL_U": -5.52,
+            "ROI_PCT": -6.6464,
+            "MAX_DD_U": -15.48,
+            "BETS_PER_DAY": 15.2
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 4364,
+        "SETTLED_N": 2543,
+        "OPEN_N": 1821,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 986,
+        "LOSSES": 1557,
+        "PNL_U": 41.5,
+        "ROI_PCT": 1.6317,
+        "MAX_DD_U": -98.15,
+        "BETS_PER_DAY": 94.8696,
+        "FAMILY_MIX": {
+          "totals": 955,
+          "spreads": 543,
+          "moneyline": 1266,
+          "other_structured": 1224,
+          "total_corners": 376
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 626,
+            "SETTLED_N": 534,
+            "OPEN_N": 92,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 233,
+            "LOSSES": 301,
+            "PNL_U": 58.37,
+            "ROI_PCT": 10.9312,
+            "MAX_DD_U": -21.94,
+            "BETS_PER_DAY": 28.4545
+          },
+          "SEP01_12": {
+            "SELECTED_N": 1833,
+            "SETTLED_N": 1097,
+            "OPEN_N": 736,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 429,
+            "LOSSES": 668,
+            "PNL_U": -6.63,
+            "ROI_PCT": -0.6044,
+            "MAX_DD_U": -57.18,
+            "BETS_PER_DAY": 166.6364
+          },
+          "SEP13_24": {
+            "SELECTED_N": 1304,
+            "SETTLED_N": 854,
+            "OPEN_N": 450,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 287,
+            "LOSSES": 567,
+            "PNL_U": -25.44,
+            "ROI_PCT": -2.9791,
+            "MAX_DD_U": -90.68,
+            "BETS_PER_DAY": 108.6667
+          },
+          "SEP25_29": {
+            "SELECTED_N": 601,
+            "SETTLED_N": 58,
+            "OPEN_N": 543,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 21,
+            "PNL_U": 15.19,
+            "ROI_PCT": 26.1971,
+            "MAX_DD_U": -5.49,
+            "BETS_PER_DAY": 601
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 331,
+        "BOTH_SETTLED_N": 193,
+        "MEAN_DELTA_PNL_U": 0.0648,
+        "TOTAL_DELTA_PNL_U": 12.5067,
+        "Z": 0.3753,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 17,
+            "DELTA_PNL_U": -2.1736
+          },
+          "SEP01_12": {
+            "N": 42,
+            "DELTA_PNL_U": -10.6236
+          },
+          "SEP13_24": {
+            "N": 134,
+            "DELTA_PNL_U": 25.3039
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "sea",
+          "share": 0.1021
+        }
+      }
+    },
+    {
+      "policy": "TOTALS_FIRST",
+      "domain": "ALL_ORDINARY_EVENTS",
+      "exact_priority": [
+        "totals",
+        "spreads",
+        "moneyline",
+        "total_corners",
+        "other_structured"
+      ],
+      "requireAll": [],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 4364,
+      "SELECTED_FAMILY_MIX": {
+        "totals": 1246,
+        "spreads": 404,
+        "moneyline": 1156,
+        "other_structured": 1179,
+        "total_corners": 379
+      },
+      "POLICY": {
+        "SELECTED_N": 4364,
+        "SETTLED_N": 2531,
+        "OPEN_N": 1833,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 1008,
+        "LOSSES": 1523,
+        "PNL_U": 66.89,
+        "ROI_PCT": 2.6429,
+        "MAX_DD_U": -79.14,
+        "BETS_PER_DAY": 94.8696,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 626,
+            "SETTLED_N": 537,
+            "OPEN_N": 89,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 235,
+            "LOSSES": 302,
+            "PNL_U": 54.43,
+            "ROI_PCT": 10.1365,
+            "MAX_DD_U": -21.55,
+            "BETS_PER_DAY": 28.4545
+          },
+          "SEP01_12": {
+            "SELECTED_N": 1833,
+            "SETTLED_N": 1094,
+            "OPEN_N": 739,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 436,
+            "LOSSES": 658,
+            "PNL_U": -5,
+            "ROI_PCT": -0.4568,
+            "MAX_DD_U": -63.73,
+            "BETS_PER_DAY": 166.6364
+          },
+          "SEP13_24": {
+            "SELECTED_N": 1304,
+            "SETTLED_N": 842,
+            "OPEN_N": 462,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 300,
+            "LOSSES": 542,
+            "PNL_U": 2.26,
+            "ROI_PCT": 0.2687,
+            "MAX_DD_U": -79.14,
+            "BETS_PER_DAY": 108.6667
+          },
+          "SEP25_29": {
+            "SELECTED_N": 601,
+            "SETTLED_N": 58,
+            "OPEN_N": 543,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 21,
+            "PNL_U": 15.19,
+            "ROI_PCT": 26.1971,
+            "MAX_DD_U": -5.49,
+            "BETS_PER_DAY": 601
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 4212,
+            "SETTLED_N": 2451,
+            "OPEN_N": 1761,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 983,
+            "LOSSES": 1468,
+            "PNL_U": 69.41,
+            "ROI_PCT": 2.8318,
+            "MAX_DD_U": -79.14,
+            "BETS_PER_DAY": 110.8421
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 152,
+            "SETTLED_N": 80,
+            "OPEN_N": 72,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 25,
+            "LOSSES": 55,
+            "PNL_U": -2.52,
+            "ROI_PCT": -3.1456,
+            "MAX_DD_U": -15.48,
+            "BETS_PER_DAY": 15.2
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 4364,
+        "SETTLED_N": 2543,
+        "OPEN_N": 1821,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 986,
+        "LOSSES": 1557,
+        "PNL_U": 41.5,
+        "ROI_PCT": 1.6317,
+        "MAX_DD_U": -98.15,
+        "BETS_PER_DAY": 94.8696,
+        "FAMILY_MIX": {
+          "totals": 955,
+          "spreads": 543,
+          "moneyline": 1266,
+          "other_structured": 1224,
+          "total_corners": 376
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 626,
+            "SETTLED_N": 534,
+            "OPEN_N": 92,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 233,
+            "LOSSES": 301,
+            "PNL_U": 58.37,
+            "ROI_PCT": 10.9312,
+            "MAX_DD_U": -21.94,
+            "BETS_PER_DAY": 28.4545
+          },
+          "SEP01_12": {
+            "SELECTED_N": 1833,
+            "SETTLED_N": 1097,
+            "OPEN_N": 736,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 429,
+            "LOSSES": 668,
+            "PNL_U": -6.63,
+            "ROI_PCT": -0.6044,
+            "MAX_DD_U": -57.18,
+            "BETS_PER_DAY": 166.6364
+          },
+          "SEP13_24": {
+            "SELECTED_N": 1304,
+            "SETTLED_N": 854,
+            "OPEN_N": 450,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 287,
+            "LOSSES": 567,
+            "PNL_U": -25.44,
+            "ROI_PCT": -2.9791,
+            "MAX_DD_U": -90.68,
+            "BETS_PER_DAY": 108.6667
+          },
+          "SEP25_29": {
+            "SELECTED_N": 601,
+            "SETTLED_N": 58,
+            "OPEN_N": 543,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 21,
+            "PNL_U": 15.19,
+            "ROI_PCT": 26.1971,
+            "MAX_DD_U": -5.49,
+            "BETS_PER_DAY": 601
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 305,
+        "BOTH_SETTLED_N": 179,
+        "MEAN_DELTA_PNL_U": 0.1389,
+        "TOTAL_DELTA_PNL_U": 24.8672,
+        "Z": 0.8278,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 25,
+            "DELTA_PNL_U": -0.9398
+          },
+          "SEP01_12": {
+            "N": 57,
+            "DELTA_PNL_U": 2.7457
+          },
+          "SEP13_24": {
+            "N": 97,
+            "DELTA_PNL_U": 23.0613
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "?",
+          "share": 0.0995
+        }
+      }
+    },
+    {
+      "policy": "SPREAD_OVER_ML",
+      "domain": "PAIR spreads&moneyline",
+      "exact_priority": [
+        "spreads",
+        "moneyline"
+      ],
+      "requireAll": [
+        "spreads",
+        "moneyline"
+      ],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 291,
+      "SELECTED_FAMILY_MIX": {
+        "spreads": 291
+      },
+      "POLICY": {
+        "SELECTED_N": 291,
+        "SETTLED_N": 171,
+        "OPEN_N": 120,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 41,
+        "LOSSES": 130,
+        "PNL_U": -13.51,
+        "ROI_PCT": -7.9007,
+        "MAX_DD_U": -31.04,
+        "BETS_PER_DAY": 26.4545,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 21,
+            "SETTLED_N": 21,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 4,
+            "LOSSES": 17,
+            "PNL_U": -7.61,
+            "ROI_PCT": -36.2375,
+            "MAX_DD_U": -7.96,
+            "BETS_PER_DAY": 21
+          },
+          "SEP13_24": {
+            "SELECTED_N": 269,
+            "SETTLED_N": 150,
+            "OPEN_N": 119,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 113,
+            "PNL_U": -5.9,
+            "ROI_PCT": -3.9336,
+            "MAX_DD_U": -29.91,
+            "BETS_PER_DAY": 29.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 290,
+            "SETTLED_N": 171,
+            "OPEN_N": 119,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 41,
+            "LOSSES": 130,
+            "PNL_U": -13.51,
+            "ROI_PCT": -7.9007,
+            "MAX_DD_U": -31.04,
+            "BETS_PER_DAY": 29
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 291,
+        "SETTLED_N": 203,
+        "OPEN_N": 88,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 41,
+        "LOSSES": 162,
+        "PNL_U": -14.26,
+        "ROI_PCT": -7.0232,
+        "MAX_DD_U": -38.22,
+        "BETS_PER_DAY": 26.4545,
+        "FAMILY_MIX": {
+          "moneyline": 93,
+          "spreads": 87,
+          "totals": 109,
+          "other_structured": 2
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 21,
+            "SETTLED_N": 21,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 4,
+            "LOSSES": 17,
+            "PNL_U": -2.66,
+            "ROI_PCT": -12.6876,
+            "MAX_DD_U": -6.89,
+            "BETS_PER_DAY": 21
+          },
+          "SEP13_24": {
+            "SELECTED_N": 269,
+            "SETTLED_N": 182,
+            "OPEN_N": 87,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 145,
+            "PNL_U": -11.59,
+            "ROI_PCT": -6.3696,
+            "MAX_DD_U": -38.22,
+            "BETS_PER_DAY": 29.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 204,
+        "BOTH_SETTLED_N": 97,
+        "MEAN_DELTA_PNL_U": -0.011,
+        "TOTAL_DELTA_PNL_U": -1.0704,
+        "Z": -0.0466,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP01_12": {
+            "N": 10,
+            "DELTA_PNL_U": -4.9455
+          },
+          "SEP13_24": {
+            "N": 87,
+            "DELTA_PNL_U": 3.8751
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "nfl",
+          "share": 0.2227
+        }
+      }
+    },
+    {
+      "policy": "ML_OVER_SPREAD",
+      "domain": "PAIR spreads&moneyline",
+      "exact_priority": [
+        "moneyline",
+        "spreads"
+      ],
+      "requireAll": [
+        "spreads",
+        "moneyline"
+      ],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 291,
+      "SELECTED_FAMILY_MIX": {
+        "moneyline": 291
+      },
+      "POLICY": {
+        "SELECTED_N": 291,
+        "SETTLED_N": 221,
+        "OPEN_N": 70,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 55,
+        "LOSSES": 166,
+        "PNL_U": -1.72,
+        "ROI_PCT": -0.78,
+        "MAX_DD_U": -19.76,
+        "BETS_PER_DAY": 26.4545,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 1,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 1,
+            "PNL_U": -1,
+            "ROI_PCT": -100,
+            "MAX_DD_U": -1,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 21,
+            "SETTLED_N": 21,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 4,
+            "LOSSES": 17,
+            "PNL_U": -8.16,
+            "ROI_PCT": -38.8733,
+            "MAX_DD_U": -15.23,
+            "BETS_PER_DAY": 21
+          },
+          "SEP13_24": {
+            "SELECTED_N": 269,
+            "SETTLED_N": 199,
+            "OPEN_N": 70,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 51,
+            "LOSSES": 148,
+            "PNL_U": 7.44,
+            "ROI_PCT": 3.7385,
+            "MAX_DD_U": -19.76,
+            "BETS_PER_DAY": 29.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 290,
+            "SETTLED_N": 220,
+            "OPEN_N": 70,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 55,
+            "LOSSES": 165,
+            "PNL_U": -0.72,
+            "ROI_PCT": -0.329,
+            "MAX_DD_U": -19.76,
+            "BETS_PER_DAY": 29
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 1,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 1,
+            "PNL_U": -1,
+            "ROI_PCT": -100,
+            "MAX_DD_U": -1,
+            "BETS_PER_DAY": 1
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 291,
+        "SETTLED_N": 203,
+        "OPEN_N": 88,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 41,
+        "LOSSES": 162,
+        "PNL_U": -14.26,
+        "ROI_PCT": -7.0232,
+        "MAX_DD_U": -38.22,
+        "BETS_PER_DAY": 26.4545,
+        "FAMILY_MIX": {
+          "moneyline": 93,
+          "spreads": 87,
+          "totals": 109,
+          "other_structured": 2
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 21,
+            "SETTLED_N": 21,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 4,
+            "LOSSES": 17,
+            "PNL_U": -2.66,
+            "ROI_PCT": -12.6876,
+            "MAX_DD_U": -6.89,
+            "BETS_PER_DAY": 21
+          },
+          "SEP13_24": {
+            "SELECTED_N": 269,
+            "SETTLED_N": 182,
+            "OPEN_N": 87,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 37,
+            "LOSSES": 145,
+            "PNL_U": -11.59,
+            "ROI_PCT": -6.3696,
+            "MAX_DD_U": -38.22,
+            "BETS_PER_DAY": 29.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 198,
+        "BOTH_SETTLED_N": 121,
+        "MEAN_DELTA_PNL_U": 0.1195,
+        "TOTAL_DELTA_PNL_U": 14.4599,
+        "Z": 0.5081,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP01_12": {
+            "N": 17,
+            "DELTA_PNL_U": -5.499
+          },
+          "SEP13_24": {
+            "N": 104,
+            "DELTA_PNL_U": 19.9589
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "nfl",
+          "share": 0.132
+        }
+      }
+    },
+    {
+      "policy": "SPREAD_OVER_TOTALS",
+      "domain": "PAIR spreads&totals",
+      "exact_priority": [
+        "spreads",
+        "totals"
+      ],
+      "requireAll": [
+        "spreads",
+        "totals"
+      ],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 379,
+      "SELECTED_FAMILY_MIX": {
+        "spreads": 379
+      },
+      "POLICY": {
+        "SELECTED_N": 379,
+        "SETTLED_N": 229,
+        "OPEN_N": 150,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 54,
+        "LOSSES": 175,
+        "PNL_U": -34.89,
+        "ROI_PCT": -15.2376,
+        "MAX_DD_U": -49.81,
+        "BETS_PER_DAY": 13.5357,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 29,
+            "SETTLED_N": 20,
+            "OPEN_N": 9,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 3,
+            "LOSSES": 17,
+            "PNL_U": -12.14,
+            "ROI_PCT": -60.6883,
+            "MAX_DD_U": -12.14,
+            "BETS_PER_DAY": 3.2222
+          },
+          "SEP01_12": {
+            "SELECTED_N": 62,
+            "SETTLED_N": 50,
+            "OPEN_N": 12,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 12,
+            "LOSSES": 38,
+            "PNL_U": -10.63,
+            "ROI_PCT": -21.2679,
+            "MAX_DD_U": -10.98,
+            "BETS_PER_DAY": 6.2
+          },
+          "SEP13_24": {
+            "SELECTED_N": 288,
+            "SETTLED_N": 159,
+            "OPEN_N": 129,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 39,
+            "LOSSES": 120,
+            "PNL_U": -12.12,
+            "ROI_PCT": -7.6242,
+            "MAX_DD_U": -31.52,
+            "BETS_PER_DAY": 32
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 362,
+            "SETTLED_N": 221,
+            "OPEN_N": 141,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 54,
+            "LOSSES": 167,
+            "PNL_U": -26.89,
+            "ROI_PCT": -12.1693,
+            "MAX_DD_U": -43.04,
+            "BETS_PER_DAY": 16.4545
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 17,
+            "SETTLED_N": 8,
+            "OPEN_N": 9,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 8,
+            "PNL_U": -8,
+            "ROI_PCT": -100,
+            "MAX_DD_U": -8,
+            "BETS_PER_DAY": 2.8333
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 379,
+        "SETTLED_N": 264,
+        "OPEN_N": 115,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 52,
+        "LOSSES": 212,
+        "PNL_U": -40.11,
+        "ROI_PCT": -15.1925,
+        "MAX_DD_U": -43.53,
+        "BETS_PER_DAY": 13.5357,
+        "FAMILY_MIX": {
+          "moneyline": 92,
+          "spreads": 146,
+          "totals": 138,
+          "other_structured": 3
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 29,
+            "SETTLED_N": 17,
+            "OPEN_N": 12,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 3,
+            "LOSSES": 14,
+            "PNL_U": -9.14,
+            "ROI_PCT": -53.7509,
+            "MAX_DD_U": -9.14,
+            "BETS_PER_DAY": 3.2222
+          },
+          "SEP01_12": {
+            "SELECTED_N": 62,
+            "SETTLED_N": 50,
+            "OPEN_N": 12,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 11,
+            "LOSSES": 39,
+            "PNL_U": -8.01,
+            "ROI_PCT": -16.0281,
+            "MAX_DD_U": -8.87,
+            "BETS_PER_DAY": 6.2
+          },
+          "SEP13_24": {
+            "SELECTED_N": 288,
+            "SETTLED_N": 197,
+            "OPEN_N": 91,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 38,
+            "LOSSES": 159,
+            "PNL_U": -22.96,
+            "ROI_PCT": -11.653,
+            "MAX_DD_U": -42.22,
+            "BETS_PER_DAY": 32
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 233,
+        "BOTH_SETTLED_N": 111,
+        "MEAN_DELTA_PNL_U": 0.0363,
+        "TOTAL_DELTA_PNL_U": 4.0331,
+        "Z": 0.1741,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 4,
+            "DELTA_PNL_U": 0
+          },
+          "SEP01_12": {
+            "N": 15,
+            "DELTA_PNL_U": -2.6199
+          },
+          "SEP13_24": {
+            "N": 92,
+            "DELTA_PNL_U": 6.653
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "nfl",
+          "share": 0.2062
+        }
+      }
+    },
+    {
+      "policy": "TOTALS_OVER_SPREAD",
+      "domain": "PAIR spreads&totals",
+      "exact_priority": [
+        "totals",
+        "spreads"
+      ],
+      "requireAll": [
+        "spreads",
+        "totals"
+      ],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 379,
+      "SELECTED_FAMILY_MIX": {
+        "totals": 379
+      },
+      "POLICY": {
+        "SELECTED_N": 379,
+        "SETTLED_N": 256,
+        "OPEN_N": 123,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 73,
+        "LOSSES": 183,
+        "PNL_U": -7.37,
+        "ROI_PCT": -2.8784,
+        "MAX_DD_U": -31.81,
+        "BETS_PER_DAY": 13.5357,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 29,
+            "SETTLED_N": 18,
+            "OPEN_N": 11,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 4,
+            "LOSSES": 14,
+            "PNL_U": -8.9,
+            "ROI_PCT": -49.4656,
+            "MAX_DD_U": -11.45,
+            "BETS_PER_DAY": 3.2222
+          },
+          "SEP01_12": {
+            "SELECTED_N": 62,
+            "SETTLED_N": 49,
+            "OPEN_N": 13,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 18,
+            "LOSSES": 31,
+            "PNL_U": -2.15,
+            "ROI_PCT": -4.3904,
+            "MAX_DD_U": -7.46,
+            "BETS_PER_DAY": 6.2
+          },
+          "SEP13_24": {
+            "SELECTED_N": 288,
+            "SETTLED_N": 189,
+            "OPEN_N": 99,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 51,
+            "LOSSES": 138,
+            "PNL_U": 3.69,
+            "ROI_PCT": 1.9505,
+            "MAX_DD_U": -31.81,
+            "BETS_PER_DAY": 32
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 362,
+            "SETTLED_N": 250,
+            "OPEN_N": 112,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 73,
+            "LOSSES": 177,
+            "PNL_U": -1.37,
+            "ROI_PCT": -0.5475,
+            "MAX_DD_U": -31.81,
+            "BETS_PER_DAY": 16.4545
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 17,
+            "SETTLED_N": 6,
+            "OPEN_N": 11,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 6,
+            "PNL_U": -6,
+            "ROI_PCT": -100,
+            "MAX_DD_U": -6,
+            "BETS_PER_DAY": 2.8333
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 379,
+        "SETTLED_N": 264,
+        "OPEN_N": 115,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 52,
+        "LOSSES": 212,
+        "PNL_U": -40.11,
+        "ROI_PCT": -15.1925,
+        "MAX_DD_U": -43.53,
+        "BETS_PER_DAY": 13.5357,
+        "FAMILY_MIX": {
+          "moneyline": 92,
+          "spreads": 146,
+          "totals": 138,
+          "other_structured": 3
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 29,
+            "SETTLED_N": 17,
+            "OPEN_N": 12,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 3,
+            "LOSSES": 14,
+            "PNL_U": -9.14,
+            "ROI_PCT": -53.7509,
+            "MAX_DD_U": -9.14,
+            "BETS_PER_DAY": 3.2222
+          },
+          "SEP01_12": {
+            "SELECTED_N": 62,
+            "SETTLED_N": 50,
+            "OPEN_N": 12,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 11,
+            "LOSSES": 39,
+            "PNL_U": -8.01,
+            "ROI_PCT": -16.0281,
+            "MAX_DD_U": -8.87,
+            "BETS_PER_DAY": 6.2
+          },
+          "SEP13_24": {
+            "SELECTED_N": 288,
+            "SETTLED_N": 197,
+            "OPEN_N": 91,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 38,
+            "LOSSES": 159,
+            "PNL_U": -22.96,
+            "ROI_PCT": -11.653,
+            "MAX_DD_U": -42.22,
+            "BETS_PER_DAY": 32
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 241,
+        "BOTH_SETTLED_N": 135,
+        "MEAN_DELTA_PNL_U": 0.1724,
+        "TOTAL_DELTA_PNL_U": 23.2791,
+        "Z": 0.8498,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 12,
+            "DELTA_PNL_U": 1.2338
+          },
+          "SEP01_12": {
+            "N": 37,
+            "DELTA_PNL_U": 6.5371
+          },
+          "SEP13_24": {
+            "N": 86,
+            "DELTA_PNL_U": 15.5082
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "?",
+          "share": 0.0933
+        }
+      }
+    },
+    {
+      "policy": "ML_OVER_TOTALS",
+      "domain": "PAIR moneyline&totals",
+      "exact_priority": [
+        "moneyline",
+        "totals"
+      ],
+      "requireAll": [
+        "moneyline",
+        "totals"
+      ],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 371,
+      "SELECTED_FAMILY_MIX": {
+        "moneyline": 371
+      },
+      "POLICY": {
+        "SELECTED_N": 371,
+        "SETTLED_N": 273,
+        "OPEN_N": 98,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 70,
+        "LOSSES": 203,
+        "PNL_U": -5.52,
+        "ROI_PCT": -2.0201,
+        "MAX_DD_U": -30.07,
+        "BETS_PER_DAY": 33.7273,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 1,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 1,
+            "PNL_U": -1,
+            "ROI_PCT": -100,
+            "MAX_DD_U": -1,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 33,
+            "SETTLED_N": 33,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 7,
+            "LOSSES": 26,
+            "PNL_U": -11.79,
+            "ROI_PCT": -35.7393,
+            "MAX_DD_U": -18.95,
+            "BETS_PER_DAY": 33
+          },
+          "SEP13_24": {
+            "SELECTED_N": 337,
+            "SETTLED_N": 239,
+            "OPEN_N": 98,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 63,
+            "LOSSES": 176,
+            "PNL_U": 7.28,
+            "ROI_PCT": 3.0456,
+            "MAX_DD_U": -21.57,
+            "BETS_PER_DAY": 37.4444
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 370,
+            "SETTLED_N": 272,
+            "OPEN_N": 98,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 70,
+            "LOSSES": 202,
+            "PNL_U": -4.52,
+            "ROI_PCT": -1.6599,
+            "MAX_DD_U": -30.07,
+            "BETS_PER_DAY": 37
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 1,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 1,
+            "PNL_U": -1,
+            "ROI_PCT": -100,
+            "MAX_DD_U": -1,
+            "BETS_PER_DAY": 1
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 371,
+        "SETTLED_N": 260,
+        "OPEN_N": 111,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 54,
+        "LOSSES": 206,
+        "PNL_U": -20.16,
+        "ROI_PCT": -7.7523,
+        "MAX_DD_U": -39.26,
+        "BETS_PER_DAY": 33.7273,
+        "FAMILY_MIX": {
+          "moneyline": 113,
+          "spreads": 85,
+          "totals": 170,
+          "other_structured": 3
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 33,
+            "SETTLED_N": 33,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 6,
+            "LOSSES": 27,
+            "PNL_U": -8.07,
+            "ROI_PCT": -24.4454,
+            "MAX_DD_U": -13.29,
+            "BETS_PER_DAY": 33
+          },
+          "SEP13_24": {
+            "SELECTED_N": 337,
+            "SETTLED_N": 227,
+            "OPEN_N": 110,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 48,
+            "LOSSES": 179,
+            "PNL_U": -12.09,
+            "ROI_PCT": -5.3255,
+            "MAX_DD_U": -39.26,
+            "BETS_PER_DAY": 37.4444
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 258,
+        "BOTH_SETTLED_N": 148,
+        "MEAN_DELTA_PNL_U": 0.1257,
+        "TOTAL_DELTA_PNL_U": 18.5969,
+        "Z": 0.5932,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP01_12": {
+            "N": 23,
+            "DELTA_PNL_U": -3.727
+          },
+          "SEP13_24": {
+            "N": 125,
+            "DELTA_PNL_U": 22.3239
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "nfl",
+          "share": 0.1057
+        }
+      }
+    },
+    {
+      "policy": "TOTALS_OVER_ML",
+      "domain": "PAIR moneyline&totals",
+      "exact_priority": [
+        "totals",
+        "moneyline"
+      ],
+      "requireAll": [
+        "moneyline",
+        "totals"
+      ],
+      "requireAny": [],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 371,
+      "SELECTED_FAMILY_MIX": {
+        "totals": 371
+      },
+      "POLICY": {
+        "SELECTED_N": 371,
+        "SETTLED_N": 250,
+        "OPEN_N": 121,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 73,
+        "LOSSES": 177,
+        "PNL_U": 16.87,
+        "ROI_PCT": 6.7464,
+        "MAX_DD_U": -33.34,
+        "BETS_PER_DAY": 33.7273,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 33,
+            "SETTLED_N": 33,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 12,
+            "LOSSES": 21,
+            "PNL_U": 2.12,
+            "ROI_PCT": 6.4237,
+            "MAX_DD_U": -10.34,
+            "BETS_PER_DAY": 33
+          },
+          "SEP13_24": {
+            "SELECTED_N": 337,
+            "SETTLED_N": 217,
+            "OPEN_N": 120,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 61,
+            "LOSSES": 156,
+            "PNL_U": 14.75,
+            "ROI_PCT": 6.7955,
+            "MAX_DD_U": -33.34,
+            "BETS_PER_DAY": 37.4444
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 370,
+            "SETTLED_N": 250,
+            "OPEN_N": 120,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 73,
+            "LOSSES": 177,
+            "PNL_U": 16.87,
+            "ROI_PCT": 6.7464,
+            "MAX_DD_U": -33.34,
+            "BETS_PER_DAY": 37
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 371,
+        "SETTLED_N": 260,
+        "OPEN_N": 111,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 54,
+        "LOSSES": 206,
+        "PNL_U": -20.16,
+        "ROI_PCT": -7.7523,
+        "MAX_DD_U": -39.26,
+        "BETS_PER_DAY": 33.7273,
+        "FAMILY_MIX": {
+          "moneyline": 113,
+          "spreads": 85,
+          "totals": 170,
+          "other_structured": 3
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 1,
+            "SETTLED_N": 0,
+            "OPEN_N": 1,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 1
+          },
+          "SEP01_12": {
+            "SELECTED_N": 33,
+            "SETTLED_N": 33,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 6,
+            "LOSSES": 27,
+            "PNL_U": -8.07,
+            "ROI_PCT": -24.4454,
+            "MAX_DD_U": -13.29,
+            "BETS_PER_DAY": 33
+          },
+          "SEP13_24": {
+            "SELECTED_N": 337,
+            "SETTLED_N": 227,
+            "OPEN_N": 110,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 48,
+            "LOSSES": 179,
+            "PNL_U": -12.09,
+            "ROI_PCT": -5.3255,
+            "MAX_DD_U": -39.26,
+            "BETS_PER_DAY": 37.4444
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 201,
+        "BOTH_SETTLED_N": 110,
+        "MEAN_DELTA_PNL_U": 0.2822,
+        "TOTAL_DELTA_PNL_U": 31.046,
+        "Z": 1.2081,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP01_12": {
+            "N": 21,
+            "DELTA_PNL_U": 10.1868
+          },
+          "SEP13_24": {
+            "N": 89,
+            "DELTA_PNL_U": 20.8591
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "?",
+          "share": 0.0841
+        }
+      }
+    },
+    {
+      "policy": "CORE_OVER_CORNERS",
+      "domain": "corners&any-core",
+      "exact_priority": [
+        "spreads",
+        "moneyline",
+        "totals",
+        "total_corners"
+      ],
+      "requireAll": [
+        "total_corners"
+      ],
+      "requireAny": [
+        "spreads",
+        "moneyline",
+        "totals"
+      ],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 0,
+      "SELECTED_FAMILY_MIX": {},
+      "POLICY": {
+        "SELECTED_N": 0,
+        "SETTLED_N": 0,
+        "OPEN_N": 0,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": 0,
+        "MAX_DD_U": 0,
+        "BETS_PER_DAY": 0,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP01_12": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP13_24": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {}
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 0,
+        "SETTLED_N": 0,
+        "OPEN_N": 0,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": 0,
+        "MAX_DD_U": 0,
+        "BETS_PER_DAY": 0,
+        "FAMILY_MIX": {},
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP01_12": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP13_24": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 0,
+        "BOTH_SETTLED_N": 0,
+        "MEAN_DELTA_PNL_U": 0,
+        "TOTAL_DELTA_PNL_U": 0,
+        "Z": 0,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP01_12": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP13_24": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": null
+      }
+    },
+    {
+      "policy": "CORNERS_OVER_CORE",
+      "domain": "corners&any-core",
+      "exact_priority": [
+        "total_corners",
+        "spreads",
+        "moneyline",
+        "totals"
+      ],
+      "requireAll": [
+        "total_corners"
+      ],
+      "requireAny": [
+        "spreads",
+        "moneyline",
+        "totals"
+      ],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 0,
+      "SELECTED_FAMILY_MIX": {},
+      "POLICY": {
+        "SELECTED_N": 0,
+        "SETTLED_N": 0,
+        "OPEN_N": 0,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": 0,
+        "MAX_DD_U": 0,
+        "BETS_PER_DAY": 0,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP01_12": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP13_24": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {}
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 0,
+        "SETTLED_N": 0,
+        "OPEN_N": 0,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": 0,
+        "MAX_DD_U": 0,
+        "BETS_PER_DAY": 0,
+        "FAMILY_MIX": {},
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP01_12": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP13_24": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 0,
+        "BOTH_SETTLED_N": 0,
+        "MEAN_DELTA_PNL_U": 0,
+        "TOTAL_DELTA_PNL_U": 0,
+        "Z": 0,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP01_12": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP13_24": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": null
+      }
+    },
+    {
+      "policy": "CORE_OVER_OTHER",
+      "domain": "other_structured&any-core",
+      "exact_priority": [
+        "spreads",
+        "moneyline",
+        "totals",
+        "other_structured"
+      ],
+      "requireAll": [
+        "other_structured"
+      ],
+      "requireAny": [
+        "spreads",
+        "moneyline",
+        "totals"
+      ],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 101,
+      "SELECTED_FAMILY_MIX": {
+        "spreads": 59,
+        "moneyline": 8,
+        "totals": 34
+      },
+      "POLICY": {
+        "SELECTED_N": 101,
+        "SETTLED_N": 75,
+        "OPEN_N": 26,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 27,
+        "LOSSES": 48,
+        "PNL_U": 14.44,
+        "ROI_PCT": 19.253,
+        "MAX_DD_U": -18.98,
+        "BETS_PER_DAY": 3.8846,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 34,
+            "SETTLED_N": 22,
+            "OPEN_N": 12,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 7,
+            "LOSSES": 15,
+            "PNL_U": -6.08,
+            "ROI_PCT": -27.6556,
+            "MAX_DD_U": -9.38,
+            "BETS_PER_DAY": 3.7778
+          },
+          "SEP01_12": {
+            "SELECTED_N": 23,
+            "SETTLED_N": 16,
+            "OPEN_N": 7,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 5,
+            "LOSSES": 11,
+            "PNL_U": -5.9,
+            "ROI_PCT": -36.8766,
+            "MAX_DD_U": -8,
+            "BETS_PER_DAY": 2.875
+          },
+          "SEP13_24": {
+            "SELECTED_N": 44,
+            "SETTLED_N": 37,
+            "OPEN_N": 7,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 15,
+            "LOSSES": 22,
+            "PNL_U": 26.42,
+            "ROI_PCT": 71.4169,
+            "MAX_DD_U": -7,
+            "BETS_PER_DAY": 4.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 82,
+            "SETTLED_N": 67,
+            "OPEN_N": 15,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 27,
+            "LOSSES": 40,
+            "PNL_U": 22.44,
+            "ROI_PCT": 33.4922,
+            "MAX_DD_U": -13.9,
+            "BETS_PER_DAY": 4.1
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 19,
+            "SETTLED_N": 8,
+            "OPEN_N": 11,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 8,
+            "PNL_U": -8,
+            "ROI_PCT": -100,
+            "MAX_DD_U": -8,
+            "BETS_PER_DAY": 3.1667
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 101,
+        "SETTLED_N": 76,
+        "OPEN_N": 25,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 25,
+        "LOSSES": 51,
+        "PNL_U": 11.97,
+        "ROI_PCT": 15.7462,
+        "MAX_DD_U": -9.83,
+        "BETS_PER_DAY": 3.8846,
+        "FAMILY_MIX": {
+          "spreads": 20,
+          "other_structured": 42,
+          "moneyline": 5,
+          "totals": 34
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 34,
+            "SETTLED_N": 19,
+            "OPEN_N": 15,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 6,
+            "LOSSES": 13,
+            "PNL_U": -0.91,
+            "ROI_PCT": -4.7926,
+            "MAX_DD_U": -5,
+            "BETS_PER_DAY": 3.7778
+          },
+          "SEP01_12": {
+            "SELECTED_N": 23,
+            "SETTLED_N": 18,
+            "OPEN_N": 5,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 8,
+            "LOSSES": 10,
+            "PNL_U": 3.76,
+            "ROI_PCT": 20.8942,
+            "MAX_DD_U": -4,
+            "BETS_PER_DAY": 2.875
+          },
+          "SEP13_24": {
+            "SELECTED_N": 44,
+            "SETTLED_N": 39,
+            "OPEN_N": 5,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 11,
+            "LOSSES": 28,
+            "PNL_U": 9.12,
+            "ROI_PCT": 23.3764,
+            "MAX_DD_U": -8,
+            "BETS_PER_DAY": 4.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 72,
+        "BOTH_SETTLED_N": 53,
+        "MEAN_DELTA_PNL_U": 0.1367,
+        "TOTAL_DELTA_PNL_U": 7.245,
+        "Z": 0.4701,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 17,
+            "DELTA_PNL_U": -2.1736
+          },
+          "SEP01_12": {
+            "N": 14,
+            "DELTA_PNL_U": -9.2222
+          },
+          "SEP13_24": {
+            "N": 22,
+            "DELTA_PNL_U": 18.6408
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "nfl",
+          "share": 0.3537
+        }
+      }
+    },
+    {
+      "policy": "OTHER_OVER_CORE",
+      "domain": "other_structured&any-core",
+      "exact_priority": [
+        "other_structured",
+        "spreads",
+        "moneyline",
+        "totals"
+      ],
+      "requireAll": [
+        "other_structured"
+      ],
+      "requireAny": [
+        "spreads",
+        "moneyline",
+        "totals"
+      ],
+      "CHOICE_SET_PHYSICAL_EVENT_N": 101,
+      "SELECTED_FAMILY_MIX": {
+        "other_structured": 101
+      },
+      "POLICY": {
+        "SELECTED_N": 101,
+        "SETTLED_N": 83,
+        "OPEN_N": 18,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 35,
+        "LOSSES": 48,
+        "PNL_U": 14.65,
+        "ROI_PCT": 17.6557,
+        "MAX_DD_U": -7.43,
+        "BETS_PER_DAY": 3.8846,
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 34,
+            "SETTLED_N": 25,
+            "OPEN_N": 9,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 11,
+            "LOSSES": 14,
+            "PNL_U": 12.19,
+            "ROI_PCT": 48.7539,
+            "MAX_DD_U": -3,
+            "BETS_PER_DAY": 3.7778
+          },
+          "SEP01_12": {
+            "SELECTED_N": 23,
+            "SETTLED_N": 19,
+            "OPEN_N": 4,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 8,
+            "LOSSES": 11,
+            "PNL_U": 2.72,
+            "ROI_PCT": 14.3029,
+            "MAX_DD_U": -5.47,
+            "BETS_PER_DAY": 2.875
+          },
+          "SEP13_24": {
+            "SELECTED_N": 44,
+            "SETTLED_N": 39,
+            "OPEN_N": 5,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 16,
+            "LOSSES": 23,
+            "PNL_U": -0.25,
+            "ROI_PCT": -0.6456,
+            "MAX_DD_U": -7.43,
+            "BETS_PER_DAY": 4.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        },
+        "SOURCE_REGIME_SPLIT": {
+          "SEP_PUBLIC_RICH_V1": {
+            "SELECTED_N": 82,
+            "SETTLED_N": 72,
+            "OPEN_N": 10,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 31,
+            "LOSSES": 41,
+            "PNL_U": 8.88,
+            "ROI_PCT": 12.3343,
+            "MAX_DD_U": -7.43,
+            "BETS_PER_DAY": 4.1
+          },
+          "SEP_SHADOW_STRATEGIC_V1": {
+            "SELECTED_N": 19,
+            "SETTLED_N": 11,
+            "OPEN_N": 8,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 4,
+            "LOSSES": 7,
+            "PNL_U": 5.77,
+            "ROI_PCT": 52.4864,
+            "MAX_DD_U": -2,
+            "BETS_PER_DAY": 3.1667
+          }
+        }
+      },
+      "BASELINE_SAME_DOMAIN": {
+        "SELECTED_N": 101,
+        "SETTLED_N": 76,
+        "OPEN_N": 25,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 25,
+        "LOSSES": 51,
+        "PNL_U": 11.97,
+        "ROI_PCT": 15.7462,
+        "MAX_DD_U": -9.83,
+        "BETS_PER_DAY": 3.8846,
+        "FAMILY_MIX": {
+          "spreads": 20,
+          "other_structured": 42,
+          "moneyline": 5,
+          "totals": 34
+        },
+        "SPLITS": {
+          "AUG": {
+            "SELECTED_N": 34,
+            "SETTLED_N": 19,
+            "OPEN_N": 15,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 6,
+            "LOSSES": 13,
+            "PNL_U": -0.91,
+            "ROI_PCT": -4.7926,
+            "MAX_DD_U": -5,
+            "BETS_PER_DAY": 3.7778
+          },
+          "SEP01_12": {
+            "SELECTED_N": 23,
+            "SETTLED_N": 18,
+            "OPEN_N": 5,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 8,
+            "LOSSES": 10,
+            "PNL_U": 3.76,
+            "ROI_PCT": 20.8942,
+            "MAX_DD_U": -4,
+            "BETS_PER_DAY": 2.875
+          },
+          "SEP13_24": {
+            "SELECTED_N": 44,
+            "SETTLED_N": 39,
+            "OPEN_N": 5,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 11,
+            "LOSSES": 28,
+            "PNL_U": 9.12,
+            "ROI_PCT": 23.3764,
+            "MAX_DD_U": -8,
+            "BETS_PER_DAY": 4.8889
+          },
+          "SEP25_29": {
+            "SELECTED_N": 0,
+            "SETTLED_N": 0,
+            "OPEN_N": 0,
+            "OTHER_NONTERMINAL_N": 0,
+            "WINS": 0,
+            "LOSSES": 0,
+            "PNL_U": 0,
+            "ROI_PCT": 0,
+            "MAX_DD_U": 0,
+            "BETS_PER_DAY": 0
+          }
+        }
+      },
+      "PAIRED_DIFFERING_EVENTS": {
+        "DIFFER_EVENT_N": 59,
+        "BOTH_SETTLED_N": 34,
+        "MEAN_DELTA_PNL_U": -0.2618,
+        "TOTAL_DELTA_PNL_U": -8.9011,
+        "Z": -0.6567,
+        "DELTA_BY_SPLIT": {
+          "AUG": {
+            "N": 3,
+            "DELTA_PNL_U": 4.5728
+          },
+          "SEP01_12": {
+            "N": 2,
+            "DELTA_PNL_U": -2.1053
+          },
+          "SEP13_24": {
+            "N": 29,
+            "DELTA_PNL_U": -11.3686
+          },
+          "SEP25_29": {
+            "N": 0,
+            "DELTA_PNL_U": 0
+          }
+        },
+        "TOP_PROVIDER_SPORT_CODE_SHARE_OF_POSITIVE_DELTA": {
+          "code": "nfl",
+          "share": 0.4965
+        }
+      }
+    }
+  ],
+  "SPREAD_CONCENTRATION_DIAGNOSTICS": {
+    "N": 783,
+    "BY_PROVIDER_SPORT_CODE_TOP12": {
+      "?": {
+        "SELECTED_N": 53,
+        "SETTLED_N": 15,
+        "OPEN_N": 38,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 11,
+        "LOSSES": 4,
+        "PNL_U": 13.2,
+        "ROI_PCT": 88.009,
+        "MAX_DD_U": -3,
+        "BETS_PER_DAY": 3.7857
+      },
+      "nfl": {
+        "SELECTED_N": 27,
+        "SETTLED_N": 20,
+        "OPEN_N": 7,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 7,
+        "LOSSES": 13,
+        "PNL_U": 11.3,
+        "ROI_PCT": 56.4807,
+        "MAX_DD_U": -6,
+        "BETS_PER_DAY": 3
+      },
+      "elc": {
+        "SELECTED_N": 23,
+        "SETTLED_N": 17,
+        "OPEN_N": 6,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 6,
+        "LOSSES": 11,
+        "PNL_U": 4.07,
+        "ROI_PCT": 23.9258,
+        "MAX_DD_U": -4.26,
+        "BETS_PER_DAY": 2.3
+      },
+      "lal": {
+        "SELECTED_N": 21,
+        "SETTLED_N": 11,
+        "OPEN_N": 10,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 1,
+        "LOSSES": 10,
+        "PNL_U": -7.23,
+        "ROI_PCT": -65.6947,
+        "MAX_DD_U": -7.23,
+        "BETS_PER_DAY": 1.9091
+      },
+      "ned2": {
+        "SELECTED_N": 19,
+        "SETTLED_N": 7,
+        "OPEN_N": 12,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 4,
+        "LOSSES": 3,
+        "PNL_U": 3.62,
+        "ROI_PCT": 51.7527,
+        "MAX_DD_U": -3,
+        "BETS_PER_DAY": 2.375
+      },
+      "nlc": {
+        "SELECTED_N": 18,
+        "SETTLED_N": 15,
+        "OPEN_N": 3,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 8,
+        "LOSSES": 7,
+        "PNL_U": 0.77,
+        "ROI_PCT": 5.1475,
+        "MAX_DD_U": -4.75,
+        "BETS_PER_DAY": 4.5
+      },
+      "el2": {
+        "SELECTED_N": 16,
+        "SETTLED_N": 4,
+        "OPEN_N": 12,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 0,
+        "LOSSES": 4,
+        "PNL_U": -4,
+        "ROI_PCT": -100,
+        "MAX_DD_U": -4,
+        "BETS_PER_DAY": 8
+      },
+      "uel": {
+        "SELECTED_N": 16,
+        "SETTLED_N": 7,
+        "OPEN_N": 9,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 2,
+        "LOSSES": 5,
+        "PNL_U": 0.1,
+        "ROI_PCT": 1.3739,
+        "MAX_DD_U": -2,
+        "BETS_PER_DAY": 8
+      },
+      "unl": {
+        "SELECTED_N": 15,
+        "SETTLED_N": 2,
+        "OPEN_N": 13,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 2,
+        "LOSSES": 0,
+        "PNL_U": 1.99,
+        "ROI_PCT": 99.402,
+        "MAX_DD_U": 0,
+        "BETS_PER_DAY": 5
+      },
+      "bun": {
+        "SELECTED_N": 15,
+        "SETTLED_N": 10,
+        "OPEN_N": 5,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 2,
+        "LOSSES": 8,
+        "PNL_U": -5.31,
+        "ROI_PCT": -53.0552,
+        "MAX_DD_U": -5.31,
+        "BETS_PER_DAY": 2.1429
+      },
+      "conl": {
+        "SELECTED_N": 14,
+        "SETTLED_N": 6,
+        "OPEN_N": 8,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 5,
+        "LOSSES": 1,
+        "PNL_U": 3.65,
+        "ROI_PCT": 60.877,
+        "MAX_DD_U": -1,
+        "BETS_PER_DAY": 4.6667
+      },
+      "mex": {
+        "SELECTED_N": 14,
+        "SETTLED_N": 5,
+        "OPEN_N": 9,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 2,
+        "LOSSES": 3,
+        "PNL_U": -0.53,
+        "ROI_PCT": -10.5701,
+        "MAX_DD_U": -3,
+        "BETS_PER_DAY": 1.75
+      }
+    },
+    "BY_SOURCE_POPULATION": {
+      "SEP_PUBLIC_RICH_V1": {
+        "SELECTED_N": 765,
+        "SETTLED_N": 447,
+        "OPEN_N": 318,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 148,
+        "LOSSES": 299,
+        "PNL_U": -16.46,
+        "ROI_PCT": -3.6828,
+        "MAX_DD_U": -55.32,
+        "BETS_PER_DAY": 21.8571
+      },
+      "SEP_SHADOW_STRATEGIC_V1": {
+        "SELECTED_N": 18,
+        "SETTLED_N": 9,
+        "OPEN_N": 9,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 1,
+        "LOSSES": 8,
+        "PNL_U": -7,
+        "ROI_PCT": -77.7778,
+        "MAX_DD_U": -8,
+        "BETS_PER_DAY": 3
+      }
+    },
+    "BY_DATA_COVERAGE": {
+      "25": {
+        "SELECTED_N": 124,
+        "SETTLED_N": 58,
+        "OPEN_N": 66,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 21,
+        "LOSSES": 37,
+        "PNL_U": -1.18,
+        "ROI_PCT": -2.0269,
+        "MAX_DD_U": -19.48,
+        "BETS_PER_DAY": 6.2
+      },
+      "50": {
+        "SELECTED_N": 293,
+        "SETTLED_N": 190,
+        "OPEN_N": 103,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 63,
+        "LOSSES": 127,
+        "PNL_U": -13.13,
+        "ROI_PCT": -6.91,
+        "MAX_DD_U": -39.91,
+        "BETS_PER_DAY": 12.2083
+      },
+      "75": {
+        "SELECTED_N": 135,
+        "SETTLED_N": 93,
+        "OPEN_N": 42,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 34,
+        "LOSSES": 59,
+        "PNL_U": 11.81,
+        "ROI_PCT": 12.7024,
+        "MAX_DD_U": -12.26,
+        "BETS_PER_DAY": 10.3846
+      },
+      "?": {
+        "SELECTED_N": 231,
+        "SETTLED_N": 115,
+        "OPEN_N": 116,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 31,
+        "LOSSES": 84,
+        "PNL_U": -20.97,
+        "ROI_PCT": -18.2355,
+        "MAX_DD_U": -27.86,
+        "BETS_PER_DAY": 10.5
+      }
+    },
+    "BY_DISPLAY_ODDS": {
+      ">=3": {
+        "SELECTED_N": 395,
+        "SETTLED_N": 240,
+        "OPEN_N": 155,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 63,
+        "LOSSES": 177,
+        "PNL_U": 8.81,
+        "ROI_PCT": 3.671,
+        "MAX_DD_U": -20.69,
+        "BETS_PER_DAY": 10.9722
+      },
+      "2-3": {
+        "SELECTED_N": 267,
+        "SETTLED_N": 169,
+        "OPEN_N": 98,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 43,
+        "LOSSES": 126,
+        "PNL_U": -67.44,
+        "ROI_PCT": -39.9074,
+        "MAX_DD_U": -73.54,
+        "BETS_PER_DAY": 8.0909
+      },
+      "1.5-2": {
+        "SELECTED_N": 115,
+        "SETTLED_N": 45,
+        "OPEN_N": 70,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 41,
+        "LOSSES": 4,
+        "PNL_U": 34.39,
+        "ROI_PCT": 76.4285,
+        "MAX_DD_U": -1.1,
+        "BETS_PER_DAY": 19.1667
+      },
+      "<1.5": {
+        "SELECTED_N": 6,
+        "SETTLED_N": 2,
+        "OPEN_N": 4,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 2,
+        "LOSSES": 0,
+        "PNL_U": 0.78,
+        "ROI_PCT": 38.8956,
+        "MAX_DD_U": 0,
+        "BETS_PER_DAY": 1.2
+      }
+    },
+    "BY_LEAD_TIME": {
+      "12-24h": {
+        "SELECTED_N": 502,
+        "SETTLED_N": 242,
+        "OPEN_N": 260,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 79,
+        "LOSSES": 163,
+        "PNL_U": -2.06,
+        "ROI_PCT": -0.8522,
+        "MAX_DD_U": -32.03,
+        "BETS_PER_DAY": 13.5676
+      },
+      "3-12h": {
+        "SELECTED_N": 178,
+        "SETTLED_N": 144,
+        "OPEN_N": 34,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 46,
+        "LOSSES": 98,
+        "PNL_U": -14.37,
+        "ROI_PCT": -9.9815,
+        "MAX_DD_U": -27.28,
+        "BETS_PER_DAY": 9.3684
+      },
+      "<3h": {
+        "SELECTED_N": 74,
+        "SETTLED_N": 59,
+        "OPEN_N": 15,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 22,
+        "LOSSES": 37,
+        "PNL_U": -2.89,
+        "ROI_PCT": -4.8962,
+        "MAX_DD_U": -25.34,
+        "BETS_PER_DAY": 4.3529
+      },
+      ">=24h": {
+        "SELECTED_N": 29,
+        "SETTLED_N": 11,
+        "OPEN_N": 18,
+        "OTHER_NONTERMINAL_N": 0,
+        "WINS": 2,
+        "LOSSES": 9,
+        "PNL_U": -4.14,
+        "ROI_PCT": -37.6166,
+        "MAX_DD_U": -9,
+        "BETS_PER_DAY": 2.0714
+      }
+    },
+    "NOT_AVAILABLE_WITHOUT_BROAD_RESEARCH": [
+      "handicap_line",
+      "selected_side",
+      "favorite_underdog",
+      "league_country_authority",
+      "parent_vs_exact_market_volume_semantic",
+      "pre_post_fanout_regime(proxy=population/period)"
+    ]
+  },
+  "CAVEATS": [
+    "Reference price is REFERENCE_PNL, not executable full-stake fill.",
+    "signal_score/100 is not probability; no probabilities invented.",
+    "Single frozen predeclared rule; no retuning. Overlap-domain pair policies test priority only where both families coexist at T0.",
+    "T0-only choice set is a conservative simultaneity definition; later-arriving markets are excluded (shown only in ANY_TIME diagnostic).",
+    "Source-regime split uses population_id as proxy; pre/post fan-out marker not canonical in code.",
+    "Settled N differs by day-lag; OPEN excluded from PnL/ROI."
+  ],
+  "SATURATED_CONDITION_N": 5,
+  "EXCLUDED_PHYSICAL_EVENT_N": 1,
+  "PRODUCTION_WRITES": 0,
+  "CLONE_DB_WRITES": 0,
+  "RUNTIME_SEC": 4
+}
