@@ -171,9 +171,9 @@ export async function readPartitionedSourceDateFromDb(db: any, date: string): Pr
 }
 
 /** Per-day bounded prefix reads avoid offset pagination over the date range. */
-export async function readAllSourceRows(db: any): Promise<SourceRow[]> {
+export async function readAllSourceRows(db: any, rangeEnd: string = RANGE_END): Promise<SourceRow[]> {
   const rows: SourceRow[] = [];
-  for (const d of eachDate(RANGE_START, RANGE_END)) {
+  for (const d of eachDate(RANGE_START, rangeEnd)) {
     rows.push(...await readPartitionedSourceDateFromDb(db, d));
     console.error(JSON.stringify({ STAGE: "SOURCE_READ", MODEL_DATE: d, ROWS_SO_FAR: rows.length }));
   }
@@ -181,6 +181,9 @@ export async function readAllSourceRows(db: any): Promise<SourceRow[]> {
 }
 
 type GspExactPair = Pick<GspMarketTypeEntry, "condition_id" | "selected_token_id">;
+
+/** Default THROW (canonical fail-closed). SKIP = oversize pair yields no GSP entries (stays unresolved -> excluded from ordinary HOLD), recorded in `skipped`. */
+export const GSP_OVERSIZE_POLICY: { mode: "THROW" | "SKIP"; skipped: string[] } = { mode: "THROW", skipped: [] };
 
 export async function readExactGspMarketTypeEntries(
   pairs: GspExactPair[],
@@ -200,6 +203,10 @@ export async function readExactGspMarketTypeEntries(
     const exactPairs = new Set(chunk.map((pair) => `${pair.condition_id}::${pair.selected_token_id}`));
     const data = await fetchChunk(chunk);
     if (data.length >= pageSize) {
+      if (chunk.length === 1 && GSP_OVERSIZE_POLICY.mode === "SKIP") {
+        GSP_OVERSIZE_POLICY.skipped.push(`${chunk[0].condition_id}::${chunk[0].selected_token_id}`);
+        return [];
+      }
       if (chunk.length === 1) {
         throw new Error(`RECON_GSP_EXACT_PAIR_TOO_LARGE:${chunk[0].condition_id}:${chunk[0].selected_token_id}`);
       }
@@ -476,14 +483,14 @@ function periodBreakdown(range: string, rows: OverlayRecord[]): PeriodBreakdown 
   };
 }
 
-export async function runReconciliationV2(db: any): Promise<{
+export async function runReconciliationV2(db: any, rangeEnd: string = RANGE_END): Promise<{
   overlay: OverlayRecord[];
   sourceRows: SourceRow[];
   periods: { AUG: PeriodBreakdown; SEP_1_12: PeriodBreakdown; SEP_13_24: PeriodBreakdown; COMBINED: PeriodBreakdown };
   duplicateIdentitiesTotal: number;
 }> {
   console.error(JSON.stringify({ STAGE: "START", SOURCE_RANGE: `${RANGE_START}..${RANGE_END}` }));
-  const sourceRows = await readAllSourceRows(db);
+  const sourceRows = await readAllSourceRows(db, rangeEnd);
   console.error(JSON.stringify({ STAGE: "SOURCE_READ_COMPLETE", ROWS: sourceRows.length }));
 
   const marketTypeRows = sourceRows.filter((row) => {
