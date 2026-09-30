@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS public.reservation_market_observations (
   tick_size numeric, minimum_order_size numeric,
   orderbook_fetch_latency_ms integer, orderbook_fetch_status text NOT NULL,
   orderbook_failure_reason text, source_version text NOT NULL, created_at timestamptz NOT NULL,
+  reference_entry_price numeric, execution_price_cap numeric,
+  requested_stake_usd numeric, full_stake_executable_vwap numeric,
   UNIQUE (capture_run_id, condition_id, token_id, side)
 );
 CREATE INDEX IF NOT EXISTS reservation_market_observations_watermark_idx
@@ -36,6 +38,11 @@ CREATE INDEX IF NOT EXISTS reservation_market_observations_watermark_idx
 CREATE INDEX IF NOT EXISTS reservation_market_observations_run_idx
   ON public.reservation_market_observations (capture_run_id);
 ALTER TABLE public.reservation_market_observations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reservation_market_observations
+  ADD COLUMN IF NOT EXISTS reference_entry_price numeric,
+  ADD COLUMN IF NOT EXISTS execution_price_cap numeric,
+  ADD COLUMN IF NOT EXISTS requested_stake_usd numeric,
+  ADD COLUMN IF NOT EXISTS full_stake_executable_vwap numeric;
 REVOKE ALL ON public.reservation_market_observations FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.reservation_market_observations TO service_role;
 

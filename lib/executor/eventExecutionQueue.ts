@@ -13,7 +13,8 @@
 // This module NEVER places orders and NEVER pulls a broad executable universe for
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
+import { persistLiveGuardTelemetry, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   produceContractAFinalIdentityDecision,
@@ -1391,9 +1392,28 @@ interface LiveOrderbookGuardEvidence {
   latencyMs: number;
 }
 
-type LiveOrderbookGuardResult =
+type LiveOrderbookGuardResult = (
   | { pass: true; evidence: LiveOrderbookGuardEvidence; trace: string[] }
-  | { pass: false; reason: string };
+  | { pass: false; reason: string }
+) & { telemetry: Omit<LiveGuardTelemetryInput, "attemptId" | "conditionId" | "side" | "marketSlug" | "referenceEntryPrice"> };
+
+export function fullStakeExecutableVwap(
+  asks: readonly { price: number; size: number }[] | null | undefined,
+  priceCap: number,
+  requestedStakeUsd: number,
+): number | null {
+  if (!asks || !(priceCap > 0) || !(requestedStakeUsd > 0)) return null;
+  let remaining = requestedStakeUsd;
+  let shares = 0;
+  for (const level of [...asks].sort((a, b) => a.price - b.price)) {
+    if (!(level.price > 0) || !(level.size > 0) || level.price > priceCap) continue;
+    const consumed = Math.min(remaining, level.price * level.size);
+    shares += consumed / level.price;
+    remaining -= consumed;
+    if (remaining <= 1e-9) return requestedStakeUsd / shares;
+  }
+  return null;
+}
 
 /**
  * USD notional resting in the ask book at a price the selected limit order
@@ -1425,36 +1445,53 @@ async function evaluateLiveOrderbookGuard(
   selected: Pick<SelectedExactCandidate, "tokenId" | "maxEntryPrice" | "stakeUsd">,
   fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>
 ): Promise<LiveOrderbookGuardResult> {
-  let fetchResult: FetchOrderBookResult;
+  let fetchResult: FetchOrderBookResult | null = null;
+  const finish = (decision: { pass: true; evidence: LiveOrderbookGuardEvidence; trace: string[] } | { pass: false; reason: string }): LiveOrderbookGuardResult => {
+    const observedAt = new Date().toISOString();
+    const book = fetchResult?.ok ? fetchResult.book : undefined;
+    const { bestBid, bestAsk } = book ? getBestBidAsk(book) : { bestBid: null, bestAsk: null };
+    const capDepth = book ? computeBuyableUsdAtOrBelowPrice(book.asks, selected.maxEntryPrice) : null;
+    return { ...decision, telemetry: {
+      observedAt, tokenId: selected.tokenId, executionPriceCap: selected.maxEntryPrice,
+      requestedStakeUsd: selected.stakeUsd, pass: decision.pass,
+      rejectionReason: decision.pass ? null : decision.reason,
+      fetchStatus: book ? "SUCCESS" : fetchResult?.ok ? "UNAVAILABLE" : fetchResult ? "FETCH_FAILED" : "FETCH_FAILED",
+      fetchFailureReason: book ? null : fetchResult?.errorCode ?? (decision.pass ? null : decision.reason),
+      fetchLatencyMs: fetchResult && Number.isFinite(fetchResult.latencyMs) && fetchResult.latencyMs >= 0 ? fetchResult.latencyMs : null,
+      bestBid, bestAsk, spread: book ? computeSpread(book) : null,
+      capEligibleAskDepthUsd: capDepth,
+      fullStakeExecutableVwap: book ? fullStakeExecutableVwap(book.asks, selected.maxEntryPrice, selected.stakeUsd) : null,
+    } } as LiveOrderbookGuardResult;
+  };
   try {
     fetchResult = await fetchExactTokenOrderbook(selected.tokenId);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return { pass: false, reason: `B2_ORDERBOOK_FETCH_FAILED: ${message}` };
+    return finish({ pass: false, reason: `B2_ORDERBOOK_FETCH_FAILED: ${message}` });
   }
   if (!fetchResult.ok || !fetchResult.book) {
-    return { pass: false, reason: `B2_ORDERBOOK_UNAVAILABLE: ${fetchResult.errorCode ?? "UNKNOWN"}` };
+    return finish({ pass: false, reason: `B2_ORDERBOOK_UNAVAILABLE: ${fetchResult.errorCode ?? "UNKNOWN"}` });
   }
   if (!Number.isFinite(fetchResult.latencyMs) || fetchResult.latencyMs < 0) {
-    return { pass: false, reason: "B2_ORDERBOOK_REFRESH_NOT_FRESH" };
+    return finish({ pass: false, reason: "B2_ORDERBOOK_REFRESH_NOT_FRESH" });
   }
   const book = fetchResult.book;
   const { bestAsk } = getBestBidAsk(book);
   if (bestAsk === null) {
-    return { pass: false, reason: "B2_NO_EXECUTABLE_ASK" };
+    return finish({ pass: false, reason: "B2_NO_EXECUTABLE_ASK" });
   }
   if (bestAsk > selected.maxEntryPrice) {
-    return { pass: false, reason: `B2_PRICE_ABOVE_MAX_ENTRY_PRICE: price=${bestAsk} max=${selected.maxEntryPrice}` };
+    return finish({ pass: false, reason: `B2_PRICE_ABOVE_MAX_ENTRY_PRICE: price=${bestAsk} max=${selected.maxEntryPrice}` });
   }
   const spread = computeSpread(book);
   if (spread === null || spread > LIVE_EXECUTION_MAX_SPREAD) {
-    return { pass: false, reason: `B2_SPREAD_TOO_WIDE: spread=${spread ?? "null"} max=${LIVE_EXECUTION_MAX_SPREAD}` };
+    return finish({ pass: false, reason: `B2_SPREAD_TOO_WIDE: spread=${spread ?? "null"} max=${LIVE_EXECUTION_MAX_SPREAD}` });
   }
   const executableDepthUsd = computeBuyableUsdAtOrBelowPrice(book.asks, selected.maxEntryPrice);
   if (executableDepthUsd < selected.stakeUsd) {
-    return { pass: false, reason: `B2_INSUFFICIENT_EXECUTABLE_DEPTH: depth_usd=${executableDepthUsd} required_usd=${selected.stakeUsd}` };
+    return finish({ pass: false, reason: `B2_INSUFFICIENT_EXECUTABLE_DEPTH: depth_usd=${executableDepthUsd} required_usd=${selected.stakeUsd}` });
   }
-  return {
+  return finish({
     pass: true,
     evidence: {
       executablePrice: bestAsk,
@@ -1464,7 +1501,7 @@ async function evaluateLiveOrderbookGuard(
       latencyMs: fetchResult.latencyMs,
     },
     trace: ["ORDERBOOK_AVAILABLE", "PRICE_CAP_OK", "SPREAD_OK", "DEPTH_OK"],
-  };
+  });
 }
 
 /**
@@ -1497,7 +1534,8 @@ async function selectQueueRowFromReservationCandidateManifest(
   reservation: NightEventReservationRow,
   candidates: readonly ManifestExactSignalPair[],
   rebalanceRunId: string,
-  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>
+  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>,
+  writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>,
 ): Promise<DueReservationSelection> {
   const eventStartIso = reservation.event_start_iso;
   const physicalEventId = reservation.physical_event_id;
@@ -1523,6 +1561,17 @@ async function selectQueueRowFromReservationCandidateManifest(
   if (!selected) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_NOT_IN_CANDIDATE_MANIFEST", queueRow: null };
 
   const guard = await evaluateLiveOrderbookGuard(selected, fetchExactTokenOrderbook);
+  if (reservation.id && writeGuardTelemetry) {
+    try {
+      await writeGuardTelemetry(reservation, {
+        ...guard.telemetry, attemptId: randomUUID(), conditionId: selected.conditionId,
+        side: selected.side, marketSlug: selected.marketSlug,
+        referenceEntryPrice: selected.entryPrice,
+      });
+    } catch {
+      console.error("[live-guard-telemetry] persistence failed");
+    }
+  }
   if (!guard.pass) {
     return { outcome: "SKIPPED", reason: `B2_LIVE_ORDERBOOK_GUARD_FAILED: ${guard.reason}`, queueRow: null };
   }
@@ -1754,6 +1803,7 @@ export async function runEventRebalance(
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
     fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>;
+    writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>;
     onFinalIdentityAttempt?: () => void;
   } = {}
 ): Promise<RebalanceRunResult> {
@@ -1936,7 +1986,8 @@ export async function runEventRebalance(
             reservation,
             manifestResolution.candidates,
             rebalanceRunId,
-            fetchExactTokenOrderbook
+            fetchExactTokenOrderbook,
+            write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined)) : undefined
           )
         : manifestResolution?.kind === "UNSUPPORTED"
           ? { outcome: "SKIPPED" as const, reason: manifestResolution.reason, queueRow: null }
@@ -2201,6 +2252,7 @@ export async function runControlledLiveIntent(
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
     fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>;
+    writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>;
   } = {}
 ): Promise<ControlledLiveIntentResult> {
   const validation = validateControlledLiveIntentRequest(requestedTestId);
@@ -2296,7 +2348,8 @@ export async function runControlledLiveIntent(
             reservation,
             manifestResolution.candidates,
             rebalanceRunId,
-            fetchExactTokenOrderbook
+            fetchExactTokenOrderbook,
+            write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined)) : undefined
           )
         : requireContractAFinalIdentity
           ? await selectQueueRowFromContractAReservation(

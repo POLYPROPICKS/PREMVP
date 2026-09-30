@@ -3,13 +3,19 @@ ALTER TABLE public.reservation_market_capture_runs
   DROP CONSTRAINT IF EXISTS reservation_market_capture_runs_observation_phase_check;
 ALTER TABLE public.reservation_market_capture_runs
   ADD CONSTRAINT reservation_market_capture_runs_observation_phase_check
-  CHECK (observation_phase IN ('RESERVATION_BASELINE', 'T_MINUS_30', 'T_MINUS_10', 'T_MINUS_3'));
+  CHECK (observation_phase IN ('RESERVATION_BASELINE', 'T_MINUS_30', 'T_MINUS_10', 'T_MINUS_3', 'LIVE_GUARD'));
 
 ALTER TABLE public.reservation_market_observations
   DROP CONSTRAINT IF EXISTS reservation_market_observations_observation_phase_check;
 ALTER TABLE public.reservation_market_observations
   ADD CONSTRAINT reservation_market_observations_observation_phase_check
-  CHECK (observation_phase IN ('RESERVATION_BASELINE', 'T_MINUS_30', 'T_MINUS_10', 'T_MINUS_3'));
+  CHECK (observation_phase IN ('RESERVATION_BASELINE', 'T_MINUS_30', 'T_MINUS_10', 'T_MINUS_3', 'LIVE_GUARD'));
+
+ALTER TABLE public.reservation_market_observations
+  ADD COLUMN reference_entry_price numeric,
+  ADD COLUMN execution_price_cap numeric,
+  ADD COLUMN requested_stake_usd numeric,
+  ADD COLUMN full_stake_executable_vwap numeric;
 
 CREATE TABLE public.reservation_strategy_observations (
   id uuid PRIMARY KEY,
@@ -20,7 +26,7 @@ CREATE TABLE public.reservation_strategy_observations (
   condition_id text NOT NULL,
   token_id text NOT NULL,
   side text NOT NULL,
-  observation_phase text NOT NULL CHECK (observation_phase IN ('RESERVATION_BASELINE', 'T_MINUS_30', 'T_MINUS_10', 'T_MINUS_3')),
+  observation_phase text NOT NULL CHECK (observation_phase IN ('RESERVATION_BASELINE', 'T_MINUS_30', 'T_MINUS_10', 'T_MINUS_3', 'LIVE_GUARD')),
   evaluated_at timestamptz NOT NULL,
   minutes_to_start numeric NOT NULL,
   strategy_variant text NOT NULL CHECK (strategy_variant IN ('S1_TAKER_HOLD', 'S2_FIXED_MAKER_HOLD', 'S3_MAKER_VALUE_BAND_HOLD')),

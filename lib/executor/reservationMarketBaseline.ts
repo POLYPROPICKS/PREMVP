@@ -5,7 +5,7 @@ import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from 
 
 export const BASELINE_SOURCE_VERSION = "RESERVATION_MARKET_BASELINE_V1";
 const PHASE = "RESERVATION_BASELINE";
-export type ReservationMarketPhase = typeof PHASE | "T_MINUS_30" | "T_MINUS_10" | "T_MINUS_3";
+export type ReservationMarketPhase = typeof PHASE | "T_MINUS_30" | "T_MINUS_10" | "T_MINUS_3" | "LIVE_GUARD";
 
 export function classifyReservationMarketPhase(eventStartIso: string, nowMs: number): Exclude<ReservationMarketPhase, typeof PHASE> | null {
   const minutes = (Date.parse(eventStartIso) - nowMs) / 60_000;
@@ -44,7 +44,7 @@ export function strategyRowsForMarketObservations(observations: readonly Record<
     available_best_ask: variant === "S1_TAKER_HOLD" ? market.best_ask : null,
     available_decimal_odds: variant === "S1_TAKER_HOLD" ? market.ask_decimal_odds : null,
     spread_abs: variant === "S1_TAKER_HOLD" ? market.spread_abs : null,
-    executable_depth_usd: null,
+    executable_depth_usd: variant === "S1_TAKER_HOLD" ? market.ask_depth_relevant_usd ?? null : null,
     maker_target_price: null, maker_target_decimal_odds: null,
     maker_target_state: variant === "S2_FIXED_MAKER_HOLD" ? "NOT_DEFINED_YET" : null,
     target_policy_version: null, target_touched: null,
@@ -251,6 +251,74 @@ async function defaultWriter(run: Record<string, unknown>, observations: Record<
     .update({ capture_status: run.capture_status, market_tokens_observed_n: persisted.length })
     .eq("id", run.id).eq("capture_status", "WRITE_INCOMPLETE");
   if (finishError) throw new Error("MARKET_CAPTURE_FINALIZE_FAILED");
+}
+
+export type LiveGuardTelemetryInput = {
+  attemptId: string;
+  observedAt: string;
+  conditionId: string;
+  tokenId: string;
+  side: string;
+  marketSlug: string | null;
+  referenceEntryPrice: number;
+  executionPriceCap: number;
+  requestedStakeUsd: number;
+  pass: boolean;
+  rejectionReason: string | null;
+  fetchStatus: string;
+  fetchFailureReason: string | null;
+  fetchLatencyMs: number | null;
+  bestBid: number | null;
+  bestAsk: number | null;
+  spread: number | null;
+  capEligibleAskDepthUsd: number | null;
+  fullStakeExecutableVwap: number | null;
+};
+
+export function liveGuardTelemetryRows(reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) {
+  if (!reservation.id || !reservation.event_start_iso) throw new Error("LIVE_GUARD_RESERVATION_LINEAGE_MISSING");
+  const sourceVersion = `LIVE_GUARD_V1:${input.attemptId}`;
+  const runId = stableTelemetryId(reservation.id, "LIVE_GUARD", sourceVersion);
+  const observedN = input.fetchStatus === "SUCCESS" ? 1 : 0;
+  const minutesToStart = (Date.parse(reservation.event_start_iso) - Date.parse(input.observedAt)) / 60_000;
+  const run = {
+    id: runId, reservation_id: reservation.id, plan_run_id: reservation.plan_run_id,
+    physical_event_id: reservation.physical_event_id, provider_event_id: null,
+    event_start_iso: reservation.event_start_iso, observation_phase: "LIVE_GUARD",
+    observed_at: input.observedAt, minutes_to_start: minutesToStart,
+    source_version: sourceVersion, source_observed_at: input.fetchStatus === "SUCCESS" ? input.observedAt : null,
+    markets_discovered_n: 1, market_tokens_expected_n: 1, market_tokens_observed_n: observedN,
+    orderbooks_success_n: observedN, orderbooks_failed_n: 1 - observedN,
+    capture_complete: observedN === 1, capture_status: observedN === 1 ? "COMPLETE" : "CAPTURE_FAILED",
+    failure_reason: input.fetchFailureReason,
+  };
+  const observation = {
+    id: stableTelemetryId(runId, input.conditionId, input.tokenId, input.side),
+    capture_run_id: runId, reservation_id: reservation.id, physical_event_id: reservation.physical_event_id,
+    provider_event_id: null, event_start_iso: reservation.event_start_iso, observation_phase: "LIVE_GUARD",
+    observed_at: input.observedAt, minutes_to_start: minutesToStart,
+    condition_id: input.conditionId, token_id: input.tokenId, side: input.side, outcome: null,
+    canonical_market_family: null, canonical_market_type: null, provider_market_type_raw: null,
+    market_slug: input.marketSlug, live_policy_eligibility: input.pass,
+    live_policy_rejection_reason: input.rejectionReason,
+    best_bid: input.bestBid, best_ask: input.bestAsk, mid_price: input.bestBid !== null && input.bestAsk !== null ? (input.bestBid + input.bestAsk) / 2 : null,
+    bid_decimal_odds: input.bestBid ? 1 / input.bestBid : null,
+    ask_decimal_odds: input.bestAsk ? 1 / input.bestAsk : null,
+    spread_abs: input.spread, spread_bps: null,
+    bid_depth_relevant_usd: null, ask_depth_relevant_usd: input.capEligibleAskDepthUsd,
+    tick_size: null, minimum_order_size: null,
+    orderbook_fetch_latency_ms: input.fetchLatencyMs, orderbook_fetch_status: input.fetchStatus,
+    orderbook_failure_reason: input.fetchFailureReason,
+    reference_entry_price: input.referenceEntryPrice, execution_price_cap: input.executionPriceCap,
+    requested_stake_usd: input.requestedStakeUsd, full_stake_executable_vwap: input.fullStakeExecutableVwap,
+    source_version: sourceVersion,
+  };
+  return { run, observation, strategies: strategyRowsForMarketObservations([observation]) };
+}
+
+export async function persistLiveGuardTelemetry(reservation: NightEventReservationRow, input: LiveGuardTelemetryInput): Promise<void> {
+  const rows = liveGuardTelemetryRows(reservation, input);
+  await defaultWriter(rows.run, [rows.observation], rows.strategies);
 }
 
 export async function captureReservationMarketMilestones(

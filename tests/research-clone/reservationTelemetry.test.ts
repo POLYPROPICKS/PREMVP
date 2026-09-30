@@ -18,6 +18,10 @@ test("all three telemetry datasets use narrow append-only keysets", () => {
     assert.match(spec.projection ?? "", /(^|,)id(,|$)/);
     assert.doesNotMatch(spec.projection ?? "", /\*|json|payload|book_levels/i);
   }
+  const marketProjection = SPECS.find((entry) => entry.table === "reservation_market_observations")?.projection ?? "";
+  for (const field of ["reference_entry_price", "execution_price_cap", "requested_stake_usd", "full_stake_executable_vwap"]) {
+    assert.match(marketProjection, new RegExp(`(^|,)${field}(,|$)`));
+  }
 });
 
 test("all three telemetry keysets are idempotent across repeated syncs", async () => {
