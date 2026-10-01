@@ -14,7 +14,7 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash, randomUUID } from "crypto";
-import { persistLiveGuardTelemetry, readCompletedFinalT3Universe, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { persistLiveGuardTelemetry, readCompletedFinalT3Universe, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   produceContractAFinalIdentityDecision,
@@ -1187,11 +1187,12 @@ export function planningDecisionFromReservation(reservation: NightEventReservati
  * needs — satisfied by both the GSP-anchor path (ExactProviderSignalPair) and
  * the B2 candidate-manifest path (ManifestExactSignalPair) below. */
 type SelectedExactCandidate = {
-  id: string;
+  /** generated_signal_pair id; null when the identity came from a T3 observation (never fabricated). */
+  id: string | null;
   conditionId: string;
   tokenId: string;
   side: string;
-  signalScore: number;
+  signalScore: number | null;
   stakeUsd: number;
   maxEntryPrice: number;
   /** Original candidate entry_price_num, preserved verbatim for analytics — distinct from the Queue execution cap (maxEntryPrice). */
@@ -1209,7 +1210,7 @@ function buildQueueRowFromExactCandidate(
   physicalEventId: string,
   eventStartIso: string,
   selected: SelectedExactCandidate,
-  provenance: { sourceAuthority: string; mechanicalGuardTrace: string[] },
+  provenance: { sourceAuthority: string; mechanicalGuardTrace: string[]; selectionReason?: string; extraDiagnostics?: Record<string, unknown> },
   liveOrderbookEvidence?: LiveOrderbookGuardEvidence
 ): EventExecutionQueueRow {
   const { orderKey, idempotencyKey } = queueIdentityKeys(reservation, {
@@ -1224,12 +1225,12 @@ function buildQueueRowFromExactCandidate(
     market_slug: selected.marketSlug, market_title: selected.marketSlug, market_family: null,
     score: selected.signalScore, coverage: null, tier: reservation.event_tier ?? EXECUTABLE_TIER,
     stake_usd: selected.stakeUsd, preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: latestEntryIso(startMs),
-    selection_rank: reservation.reservation_rank ?? 1, selection_reason: "RESERVED_EVENT_PLANNING_FINAL_IDENTITY_V1",
+    selection_rank: reservation.reservation_rank ?? 1, selection_reason: provenance.selectionReason ?? "RESERVED_EVENT_PLANNING_FINAL_IDENTITY_V1",
     status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
     diagnostics: {
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
       model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
-      source_lineage: { generated_signal_pair_id: selected.id },
+      source_lineage: selected.id !== null ? { generated_signal_pair_id: selected.id } : {},
       selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
       selected_score_contract_version: selected.scoreContractVersion,
       max_entry_price: selected.maxEntryPrice, entry_price: selected.entryPrice, stake_guard_usd: selected.stakeUsd,
@@ -1239,6 +1240,7 @@ function buildQueueRowFromExactCandidate(
       max_stake_usd: QUEUE_MAX_STAKE_USD,
       source_authority: provenance.sourceAuthority,
       mechanical_guard_trace: provenance.mechanicalGuardTrace,
+      ...(provenance.extraDiagnostics ?? {}),
       ...(liveOrderbookEvidence
         ? {
             current_executable_price: liveOrderbookEvidence.executablePrice,
@@ -1609,6 +1611,94 @@ async function selectQueueRowFromReservationCandidateManifest(
     guard.evidence
   );
   return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_PLANNING_FINAL_IDENTITY_V1", queueRow: row };
+}
+
+/**
+ * P1B-3-B: live Final Identity from the completed exact-event T_MINUS_3
+ * universe. The already-existing pure selector (selectReservationT3AbDecisions)
+ * owns Strategy B priority; A_CURRENT_CONTROL stays shadow/control evidence and
+ * is never executed here. B's exact condition_id/token_id/side is re-resolved
+ * against the SAME T3 array, then refreshed through the canonical live
+ * orderbook guard. No Planning / A / sibling fallback exists: any failure
+ * SKIPS the reservation. T3 best_ask is decision evidence only.
+ */
+async function selectQueueRowFromT3BDecision(
+  reservation: NightEventReservationRow,
+  universe: readonly FinalT3MarketObservation[],
+  rebalanceRunId: string,
+  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>,
+  writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>,
+): Promise<DueReservationSelection> {
+  const eventStartIso = reservation.event_start_iso;
+  const physicalEventId = reservation.physical_event_id;
+  if (!eventStartIso || !Number.isFinite(Date.parse(eventStartIso)) || !physicalEventId) {
+    return { outcome: "SKIPPED", reason: "RESERVATION_EXACT_EVENT_LINEAGE_INCOMPLETE", queueRow: null };
+  }
+  let b: ReturnType<typeof selectReservationT3AbDecisions>["b"];
+  try {
+    b = selectReservationT3AbDecisions(reservation, universe).b;
+  } catch {
+    return { outcome: "SKIPPED", reason: "B_FOUR_MARKET_PRIORITY_T3_LINEAGE_INVALID", queueRow: null };
+  }
+  const identity = b.selectedIdentity;
+  if (!identity) {
+    return { outcome: "SKIPPED", reason: "B_FOUR_MARKET_PRIORITY_NO_SUPPORTED_T3_IDENTITY", queueRow: null };
+  }
+  const matches = universe.filter((o) => o.condition_id === identity.conditionId &&
+    o.token_id === identity.tokenId && o.side === identity.side);
+  if (matches.length !== 1) {
+    return { outcome: "SKIPPED", reason: "B_FOUR_MARKET_PRIORITY_T3_IDENTITY_NOT_UNIQUE", queueRow: null };
+  }
+  const obs = matches[0];
+  const entryPrice = obs.best_ask;
+  if (typeof entryPrice !== "number" || !Number.isFinite(entryPrice) || entryPrice <= 0) {
+    return { outcome: "SKIPPED", reason: "B_FOUR_MARKET_PRIORITY_T3_REFERENCE_PRICE_MISSING", queueRow: null };
+  }
+  const selected: SelectedExactCandidate = {
+    id: null, conditionId: obs.condition_id, tokenId: obs.token_id, side: obs.side,
+    signalScore: null, stakeUsd: EXECUTABLE_STAKE_USD, maxEntryPrice: QUEUE_MAX_ENTRY_PRICE,
+    entryPrice, scoreContractVersion: b.strategyVersion, marketSlug: obs.market_slug ?? null,
+  };
+
+  const guard = await evaluateLiveOrderbookGuard(selected, fetchExactTokenOrderbook);
+  if (reservation.id && writeGuardTelemetry) {
+    try {
+      await writeGuardTelemetry(reservation, {
+        ...guard.telemetry, attemptId: randomUUID(), conditionId: selected.conditionId,
+        side: selected.side, marketSlug: selected.marketSlug,
+        referenceEntryPrice: selected.entryPrice,
+      });
+    } catch {
+      console.error("[live-guard-telemetry] persistence failed");
+    }
+  }
+  if (!guard.pass) {
+    return { outcome: "SKIPPED", reason: `B2_LIVE_ORDERBOOK_GUARD_FAILED: ${guard.reason}`, queueRow: null };
+  }
+  const row = buildQueueRowFromExactCandidate(
+    reservation, rebalanceRunId, physicalEventId, eventStartIso, selected,
+    {
+      sourceAuthority: "T3_B_FOUR_MARKET_PRIORITY",
+      selectionReason: "B_FOUR_MARKET_PRIORITY_V1_FINAL_IDENTITY",
+      mechanicalGuardTrace: [
+        "RESERVATION_ACTIVE", "DUE_WINDOW", "COMPLETED_FINAL_T3_UNIVERSE", "B_FOUR_MARKET_PRIORITY_SELECTED",
+        "IDENTITY_COMPLETE", ...guard.trace,
+      ],
+      extraDiagnostics: {
+        strategy_variant: b.strategyVariant,
+        strategy_version: b.strategyVersion,
+        strategy_decision_reason: b.decisionReason,
+        capture_run_id: b.captureRunId,
+        canonical_market_family: obs.canonical_market_family,
+        canonical_market_type: obs.canonical_market_type,
+        provider_market_type_raw: obs.provider_market_type_raw ?? null,
+        t3_reference_best_ask: obs.best_ask,
+        t3_reference_ask_decimal_odds: obs.ask_decimal_odds,
+      },
+    },
+    guard.evidence,
+  );
+  return { outcome: "QUEUED", reason: row.selection_reason ?? "B_FOUR_MARKET_PRIORITY_V1_FINAL_IDENTITY", queueRow: row };
 }
 
 /**
@@ -2006,10 +2096,11 @@ export async function runEventRebalance(
     // P1A: a finalized exact-event source set is mandatory before any live
     // Final Rebalance selection. P1B will consume this same array for A/B.
     // Existing Planning-token selection below remains unchanged for P1A.
+    let finalT3Universe: FinalT3MarketObservation[] | null = null;
     if (write) {
       try {
-        const finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
-        if (finalSiblingUniverse.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+        finalT3Universe = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
+        if (finalT3Universe.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
       } catch {
         plannedActions.push({ kind: "SKIPPED", reservation, reason: "FINAL_T3_SOURCE_UNAVAILABLE" });
         continue;
@@ -2025,8 +2116,18 @@ export async function runEventRebalance(
       reservation.diagnostics?.contract_a_stage === "PLANNING"
         ? resolveReservationCandidateManifest(reservation)
         : null;
+    // P1B-3-B: write-mode Final Identity is Strategy B from the completed T3
+    // universe, with no Planning/A/manifest fallback.
     const selection =
-      manifestResolution?.kind === "SUPPORTED"
+      write && finalT3Universe
+        ? await selectQueueRowFromT3BDecision(
+            reservation,
+            finalT3Universe,
+            rebalanceRunId,
+            fetchExactTokenOrderbook,
+            deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined)
+          )
+        : manifestResolution?.kind === "SUPPORTED"
         ? await selectQueueRowFromReservationCandidateManifest(
             reservation,
             manifestResolution.candidates,

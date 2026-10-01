@@ -158,3 +158,167 @@ test("persisted lifecycle parity: one frozen UTC asOf gives the same active/due 
   assert.match(auditSource, /classifyActiveReservationDue/);
   assert.doesNotMatch(auditSource, /function classifyDueWindowState/);
 });
+
+// ── P1B-3-B: Strategy B drives live Final Identity from the completed T3 universe ──
+import { QUEUE_DEFAULT_STAKE_USD, QUEUE_MAX_ENTRY_PRICE } from "../../lib/executor/executorQueueTypes";
+import type { FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
+
+const CAPTURE_RUN = "capture-run-b1";
+const B_NOW = Date.parse(START) - 8 * 60_000;
+
+function t3(
+  conditionId: string,
+  family: string,
+  type: string,
+  odds: number,
+  extra: Partial<FinalT3MarketObservation> = {},
+): FinalT3MarketObservation {
+  return {
+    capture_run_id: CAPTURE_RUN, reservation_id: "reservation-minimal", physical_event_id: PHYSICAL_ID,
+    provider_event_id: EVENT_ID, event_start_iso: START, observation_phase: "T_MINUS_3",
+    condition_id: conditionId, token_id: `tok-${conditionId}`, side: "Yes",
+    canonical_market_family: family, canonical_market_type: type,
+    provider_market_type_raw: null, market_slug: `slug-${conditionId}`,
+    best_ask: Number((1 / odds).toFixed(4)), ask_decimal_odds: odds, orderbook_fetch_status: "SUCCESS",
+    ...extra,
+  };
+}
+
+async function runB(universe: FinalT3MarketObservation[], bookOk: (tokenId: string) => boolean = () => true) {
+  // Planning identity is deliberately a MONEYLINE that is NOT in the T3 universe unless supplied.
+  const r = reservation({ condition_id: "cond-plan-ml", token_id: "tok-cond-plan-ml", side: "Yes" });
+  const queue: EventExecutionQueueRow[] = [];
+  const skipped: string[] = [];
+  const fetched: string[] = [];
+  const repo: RebalanceRepoPort = {
+    async loadActiveReservations() { return [r]; },
+    async loadQueuedReservationIds() { return new Set<string>(); },
+    async markReservationsExpired() {}, async markReservationQueued() {},
+    async markReservationSkipped(_id, reason) { skipped.push(reason); },
+    async insertQueueRow(value) { queue.push(value); },
+  };
+  const result = await runEventRebalance(B_NOW, { write: true }, {
+    repo,
+    readFinalT3Universe: async () => universe,
+    fetchFinalIdentitySourceRows: async () => { throw new Error("Planning/GSP fallback forbidden"); },
+    fetchCandidates: async () => { throw new Error("broad candidates forbidden"); },
+    fetchExactTokenOrderbook: async (tokenId: string) => {
+      fetched.push(tokenId);
+      if (!bookOk(tokenId)) return { ok: false, errorCode: "TEST_FAIL", latencyMs: 5 } as never;
+      return {
+        ok: true, latencyMs: 5,
+        book: { bids: [{ price: 0.49, size: 100 }], asks: [{ price: 0.5, size: 100 }] },
+      } as never;
+    },
+    writeGuardTelemetry: async () => {},
+  });
+  return { result, queue, skipped, fetched };
+}
+
+test("B: supported SPREAD beats Planning MONEYLINE; queue carries B lineage and live-guarded token", async () => {
+  const { queue, fetched, result } = await runB([
+    t3("cond-plan-ml", "MONEYLINE", "MONEYLINE", 1.9),
+    t3("cond-spread", "SPREADS", "SPREAD", 1.9),
+  ]);
+  assert.equal(result.queued_count, 1);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0].condition_id, "cond-spread");
+  assert.equal(queue[0].token_id, "tok-cond-spread");
+  assert.deepEqual(fetched, ["tok-cond-spread"], "live guard refreshed only the exact B token");
+  const d = queue[0].diagnostics as Record<string, unknown>;
+  assert.equal(d.strategy_variant, "B_FOUR_MARKET_PRIORITY_V1");
+  assert.equal(d.strategy_version, "P1B1_T3_AB_V1");
+  assert.equal(d.capture_run_id, CAPTURE_RUN);
+  assert.equal(d.canonical_market_family, "SPREADS");
+  assert.equal(d.canonical_market_type, "SPREAD");
+  assert.equal(d.physical_event_id, PHYSICAL_ID);
+  assert.equal(d.event_start_iso, START);
+  assert.equal(d.selected_signal_pair_id, null, "no fabricated generated_signal_pair id");
+  assert.deepEqual(d.source_lineage, {});
+  assert.equal(queue[0].stake_usd, QUEUE_DEFAULT_STAKE_USD);
+  assert.equal(d.max_entry_price, QUEUE_MAX_ENTRY_PRICE);
+});
+
+test("B: SPREAD out of support -> exact TOTAL_CORNERS token", async () => {
+  const { queue } = await runB([
+    t3("cond-spread", "SPREADS", "SPREAD", 2.4),
+    t3("cond-corners", "TOTAL_CORNERS", "TOTAL_CORNERS", 2.3, { provider_market_type_raw: "total_corners", market_slug: "x-total-corners-9pt5" }),
+    t3("cond-ml", "MONEYLINE", "MONEYLINE", 1.9),
+  ]);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0].condition_id, "cond-corners");
+  assert.equal((queue[0].diagnostics as Record<string, unknown>).provider_market_type_raw, "total_corners");
+});
+
+test("B: SPREAD and corners unavailable -> MONEYLINE", async () => {
+  const { queue } = await runB([
+    t3("cond-spread", "SPREADS", "SPREAD", 1.5),
+    t3("cond-ml", "MONEYLINE", "MONEYLINE", 1.95),
+    t3("cond-tot", "TOTALS", "TOTAL", 1.9),
+  ]);
+  assert.equal(queue[0]?.condition_id, "cond-ml");
+});
+
+test("B: only supported TOTALS -> TOTALS", async () => {
+  const { queue } = await runB([
+    t3("cond-ml", "MONEYLINE", "MONEYLINE", 1.2),
+    t3("cond-tot", "TOTALS", "TOTAL", 1.9),
+  ]);
+  assert.equal(queue[0]?.condition_id, "cond-tot");
+});
+
+test("B: no supported candidate -> zero Queue rows, no Planning/A fallback", async () => {
+  // Planning identity exists in T3 with a valid book (A would select it) but is out of B support.
+  const { queue, skipped, fetched } = await runB([t3("cond-plan-ml", "MONEYLINE", "MONEYLINE", 1.5)]);
+  assert.equal(queue.length, 0);
+  assert.deepEqual(skipped, ["B_FOUR_MARKET_PRIORITY_NO_SUPPORTED_T3_IDENTITY"]);
+  assert.deepEqual(fetched, []);
+});
+
+test("B: live guard failure -> zero Queue rows, no sibling substitution", async () => {
+  const { queue, skipped, fetched } = await runB([
+    t3("cond-spread", "SPREADS", "SPREAD", 1.9),
+    t3("cond-ml", "MONEYLINE", "MONEYLINE", 1.9),
+  ], (tok) => tok !== "tok-cond-spread");
+  assert.equal(queue.length, 0);
+  assert.deepEqual(fetched, ["tok-cond-spread"]);
+  assert.match(skipped[0], /^B2_LIVE_ORDERBOOK_GUARD_FAILED/);
+});
+
+test("B: foreign-event T3 row fails closed", async () => {
+  const { queue, skipped, fetched } = await runB([
+    t3("cond-spread", "SPREADS", "SPREAD", 1.9),
+    t3("cond-foreign", "SPREADS", "SPREAD", 1.9, { physical_event_id: "provider:polymarket:other:2026-08-06" }),
+  ]);
+  assert.equal(queue.length, 0);
+  assert.deepEqual(skipped, ["B_FOUR_MARKET_PRIORITY_T3_LINEAGE_INVALID"]);
+  assert.deepEqual(fetched, []);
+});
+
+test("B: duplicate exact identity in T3 is ambiguous and fails closed", async () => {
+  const dup = t3("cond-spread", "SPREADS", "SPREAD", 1.9);
+  const { queue, skipped } = await runB([dup, { ...dup }]);
+  assert.equal(queue.length, 0);
+  assert.equal(skipped.length, 1);
+});
+
+test("B: at most one Queue row per Reservation across repeated runs", async () => {
+  const universe = [t3("cond-spread", "SPREADS", "SPREAD", 1.9), t3("cond-ml", "MONEYLINE", "MONEYLINE", 1.9)];
+  const r = reservation();
+  const queue: EventExecutionQueueRow[] = [];
+  const repo: RebalanceRepoPort = {
+    async loadActiveReservations() { return [r]; },
+    async loadQueuedReservationIds() { return new Set(queue.map((q) => q.reservation_id).filter((v): v is string => v !== null)); },
+    async markReservationsExpired() {}, async markReservationSkipped() {}, async markReservationQueued() {},
+    async insertQueueRow(value) { queue.push(value); },
+  };
+  const deps = {
+    repo, readFinalT3Universe: async () => universe,
+    fetchExactTokenOrderbook: async () => ({ ok: true, latencyMs: 5, book: { bids: [{ price: 0.49, size: 100 }], asks: [{ price: 0.5, size: 100 }] } }) as never,
+    writeGuardTelemetry: async () => {},
+  };
+  await runEventRebalance(B_NOW, { write: true }, deps);
+  const second = await runEventRebalance(B_NOW, { write: true }, deps);
+  assert.equal(queue.length, 1);
+  assert.equal(second.already_queued_count, 1);
+});
