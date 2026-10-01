@@ -17,7 +17,7 @@ import { createHash, randomUUID } from "crypto";
 import { bStrategySupportRegion, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
-  physicalMatchId,
+  physicalIdUnderStoredFormat,
   produceContractAFinalIdentityDecision,
   type ContractAFinalIdentityDecision,
   type ContractAPlanningDecision,
@@ -925,9 +925,6 @@ function exactProviderSignalPair(row: FinalIdentitySourceRow): ExactProviderSign
   };
 }
 
-function providerPhysicalEventId(eventId: string, eventStartIso: string, gameId: string | null): string {
-  return physicalMatchId({ eventId, eventStartIso, gameId });
-}
 
 /**
  * The exact identity Contract A Planning already committed to for this
@@ -1158,7 +1155,9 @@ export function planningDecisionFromReservation(reservation: NightEventReservati
     typeof providerEventId !== "string" || providerEventId === "" ||
     typeof providerEventStartIso !== "string" || !Number.isFinite(Date.parse(providerEventStartIso)) ||
     !sameEventStartInstant(providerEventStartIso, eventStartIso) ||
-    providerPhysicalEventId(providerEventId, providerEventStartIso, text(lineage.provider_game_id)) !== physicalEventId
+    physicalIdUnderStoredFormat(physicalEventId, {
+      eventId: providerEventId, eventStartIso: providerEventStartIso, gameId: text(lineage.provider_game_id),
+    }) !== physicalEventId
   ) return null;
   return {
     decision_version: "CONTRACT_A_DECISION_V1",
@@ -1280,7 +1279,7 @@ async function selectQueueRowFromContractAReservation(
     return { outcome: "SKIPPED", reason: reasonCode, queueRow: null };
   }
   const candidates = rows.map(exactProviderSignalPair).filter((v): v is ExactProviderSignalPair => v !== null)
-    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && providerPhysicalEventId(v.eventId, v.eventStartIso, v.gameId) === physicalEventId);
+    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && physicalIdUnderStoredFormat(physicalEventId, v) === physicalEventId);
   if (candidates.length === 0) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
   const planningIdentity = extractPlanningFinalIdentityEvidence(reservation.diagnostics);
   if (planningIdentity === null) {

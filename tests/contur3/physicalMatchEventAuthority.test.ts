@@ -15,7 +15,7 @@ import {
   selectReservationT3AbDecisions,
   type FinalT3MarketObservation,
 } from "../../lib/executor/reservationMarketBaseline";
-import { physicalMatchId, resolveContractAProviderPhysicalEventIdentity } from "../../lib/executor/contractADecisions";
+import { buildContractAFinalIdentityDecision, physicalIdUnderStoredFormat, physicalMatchId, resolveContractAProviderPhysicalEventIdentity } from "../../lib/executor/contractADecisions";
 import { buildReservationCandidateManifestsByPhysicalEvent } from "../../lib/executor/nightEventReservations";
 import { planningDecisionFromReservation } from "../../lib/executor/eventExecutionQueue";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
@@ -210,4 +210,54 @@ test("PMEA-10: B selection over the same-match universe never picks exact score 
   const spread = obs(moreMarkets("1041677", GAME_A)[0], "SPREADS", "SPREAD", 0.52);
   const withSpread = selectReservationT3AbDecisions(reservation({ source_lineage: lineageA }, idA), [...universe, spread]).b;
   assert.equal(withSpread.selectedIdentity?.conditionId, spread.condition_id);
+});
+
+// ── Legacy (pre-gameId) Reservations must keep validating when their source
+//    rows now carry a gameId (the producer writes providerEventContext.gameId).
+const LEGACY_ID = "provider:polymarket:1039742:2026-10-01";
+const GAME_ID_ID = `provider:polymarket:game:${GAME_A}:2026-10-01`;
+
+test("PMEA-11: expected physical id follows the Reservation's own stored id format, never the row alone", () => {
+  const row = { eventId: "1039742", eventStartIso: START, gameId: GAME_A };
+  assert.equal(physicalIdUnderStoredFormat(LEGACY_ID, row), LEGACY_ID, "legacy Reservation ignores the row's gameId");
+  assert.equal(physicalIdUnderStoredFormat(GAME_ID_ID, row), GAME_ID_ID);
+  assert.equal(physicalIdUnderStoredFormat(GAME_ID_ID, { ...row, eventId: "1041677" }), GAME_ID_ID, "sibling provider event, same match");
+  assert.notEqual(physicalIdUnderStoredFormat(GAME_ID_ID, { ...row, gameId: GAME_B }), GAME_ID_ID, "other match never matches");
+});
+
+const planningFor = (physicalEventId: string) => ({
+  decision_version: "CONTRACT_A_DECISION_V1", contract_a_version: "CONTRACT_A_PLANNING_V1", status: "ACCEPTED",
+  physical_event_id: physicalEventId, event_start_iso: START, event_start_iso_source: "source_row_game_start_iso",
+  source_lineage: {}, rejection_trace: null,
+}) as never;
+const finalCandidate = { condition_id: "0xc", token_id: "tok", side: "Yes", market_slug: "m", canonical_market_key: null,
+  event_slug: "e", diagnostics: { game_start_iso: START } } as never;
+const finalDiag = (eventId: string, gameId: string | null) => ({
+  gameStartIso: START, providerEventContext: { v: "v1", provider: "polymarket", eventId, eventStartIso: START, ...(gameId ? { gameId } : {}) },
+});
+
+test("PMEA-12: Final Identity — legacy Reservation + gameId-bearing row still accepted; game-based Reservation accepts same-match sibling only", () => {
+  const legacy = buildContractAFinalIdentityDecision(planningFor(LEGACY_ID), finalCandidate, finalDiag("1039742", GAME_A));
+  assert.equal(legacy.accepted, true, "existing legacy cohort must not regress");
+  const legacyOtherEvent = buildContractAFinalIdentityDecision(planningFor(LEGACY_ID), finalCandidate, finalDiag("1041677", GAME_A));
+  assert.equal(legacyOtherEvent.accepted, false, "legacy still binds to its provider event id");
+  const sibling = buildContractAFinalIdentityDecision(planningFor(GAME_ID_ID), finalCandidate, finalDiag("1041677", GAME_A));
+  assert.equal(sibling.accepted, true);
+  const otherMatch = buildContractAFinalIdentityDecision(planningFor(GAME_ID_ID), finalCandidate, finalDiag("1039744", GAME_B));
+  assert.equal(otherMatch.accepted, false);
+  assert.equal(otherMatch.accepted === false && otherMatch.rejection.reason_code, "PHYSICAL_EVENT_ID_MISMATCH");
+});
+
+test("PMEA-13: legacy Reservation capture behaves as before (no claim, own markets captured even with no live-B family); no sibling reads", async () => {
+  const res = reservation({ source_lineage: { provider_event_id: "1039742", provider_event_start_iso: START }, candidate_manifest: manifestA },
+    LEGACY_ID);
+  const { reads, run, observations } = await capture(res, { "1039742": exactScore("1039742", GAME_A) });
+  assert.deepEqual(reads, ["1039742"]);
+  assert.equal(run.failure_reason, null);
+  assert.ok(observations.length > 0, "previously-successful capture is not turned into a failure");
+});
+
+test("PMEA-14: a claimed gameId must be confirmed by the exact-event payload (payload without gameId fails closed)", () => {
+  const noGame = moneyline("1039742", GAME_A).map((m) => ({ ...m, provider_game_id: null }));
+  assert.equal(providerEventIdentityContradiction({ gameId: GAME_A, marketType: "moneyline" }, noGame), "GAME_ID_MISMATCH");
 });

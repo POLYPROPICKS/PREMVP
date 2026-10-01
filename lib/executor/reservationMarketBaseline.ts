@@ -89,7 +89,8 @@ export function providerEventIdentityContradiction(
   payloadMarkets: readonly InventoryMarket[],
 ): "GAME_ID_MISMATCH" | "CLAIMED_FAMILY_ABSENT_FROM_EXACT_EVENT" | null {
   const payloadGameId = payloadMarkets.find((m) => m.provider_game_id)?.provider_game_id ?? null;
-  if (claim.gameId && payloadGameId && claim.gameId !== payloadGameId) return "GAME_ID_MISMATCH";
+  // Fail closed: a claimed gameId must be confirmed by the exact-event payload.
+  if (claim.gameId && payloadMarkets.length > 0 && claim.gameId !== payloadGameId) return "GAME_ID_MISMATCH";
   const claimedFamily = classifyObservationalMarket(claim.marketType).family;
   if (LIVE_B_UNIVERSE_FAMILIES.has(claimedFamily) &&
       !payloadMarkets.some((m) => classifyExactEventMarket(m.sports_market_type, m.provider_market_slug).family === claimedFamily)) {
@@ -350,8 +351,10 @@ export async function captureReservationMarketObservation(
           }
         } catch { /* an unavailable sibling contributes nothing; never substituted */ }
       }
-      if (!markets.some(isLiveBUniverseMarket)) {
-        failureReason = contradiction ? PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION : "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
+      // Only a contradicted identity with no supported same-match sibling fails
+      // here; otherwise capture behaves exactly as before.
+      if (contradiction !== null && !markets.some(isLiveBUniverseMarket)) {
+        failureReason = PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION;
       }
     }
     catch { failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE"; }

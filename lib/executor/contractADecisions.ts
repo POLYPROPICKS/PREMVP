@@ -312,6 +312,20 @@ export function physicalMatchId(
     : legacyProviderEventPhysicalId(identity.eventId, identity.eventStartIso);
 }
 
+/**
+ * Expected physical id of a source row UNDER A RESERVATION'S OWN stored id
+ * format. A pre-gameId (legacy) Reservation keeps matching on its provider
+ * event id even when its source rows now carry a gameId; a game-based
+ * Reservation matches on the row's gameId. Never re-derived from the row alone.
+ */
+export function physicalIdUnderStoredFormat(
+  storedPhysicalEventId: string,
+  identity: { eventId: string; eventStartIso: string; gameId: string | null },
+): string {
+  const gameBased = storedPhysicalEventId.startsWith("provider:polymarket:game:");
+  return physicalMatchId({ ...identity, gameId: gameBased ? identity.gameId : null });
+}
+
 function providerPhysicalEventId(identity: ExactProviderEventIdentity): string {
   return physicalMatchId(identity);
 }
@@ -580,7 +594,7 @@ export function buildContractAFinalIdentityDecision(
   if (providerIdentity === null) return reject("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
   if (providerIdentity.eventStartIso !== start.iso) return reject("EXACT_PROVIDER_EVENT_START_MISMATCH");
 
-  const candidatePhysicalEventId = providerPhysicalEventId(providerIdentity);
+  const candidatePhysicalEventId = physicalIdUnderStoredFormat(planning.physical_event_id, providerIdentity);
   if (candidatePhysicalEventId !== planning.physical_event_id) {
     return reject("PHYSICAL_EVENT_ID_MISMATCH", candidatePhysicalEventId ?? "null");
   }
