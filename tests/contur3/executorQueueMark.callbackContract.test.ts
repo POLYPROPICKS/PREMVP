@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { reconcileStaleClaims, type StaleClaimRow } from "../../lib/executor/staleQueueClaims";
 
 import {
   handleQueueMarkExecuted,
@@ -25,6 +26,30 @@ import {
 } from "../../lib/executor/executorCallbackContract";
 
 const root = process.cwd();
+
+test("bounded stale claims expire only after deadline without order evidence", async () => {
+  const now = "2026-10-01T00:00:00.000Z";
+  const base: StaleClaimRow = {
+    id: "q-1", status: "CLAIMED", latest_entry_iso: "2026-09-30T00:00:00.000Z",
+    idempotency_key: "idem-1", condition_id: "cond-1", token_id: "token-1", side: "BUY",
+    diagnostics: { claimed_at: "2026-09-29T00:00:00.000Z", claim_version: 1, mark_history: [{ status: "CLAIMED" }] },
+  };
+  const rows = [base, { ...base, id: "q-future", latest_entry_iso: "2026-10-02T00:00:00.000Z" },
+    { ...base, id: "q-order" }];
+  const writes: Array<{ id: string; diagnostics: Record<string, unknown> }> = [];
+  const port = {
+    async loadExpiredClaims(_now: string, limit: number) { assert.equal(limit, 50); return rows; },
+    async hasMatchingOrderEvent(row: StaleClaimRow) { return row.id === "q-order"; },
+    async expireClaim(row: StaleClaimRow, _now: string, diagnostics: Record<string, unknown>) {
+      writes.push({ id: row.id, diagnostics }); return true;
+    },
+  };
+  const result = await reconcileStaleClaims(port, now, true);
+  assert.deepEqual(result, { scanned: 3, protected_by_order_event: 1, expired_count: 1 });
+  assert.deepEqual(writes.map((write) => write.id), ["q-1"]);
+  assert.deepEqual(writes[0].diagnostics.mark_history, [{ status: "CLAIMED" }]);
+  assert.equal((writes[0].diagnostics.claim_expiry as Record<string, unknown>).reason, "CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT");
+});
 
 function baseRow(overrides: Partial<QueueMarkRow> = {}): QueueMarkRow {
   return {
@@ -176,6 +201,10 @@ test("Step 2/T1-T3: concurrent READY claims have one winner; an ambiguous retry 
 test("Step 2/T5-T9: Queue transitions are closed and terminal states cannot regress", () => {
   assert.ok(isQueueStatusTransitionAllowed("READY", "CLAIMED"));
   assert.ok(isQueueStatusTransitionAllowed("CLAIMED", "EXECUTED"));
+  assert.ok(isQueueStatusTransitionAllowed("CLAIMED", "SKIPPED"));
+  assert.ok(isQueueStatusTransitionAllowed("CLAIMED", "FAILED"));
+  assert.ok(isQueueStatusTransitionAllowed("CLAIMED", "EXPIRED"));
+  assert.ok(!isQueueStatusTransitionAllowed("CLAIMED", "READY"));
   assert.ok(!isQueueStatusTransitionAllowed("FAILED", "CLAIMED"));
   assert.ok(!isQueueStatusTransitionAllowed("SENT", "CLAIMED"));
   assert.ok(!isQueueStatusTransitionAllowed("EXECUTED", "FAILED"));

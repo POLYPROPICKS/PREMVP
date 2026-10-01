@@ -94,9 +94,22 @@ function createSupabaseQueueMarkDbPort(): QueueMarkDbPort {
 function createSupabaseQueueClaimDbPort() {
   return {
     async claimReadyQueueRow(queueId: string) {
+      const { data: ready, error: readError } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("diagnostics")
+        .eq("id", queueId)
+        .eq("status", "READY")
+        .maybeSingle();
+      if (readError) throw new Error(readError.message);
+      if (!ready) return null;
+      const prior = (ready.diagnostics ?? {}) as Record<string, unknown>;
+      const claimVersion = typeof prior.claim_version === "number" && Number.isInteger(prior.claim_version)
+        ? prior.claim_version + 1 : 1;
       const { data, error } = await supabaseAdmin
         .from("event_execution_queue")
-        .update({ status: "CLAIMED", updated_at: new Date().toISOString() })
+        .update({ status: "CLAIMED", updated_at: new Date().toISOString(), diagnostics: {
+          ...prior, claimed_at: new Date().toISOString(), claim_version: claimVersion,
+        } })
         .eq("id", queueId)
         .eq("status", "READY")
         .select("id, status, order_key, match_family_key, stake_usd, condition_id, token_id, side, idempotency_key, diagnostics, updated_at")
