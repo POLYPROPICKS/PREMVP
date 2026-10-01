@@ -25,6 +25,7 @@ import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/e
 import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
+import type { FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -35,6 +36,103 @@ const KICKOFF_MS = Date.parse(KICKOFF_ISO);
 const BEFORE_WINDOW_MS = Date.parse("2026-07-19T17:00:00.000Z"); // T-120m
 const IN_WINDOW_MS = Date.parse("2026-07-19T18:52:00.000Z"); // T-8m, final window
 const AFTER_WINDOW_MS = Date.parse("2026-07-19T18:59:00.000Z"); // T-1m
+
+test("P1B2: one T3 array persists A/B before B Final Identity, exact guard, and one Queue row", async () => {
+  const physicalId = "provider:polymarket:event-1:2026-07-19";
+  const reservation = baseReservation({ id: "p1b2-r", physical_event_id: physicalId, event_start_iso: KICKOFF_ISO,
+    diagnostics: {
+      contract_a_stage: "PLANNING",
+      source_lineage: { provider_event_id: "event-1", provider_event_start_iso: KICKOFF_ISO, generated_signal_pair_id: "planning-pair" },
+      planning_final_identity_evidence: { condition_id: "a-control", token_id: "a-token", side: "Yes" },
+      candidate_manifest_version: "RESERVATION_CANDIDATE_MANIFEST_V1",
+      candidate_manifest: [{ condition_id: "manifest-decoy", token_id: "decoy-token", side: "Yes" }],
+    },
+  });
+  const market = (condition: string, token: string, family: string, type: string): FinalT3MarketObservation => ({
+    capture_run_id: "one-t3-run", reservation_id: "p1b2-r", physical_event_id: physicalId,
+    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_3",
+    condition_id: condition, token_id: token, side: "Yes", canonical_market_family: family,
+    canonical_market_type: type, best_ask: 0.52, ask_decimal_odds: 1 / 0.52,
+    orderbook_fetch_status: "SUCCESS", market_slug: condition,
+  });
+  const universe = [market("a-control", "a-token", "MONEYLINE", "MONEYLINE"),
+    market("b-spread", "b-token", "SPREADS", "SPREAD")];
+  const repo = makeFakeRepo([reservation]);
+  let reads = 0;
+  const sequence: string[] = [];
+  const deps = {
+    repo,
+    readFinalT3Universe: async () => { reads++; return universe; },
+    recordStrategyDecision: async (decision: { captureRunId: string; strategyVariant: string; selectedIdentity: { tokenId: string } | null }) => {
+      sequence.push(`persist:${decision.captureRunId}:${decision.strategyVariant}:${decision.selectedIdentity?.tokenId}`);
+      return { total: 2, selected: 1, written: 2 };
+    },
+    fetchExactTokenOrderbook: async (tokenId: string) => {
+      sequence.push(`guard:${tokenId}`);
+      return { ok: true as const, tokenId, latencyMs: 1,
+        book: { tokenId, bids: [{ price: 0.50, size: 100 }], asks: [{ price: 0.52, size: 100 }], raw: {} } };
+    },
+  };
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, deps);
+  assert.equal(reads, 1);
+  assert.deepEqual(sequence, [
+    "persist:one-t3-run:A_CURRENT_CONTROL:a-token",
+    "persist:one-t3-run:B_FOUR_MARKET_PRIORITY_V1:b-token",
+    "guard:b-token",
+  ]);
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  const row = repo.queueRows[0];
+  assert.deepEqual([row.condition_id, row.token_id, row.side, row.market_family], ["b-spread", "b-token", "Yes", "SPREADS"]);
+  assert.equal(row.stake_usd, 2.5);
+  assert.equal(row.diagnostics.max_entry_price, 0.54);
+  const identity = row.diagnostics.final_identity as Record<string, unknown>;
+  assert.equal(identity.capture_run_id, "one-t3-run");
+  assert.equal(identity.physical_event_id, physicalId);
+  assert.equal(identity.strategy_variant, "B_FOUR_MARKET_PRIORITY_V1");
+  assert.equal(identity.token_id, "b-token");
+  assert.deepEqual(identity.planning_lineage, { condition_id: "a-control", token_id: "a-token", side: "Yes" });
+  assert.equal(row.diagnostics.source_authority, "COMPLETED_T3_AB_FINAL_IDENTITY");
+  const wire = mapQueueRowToIrelandCandidate(row, IN_WINDOW_MS);
+  assert.equal(wire.is_executable, true);
+  assert.deepEqual([wire.condition_id, wire.token_id, wire.side], ["b-spread", "b-token", "Yes"]);
+  reservation.status = "REBALANCE_PENDING";
+  const retry = await runEventRebalance(IN_WINDOW_MS, { write: true }, deps);
+  assert.equal(retry.already_queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  assert.equal(reads, 1);
+});
+
+test("P1B2: B skip, persistence failure, foreign event, and guard reject never queue A or a sibling", async () => {
+  const physicalId = "provider:polymarket:event-1:2026-07-19";
+  const reservation = () => baseReservation({ id: "p1b2-r", physical_event_id: physicalId, event_start_iso: KICKOFF_ISO,
+    diagnostics: { contract_a_stage: "PLANNING", planning_final_identity_evidence: { condition_id: "a", token_id: "a-token", side: "Yes" } },
+  });
+  const a: FinalT3MarketObservation = { capture_run_id: "t3", reservation_id: "p1b2-r", physical_event_id: physicalId,
+    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_3", condition_id: "a",
+    token_id: "a-token", side: "Yes", canonical_market_family: "MONEYLINE", canonical_market_type: "MONEYLINE",
+    best_ask: 0.59, ask_decimal_odds: 1 / 0.59, orderbook_fetch_status: "SUCCESS" };
+  for (const mode of ["B_SKIP", "PERSIST_FAIL", "FOREIGN_EVENT", "POLICY_MISMATCH", "GUARD_REJECT"] as const) {
+    const reserved = reservation();
+    if (mode === "POLICY_MISMATCH") reserved.diagnostics.planning_policy_verdict = { allowed: false };
+    const repo = makeFakeRepo([reserved]);
+    let guards = 0;
+    const rows = mode === "FOREIGN_EVENT" ? [{ ...a, physical_event_id: "foreign" }] :
+      mode === "GUARD_REJECT" || mode === "POLICY_MISMATCH" ? [{ ...a, best_ask: 0.52, ask_decimal_odds: 1 / 0.52 }] : [a];
+    const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+      repo, readFinalT3Universe: async () => rows,
+      recordStrategyDecision: async (decision) => {
+        if (mode === "PERSIST_FAIL" && decision.strategyVariant === "B_FOUR_MARKET_PRIORITY_V1") throw new Error("write failed");
+        return { total: 1, selected: 1, written: 1 };
+      },
+      fetchExactTokenOrderbook: async (tokenId) => { guards++; return { ok: false as const, tokenId, latencyMs: 1,
+        errorCode: "UNAVAILABLE", errorMessage: "unavailable" }; },
+    });
+    assert.equal(result.queued_count, 0, mode);
+    assert.equal(repo.queueRows.length, 0, mode);
+    assert.equal(guards, mode === "GUARD_REJECT" ? 1 : 0, mode);
+  }
+});
 
 const PARITY_RESERVATION_START = "2026-07-29T16:35:00Z";
 const PARITY_IN_WINDOW_MS = Date.parse("2026-07-29T15:35:00Z");
