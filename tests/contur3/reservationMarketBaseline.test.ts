@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BASELINE_SOURCE_VERSION, baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations, classifyObservationalMarket, liveGuardTelemetryRows, recordReservationStrategyDecision, type ReservationStrategyDecisionStore } from "../../lib/executor/reservationMarketBaseline";
+import { BASELINE_SOURCE_VERSION, baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations, classifyObservationalMarket, liveGuardTelemetryRows, recordReservationStrategyDecision, readCompletedFinalT3Universe, type ReservationStrategyDecisionStore } from "../../lib/executor/reservationMarketBaseline";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
 test("Reservation baseline writes only a V2 reference envelope without market or book work", async () => {
@@ -156,7 +156,45 @@ test("baseline IDs and incomplete market accounting are deterministic", () => {
   const set = inventoryTokens([market]);
   assert.equal(set.expected, 2);
   assert.equal(set.tokens.length, 2);
-  assert.deepEqual(baselineCompleteness({ markets: 1, siblingCounts: [1], expected: 2, observed: 2, failed: 0, missingIdentity: 0 }), { complete: false, status: "INCOMPLETE_MARKET_SET" });
+  assert.deepEqual(baselineCompleteness({ markets: 1, siblingCounts: [1], expected: 2, observed: 2, failed: 0, missingIdentity: 0 }), { complete: true, status: "COMPLETE" });
+});
+
+test("source-set completeness covers supplied identities, independently of book success", () => {
+  const source = { markets: 4, siblingCounts: [4, 4, 4, 4], expected: 8, observed: 8, failed: 1, missingIdentity: 0 };
+  assert.deepEqual(baselineCompleteness(source), { complete: true, status: "COMPLETE" });
+  for (const change of [{ siblingCounts: [4, 4, 3, 4] }, { missingIdentity: 1 }, { observed: 7 }]) {
+    assert.equal(baselineCompleteness({ ...source, ...change }).complete, false);
+  }
+});
+
+test("completed T3 reader returns only one exact same-event capture and rejects foreign or incomplete rows", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "reservation", physical_event_id: "event", event_start_iso: start,
+    diagnostics: { source_lineage: { provider_event_id: "provider" } } } as unknown as NightEventReservationRow;
+  const run = { id: "run-t3", reservation_id: "reservation", physical_event_id: "event", provider_event_id: "provider",
+    event_start_iso: start, observation_phase: "T_MINUS_3", source_version: "RESERVATION_MARKET_BASELINE_V1",
+    capture_complete: true, capture_status: "COMPLETE", market_tokens_expected_n: 2, market_tokens_observed_n: 2 };
+  const first = { id: "a", capture_run_id: "run-t3", reservation_id: "reservation", physical_event_id: "event",
+    provider_event_id: "provider", event_start_iso: start, observation_phase: "T_MINUS_3", condition_id: "spread",
+    token_id: "spread-token", side: "Yes", canonical_market_family: "SPREADS", canonical_market_type: "SPREAD",
+    best_ask: 0.5, ask_decimal_odds: 2, orderbook_fetch_status: "SUCCESS" };
+  const second = { ...first, id: "b", condition_id: "corners", token_id: "corners-token", canonical_market_family: "TOTAL_CORNERS", orderbook_fetch_status: "FAILED" };
+  const read = (runs: Record<string, unknown>[], rows: Record<string, unknown>[]) => readCompletedFinalT3Universe(reservation, {
+    readRuns: async () => runs, readObservations: async () => rows,
+  });
+  assert.deepEqual((await read([run], [first, second])).map((row) => row.token_id), ["spread-token", "corners-token"]);
+  for (const bad of [
+    { ...run, capture_complete: false }, { ...run, reservation_id: "foreign" },
+    { ...run, physical_event_id: "foreign" }, { ...run, provider_event_id: "foreign" },
+    { ...run, event_start_iso: "2026-10-02T00:00:00Z" }, { ...run, observation_phase: "T_MINUS_10" },
+  ]) await assert.rejects(read([bad], [first, second]), /FINAL_T3_SOURCE_UNAVAILABLE/);
+  for (const bad of [
+    { ...second, capture_run_id: "other" }, { ...second, reservation_id: "foreign" },
+    { ...second, physical_event_id: "foreign" }, { ...second, event_start_iso: "2026-10-02T00:00:00Z" },
+    { ...second, observation_phase: "T_MINUS_30" }, { ...second, condition_id: null },
+    { ...second, token_id: "" }, { ...second, side: null },
+  ]) await assert.rejects(read([run], [first, bad]), /FINAL_T3_SOURCE_UNAVAILABLE/);
+  await assert.rejects(read([run, { ...run, id: "run-2" }], [first, second]), /FINAL_T3_SOURCE_UNAVAILABLE/);
 });
 
 test("one T30 snapshot records distinct tokens and survives one failed orderbook", async () => {
@@ -183,7 +221,7 @@ test("one T30 snapshot records distinct tokens and survives one failed orderbook
   assert.equal(savedRows[1].orderbook_failure_reason, "TIMEOUT");
 });
 
-test("all supplied T10 books succeeding still leaves source-set completeness unproven", async () => {
+test("all supplied T10 identities certify source-set completeness", async () => {
   const reservation = { id: "22222222-2222-4222-8222-222222222222", plan_run_id: "plan", physical_event_id: "provider:polymarket:e:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "e", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
   let run: Record<string, unknown> = {};
   await captureReservationMarketObservation(reservation, "T_MINUS_10", {
@@ -195,8 +233,8 @@ test("all supplied T10 books succeeding still leaves source-set completeness unp
   });
   assert.equal(run.market_tokens_expected_n, 2);
   assert.equal(run.orderbooks_success_n, 2);
-  assert.equal(run.capture_complete, false);
-  assert.equal(run.capture_status, "INCOMPLETE_MARKET_SET");
+  assert.equal(run.capture_complete, true);
+  assert.equal(run.capture_status, "COMPLETE");
 });
 
 test("classifyObservationalMarket maps structured provider types only", () => {

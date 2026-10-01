@@ -119,11 +119,90 @@ export function inventoryTokens(markets: readonly InventoryMarket[]): { tokens: 
 }
 
 export function baselineCompleteness(input: { markets: number; siblingCounts: number[]; expected: number; observed: number; failed: number; missingIdentity: number }): { complete: boolean; status: string } {
-  // The keyset inventory does not attest that the provider event payload is exhaustive.
-  // Even internally consistent sibling counts therefore never certify completeness.
-  void input;
-  return { complete: false, status: "INCOMPLETE_MARKET_SET" };
+  // Complete means every identifiable token supplied by this exact event response
+  // was persisted. It does not attest to markets outside the provider response.
+  const complete = input.markets > 0 && input.siblingCounts.length === input.markets &&
+    input.siblingCounts.every((count) => Number.isFinite(count) && count === input.markets) &&
+    input.expected > 0 && input.missingIdentity === 0 && input.observed === input.expected;
+  // Orderbook failures are retained on observations, independently of source-set completeness.
+  return { complete, status: complete ? "COMPLETE" : "INCOMPLETE_MARKET_SET" };
 }
+
+export type FinalT3MarketObservation = {
+  capture_run_id: string; reservation_id: string; physical_event_id: string;
+  provider_event_id: string; event_start_iso: string; observation_phase: string;
+  condition_id: string; token_id: string; side: string;
+  canonical_market_family: string | null; canonical_market_type: string | null;
+  best_ask: number | null; ask_decimal_odds: number | null;
+  orderbook_fetch_status: string | null;
+};
+
+type FinalT3ReadPort = {
+  readRuns(reservationId: string): Promise<Record<string, unknown>[]>;
+  readObservations(captureRunId: string, afterId: string): Promise<Record<string, unknown>[]>;
+};
+
+/** One finalized source-set snapshot for one reserved physical event. */
+export async function readCompletedFinalT3Universe(
+  reservation: NightEventReservationRow,
+  port: FinalT3ReadPort = defaultFinalT3ReadPort,
+): Promise<FinalT3MarketObservation[]> {
+  const id = reservation.id;
+  const physicalId = reservation.physical_event_id;
+  const start = reservation.event_start_iso;
+  const lineage = reservation.diagnostics?.source_lineage as { provider_event_id?: unknown } | undefined;
+  const providerId = lineage?.provider_event_id;
+  if (!id || !physicalId || !start || !Number.isFinite(Date.parse(start)) ||
+      typeof providerId !== "string" || !providerId) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+  const runs = await port.readRuns(id);
+  if (runs.length !== 1) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+  const run = runs[0];
+  if (run.reservation_id !== id || run.physical_event_id !== physicalId ||
+      run.provider_event_id !== providerId || Date.parse(String(run.event_start_iso)) !== Date.parse(start) ||
+      run.observation_phase !== "T_MINUS_3" || run.source_version !== MARKET_SOURCE_VERSION ||
+      run.capture_complete !== true || run.capture_status !== "COMPLETE" ||
+      typeof run.id !== "string" || !run.id ||
+      !Number.isSafeInteger(run.market_tokens_observed_n) || Number(run.market_tokens_observed_n) <= 0 ||
+      run.market_tokens_expected_n !== run.market_tokens_observed_n) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+  const rows: Record<string, unknown>[] = [];
+  let afterId = "00000000-0000-0000-0000-000000000000";
+  for (;;) {
+    const page = await port.readObservations(run.id, afterId);
+    rows.push(...page);
+    if (rows.length > Number(run.market_tokens_observed_n) || page.length > 200) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+    if (page.length < 200) break;
+    const nextId = page.at(-1)?.id;
+    if (typeof nextId !== "string" || nextId <= afterId) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+    afterId = nextId;
+  }
+  if (rows.length !== run.market_tokens_observed_n || rows.some((row) =>
+    row.capture_run_id !== run.id || row.reservation_id !== id || row.physical_event_id !== physicalId ||
+    row.provider_event_id !== providerId || Date.parse(String(row.event_start_iso)) !== Date.parse(start) ||
+    row.observation_phase !== "T_MINUS_3" ||
+    ![row.condition_id, row.token_id, row.side].every((value) => typeof value === "string" && value.trim() !== "")
+  )) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+  return rows as FinalT3MarketObservation[];
+}
+
+const defaultFinalT3ReadPort: FinalT3ReadPort = {
+  async readRuns(reservationId) {
+    const { supabaseAdmin } = await import("../supabase/server");
+    const { data, error } = await supabaseAdmin.from("reservation_market_capture_runs")
+      .select("id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,source_version,capture_complete,capture_status,market_tokens_expected_n,market_tokens_observed_n")
+      .eq("reservation_id", reservationId).eq("observation_phase", "T_MINUS_3")
+      .eq("source_version", MARKET_SOURCE_VERSION).limit(2);
+    if (error) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+    return data ?? [];
+  },
+  async readObservations(captureRunId, afterId) {
+    const { supabaseAdmin } = await import("../supabase/server");
+    const { data, error } = await supabaseAdmin.from("reservation_market_observations")
+      .select("id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,condition_id,token_id,side,canonical_market_family,canonical_market_type,best_ask,ask_decimal_odds,orderbook_fetch_status")
+      .eq("capture_run_id", captureRunId).gt("id", afterId).order("id").limit(200);
+    if (error) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+    return data ?? [];
+  },
+};
 
 export async function captureReservationMarketBaseline(
   reservation: NightEventReservationRow,
