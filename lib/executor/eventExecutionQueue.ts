@@ -14,7 +14,7 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash, randomUUID } from "crypto";
-import { persistLiveGuardTelemetry, readCompletedFinalT3Universe, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { bStrategySupportRegion, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   produceContractAFinalIdentityDecision,
@@ -1521,6 +1521,125 @@ async function evaluateLiveOrderbookGuard(
   });
 }
 
+type T3FinalIdentity = Readonly<{
+  physical_event_id: string; event_start: string; capture_run_id: string;
+  condition_id: string; token_id: string; side: string;
+  canonical_market_family: string | null; canonical_market_type: string | null;
+  strategy_variant: "B_FOUR_MARKET_PRIORITY_V1";
+  strategy_version: string; decision_timestamp: string; selection_reason: string;
+  support_region: Readonly<{ min: number; max: number }> | null;
+  planning_lineage: Readonly<Record<string, unknown>> | null;
+  source_lineage: Readonly<Record<string, unknown>> | null;
+}>;
+
+/** The current Planning Reservation contour has one live strategy, fixed for this release. */
+const LIVE_T3_STRATEGY = "B_FOUR_MARKET_PRIORITY_V1" as const;
+
+async function selectQueueRowFromT3FinalIdentity(
+  reservation: NightEventReservationRow,
+  universe: readonly FinalT3MarketObservation[],
+  rebalanceRunId: string,
+  nowMs: number,
+  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>,
+  recordDecision: typeof recordReservationStrategyDecision,
+  writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>,
+): Promise<DueReservationSelection> {
+  let decisions: ReturnType<typeof selectReservationT3AbDecisions>;
+  try {
+    decisions = selectReservationT3AbDecisions(reservation, universe);
+    await recordDecision(decisions.a);
+    await recordDecision(decisions.b);
+  } catch {
+    return { outcome: "SKIPPED", reason: "T3_AB_DECISION_OR_PERSISTENCE_FAILED", queueRow: null };
+  }
+  const live = decisions.b;
+  if (!live.selectedIdentity) return { outcome: "SKIPPED", reason: `T3_B_SKIP:${live.decisionReason}`, queueRow: null };
+  const planningIdentity = extractPlanningFinalIdentityEvidence(reservation.diagnostics);
+  if (!planningIdentity) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", queueRow: null };
+  const policy = reservation.diagnostics?.planning_policy_verdict as
+    | { allowed?: boolean; exact_identity?: { condition_id?: string; token_id?: string; side?: string } | null }
+    | undefined;
+  const policyIdentity = policy?.exact_identity;
+  if (policy && (policy.allowed !== true || !policyIdentity ||
+      policyIdentity.condition_id !== planningIdentity.conditionId ||
+      policyIdentity.token_id !== planningIdentity.tokenId ||
+      policyIdentity.side !== planningIdentity.side)) {
+    return { outcome: "SKIPPED", reason: "PLANNING_MARKET_POLICY_IDENTITY_MISMATCH", queueRow: null };
+  }
+  const selected = universe.filter((candidate) => candidate.condition_id === live.selectedIdentity?.conditionId &&
+    candidate.token_id === live.selectedIdentity?.tokenId && candidate.side === live.selectedIdentity?.side);
+  if (selected.length !== 1) return { outcome: "SKIPPED", reason: "T3_FINAL_IDENTITY_AMBIGUOUS", queueRow: null };
+  const observation = selected[0];
+  const physicalEventId = reservation.physical_event_id;
+  const eventStartIso = reservation.event_start_iso;
+  if (!physicalEventId || !eventStartIso || !Number.isFinite(Date.parse(eventStartIso)) ||
+      observation.physical_event_id !== physicalEventId ||
+      Date.parse(observation.event_start_iso) !== Date.parse(eventStartIso)) {
+    return { outcome: "SKIPPED", reason: "T3_FINAL_IDENTITY_EVENT_MISMATCH", queueRow: null };
+  }
+  const region = bStrategySupportRegion(observation.canonical_market_family ?? "");
+  if (!region || !Number.isFinite(observation.best_ask) || observation.best_ask === null) {
+    return { outcome: "SKIPPED", reason: "T3_FINAL_IDENTITY_UNSUPPORTED", queueRow: null };
+  }
+  const sourceLineage = reservation.diagnostics?.source_lineage;
+  const planningLineage = reservation.diagnostics?.planning_final_identity_evidence;
+  const finalIdentity: T3FinalIdentity = Object.freeze({
+    physical_event_id: physicalEventId, event_start: eventStartIso,
+    capture_run_id: live.captureRunId, condition_id: observation.condition_id,
+    token_id: observation.token_id, side: observation.side,
+    canonical_market_family: observation.canonical_market_family,
+    canonical_market_type: observation.canonical_market_type,
+    strategy_variant: LIVE_T3_STRATEGY, strategy_version: live.strategyVersion,
+    decision_timestamp: new Date(nowMs).toISOString(), selection_reason: live.decisionReason,
+    support_region: Object.freeze(region),
+    planning_lineage: planningLineage && typeof planningLineage === "object" ? Object.freeze(structuredClone(planningLineage as Record<string, unknown>)) : null,
+    source_lineage: sourceLineage && typeof sourceLineage === "object" ? Object.freeze(structuredClone(sourceLineage as Record<string, unknown>)) : null,
+  });
+  const guard = await evaluateLiveOrderbookGuard({ tokenId: finalIdentity.token_id,
+    maxEntryPrice: QUEUE_MAX_ENTRY_PRICE, stakeUsd: EXECUTABLE_STAKE_USD }, fetchExactTokenOrderbook);
+  if (reservation.id && writeGuardTelemetry) {
+    try {
+      await writeGuardTelemetry(reservation, {
+        ...guard.telemetry, attemptId: randomUUID(), conditionId: finalIdentity.condition_id,
+        side: finalIdentity.side, marketSlug: observation.market_slug ?? null,
+        referenceEntryPrice: observation.best_ask,
+      });
+    } catch { console.error("[live-guard-telemetry] persistence failed"); }
+  }
+  if (!guard.pass) return { outcome: "SKIPPED", reason: `T3_FINAL_IDENTITY_GUARD_FAILED:${guard.reason}`, queueRow: null };
+  const { orderKey, idempotencyKey } = queueIdentityKeys(reservation, finalIdentity);
+  const startMs = Date.parse(finalIdentity.event_start);
+  const row: EventExecutionQueueRow = {
+    reservation_id: reservation.id ?? null, plan_run_id: reservation.plan_run_id, rebalance_run_id: rebalanceRunId,
+    match_family_key: reservation.match_family_key, event_title: reservation.event_title, event_slug: reservation.event_slug,
+    sport: reservation.sport, league: reservation.league, game_start_iso: finalIdentity.event_start,
+    condition_id: finalIdentity.condition_id, token_id: finalIdentity.token_id, side: finalIdentity.side,
+    market_slug: observation.market_slug ?? null, market_title: observation.market_slug ?? null,
+    market_family: finalIdentity.canonical_market_family, score: null, coverage: null,
+    tier: reservation.event_tier ?? EXECUTABLE_TIER, stake_usd: EXECUTABLE_STAKE_USD,
+    preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: latestEntryIso(startMs),
+    selection_rank: reservation.reservation_rank ?? 1, selection_reason: "T3_AB_FINAL_IDENTITY_GUARDED_V1",
+    status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
+    diagnostics: {
+      physical_event_id: finalIdentity.physical_event_id, event_start_iso: finalIdentity.event_start,
+      final_identity: finalIdentity, live_strategy: LIVE_T3_STRATEGY, shadow_strategy: decisions.a.strategyVariant,
+      planning_final_identity_evidence: finalIdentity.planning_lineage,
+      source_lineage: finalIdentity.source_lineage,
+      model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
+      max_entry_price: QUEUE_MAX_ENTRY_PRICE, entry_price: observation.best_ask,
+      stake_guard_usd: EXECUTABLE_STAKE_USD, max_stake_usd: QUEUE_MAX_STAKE_USD,
+      source_authority: "COMPLETED_T3_AB_FINAL_IDENTITY",
+      current_executable_price: guard.evidence.executablePrice,
+      current_executable_depth_usd: guard.evidence.executableDepthUsd,
+      current_spread: guard.evidence.spread,
+      orderbook_refresh_at: guard.evidence.refreshedAtIso,
+      orderbook_refresh_latency_ms: guard.evidence.latencyMs,
+      mechanical_guard_trace: ["T3_AB_PERSISTED", "FINAL_IDENTITY_FROZEN", ...guard.trace],
+    },
+  };
+  return { outcome: "QUEUED", reason: row.selection_reason ?? "T3_AB_FINAL_IDENTITY_GUARDED_V1", queueRow: row };
+}
+
 /**
  * B3: final market selection for a B2 Reservation, sourced ENTIRELY from its
  * already-persisted diagnostics.candidate_manifest — zero generated_signal_pairs
@@ -1822,6 +1941,7 @@ export async function runEventRebalance(
     fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>;
     writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>;
     readFinalT3Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
+    recordStrategyDecision?: typeof recordReservationStrategyDecision;
     onFinalIdentityAttempt?: () => void;
   } = {}
 ): Promise<RebalanceRunResult> {
@@ -2003,30 +2123,33 @@ export async function runEventRebalance(
       plannedActions.push({ kind: "ALREADY_QUEUED", reservation });
       continue;
     }
-    // P1A: a finalized exact-event source set is mandatory before any live
-    // Final Rebalance selection. P1B will consume this same array for A/B.
-    // Existing Planning-token selection below remains unchanged for P1A.
+    // Read one finalized exact-event source set for this live decision. A/B
+    // selection and Final Identity below consume this same array.
+    let finalSiblingUniverse: FinalT3MarketObservation[] | null = null;
     if (write) {
       try {
-        const finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
+        finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
         if (finalSiblingUniverse.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
       } catch {
         plannedActions.push({ kind: "SKIPPED", reservation, reason: "FINAL_T3_SOURCE_UNAVAILABLE" });
         continue;
       }
     }
-    // B3: a Reservation carrying a supported B2 candidate manifest is
-    // resolved ENTIRELY from that manifest — no GSP read, no Serving read,
-    // and it never falls into the requireContractAFinalIdentity/
-    // fetchFinalIdentitySourceRows gates below, which exist only for the
-    // GSP-dependent legacy path. An UNSUPPORTED (present but malformed)
-    // manifest fails closed right here and never reaches selectQueueRowFromContractAReservation.
+    // The current write contour consumes the T3 Final Identity. The manifest
+    // and GSP selectors remain available only to read-only or legacy paths.
+    const currentPlanningContour = reservation.diagnostics?.contract_a_stage === "PLANNING";
     const manifestResolution =
-      reservation.diagnostics?.contract_a_stage === "PLANNING"
+      currentPlanningContour && !write
         ? resolveReservationCandidateManifest(reservation)
         : null;
     const selection =
-      manifestResolution?.kind === "SUPPORTED"
+      write && currentPlanningContour && finalSiblingUniverse
+        ? await selectQueueRowFromT3FinalIdentity(
+            reservation, finalSiblingUniverse, rebalanceRunId, nowMs, fetchExactTokenOrderbook,
+            deps.recordStrategyDecision ?? recordReservationStrategyDecision,
+            deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined),
+          )
+        : manifestResolution?.kind === "SUPPORTED"
         ? await selectQueueRowFromReservationCandidateManifest(
             reservation,
             manifestResolution.candidates,
@@ -2300,6 +2423,8 @@ export async function runControlledLiveIntent(
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
     fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>;
     writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>;
+    readFinalT3Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
+    recordStrategyDecision?: typeof recordReservationStrategyDecision;
   } = {}
 ): Promise<ControlledLiveIntentResult> {
   const validation = validateControlledLiveIntentRequest(requestedTestId);
@@ -2377,20 +2502,32 @@ export async function runControlledLiveIntent(
 
   for (const reservation of due) {
     if (reservation.id && alreadyQueued.has(reservation.id)) continue;
-    // B3: same manifest-first resolution as runEventRebalance — a SUPPORTED
-    // B2 manifest never touches GSP; an UNSUPPORTED one fails closed (skip to
-    // the next due reservation, never fall back to GSP for this one).
+    let finalSelection: DueReservationSelection | null = null;
+    if (write && reservation.diagnostics?.contract_a_stage === "PLANNING") {
+      let finalSiblingUniverse: FinalT3MarketObservation[];
+      try {
+        finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
+        if (finalSiblingUniverse.length === 0) continue;
+      } catch { continue; }
+      finalSelection = await selectQueueRowFromT3FinalIdentity(
+        reservation, finalSiblingUniverse, rebalanceRunId, nowMs, fetchExactTokenOrderbook,
+        deps.recordStrategyDecision ?? recordReservationStrategyDecision,
+        deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined),
+      );
+    }
+    // The current write contour uses the same T3 Final Identity selector as
+    // scheduled Rebalance; manifest selection remains outside that live path.
     const manifestResolution =
-      reservation.diagnostics?.contract_a_stage === "PLANNING"
+      reservation.diagnostics?.contract_a_stage === "PLANNING" && !write
         ? resolveReservationCandidateManifest(reservation)
         : null;
     if (manifestResolution?.kind === "UNSUPPORTED") continue;
-    if (manifestResolution?.kind !== "SUPPORTED") {
+    if (!finalSelection && manifestResolution?.kind !== "SUPPORTED") {
       if (requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING") continue;
       if (requireContractAFinalIdentity && !fetchFinalIdentitySourceRows) continue;
     }
     const selection =
-      manifestResolution?.kind === "SUPPORTED"
+      finalSelection ?? (manifestResolution?.kind === "SUPPORTED"
         ? await selectQueueRowFromReservationCandidateManifest(
             reservation,
             manifestResolution.candidates,
@@ -2405,7 +2542,7 @@ export async function runControlledLiveIntent(
               nowMs,
               fetchFinalIdentitySourceRows!
             )
-          : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
+          : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId));
     if (selection.outcome !== "QUEUED" || !selection.queueRow) continue;
     // Gated on the ORIGINAL entry_price_num (diagnostics.entry_price) -- see
     // the matching comment in runEventRebalance for why max_entry_price

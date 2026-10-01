@@ -428,6 +428,11 @@ const B_SUPPORT = [
   { family: "TOTALS", type: "TOTAL", min: 1.85, max: 2.00 },
 ] as const;
 
+export function bStrategySupportRegion(family: string): { min: number; max: number } | null {
+  const region = B_SUPPORT.find((item) => item.family === family);
+  return region ? { min: region.min, max: region.max } : null;
+}
+
 export function selectReservationT3AbDecisions(
   reservation: NightEventReservationRow,
   universe: readonly FinalT3MarketObservation[],
