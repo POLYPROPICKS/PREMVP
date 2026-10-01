@@ -8,8 +8,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS,
+  PHYSICAL_EVENT_GAME_ID_UNRESOLVED,
   PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION,
   captureReservationMarketObservation,
+  sameGameLiveUniverse,
   isLiveBUniverseMarket,
   providerEventIdentityContradiction,
   selectReservationT3AbDecisions,
@@ -117,68 +120,145 @@ const reservation = (diag: Record<string, unknown>, physicalEventId: string) => 
   event_start_iso: START, diagnostics: diag,
 }) as unknown as NightEventReservationRow;
 
-async function capture(res: NightEventReservationRow, byEvent: Record<string, Mkt[]>) {
+// Live Gamma shape for ONE game: main (moneyline), more-markets (spreads/totals/corners),
+// halftime and exact-score events — all carrying the same gameId and start.
+const gameEvents = (gameId: string, extra: Mkt[] = []): Mkt[] => [
+  ...moneyline("1039742", gameId), ...moreMarkets("1041677", gameId),
+  ...halftime("1039756", gameId), ...exactScore("1039754", gameId), ...extra,
+];
+const withCount = (markets: Mkt[]): Mkt[] => {
+  const per = new Map<string, number>();
+  markets.forEach((m) => per.set(m.provider_event_id!, (per.get(m.provider_event_id!) ?? 0) + 1));
+  return markets.map((m) => ({ ...m, sibling_market_count: per.get(m.provider_event_id!)! }));
+};
+
+async function capture(
+  res: NightEventReservationRow,
+  byEvent: Record<string, Mkt[]>,
+  game: Mkt[] | Error = [],
+) {
   const reads: string[] = [];
+  const gameReads: string[] = [];
   let run: Record<string, unknown> = {};
   let observations: Record<string, unknown>[] = [];
   await captureReservationMarketObservation(res, "T_MINUS_30", {
     observedAt: "2026-10-01T16:20:00Z",
     alreadyCaptured: async () => false,
     readExactEvent: async (id) => { reads.push(id); const m = byEvent[id]; if (!m) throw new Error("unavailable"); return m; },
+    readGameEvents: async (gameId) => { gameReads.push(gameId); if (game instanceof Error) throw game; return game; },
     fetchBooks: async (tokens: string[]) => tokens.map(() => ({ ok: false, errorCode: "NO_BOOK", latencyMs: 1 })) as never,
     write: async (r, o) => { run = r; observations = o; },
   });
-  return { reads, run, observations };
+  return { reads, gameReads, run, observations };
 }
 
 const idA = physicalMatchId({ eventId: "1039754", eventStartIso: START, gameId: GAME_A });
+const legacyIdA = "provider:polymarket:1039754:2026-10-01";
+const legacyIdHalf = "provider:polymarket:1039756:2026-10-01";
 const lineageA = { provider_event_id: "1039754", provider_event_start_iso: START, provider_game_id: GAME_A, provider_market_type: "moneyline" };
+const legacyLineage = { provider_event_id: "1039754", provider_event_start_iso: START }; // predates gameId authority
+// Frozen Planning evidence only; live capture must never read it (it lists an OTHER-match event on purpose).
 const manifestA = [
   { provider_event_id: "1039742", provider_game_id: GAME_A },
-  { provider_event_id: "1041677", provider_game_id: GAME_A },
-  { provider_event_id: "1039744", provider_game_id: GAME_B }, // other match: must never be read
+  { provider_event_id: "1039744", provider_game_id: GAME_B },
 ];
+const fams = (obs: Record<string, unknown>[]) => [...new Set(obs.map((o) => o.canonical_market_family))].sort();
 
-test("PMEA-6: Reservation on derivative event 1039754 — universe is the same-match supported siblings only; exact score excluded; other match never read", async () => {
-  const res = reservation({ source_lineage: lineageA, candidate_manifest: manifestA }, idA);
-  const { reads, run, observations } = await capture(res, {
-    "1039754": exactScore("1039754", GAME_A),
-    "1039742": moneyline("1039742", GAME_A),
-    "1041677": moreMarkets("1041677", GAME_A),
-    "1039744": moneyline("1039744", GAME_B),
-  });
-  assert.deepEqual(reads, ["1039754", "1039742", "1041677"], "lineage event + same-game manifest siblings only; GAME_B event never read");
+test("LSG-A: legacy Reservation on a derivative exact-score event — gameId derived from the exact lineage event, same-game discovery supplies moneyline/spreads/totals/corners, derivatives excluded", async () => {
+  const res = reservation({ source_lineage: legacyLineage }, legacyIdA);
+  const { reads, gameReads, run, observations } = await capture(res, { "1039754": withCount(exactScore("1039754", GAME_A)) }, withCount(gameEvents(GAME_A)));
+  assert.deepEqual(reads, ["1039754"], "only the exact lineage event is read by id");
+  assert.deepEqual(gameReads, [GAME_A], "one bounded same-game query, gameId derived from the lineage event");
   assert.equal(run.failure_reason, null);
-  assert.deepEqual([...new Set(observations.map((o) => o.canonical_market_family))].sort(), ["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
-  assert.equal(observations.some((o) => String(o.provider_market_type_raw).includes("exact_score")), false);
-  assert.ok(observations.every((o) => o.physical_event_id === idA));
+  assert.equal(run.capture_status, "COMPLETE", "multi-event same-game capture is complete when each event supplied all its markets");
+  assert.equal(run.capture_complete, true);
+  assert.deepEqual(fams(observations), ["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
+  assert.equal(observations.some((o) => /exact_score|halftime/.test(String(o.provider_market_type_raw))), false);
+  assert.ok(observations.every((o) => o.physical_event_id === legacyIdA && o.reservation_id === res.id), "all observations stay bound to the ONE existing Reservation");
+  assert.equal(res.physical_event_id, legacyIdA, "persisted Reservation identity is not rewritten");
 });
 
-test("PMEA-7: derivative-only exact event with no same-match siblings fails closed with the typed contradiction (1039754 and 1039756)", async () => {
-  const exactOnly = await capture(reservation({ source_lineage: lineageA, candidate_manifest: [] }, idA),
-    { "1039754": exactScore("1039754", GAME_A) });
+test("LSG-B: legacy halftime lineage behaves the same", async () => {
+  const res = reservation({ source_lineage: { provider_event_id: "1039756", provider_event_start_iso: START } }, legacyIdHalf);
+  const { observations, run } = await capture(res, { "1039756": withCount(halftime("1039756", GAME_A)) }, withCount(gameEvents(GAME_A)));
+  assert.equal(run.failure_reason, null);
+  assert.deepEqual(fams(observations), ["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
+  assert.equal(observations.some((o) => /halftime/.test(String(o.provider_market_type_raw))), false);
+});
+
+test("LSG-C/D: a one-entry old candidate_manifest does not limit discovery, and a missing candidate_manifest does not block it", async () => {
+  const one = await capture(reservation({ source_lineage: legacyLineage, candidate_manifest: [{ provider_event_id: "1039754", provider_game_id: GAME_A }] }, legacyIdA),
+    { "1039754": withCount(exactScore("1039754", GAME_A)) }, withCount(gameEvents(GAME_A)));
+  const none = await capture(reservation({ source_lineage: legacyLineage }, legacyIdA),
+    { "1039754": withCount(exactScore("1039754", GAME_A)) }, withCount(gameEvents(GAME_A)));
+  for (const r of [one, none]) {
+    assert.equal(r.run.failure_reason, null);
+    assert.deepEqual(fams(r.observations), ["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
+  }
+});
+
+test("LSG-E/F: a sibling with another gameId, or the same gameId at a different start, is rejected; never substituted", async () => {
+  const otherGame = withCount([...gameEvents(GAME_A), ...moneyline("1039744", GAME_B), ...moreMarkets("1041676", GAME_B)]);
+  const e = await capture(reservation({ source_lineage: legacyLineage }, legacyIdA), { "1039754": withCount(exactScore("1039754", GAME_A)) }, otherGame);
+  assert.ok(e.observations.length > 0);
+  assert.ok(e.observations.every((o) => !String(o.condition_id).includes("1039744") && !String(o.condition_id).includes("1041676")), "GAME_B events excluded");
+
+  const lateStart: Mkt[] = moneyline("1039799", GAME_A).map((m) => ({ ...m, event_start_iso: "2026-10-01T19:00:00Z" }));
+  const f = await capture(reservation({ source_lineage: legacyLineage }, legacyIdA),
+    { "1039754": withCount(exactScore("1039754", GAME_A)) }, withCount([...gameEvents(GAME_A), ...lateStart]));
+  assert.ok(f.observations.every((o) => !String(o.condition_id).includes("1039799")), "same gameId, different start excluded");
+  assert.deepEqual(fams(f.observations), ["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
+});
+
+test("LSG-G: gameId discovery ambiguity fails closed with a typed reason and captures nothing", async () => {
+  const ambiguous = await capture(reservation({ source_lineage: legacyLineage }, legacyIdA),
+    { "1039754": withCount(exactScore("1039754", GAME_A)) }, new Error(PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS));
+  assert.equal(ambiguous.run.failure_reason, PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS);
+  assert.equal(ambiguous.run.capture_status, "CAPTURE_FAILED");
+  assert.equal(ambiguous.observations.length, 0, "no fallback to the lineage event alone");
+
+  const mixed = await capture(reservation({ source_lineage: legacyLineage }, legacyIdA),
+    { "1039754": [...exactScore("1039754", GAME_A).slice(0, 1), ...exactScore("1039754", GAME_B).slice(0, 1)] }, withCount(gameEvents(GAME_A)));
+  assert.equal(mixed.run.failure_reason, PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS);
+
+  const noGame = await capture(reservation({ source_lineage: legacyLineage }, legacyIdA),
+    { "1039754": exactScore("1039754", GAME_A).map((m) => ({ ...m, provider_game_id: null })) }, withCount(gameEvents(GAME_A)));
+  assert.equal(noGame.run.failure_reason, PHYSICAL_EVENT_GAME_ID_UNRESOLVED);
+  assert.equal(noGame.observations.length, 0);
+});
+
+test("LSG-H: a game-based Reservation validates its stored gameId against the provider and fails closed on disagreement", async () => {
+  const ok = await capture(reservation({ source_lineage: lineageA }, idA), { "1039754": withCount(exactScore("1039754", GAME_A)) }, withCount(gameEvents(GAME_A)));
+  assert.equal(ok.run.failure_reason, null);
+  assert.deepEqual(fams(ok.observations), ["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
+  assert.ok(ok.observations.every((o) => o.physical_event_id === idA));
+
+  const bad = await capture(reservation({ source_lineage: { ...lineageA, provider_game_id: GAME_B } }, physicalMatchId({ eventId: "1039754", eventStartIso: START, gameId: GAME_B })),
+    { "1039754": withCount(exactScore("1039754", GAME_A)) }, withCount(gameEvents(GAME_A)));
+  assert.equal(bad.run.failure_reason, PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION);
+  assert.equal(bad.observations.length, 0);
+  assert.deepEqual(bad.gameReads, [], "no discovery is run for a contradicted identity");
+});
+
+test("LSG-derivative-only: a game whose only supported universe is absent fails closed with the typed contradiction", async () => {
+  const exactOnly = await capture(reservation({ source_lineage: lineageA }, idA),
+    { "1039754": withCount(exactScore("1039754", GAME_A)) }, withCount(exactScore("1039754", GAME_A)));
   assert.equal(exactOnly.run.capture_status, "CAPTURE_FAILED");
   assert.equal(exactOnly.run.failure_reason, PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION);
-  assert.equal(PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION, "PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION");
-  assert.equal(exactOnly.observations.length, 0, "contradicted derivative event contributes no identities");
-
-  const idB = physicalMatchId({ eventId: "1039756", eventStartIso: START, gameId: GAME_B });
-  const half = await capture(reservation({
-    source_lineage: { provider_event_id: "1039756", provider_event_start_iso: START, provider_game_id: GAME_B, provider_market_type: "totals" },
-    candidate_manifest: [],
-  }, idB), { "1039756": halftime("1039756", GAME_B) });
-  assert.equal(half.run.failure_reason, PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION);
-  assert.equal(half.run.capture_status, "CAPTURE_FAILED");
+  assert.equal(exactOnly.observations.length, 0);
 });
 
-test("PMEA-8: a sibling whose payload belongs to another match is dropped, never substituted", async () => {
-  const res = reservation({ source_lineage: lineageA, candidate_manifest: [{ provider_event_id: "1041677", provider_game_id: GAME_A }] }, idA);
-  const { run, observations } = await capture(res, {
-    "1039754": exactScore("1039754", GAME_A),
-    "1041677": moreMarkets("1041677", GAME_B), // payload gameId disagrees with the manifest's claim
-  });
-  assert.equal(observations.length, 0);
-  assert.equal(run.failure_reason, PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION);
+test("LSG-pure: sameGameLiveUniverse rejects non-numeric ids, other gameIds and other starts, and reports incomplete event sets", () => {
+  const good = withCount(gameEvents(GAME_A));
+  const junk: Mkt[] = [
+    ...moneyline("abc", GAME_A), ...moneyline("1", GAME_B),
+    ...moneyline("2", GAME_A).map((m) => ({ ...m, event_start_iso: "2026-10-01T20:00:00Z" })),
+  ];
+  const u = sameGameLiveUniverse(GAME_A, START, [], [...good, ...junk]);
+  assert.deepEqual([...new Set(u.markets.map((m) => m.provider_event_id))].sort(), ["1039742", "1041677"]);
+  assert.equal(u.eventSetsComplete, true);
+  const partial = sameGameLiveUniverse(GAME_A, START, [], good.map((m) => ({ ...m, sibling_market_count: m.sibling_market_count + 1 })));
+  assert.equal(partial.eventSetsComplete, false);
 });
 
 test("PMEA-9: Reservation physical id is validated against the game-based identity; provider event id stays lineage", () => {
@@ -248,16 +328,56 @@ test("PMEA-12: Final Identity — legacy Reservation + gameId-bearing row still 
   assert.equal(otherMatch.accepted === false && otherMatch.rejection.reason_code, "PHYSICAL_EVENT_ID_MISMATCH");
 });
 
-test("PMEA-13: legacy Reservation capture behaves as before (no claim, own markets captured even with no live-B family); no sibling reads", async () => {
-  const res = reservation({ source_lineage: { provider_event_id: "1039742", provider_event_start_iso: START }, candidate_manifest: manifestA },
-    LEGACY_ID);
-  const { reads, run, observations } = await capture(res, { "1039742": exactScore("1039742", GAME_A) });
-  assert.deepEqual(reads, ["1039742"]);
+test("PMEA-13: legacy Reservation (no stored gameId) keeps its persisted identity; gameId is derived live from the lineage event and discovery is same-game only", async () => {
+  const res = reservation({ source_lineage: { provider_event_id: "1039742", provider_event_start_iso: START }, candidate_manifest: manifestA }, LEGACY_ID);
+  const { reads, gameReads, run, observations } = await capture(res, { "1039742": withCount(moneyline("1039742", GAME_A)) }, withCount(gameEvents(GAME_A)));
+  assert.deepEqual(reads, ["1039742"], "the stale manifest's other-game sibling is never read");
+  assert.deepEqual(gameReads, [GAME_A]);
   assert.equal(run.failure_reason, null);
-  assert.ok(observations.length > 0, "previously-successful capture is not turned into a failure");
+  assert.deepEqual(fams(observations), ["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
+  assert.ok(observations.every((o) => o.physical_event_id === LEGACY_ID));
 });
 
 test("PMEA-14: a claimed gameId must be confirmed by the exact-event payload (payload without gameId fails closed)", () => {
   const noGame = moneyline("1039742", GAME_A).map((m) => ({ ...m, provider_game_id: null }));
   assert.equal(providerEventIdentityContradiction({ gameId: GAME_A, marketType: "moneyline" }, noGame), "GAME_ID_MISMATCH");
+});
+
+// ── Same-game T3 universe → B (live capture no longer depends on frozen manifest siblings) ──
+async function captureT3(res: NightEventReservationRow, askFor: (tokenId: string) => number) {
+  let run: Record<string, unknown> = {};
+  let observations: Record<string, unknown>[] = [];
+  await captureReservationMarketObservation(res, "T_MINUS_3", {
+    observedAt: "2026-10-01T16:42:00Z", alreadyCaptured: async () => false,
+    readExactEvent: async () => withCount(exactScore("1039754", GAME_A)),
+    readGameEvents: async () => withCount(gameEvents(GAME_A)),
+    fetchBooks: async (ids: string[]) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1,
+      book: { tokenId, bids: [{ price: askFor(tokenId) - 0.02, size: 100 }], asks: [{ price: askFor(tokenId), size: 100 }], raw: {} } })) as never,
+    write: async (r, o) => { run = r; observations = o; },
+  });
+  return { run, observations: observations as unknown as FinalT3MarketObservation[] };
+}
+
+test("LSG-I/J/K: B selects ONE qualifying same-game observation from the captured T3 universe; no Planning score is created", async () => {
+  const res = reservation({ source_lineage: legacyLineage }, legacyIdA);
+  // Only the main-event MONEYLINE token sits in B's support region (odds 1.85–2.00).
+  const ml = await captureT3(res, (t) => (t.includes("ml-home") ? 0.52 : 0.8));
+  assert.equal(ml.run.capture_status, "COMPLETE");
+  const mlB = selectReservationT3AbDecisions(res, ml.observations).b;
+  assert.ok(mlB.selectedIdentity, "a same-game MONEYLINE sibling qualifies");
+  const picked = ml.observations.filter((o) => o.condition_id === mlB.selectedIdentity!.conditionId && o.token_id === mlB.selectedIdentity!.tokenId);
+  assert.equal(picked.length, 1, "exactly one economic instruction for the Reservation");
+  assert.equal(picked[0].canonical_market_family, "MONEYLINE");
+  assert.match(String(picked[0].condition_id), /1039742/, "selected market comes from the same-game main event, not the exact-score lineage event");
+  assert.equal(picked[0].reservation_id, res.id);
+  assert.equal(picked[0].physical_event_id, legacyIdA);
+
+  // SPREADS outranks MONEYLINE when both qualify (B priority unchanged).
+  const both = await captureT3(res, (t) => (t.includes("ml-home") || t.includes("spread-home") ? 0.52 : 0.8));
+  const bothB = selectReservationT3AbDecisions(res, both.observations).b;
+  assert.equal(both.observations.find((o) => o.condition_id === bothB.selectedIdentity!.conditionId)!.canonical_market_family, "SPREADS");
+
+  // No Planning/model score is synthesized for any discovered sibling.
+  const keys = new Set(ml.observations.flatMap((o) => Object.keys(o)).concat(Object.keys(ml.run)));
+  assert.equal([...keys].some((k) => /score|confidence|rank|signal_pair/i.test(k)), false);
 });

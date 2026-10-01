@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
 import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from "../liquidity/orderbookMath";
-import { fetchPolymarketEventById } from "../feed/polymarketClient";
+import { GAMMA_GAME_EVENTS_LIMIT, fetchPolymarketEventById, fetchPolymarketEventsByGameId } from "../feed/polymarketClient";
+import type { PolymarketRawEvent } from "../feed/types";
 import { compareExactIdentity } from "./exactIdentityOrder";
 import { physicalMatchId } from "./contractADecisions";
 
@@ -99,20 +100,47 @@ export function providerEventIdentityContradiction(
   return null;
 }
 
-/** The Reservation's own sibling provider events, from its frozen manifest lineage: same game id only, bounded, exact-ID reads. */
-const MAX_SIBLING_PROVIDER_EVENTS = 8;
-export function manifestSiblingProviderEventIds(
-  reservation: NightEventReservationRow, gameId: string | null, lineageEventId: string,
-): string[] {
-  const entries = reservation.diagnostics?.candidate_manifest;
-  if (!gameId || !Array.isArray(entries)) return [];
-  const ids = new Set<string>();
-  for (const entry of entries) {
-    const e = entry as Record<string, unknown> | null;
-    if (e && e.provider_game_id === gameId && typeof e.provider_event_id === "string" &&
-        /^\d+$/.test(e.provider_event_id) && e.provider_event_id !== lineageEventId) ids.add(e.provider_event_id);
+export const PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS = "PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS";
+export const PHYSICAL_EVENT_GAME_ID_UNRESOLVED = "PHYSICAL_EVENT_GAME_ID_UNRESOLVED";
+
+/**
+ * Pure. The CURRENT supported market universe of ONE physical match, from the
+ * Reservation's exact lineage event plus the provider events returned by the
+ * gameId-scoped Gamma query. The frozen Planning candidate_manifest is never
+ * consulted: it is Planning evidence, not live market inventory.
+ *
+ * Every discovered market must independently carry the same gameId, a numeric
+ * provider event id and the Reservation's event start; anything else is dropped,
+ * never substituted. Only live-B families are returned. `eventSetsComplete`
+ * attests that each contributing provider event supplied all of its own markets
+ * (unsupported families are deliberately excluded and are not incompleteness).
+ */
+export function sameGameLiveUniverse(
+  gameId: string,
+  eventStartIso: string,
+  own: readonly InventoryMarket[],
+  discovered: readonly InventoryMarket[],
+): { markets: InventoryMarket[]; eventSetsComplete: boolean } {
+  const startMs = Date.parse(eventStartIso);
+  const byEvent = new Map<string, InventoryMarket[]>();
+  const accept = (m: InventoryMarket) => {
+    const eventId = m.provider_event_id;
+    if (typeof eventId !== "string" || !/^\d+$/.test(eventId)) return;
+    if (m.provider_game_id !== gameId) return;
+    if (Date.parse(m.event_start_iso) !== startMs) return;
+    const list = byEvent.get(eventId);
+    if (list) list.push(m); else byEvent.set(eventId, [m]);
+  };
+  const ownEventIds = new Set(own.map((m) => m.provider_event_id));
+  own.forEach(accept);
+  discovered.filter((m) => !ownEventIds.has(m.provider_event_id)).forEach(accept);
+  let eventSetsComplete = byEvent.size > 0;
+  const markets: InventoryMarket[] = [];
+  for (const list of byEvent.values()) {
+    if (!list.every((m) => m.sibling_market_count === list.length)) eventSetsComplete = false;
+    markets.push(...list.filter(isLiveBUniverseMarket));
   }
-  return [...ids].sort().slice(0, MAX_SIBLING_PROVIDER_EVENTS);
+  return { markets, eventSetsComplete };
 }
 
 const STRATEGY_VARIANTS = ["S1_TAKER_HOLD", "S2_FIXED_MAKER_HOLD", "S3_MAKER_VALUE_BAND_HOLD"] as const;
@@ -181,11 +209,16 @@ export function inventoryTokens(markets: readonly InventoryMarket[]): { tokens: 
   return { tokens, expected, missingIdentity };
 }
 
-export function baselineCompleteness(input: { markets: number; siblingCounts: number[]; expected: number; observed: number; failed: number; missingIdentity: number }): { complete: boolean; status: string } {
+export function baselineCompleteness(input: { markets: number; siblingCounts: number[]; expected: number; observed: number; failed: number; missingIdentity: number; eventSetsComplete?: boolean }): { complete: boolean; status: string } {
   // Complete means every identifiable token supplied by this exact event response
   // was persisted. It does not attest to markets outside the provider response.
-  const complete = input.markets > 0 && input.siblingCounts.length === input.markets &&
-    input.siblingCounts.every((count) => Number.isFinite(count) && count === input.markets) &&
+  // A same-game capture spans several provider events, so per-event completeness
+  // is attested by the caller (`eventSetsComplete`) instead of one event's count.
+  const sourceSetComplete = input.eventSetsComplete !== undefined
+    ? input.eventSetsComplete
+    : input.siblingCounts.length === input.markets &&
+      input.siblingCounts.every((count) => Number.isFinite(count) && count === input.markets);
+  const complete = input.markets > 0 && sourceSetComplete &&
     input.expected > 0 && input.missingIdentity === 0 && input.observed === input.expected;
   // Orderbook failures are retained on observations, independently of source-set completeness.
   return { complete, status: complete ? "COMPLETE" : "INCOMPLETE_MARKET_SET" };
@@ -306,6 +339,8 @@ export async function captureReservationMarketObservation(
   deps: {
     readInventory?: (providerEventId: string, eventStartIso: string) => Promise<InventoryMarket[]>;
     readExactEvent?: (providerEventId: string, eventStartIso: string) => Promise<InventoryMarket[]>;
+    /** Current provider events of ONE gameId, flat (each market carries its own provider_event_id/provider_game_id). */
+    readGameEvents?: (gameId: string, eventStartIso: string) => Promise<InventoryMarket[]>;
     fetchBooks?: typeof fetchOrderBooksConcurrent;
     write?: (run: Record<string, unknown>, observations: Record<string, unknown>[], strategies?: Record<string, unknown>[]) => Promise<void>;
     observedAt?: string;
@@ -327,6 +362,7 @@ export async function captureReservationMarketObservation(
   const readMarkets = deps.readExactEvent ?? defaultExactEventReader;
   let markets: InventoryMarket[] = [];
   let failureReason: string | null = null;
+  let eventSetsComplete: boolean | undefined;
   // The Reservation owns the physical MATCH (game id when structured, else the
   // legacy provider event id); the provider event id is source lineage only.
   const expectedPhysicalId = providerEventId && start
@@ -336,25 +372,34 @@ export async function captureReservationMarketObservation(
       Date.parse(start) === Date.parse(String(lineage?.provider_event_start_iso)) &&
       reservation.physical_event_id === expectedPhysicalId) {
     try {
+      // The exact lineage event proves WHICH physical match this Reservation is
+      // (its structured gameId); it is never the whole market universe.
       const own = await readMarkets(providerEventId, start);
-      // Contradictory lineage event (e.g. exact-score-only payload behind a
-      // claimed moneyline/spreads/totals row, or another match's game id): it can
-      // never contribute to the universe. Its siblings still may.
-      const contradiction = providerEventIdentityContradiction({ gameId: claimedGameId, marketType: claimedMarketType }, own);
-      if (contradiction === null) markets.push(...own);
-      for (const siblingId of manifestSiblingProviderEventIds(reservation, claimedGameId, providerEventId)) {
-        try {
-          const sibling = await readMarkets(siblingId, start);
-          // Same physical match only; and only live-B families may enter the universe.
-          if (sibling.length > 0 && sibling.every((m) => m.provider_game_id === claimedGameId)) {
-            markets.push(...sibling.filter(isLiveBUniverseMarket));
+      const ownGameIds = new Set(own.map((m) => m.provider_game_id).filter((g): g is string => !!g));
+      if (own.length === 0) failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
+      else if (ownGameIds.size > 1) failureReason = PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS;
+      else if (ownGameIds.size === 0) failureReason = PHYSICAL_EVENT_GAME_ID_UNRESOLVED;
+      else {
+        const providerGameId = [...ownGameIds][0];
+        // A game-based Reservation's stored gameId must agree with the provider; a
+        // legacy Reservation (no stored gameId) derives it here, at observation
+        // time, without rewriting its persisted identity.
+        if (claimedGameId && claimedGameId !== providerGameId) failureReason = PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION;
+        else {
+          const contradiction = providerEventIdentityContradiction({ gameId: providerGameId, marketType: claimedMarketType }, own);
+          try {
+            const discovered = await (deps.readGameEvents ?? defaultGameEventsReader)(providerGameId, start);
+            const universe = sameGameLiveUniverse(providerGameId, start, own, discovered);
+            markets = universe.markets;
+            eventSetsComplete = universe.eventSetsComplete;
+          } catch (error) {
+            failureReason = error instanceof Error && error.message === PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS
+              ? PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS : "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
           }
-        } catch { /* an unavailable sibling contributes nothing; never substituted */ }
-      }
-      // Only a contradicted identity with no supported same-match sibling fails
-      // here; otherwise capture behaves exactly as before.
-      if (contradiction !== null && !markets.some(isLiveBUniverseMarket)) {
-        failureReason = PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION;
+          if (!failureReason && !markets.some(isLiveBUniverseMarket)) {
+            failureReason = contradiction ? PHYSICAL_EVENT_PROVIDER_IDENTITY_CONTRADICTION : "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
+          }
+        }
       }
     }
     catch { failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE"; }
@@ -395,7 +440,7 @@ export async function captureReservationMarketObservation(
     };
   });
   const failed = observations.filter((row) => row.orderbook_fetch_status === "FAILED").length;
-  const completeness = baselineCompleteness({ markets: markets.length, siblingCounts: markets.map((m) => m.sibling_market_count), expected, observed: observations.length, failed, missingIdentity });
+  const completeness = baselineCompleteness({ markets: markets.length, siblingCounts: markets.map((m) => m.sibling_market_count), expected, observed: observations.length, failed, missingIdentity, eventSetsComplete });
   const run = {
     id: runId, reservation_id: reservation.id, plan_run_id: reservation.plan_run_id,
     physical_event_id: reservation.physical_event_id, provider_event_id: providerEventId,
@@ -420,15 +465,12 @@ async function defaultAlreadyCaptured(reservationId: string, phase: ReservationM
   return (data ?? []).some((row) => row.capture_status !== "WRITE_INCOMPLETE");
 }
 
-async function defaultExactEventReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
-  const event = await fetchPolymarketEventById(providerEventId);
-  if (!event) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
-  const eventTimes = [event.endDate, event.endDateIso, event.startTime]
-    .map((value) => Date.parse(value ?? ""))
-    .filter(Number.isFinite);
-  if (!eventTimes.includes(Date.parse(eventStartIso))) {
-    throw new Error("RESERVED_EVENT_START_MISMATCH");
-  }
+function eventStartMatches(event: { endDate?: string; endDateIso?: string; startTime?: string }, eventStartIso: string): boolean {
+  const times = [event.endDate, event.endDateIso, event.startTime].map((value) => Date.parse(value ?? "")).filter(Number.isFinite);
+  return times.includes(Date.parse(eventStartIso));
+}
+
+function inventoryMarketsFromEvent(event: PolymarketRawEvent, providerEventId: string, eventStartIso: string): InventoryMarket[] {
   const observedAt = new Date().toISOString();
   return event.markets.map((market) => ({
     provider_event_id: providerEventId,
@@ -442,6 +484,29 @@ async function defaultExactEventReader(providerEventId: string, eventStartIso: s
     last_observed_at: observedAt,
     provider_game_id: event.gameId === undefined || event.gameId === null ? null : String(event.gameId).trim() || null,
   }));
+}
+
+async function defaultExactEventReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
+  const event = await fetchPolymarketEventById(providerEventId);
+  if (!event) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
+  if (!eventStartMatches(event, eventStartIso)) throw new Error("RESERVED_EVENT_START_MISMATCH");
+  return inventoryMarketsFromEvent(event, providerEventId, eventStartIso);
+}
+
+/** One bounded gameId-scoped Gamma query. A full page, or a non-list response, is ambiguous and fails closed. */
+async function defaultGameEventsReader(gameId: string, eventStartIso: string): Promise<InventoryMarket[]> {
+  const events = await fetchPolymarketEventsByGameId(gameId);
+  if (events === null) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
+  if (events.length >= GAMMA_GAME_EVENTS_LIMIT) throw new Error(PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS);
+  const markets: InventoryMarket[] = [];
+  for (const event of events) {
+    const eventId = String(event?.id ?? "");
+    if (!/^\d+$/.test(eventId) || !Array.isArray(event.markets)) continue;
+    if (String(event.gameId ?? "").trim() !== gameId) continue; // other game: never substituted
+    if (!eventStartMatches(event, eventStartIso)) continue; // same game id, different start: not this physical match
+    markets.push(...inventoryMarketsFromEvent(event, eventId, eventStartIso));
+  }
+  return markets;
 }
 
 async function defaultWriter(run: Record<string, unknown>, observations: Record<string, unknown>[], _strategies: Record<string, unknown>[] = []): Promise<void> {

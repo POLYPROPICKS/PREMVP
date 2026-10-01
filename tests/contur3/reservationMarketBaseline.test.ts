@@ -33,7 +33,7 @@ test("Reservation baseline writes only a V2 reference envelope without market or
   assert.equal(run.orderbooks_failed_n, 0);
   assert.equal(run.provider_event_id, "123");
 });
-test("T30, T10 and T3 each fetch the one reserved event and preserve every supplied token", async () => {
+test("T30, T10 and T3 each fetch the one reserved event and preserve every supplied supported token", async () => {
   const start = "2026-10-01T00:00:00Z";
   const reservation = { id: "33333333-3333-4333-8333-333333333333", plan_run_id: "plan",
     physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start,
@@ -43,10 +43,12 @@ test("T30, T10 and T3 each fetch the one reserved event and preserve every suppl
   const urls: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     urls.push(String(input));
-    return new Response(JSON.stringify({ id: "123", endDate: start, markets: [
+    const event = { id: "123", gameId: "999", endDate: start, markets: [
       { conditionId: "money", clobTokenIds: '["m1","m2"]', outcomes: '["Home","Away"]', sportsMarketType: "moneyline", slug: "match-money" },
-      { conditionId: "corners", clobTokenIds: '["c1","c2"]', outcomes: '["Yes","No"]', sportsMarketType: "corners", slug: "corners" },
-    ] }), { status: 200, headers: { "Content-Type": "application/json" } });
+      { conditionId: "corners", clobTokenIds: '["c1","c2"]', outcomes: '["Yes","No"]', sportsMarketType: "total_corners", slug: "corners" },
+    ] };
+    const body = String(input).includes("game_id=") ? [event] : event;
+    return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
   }) as typeof fetch;
   try {
     const snapshots: Array<{ run: Record<string, unknown>; rows: Record<string, unknown>[]; strategies: Record<string, unknown>[] }> = [];
@@ -59,13 +61,14 @@ test("T30, T10 and T3 each fetch the one reserved event and preserve every suppl
         write: async (run, rows, strategies = []) => { snapshots.push({ run, rows, strategies }); },
       });
     }
-    assert.deepEqual(urls, Array(3).fill("https://gamma-api.polymarket.com/events/123"));
+    assert.deepEqual(urls, Array(3).fill(["https://gamma-api.polymarket.com/events/123", "https://gamma-api.polymarket.com/events?game_id=999&limit=50"]).flat(),
+      "each milestone reads the exact lineage event once and ONE bounded same-game query");
     assert.equal(snapshots.length, 3);
     assert.equal(new Set(snapshots.map((s) => s.run.id)).size, 3);
     for (const snapshot of snapshots) {
       assert.equal(snapshot.rows.length, 4);
       assert.equal(snapshot.strategies.length, 12);
-      assert.deepEqual(new Set(snapshot.rows.map((row) => row.provider_market_type_raw)), new Set(["moneyline", "corners"]));
+      assert.deepEqual(new Set(snapshot.rows.map((row) => row.provider_market_type_raw)), new Set(["moneyline", "total_corners"]));
       for (const row of snapshot.rows) assert.equal(snapshot.strategies.filter((s) => s.market_observation_id === row.id).length, 3);
     }
   } finally { globalThis.fetch = originalFetch; }
@@ -152,7 +155,7 @@ test("persisted strategy reread carries measured LIVE_GUARD ask depth into S1", 
 test("baseline IDs and incomplete market accounting are deterministic", () => {
   assert.equal(stableTelemetryId("r", "phase", "v1"), stableTelemetryId("r", "phase", "v1"));
   assert.notEqual(stableTelemetryId("r", "phase", "v1"), stableTelemetryId("r2", "phase", "v1"));
-  const market = { provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" };
+  const market = { provider_event_id: "123", provider_game_id: "999", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "totals", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" };
   const set = inventoryTokens([market]);
   assert.equal(set.expected, 2);
   assert.equal(set.tokens.length, 2);
@@ -198,14 +201,14 @@ test("completed T3 reader returns only one exact same-event capture and rejects 
 });
 
 test("one T30 snapshot records distinct tokens and survives one failed orderbook", async () => {
-  const market = { provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" };
-  const reservation = { id: "11111111-1111-4111-8111-111111111111", plan_run_id: "plan", physical_event_id: "provider:polymarket:e:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "e", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
+  const market = { provider_event_id: "123", provider_game_id: "999", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "totals", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" };
+  const reservation = { id: "11111111-1111-4111-8111-111111111111", plan_run_id: "plan", physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
   let savedRun: Record<string, unknown> | null = null;
   let savedRows: Record<string, unknown>[] = [];
   await captureReservationMarketObservation(reservation, "T_MINUS_30", {
     observedAt: "2026-09-30T00:00:00Z",
     alreadyCaptured: async () => false,
-    readExactEvent: async () => [market],
+    readExactEvent: async () => [market], readGameEvents: async () => [market],
     fetchBooks: async () => [
       { ok: true, tokenId: "t1", latencyMs: 12, book: { tokenId: "t1", bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }], raw: {} } },
       { ok: false, tokenId: "t2", latencyMs: 99, errorCode: "TIMEOUT", errorMessage: "timeout" },
@@ -222,12 +225,13 @@ test("one T30 snapshot records distinct tokens and survives one failed orderbook
 });
 
 test("all supplied T10 identities certify source-set completeness", async () => {
-  const reservation = { id: "22222222-2222-4222-8222-222222222222", plan_run_id: "plan", physical_event_id: "provider:polymarket:e:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "e", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
+  const reservation = { id: "22222222-2222-4222-8222-222222222222", plan_run_id: "plan", physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: "2026-10-01T00:00:00Z", diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: "2026-10-01T00:00:00Z" } } } as unknown as NightEventReservationRow;
   let run: Record<string, unknown> = {};
   await captureReservationMarketObservation(reservation, "T_MINUS_10", {
     observedAt: "2026-09-30T00:00:00Z",
     alreadyCaptured: async () => false,
-    readExactEvent: async () => [{ provider_event_id: "e", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "total", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" }],
+    readExactEvent: async () => [{ provider_event_id: "123", provider_game_id: "999", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "totals", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" }],
+    readGameEvents: async () => [{ provider_event_id: "123", provider_game_id: "999", event_start_iso: "2026-10-01T00:00:00Z", condition_id: "c", clob_token_ids: ["t1", "t2"], outcomes: ["Yes", "No"], sports_market_type: "totals", provider_market_slug: "total", sibling_market_count: 1, last_observed_at: "2026-09-30T00:00:00Z" }],
     fetchBooks: async (ids) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1, book: { tokenId, bids: [{ price: 0.4, size: 1 }], asks: [{ price: 0.5, size: 1 }], raw: {} } })),
     write: async (captureRun) => { run = captureRun; },
   });
@@ -251,32 +255,32 @@ test("classifyObservationalMarket maps structured provider types only", () => {
   }
 });
 
-test("T-phase rows carry canonical family/type without changing eligibility or token coverage", async () => {
+test("T-phase rows carry canonical family/type for the supported live universe without changing eligibility", async () => {
   const start = "2026-10-01T00:00:00Z";
   const reservation = { id: "66666666-6666-4666-8666-666666666666", plan_run_id: "plan",
     physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start,
     diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: start } },
   } as unknown as NightEventReservationRow;
   const types = ["moneyline", "spreads", "totals", "total_corners", "btts", "Free text title?"];
-  const market = (t: string, i: number) => ({ provider_event_id: "123", event_start_iso: start, condition_id: `c${i}`,
+  const market = (t: string, i: number) => ({ provider_event_id: "123", provider_game_id: "999", event_start_iso: start, condition_id: `c${i}`,
     clob_token_ids: [`a${i}`, `b${i}`], outcomes: ["Yes", "No"], sports_market_type: t, provider_market_slug: `slug-${t}`,
     sibling_market_count: types.length, last_observed_at: "2026-09-30T00:00:00Z" });
   let rows: Record<string, unknown>[] = [];
   await captureReservationMarketObservation(reservation, "T_MINUS_30", {
     observedAt: "2026-09-30T23:30:00Z", alreadyCaptured: async () => false,
-    readExactEvent: async () => types.map(market),
+    readExactEvent: async () => types.map(market), readGameEvents: async () => types.map(market),
     fetchBooks: async (ids) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1,
       book: { tokenId, bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }], raw: {} } })),
     write: async (_run, observations) => { rows = observations; },
   });
-  assert.equal(rows.length, types.length * 2);
+  assert.equal(rows.length, 4 * 2, "only the supported live families are captured");
   const byRaw = new Map(rows.map((row) => [row.provider_market_type_raw, [row.canonical_market_family, row.canonical_market_type]]));
   assert.deepEqual(byRaw.get("moneyline"), ["MONEYLINE", "MONEYLINE"]);
   assert.deepEqual(byRaw.get("spreads"), ["SPREADS", "SPREAD"]);
   assert.deepEqual(byRaw.get("totals"), ["TOTALS", "TOTAL"]);
   assert.deepEqual(byRaw.get("total_corners"), ["TOTAL_CORNERS", "TOTAL_CORNERS"]);
-  assert.deepEqual(byRaw.get("btts"), ["OTHER_STRUCTURED", "OTHER_STRUCTURED"]);
-  assert.deepEqual(byRaw.get("Free text title?"), ["UNKNOWN", "UNKNOWN"]);
+  assert.equal(byRaw.has("btts"), false, "OTHER_STRUCTURED is not captured at milestones");
+  assert.equal(byRaw.has("Free text title?"), false, "UNKNOWN is never guessed or captured");
   for (const row of rows) {
     assert.equal(row.live_policy_eligibility, null);
     assert.equal(row.live_policy_rejection_reason, null);

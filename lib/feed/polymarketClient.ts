@@ -21,6 +21,24 @@ export async function fetchPolymarketEventById(eventId: string): Promise<Polymar
   return event && String(event.id) === eventId && Array.isArray(event.markets) ? event : null;
 }
 
+/** Hard page bound for a single-game query; a full page means the result may be truncated. */
+export const GAMMA_GAME_EVENTS_LIMIT = 50;
+
+/**
+ * Current Gamma events for ONE structured gameId (`GET /events?game_id=`, proven
+ * 2026-10-01: returns exactly the main, more-markets, halftime and exact-score
+ * events of that game). The plural `game_ids` parameter is silently ignored by
+ * Gamma, so callers must still validate every returned event's gameId.
+ * Never a date/sport crawl and never discovers siblings by title.
+ */
+export async function fetchPolymarketEventsByGameId(gameId: string): Promise<PolymarketRawEvent[] | null> {
+  if (!/^\d+$/.test(gameId)) return null;
+  const events = await safeFetch<PolymarketRawEvent[]>(
+    `${GAMMA_API_BASE}/events?game_id=${encodeURIComponent(gameId)}&limit=${GAMMA_GAME_EVENTS_LIMIT}`, {}, 8000,
+  );
+  return Array.isArray(events) ? events : null;
+}
+
 // Helper for safe fetch with timeout
 async function safeFetch<T>(
   url: string,
