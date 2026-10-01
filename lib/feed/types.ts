@@ -519,6 +519,10 @@ export interface PolymarketRawEvent {
   endDateIso?: string;
   endTime?: string;
   startTime?: string;
+  /** Structured provider match key, shared by a match's main event and its derivative sub-events. */
+  gameId?: string | number;
+  /** Present only on derivative sub-events (exact score, halftime, more-markets) of a main event. */
+  parentEventId?: string | number;
   active: boolean;
   closed: boolean;
   markets: PolymarketRawMarket[];

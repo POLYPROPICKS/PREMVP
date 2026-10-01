@@ -109,6 +109,10 @@ export interface ContractASourceLineage {
   /** Immutable Polymarket event identity; never derived from title or slug. */
   provider_event_id: string | null;
   provider_event_start_iso: string | null;
+  /** Structured provider match key (event-level `gameId`); the physical-match authority when present. */
+  provider_game_id?: string | null;
+  /** Structured provider market type the producer row claimed (never parsed from text). */
+  provider_market_type?: string | null;
   provider_sport: string | null;
   /** Producer boundary retained for forensic lineage, not for re-selection. */
   producer_source: string | null;
@@ -251,6 +255,8 @@ export function resolveContractASourceLineage(
     provider_event_key: nonEmpty(candidate.providerEventKey ?? null),
     provider_event_id: context?.eventId ?? null,
     provider_event_start_iso: context?.eventStartIso ?? null,
+    provider_game_id: context?.gameId ?? null,
+    provider_market_type: context?.marketType ?? null,
     provider_sport: context?.sport ?? null,
     producer_source: nonEmpty(candidate.source),
     source_created_at: nonEmpty(candidate.created_at),
@@ -261,6 +267,8 @@ type ExactProviderEventIdentity = {
   eventId: string;
   eventStartIso: string;
   sport: string | null;
+  gameId: string | null;
+  marketType: string | null;
 };
 
 function exactProviderEventIdentity(sourceDiagnostics: Record<string, unknown>): ExactProviderEventIdentity | null {
@@ -276,11 +284,50 @@ function exactProviderEventIdentity(sourceDiagnostics: Record<string, unknown>):
     eventStartIso === null ||
     !Number.isFinite(Date.parse(eventStartIso))
   ) return null;
-  return { eventId, eventStartIso, sport: nonEmpty(context.sportFamily) ?? nonEmpty(context.game) };
+  const rawGameId = typeof context.gameId === "number" ? String(context.gameId) : context.gameId;
+  const marketType = nonEmpty(context.marketType);
+  return {
+    eventId, eventStartIso, sport: nonEmpty(context.sportFamily) ?? nonEmpty(context.game),
+    gameId: nonEmpty(rawGameId)?.trim() ?? null,
+    marketType: marketType === null ? null : marketType.trim().toLowerCase(),
+  };
 }
 
-function providerPhysicalEventId(eventId: string, eventStartIso: string): string {
+/** Legacy provider-event identity. A provider event may be a derivative sub-event, so this is lineage, not match authority. */
+export function legacyProviderEventPhysicalId(eventId: string, eventStartIso: string): string {
   return `provider:polymarket:${eventId.toLowerCase()}:${eventStartIso.slice(0, 10)}`;
+}
+
+/**
+ * Physical-match identity. The structured event-level `gameId` is shared by the
+ * main event and every derivative sub-event (exact score, halftime, more-markets)
+ * of ONE match and differs between matches, so it owns the match when present.
+ * Only a row with no gameId falls back to its provider event id.
+ */
+export function physicalMatchId(
+  identity: { eventId: string; eventStartIso: string; gameId: string | null },
+): string {
+  return identity.gameId
+    ? `provider:polymarket:game:${identity.gameId.toLowerCase()}:${identity.eventStartIso.slice(0, 10)}`
+    : legacyProviderEventPhysicalId(identity.eventId, identity.eventStartIso);
+}
+
+/**
+ * Expected physical id of a source row UNDER A RESERVATION'S OWN stored id
+ * format. A pre-gameId (legacy) Reservation keeps matching on its provider
+ * event id even when its source rows now carry a gameId; a game-based
+ * Reservation matches on the row's gameId. Never re-derived from the row alone.
+ */
+export function physicalIdUnderStoredFormat(
+  storedPhysicalEventId: string,
+  identity: { eventId: string; eventStartIso: string; gameId: string | null },
+): string {
+  const gameBased = storedPhysicalEventId.startsWith("provider:polymarket:game:");
+  return physicalMatchId({ ...identity, gameId: gameBased ? identity.gameId : null });
+}
+
+function providerPhysicalEventId(identity: ExactProviderEventIdentity): string {
+  return physicalMatchId(identity);
 }
 
 /**
@@ -291,13 +338,15 @@ function providerPhysicalEventId(eventId: string, eventStartIso: string): string
  */
 export function resolveContractAProviderPhysicalEventIdentity(
   sourceDiagnostics: Record<string, unknown>
-): { eventId: string; eventStartIso: string; physicalEventId: string } | null {
+): { eventId: string; eventStartIso: string; physicalEventId: string; gameId: string | null; marketType: string | null } | null {
   const identity = exactProviderEventIdentity(sourceDiagnostics);
   if (identity === null) return null;
   return {
     eventId: identity.eventId,
     eventStartIso: identity.eventStartIso,
-    physicalEventId: providerPhysicalEventId(identity.eventId, identity.eventStartIso),
+    physicalEventId: providerPhysicalEventId(identity),
+    gameId: identity.gameId,
+    marketType: identity.marketType,
   };
 }
 
@@ -439,7 +488,7 @@ export function buildContractAPlanningDecision(
   const providerIdentity = exactProviderEventIdentity(sourceDiagnostics);
   const physicalEventId = providerIdentity === null
     ? null
-    : providerPhysicalEventId(providerIdentity.eventId, providerIdentity.eventStartIso);
+    : providerPhysicalEventId(providerIdentity);
   const reject = (reason: ContractARejectionReasonCode, detail?: string) =>
     ({
       accepted: false as const,
@@ -480,7 +529,7 @@ export function buildContractAPlanningDecision(
       decision_version: CONTRACT_A_DECISION_VERSION,
       contract_a_version: "CONTRACT_A_PLANNING_V1",
       status: "ACCEPTED",
-      physical_event_id: providerPhysicalEventId(providerIdentity.eventId, providerIdentity.eventStartIso),
+      physical_event_id: providerPhysicalEventId(providerIdentity),
       source_lineage: lineage,
       event_start_iso: start.iso,
       event_start_iso_source: start.source,
@@ -545,7 +594,7 @@ export function buildContractAFinalIdentityDecision(
   if (providerIdentity === null) return reject("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
   if (providerIdentity.eventStartIso !== start.iso) return reject("EXACT_PROVIDER_EVENT_START_MISMATCH");
 
-  const candidatePhysicalEventId = providerPhysicalEventId(providerIdentity.eventId, providerIdentity.eventStartIso);
+  const candidatePhysicalEventId = physicalIdUnderStoredFormat(planning.physical_event_id, providerIdentity);
   if (candidatePhysicalEventId !== planning.physical_event_id) {
     return reject("PHYSICAL_EVENT_ID_MISMATCH", candidatePhysicalEventId ?? "null");
   }

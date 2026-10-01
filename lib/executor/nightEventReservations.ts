@@ -1761,6 +1761,10 @@ export interface ReservationCandidateManifestEntry {
   pre_event_score_num: number | null;
   metric_formula_version: string | null;
   source_created_at: string | null;
+  /** Provider lineage of THIS sibling's own event; the match authority is the Reservation's physical_event_id, never this. */
+  provider_event_id?: string;
+  provider_game_id?: string;
+  provider_market_type?: string;
 }
 
 /**
@@ -1950,8 +1954,14 @@ export function buildReservationCandidateManifestsByPhysicalEvent(
       : {};
     const identity = resolveContractAProviderPhysicalEventIdentity(diagnostics);
     if (identity === null || !admittedPhysicalEventIds.has(identity.physicalEventId)) continue;
-    const entry = manifestEntryFromSourceRow(row);
-    if (entry === null) continue;
+    const baseEntry = manifestEntryFromSourceRow(row);
+    if (baseEntry === null) continue;
+    const entry: ReservationCandidateManifestEntry = {
+      ...baseEntry,
+      provider_event_id: identity.eventId,
+      ...(identity.gameId ? { provider_game_id: identity.gameId } : {}),
+      ...(identity.marketType ? { provider_market_type: identity.marketType } : {}),
+    };
     const list = grouped.get(identity.physicalEventId);
     if (list) list.push(entry);
     else grouped.set(identity.physicalEventId, [entry]);
