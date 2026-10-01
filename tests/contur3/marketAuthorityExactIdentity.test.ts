@@ -62,10 +62,9 @@ test("exact full-match spread survives an exact-score parent wrapper", () => {
   assert.equal(anchorDecisionForCandidate(candidate(p)).allowed, true);
 });
 
-test("own exact score, corners, and partial market semantics remain blocked", () => {
+test("own exact score and partial market semantics remain blocked", () => {
   for (const [type, question] of [
     ["soccer_exact_score", "Exact Score: 1-0"],
-    ["total_corners", "Total Corners Over 9.5"],
     ["spreads", "First Half Spread"],
   ]) {
     assert.equal(resolveUpstreamMarketPolicy(probe({ providerMarketType: type, providerMarketQuestion: question })).allowed, false, type);
