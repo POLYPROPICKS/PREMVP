@@ -2006,7 +2006,7 @@ export async function runEventRebalance(
     // P1A: a finalized exact-event source set is mandatory before any live
     // Final Rebalance selection. P1B will consume this same array for A/B.
     // Existing Planning-token selection below remains unchanged for P1A.
-    if (write && (deps.readFinalT3Universe || !deps.repo)) {
+    if (write) {
       try {
         const finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
         if (finalSiblingUniverse.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
