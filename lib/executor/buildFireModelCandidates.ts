@@ -2,6 +2,7 @@
 import {
   classifyMarketText,
   isAllowedFullMatchMarketClass,
+  STRUCTURED_TOTAL_CORNERS_TYPE,
   resolveMarketAnchorDecision,
   type EventScope,
   type MarketClass,
@@ -361,6 +362,7 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
     ? resolveMarketAnchorDecision({
         providerMarketQuestion: structuredType,
         marketTitle: probe.providerMarketQuestion ?? null,
+        structuredMarketType: structuredType,
       })
     : resolveMarketAnchorDecision(anchorInput);
   const diag = (probe.diagnostics ?? {}) as Record<string, unknown>;
@@ -395,9 +397,12 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
   if (exactStructuredMarket) {
     // Only the provider's exact full-match market enums establish executable
     // scope. The canonical taxonomy still rejects forbidden question wording.
-    const fullMatchType = ["moneyline", "spread", "spreads", "total", "totals"].includes(structuredType);
+    const fullMatchType = ["moneyline", "spread", "spreads", "total", "totals", STRUCTURED_TOTAL_CORNERS_TYPE].includes(structuredType);
     const questionDecision = probe.providerMarketQuestion
-      ? resolveMarketAnchorDecision({ providerMarketQuestion: probe.providerMarketQuestion })
+      ? resolveMarketAnchorDecision({
+          providerMarketQuestion: probe.providerMarketQuestion,
+          structuredMarketType: structuredType,
+        })
       : null;
     const ownQuestionForbidden = questionDecision !== null &&
       (questionDecision.market_class.startsWith("forbidden_") || questionDecision.event_scope !== "full_match");
