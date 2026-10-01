@@ -23,6 +23,7 @@ export type MarketClass =
   | "allowed_fullmatch_moneyline"
   | "allowed_fullmatch_spread"
   | "allowed_fullmatch_total"
+  | "allowed_fullmatch_total_corners"
   | "forbidden_halftime"
   | "forbidden_corners"
   | "forbidden_exact_score"
@@ -231,6 +232,68 @@ export interface MarketAnchorInput {
   marketSlug?: string | null;
   eventSlug?: string | null;
   matchFamilyKey?: string | null;
+  /**
+   * The provider's STRUCTURED market type enum. Only the exact value
+   * `total_corners` unlocks the full-match corners class; text, titles and
+   * slugs can never do so on their own.
+   */
+  structuredMarketType?: string | null;
+}
+
+/** The only provider market type that admits corners (full-match total corners). */
+export const STRUCTURED_TOTAL_CORNERS_TYPE = "total_corners";
+
+export function isExactStructuredTotalCornersType(type: unknown): boolean {
+  return typeof type === "string" && type.trim().toLowerCase() === STRUCTURED_TOTAL_CORNERS_TYPE;
+}
+
+// Corner wording is the one thing the exact structured type legitimises; it is
+// stripped before every OTHER forbidden/scope check so halves, props and
+// partial segments still win. Corner derivatives (first/last corner, team
+// totals, handicaps) are rejected outright.
+const CORNER_WORD_RE = /corners?/g;
+const CORNER_DERIVATIVE_TOKEN =
+  /\b(?:first|last|1st|2nd|next)\s+corners?\b|\bteam\s+(?:total|corners?)\b|\bhandicap\b|\bspread\b/;
+
+function stripCornerWords(input: string): string {
+  return tokensOf(input).join(" ").replace(CORNER_WORD_RE, " ");
+}
+
+function resolveStructuredTotalCornersDecision(input: MarketAnchorInput): MarketAnchorDecision {
+  const titles = [input.providerMarketQuestion, input.marketTitle, input.eventTitle]
+    .map((v) => firstNonEmpty(v))
+    .filter((v): v is string => v !== null);
+  const identifiers = [input.marketSlug, input.eventSlug, input.matchFamilyKey]
+    .map((v) => firstNonEmpty(v))
+    .filter((v): v is string => v !== null);
+  const evidence_source: MarketAnchorDecision["evidence_source"] = "structured";
+  const event_scope =
+    [
+      ...titles.map((t) => classifyEventScope(stripCornerWords(t))),
+      ...identifiers.map((t) => classifyEventScopeFromIdentifier(stripCornerWords(t))),
+    ].find((s) => s !== "full_match") ?? "full_match";
+  const reject = (
+    market_class: MarketClass,
+    reason_code: MarketAnchorReasonCode,
+  ): MarketAnchorDecision => ({ market_class, event_scope, allowed: false, reason_code, evidence_source });
+
+  if ([...titles, ...identifiers].some(isActivityLabelMarketText)) return reject("unknown", "ACTIVITY_LABEL");
+  if (titles.some((t) => CORNER_DERIVATIVE_TOKEN.test(tokensOf(t).join(" ")))) {
+    return reject("forbidden_corners", "FORBIDDEN_MARKET_CLASS");
+  }
+  for (const t of [...titles, ...identifiers]) {
+    const cls = classifyMarketText(stripCornerWords(t));
+    if (isForbiddenMarketClass(cls)) return reject(cls, "FORBIDDEN_MARKET_CLASS");
+    if (cls === "esports_non_policy") return reject(cls, "ESPORTS_NON_POLICY");
+  }
+  if (!isFullMatchEventScope(event_scope)) return reject("allowed_fullmatch_total_corners", "PARTIAL_EVENT_SCOPE");
+  return {
+    market_class: "allowed_fullmatch_total_corners",
+    event_scope,
+    allowed: true,
+    reason_code: null,
+    evidence_source,
+  };
 }
 
 function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
@@ -250,6 +313,9 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | nu
  * never rescued by an allowed class.
  */
 export function resolveMarketAnchorDecision(input: MarketAnchorInput): MarketAnchorDecision {
+  if (isExactStructuredTotalCornersType(input.structuredMarketType)) {
+    return resolveStructuredTotalCornersDecision(input);
+  }
   const structured = firstNonEmpty(input.providerMarketQuestion);
   const normalized = firstNonEmpty(input.marketTitle, input.eventTitle);
   const fallback = firstNonEmpty(input.marketSlug, input.eventSlug, input.matchFamilyKey);
@@ -296,7 +362,8 @@ export function isAllowedFullMatchMarketClass(cls: MarketClass): boolean {
   return (
     cls === "allowed_fullmatch_moneyline" ||
     cls === "allowed_fullmatch_spread" ||
-    cls === "allowed_fullmatch_total"
+    cls === "allowed_fullmatch_total" ||
+    cls === "allowed_fullmatch_total_corners"
   );
 }
 

@@ -379,3 +379,62 @@ test("MP-3: score, tier and event lineage of an admitted candidate are unchanged
   assert.equal(c.event_slug, "mlb-nyy-phi-2026-07-27", "event lineage must be preserved");
   assert.equal(c.diagnostics.game_start_iso, KICKOFF_ISO, "event start must be preserved exactly");
 });
+
+// ---------------------------------------------------------------------------
+// P1B_1 — exact structured total_corners candidate admission.
+// ---------------------------------------------------------------------------
+import { resolveUpstreamMarketPolicy, type MarketPolicyProbe } from "../../lib/executor/buildFireModelCandidates";
+
+function cornersProbe(over: Partial<MarketPolicyProbe> = {}): MarketPolicyProbe {
+  return {
+    market_slug: "liverpool-vs-man-city-total-corners-9pt5",
+    event_slug: "epl-liv-mci-2026-07-27",
+    match_family_key: "epl-liv-mci-2026-07-27",
+    inferred_sport: "soccer",
+    activity_label_detected: false,
+    providerMarketQuestion: "Liverpool vs Manchester City: Total Corners O/U 9.5",
+    providerEventTitle: "Liverpool vs Manchester City",
+    providerEventId: "evt-1",
+    providerMarketId: "mkt-1",
+    providerMarketType: "total_corners",
+    conditionId: "cond-1",
+    condition_id: "cond-1",
+    token_id: "tok-1",
+    side: "Over",
+    ...over,
+  };
+}
+
+test("structured total_corners with complete exact identity is admitted as its own class", () => {
+  const v = resolveUpstreamMarketPolicy(cornersProbe());
+  assert.equal(v.allowed, true);
+  assert.equal(v.market_class, "allowed_fullmatch_total_corners");
+  assert.equal(v.anchor_kind, "EXECUTABLE_MARKET");
+  assert.deepEqual(v.exact_identity, { condition_id: "cond-1", token_id: "tok-1", side: "Over" });
+});
+
+test("total_corners without exact identity, or corner derivatives/text-only, stay blocked", () => {
+  assert.equal(resolveUpstreamMarketPolicy(cornersProbe({ token_id: null })).allowed, false);
+  assert.equal(resolveUpstreamMarketPolicy(cornersProbe({ providerMarketId: null })).allowed, false);
+  for (const type of ["corners", "first_half_total_corners", "second_half_total_corners", "team_total_corners",
+    "first_corner", "last_corner", "corner_handicap"]) {
+    assert.equal(resolveUpstreamMarketPolicy(cornersProbe({ providerMarketType: type })).allowed, false, type);
+  }
+  for (const q of ["First Half Total Corners O/U 4.5", "Team Total Corners Over 4.5", "First Corner"]) {
+    assert.equal(resolveUpstreamMarketPolicy(cornersProbe({ providerMarketQuestion: q })).allowed, false, q);
+  }
+  // No structured type: title/slug-only corner wording is forbidden.
+  const textOnly = resolveUpstreamMarketPolicy(cornersProbe({
+    providerMarketType: null, providerMarketId: null, conditionId: null,
+  }));
+  assert.equal(textOnly.allowed, false);
+});
+
+test("structured totals/spreads/moneyline admission unchanged", () => {
+  const t = resolveUpstreamMarketPolicy(cornersProbe({
+    providerMarketType: "totals", providerMarketQuestion: "Liverpool vs Manchester City: O/U 2.5",
+    market_slug: "liverpool-vs-man-city-total-2pt5",
+  }));
+  assert.equal(t.allowed, true);
+  assert.equal(t.market_class, "allowed_fullmatch_total");
+});
