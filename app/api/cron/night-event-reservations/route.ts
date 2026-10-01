@@ -14,7 +14,7 @@ import { getActiveContour } from "@/lib/constructor/devLive";
 import {
   buildPlanRunId,
   resolveNightWindow,
-  parseReservationTimesMinsk,
+  parseReservationTimes,
   resolveReservationAnchor,
   resolveDueReservationAnchor,
 } from "@/lib/executor/nightWindow";
@@ -54,7 +54,7 @@ async function handle(request: NextRequest) {
   }
 
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -73,10 +73,11 @@ async function handle(request: NextRequest) {
 
   try {
     // Constructor V1: selector policy and the anchor-schedule env binding come from the
-    // composed DEV_LIVE contour, not from literals/ambient env keys in this handler.
+    // composed DEV_LIVE contour, not from literals/ambient env keys in this handler. The resolved
+    // anchor is passed explicitly to every downstream call so none re-reads the ambient schedule.
     const contour = getActiveContour();
     const selectorMode = contour.profile.selectors.planning;
-    const reservationTimes = parseReservationTimesMinsk(contour.resolveEnv("reservationTimesMinsk"));
+    const reservationTimes = parseReservationTimes(contour.resolveEnv("reservationTimesMinsk"));
     const currentAnchor = resolveReservationAnchor(nowMs, reservationTimes);
     // ── canary=CEO_APPROVED&mode=canaryPreview: read-only, zero writes ───────
     if (mode === "canaryPreview") {
@@ -91,7 +92,7 @@ async function handle(request: NextRequest) {
           { status: 400, headers: { "Cache-Control": "no-store" } }
         );
       }
-      const plan = await buildReservationPlan(nowMs, { selectorMode });
+      const plan = await buildReservationPlan(nowMs, { selectorMode, anchor: currentAnchor });
       const preview_groups = buildCanaryPreview(plan, nowMs);
       return NextResponse.json(
         {
@@ -122,6 +123,7 @@ async function handle(request: NextRequest) {
       }
       const plan = await buildReservationPlan(nowMs, {
         selectorMode,
+        anchor: currentAnchor,
         targetPhysicalEventKeyHash,
       });
       const matched_event_groups = plan.diagnostics.canary_target_matched_group_count;
@@ -186,7 +188,7 @@ async function handle(request: NextRequest) {
     if (mode === "status" || dryRun) {
       const planRunId = buildPlanRunId(nowMs, currentAnchor);
       const window = resolveNightWindow(nowMs, currentAnchor);
-      const planHealth = await loadPlanStatus(planRunId, nowMs);
+      const planHealth = await loadPlanStatus(planRunId, nowMs, currentAnchor);
       return NextResponse.json(
         {
           ok: true,
@@ -209,7 +211,7 @@ async function handle(request: NextRequest) {
     // (unless the replacement plan is empty, in which case nothing is deleted --
     // see executeForceRebuild's ABORTED_NO_REPLACEMENT path.)
     if (forceRebuild) {
-      const result = await executeForceRebuild(nowMs, { selectorMode });
+      const result = await executeForceRebuild(nowMs, { selectorMode, anchor: currentAnchor });
       const diagResult = await persistReservationPlanDiagnostics(result.plan, {
         context: "force-rebuild",
       });
@@ -244,7 +246,7 @@ async function handle(request: NextRequest) {
     if (!dueAnchor && !force && !forceCreate) {
       const planRunId = buildPlanRunId(nowMs, currentAnchor);
       const window = resolveNightWindow(nowMs, currentAnchor);
-      const planHealth = await loadPlanStatus(planRunId, nowMs);
+      const planHealth = await loadPlanStatus(planRunId, nowMs, currentAnchor);
       return NextResponse.json(
         {
           ok: true,
@@ -288,7 +290,7 @@ async function handle(request: NextRequest) {
     const expired_count = statusBuckets["EXPIRED"] ?? 0;
 
     // Compute plan_health from DB (always reflects actual current state).
-    const planHealth = await loadPlanStatus(result.plan_run_id, nowMs);
+    const planHealth = await loadPlanStatus(result.plan_run_id, nowMs, currentAnchor);
 
     return NextResponse.json(
       {

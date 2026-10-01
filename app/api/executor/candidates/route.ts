@@ -202,7 +202,7 @@ interface SafeCandidate extends FireModelCandidate {
 
 export async function GET(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
 
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

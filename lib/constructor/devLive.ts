@@ -30,6 +30,9 @@ export const DEV_LIVE_PROFILE: ContourProfileV1 = {
     "reservation.clock",
     "rebalance.engine",
     "queue.api",
+    "reservation.cron",
+    "rebalance.cron",
+    "resource.supabaseAdmin",
   ],
 };
 
@@ -83,6 +86,25 @@ export const DEV_LIVE_COMPONENT_MANIFEST: ComponentManifestV1 = {
       contractVersion: "CONTRACT_A_PLANNING_V1",
     },
     {
+      id: "reservation.cron",
+      role: "reservation-cron-entry",
+      module: "app/api/cron/night-event-reservations/route.ts",
+      contractVersion: "CONTRACT_A_PLANNING_V1",
+    },
+    {
+      id: "rebalance.cron",
+      role: "rebalance-cron-entry",
+      module: "app/api/cron/event-rebalance/route.ts",
+      contractVersion: "CONTRACT_A_PLANNING_V1",
+    },
+    {
+      id: "resource.supabaseAdmin",
+      role: "supabase-admin-client-factory",
+      module: "lib/supabase/adminClientFactory.ts",
+      symbol: "createSupabaseAdminClient",
+      contractVersion: "SUPABASE_ADMIN_BINDING_V1",
+    },
+    {
       id: "queue.api",
       role: "immutable-queue-adapter",
       module: "app/api/executor/queue/route.ts",
@@ -102,7 +124,12 @@ export const DEV_LIVE_INSTANCE: ContourInstanceV1 = {
     repository: "POLYPROPICKS/PREMVP",
     scheduler: "RAILWAY_CRON_WAKE",
   },
-  envBindings: { reservationTimesMinsk: "RESERVATION_TIMES_MINSK" },
+  envBindings: {
+    reservationTimesMinsk: "RESERVATION_TIMES_MINSK",
+    executorCandidatesSecret: "EXECUTOR_CANDIDATES_SECRET",
+    supabaseUrl: "SUPABASE_URL",
+    supabaseServiceRoleKey: "SUPABASE_SERVICE_ROLE_KEY",
+  },
 };
 
 let active: ComposedContour | null = null;

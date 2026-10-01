@@ -2644,6 +2644,7 @@ export async function runEventRebalanceWithEvidence(
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     jobEvidence?: SchedulerJobEvidencePort;
     captureMilestones?: (nowMs: number) => Promise<void>;
+    contour?: ComposedContour;
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
@@ -2664,6 +2665,7 @@ export async function runEventRebalanceWithEvidence(
     const result = await runEventRebalance(nowMs, opts, {
       repo: deps.repo,
       fetchCandidates: deps.fetchCandidates,
+      contour: deps.contour,
     });
     if (write) {
       const finishedAt = new Date().toISOString();

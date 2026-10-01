@@ -30,9 +30,19 @@ export interface ContourProfileV1 {
   readonly requiredComponents: readonly string[];
 }
 
-/** Logical env bindings an instance may declare. Values are env-var NAMES, never secrets. */
+/**
+ * Logical env bindings an instance declares. Values are env-var NAMES, never secrets or values.
+ * Shared code addresses a binding by its logical key and never names the env var itself.
+ */
 export interface ContourEnvBindingsV1 {
+  /** Reservation anchor schedule ("HH:MM,HH:MM"); absent value = historical 17:00 default. */
   readonly reservationTimesMinsk: string;
+  /** Shared secret expected in the x-executor-secret header on executor/cron routes. */
+  readonly executorCandidatesSecret: string;
+  /** Supabase project URL for this instance's admin client. */
+  readonly supabaseUrl: string;
+  /** Supabase service-role key for this instance's admin client. */
+  readonly supabaseServiceRoleKey: string;
 }
 
 export interface ContourInstanceV1 {
@@ -84,9 +94,19 @@ export interface ComposedContour {
   component(id: string): ManifestComponentV1;
   /** Resolve a logical binding to its value through the instance's declared env-var name. */
   resolveEnv(binding: keyof ContourEnvBindingsV1, env?: Record<string, string | undefined>): string | undefined;
+  /** Like resolveEnv, but fails closed (`Missing required environment variable: <NAME>`) when absent/empty. */
+  requireEnv(binding: keyof ContourEnvBindingsV1, env?: Record<string, string | undefined>): string;
 }
 
 const ENV_NAME_RE = /^[A-Z][A-Z0-9_]*$/;
+
+/** Every logical binding an instance must declare; composition fails if one is missing. */
+export const REQUIRED_ENV_BINDINGS = [
+  "reservationTimesMinsk",
+  "executorCandidatesSecret",
+  "supabaseUrl",
+  "supabaseServiceRoleKey",
+] as const satisfies readonly (keyof ContourEnvBindingsV1)[];
 
 function invalid(reason: string): never {
   throw new Error(`${CONSTRUCTOR_COMPOSE_INVALID}: ${reason}`);
@@ -150,6 +170,9 @@ export function composeContour(declaration: ContourDeclarationV1): ComposedConto
     invalid("SELECTOR_FINAL_NOT_PINNED_BY_MANIFEST");
   }
 
+  for (const key of REQUIRED_ENV_BINDINGS) {
+    if (!(key in instance.envBindings)) invalid(`ENV_BINDING_MISSING:${key}`);
+  }
   for (const [binding, name] of Object.entries(instance.envBindings)) {
     if (typeof name !== "string" || !ENV_NAME_RE.test(name)) invalid(`ENV_BINDING_NOT_AN_ENV_NAME:${binding}`);
   }
@@ -172,6 +195,12 @@ export function composeContour(declaration: ContourDeclarationV1): ComposedConto
     },
     resolveEnv(binding, env = process.env) {
       return env[instance.envBindings[binding]];
+    },
+    requireEnv(binding, env = process.env) {
+      const name = instance.envBindings[binding];
+      const value = env[name];
+      if (!value) throw new Error(`Missing required environment variable: ${name}`);
+      return value;
     },
   };
 }

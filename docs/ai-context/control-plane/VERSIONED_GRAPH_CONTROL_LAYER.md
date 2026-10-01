@@ -92,24 +92,31 @@ Bounded observations are deliberately non-equivalent: `npm run firemodel1:funnel
 
 ## Graph 4 — Constructor V1 composition of CURRENT DEV_LIVE
 
-Evidence label: `SOURCE` + `TEST` (`tests/constructor/devLiveComposition.test.ts`). Composition and identity only; the three graphs above are unchanged.
+Evidence label: `SOURCE` + `TEST` (`tests/constructor/*`, 28 tests). Composition and identity only; Graphs 1–3 are unchanged.
 
 ```mermaid
 flowchart LR
-  DEV[CURRENT DEV_LIVE\ngetActiveContour\nSOURCE: lib/constructor/devLive.ts] --> CI[ContourInstanceV1\nDEV_LIVE_PRIMARY\nenv-var NAMES only]
+  DEV[CURRENT DEV_LIVE\ngetActiveContour\nSOURCE: lib/constructor/devLive.ts] --> CI[ContourInstanceV1\nDEV_LIVE_PRIMARY\n4 env-var NAME bindings: schedule / executor secret\nsupabase url / service key]
   CI --> CP[ContourProfileV1\nselectors planning CONTRACT_A_PLANNING_V1\nfinal CONTRACT_A_V1]
-  CI --> CM[ComponentManifestV1\npremvp-dev-live@1.0.0\nsha256 digest pinned by TEST]
-  CP --> SE[Shared engine\nbuildFireModelCandidates / contractADecisions\nnightEventReservations / runEventRebalance]
+  CI --> CM[ComponentManifestV1\npremvp-dev-live@1.0.0\n10 components, sha256 digest pinned by TEST]
+  CP --> SE[Shared engine\nbuildFireModelCandidates / contractADecisions\nnightEventReservations / nightWindow / runEventRebalance]
   CM --> SE
+  CI --> RES[Resource + auth bindings\ncreateSupabaseAdminClient / resolveEnv executorCandidatesSecret\nconsumed by cron + executor routes]
+  RES --> SE
   SE --> SPINE[Graph 1 spine unchanged\nReservation -> Rebalance -> Queue -> Ireland]
+  SYN[Synthetic second instance\nTEST-LOCAL, in memory\nall binding names differ, no DEV leakage] -.composes from same model.-> CM
 
   classDef source fill:#fff2cc,stroke:#bf9000,color:#000;
   classDef accepted fill:#d9ead3,stroke:#38761d,color:#000;
-  class DEV,CI,CP,CM source;
+  classDef test fill:#cfe2f3,stroke:#1155cc,color:#000;
+  class DEV,CI,CP,CM,RES source;
   class SE,SPINE accepted;
+  class SYN test;
 ```
 
-Consumers wired this pass: the reservation cron (selector and `RESERVATION_TIMES_MINSK` binding), `night-plan-email`, `executor/candidates`, `executor/night-plan`, and the default candidate fetchers in `runEventRebalance` / `runControlledLiveIntent` (overridable through `deps.contour`). Not yet Constructor-composed: the `EXECUTOR_CANDIDATES_SECRET` auth lookup, the `parseReservationTimesMinsk` ambient-env default parameter, and the `event-rebalance` cron's own env/scheduling.
+Consumers wired: the reservation cron (selector; pure schedule parse; explicit anchor into `buildReservationPlan`, `executeForceRebuild`, `loadPlanStatus`), `night-plan-email` (selector + explicit anchor), `event-rebalance` (secret binding; contour passed into `runEventRebalanceWithEvidence` → `runEventRebalance`), the five `executor/*` routes (secret binding), the default candidate fetchers in `runEventRebalance` / `runControlledLiveIntent`, and `lib/supabase/server.ts` (process-wide `supabaseAdmin` = factory over the active contour’s declared URL/key names).
+
+Remaining implicit bindings (honest list): `getActiveContour()` selects `DEV_LIVE` unconditionally (no per-runtime declaration selector yet); direct `supabaseAdmin` consumers are bound to the process’s active contour rather than injected (process-per-instance is supported; same-process multi-instance must use the factory); legacy ambient entries in `nightWindow` for non-Constructor callers; persisted-data `CONTRACT_A_PLANNING_V1` identity comparisons; unrelated product/modeling code that reads `SUPABASE_URL` directly.
 
 ## Deferred — visible, not blockers for this map
 

@@ -4,6 +4,7 @@ import {
   ensureAndLoadReservations,
   nightReservationEmail,
 } from "@/lib/executor/nightEventReservations";
+import { parseReservationTimes, resolveReservationAnchor } from "@/lib/executor/nightWindow";
 
 // Autonomous Night Plan email cron (Contur3: rendered from FROZEN reservations).
 //   GET /api/cron/night-plan-email?mode=plan   → 17:00 Minsk, freezes plan if needed, sends.
@@ -56,7 +57,7 @@ async function sendEmail(opts: {
 
 export async function GET(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -89,9 +90,12 @@ export async function GET(request: NextRequest) {
 
   try {
     // mode=plan freezes the reservation plan if it does not exist yet; mode=alert never creates.
-    const { planRunId, reservations, created } = await ensureAndLoadReservations(Date.now(), {
+    const contour = getActiveContour();
+    const nowMs = Date.now();
+    const { planRunId, reservations, created } = await ensureAndLoadReservations(nowMs, {
       allowCreate: mode === "plan",
-      selectorMode: getActiveContour().profile.selectors.planning,
+      selectorMode: contour.profile.selectors.planning,
+      anchor: resolveReservationAnchor(nowMs, parseReservationTimes(contour.resolveEnv("reservationTimesMinsk"))),
     });
     const { subject, text } = nightReservationEmail(planRunId, reservations);
     const shortage = reservations.length === 0;

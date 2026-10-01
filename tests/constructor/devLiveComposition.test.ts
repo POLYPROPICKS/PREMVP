@@ -52,7 +52,7 @@ test("manifest digest is deterministic and pinned (a composition change must be 
   const b = composeContour(clone(DEV_LIVE)).manifestDigest;
   assert.equal(a, b);
   assert.equal(a, computeManifestDigest(DEV_LIVE_COMPONENT_MANIFEST));
-  assert.equal(a, "52d86ffefd0568777deba6f4139b266aae974de2ba321b0c4a11d453444df600");
+  assert.equal(a, "775f23a09f0ebf2c83821b4e4b25ad3177b20b65b445a78bea0241597ffc4663");
 });
 
 // ── 2. OLD DEV intent == NEW Constructor-composed DEV intent ─────────────────
@@ -124,7 +124,8 @@ test("migrated active-path call sites no longer hard-code the selector mode", ()
 test("a second instance of the same profile+manifest composes with its own identity and bindings", () => {
   const fixture = clone(DEV_LIVE);
   (fixture.instance as { instanceId: string }).instanceId = "DEV_LIVE_TEST_FIXTURE";
-  (fixture.instance as { envBindings: { reservationTimesMinsk: string } }).envBindings = {
+  (fixture.instance as { envBindings: object }).envBindings = {
+    ...fixture.instance.envBindings,
     reservationTimesMinsk: "FIXTURE_RESERVATION_TIMES",
   };
   const second = composeContour(fixture);
@@ -142,7 +143,12 @@ test("composition rejects inconsistent declarations", () => {
     ["INSTANCE_MANIFEST_MISMATCH", (d) => ((d.instance.manifestRef as { version: string }).version = "9.9.9")],
     ["MANIFEST_PROFILE_MISMATCH", (d) => ((d.manifest as { contourId: string }).contourId = "OTHER")],
     ["REQUIRED_COMPONENT_MISSING:queue.api", (d) => ((d.manifest as unknown as { components: unknown[] }).components = d.manifest.components.filter((c) => c.id !== "queue.api"))],
-    ["COMPONENT_DUPLICATE:queue.api", (d) => ((d.manifest as unknown as { components: unknown[] }).components = [...d.manifest.components, d.manifest.components[6]])],
+    ["COMPONENT_DUPLICATE:selector.planning", (d) => ((d.manifest as unknown as { components: unknown[] }).components = [...d.manifest.components, d.manifest.components[0]])],
+    ["ENV_BINDING_MISSING:supabaseUrl", (d) => {
+      const { supabaseUrl: _omit, ...rest } = d.instance.envBindings;
+      void _omit;
+      (d.instance as { envBindings: object }).envBindings = rest;
+    }],
     ["SELECTOR_PLANNING_NOT_PINNED_BY_MANIFEST", (d) => ((d.profile.selectors as { planning: string }).planning = "CONTRACT_A_V1")],
     ["ENV_BINDING_NOT_AN_ENV_NAME:reservationTimesMinsk", (d) => ((d.instance.envBindings as { reservationTimesMinsk: string }).reservationTimesMinsk = "not an env name")],
   ];
@@ -164,6 +170,7 @@ test("composed contour is immutable", () => {
 // ── 7. No secret values in the declaration ───────────────────────────────────
 
 test("declaration carries env-var names only, never values", () => {
+  for (const name of Object.values(DEV_LIVE_INSTANCE.envBindings)) assert.match(name, /^[A-Z][A-Z0-9_]*$/);
   const blob = JSON.stringify(DEV_LIVE);
-  assert.ok(!/secret|bearer |eyJ/i.test(blob));
+  assert.ok(!/bearer |eyJ|sk_live|https?:\/\//i.test(blob), "no token/url-looking values in the declaration");
 });

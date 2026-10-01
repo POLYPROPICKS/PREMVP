@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getActiveContour } from "@/lib/constructor/devLive";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
 import { createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
@@ -115,7 +116,7 @@ function createSupabaseQueueClaimDbPort() {
 
 export async function POST(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, success: false, error: "Unauthorized" }, { status: 401 });
   }

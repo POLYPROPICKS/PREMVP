@@ -1,4 +1,5 @@
 import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
+import { getActiveContour } from "@/lib/constructor/devLive";
 import { createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -61,7 +62,7 @@ async function handle(request: NextRequest) {
   }
 
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -106,7 +107,7 @@ async function handle(request: NextRequest) {
         write: !dryRun,
         maxQueueWrites: 1,
         targetReservationId,
-      });
+      }, { contour: getActiveContour() });
       const first_failure_code = !result.target_reservation_matched
         ? "CANARY_RESERVATION_NOT_FOUND"
         : result.first_rejection_code === "BLOCKED_BY_MAX_QUEUE_WRITES"
@@ -217,7 +218,7 @@ async function handle(request: NextRequest) {
     const result = await runEventRebalanceWithEvidence(Date.now(), {
       write: !dryRun,
       maxQueueWrites: maxQueueWritesParsed.value,
-    });
+    }, { contour: getActiveContour() });
     const diagResult = await persistRebalanceDiagnostics(result, {
       context: "event-rebalance-cron",
     });

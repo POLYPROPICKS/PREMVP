@@ -765,6 +765,8 @@ export async function buildReservationPlan(
   deps: {
     fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
     selectorMode?: FireModelSelectorMode;
+    /** Explicit instance schedule anchor. Absent = legacy ambient resolution (non-Constructor callers). */
+    anchor?: ReservationAnchor;
     /** Canary single-event targeting: restrict admission to exactly one physical-event group. */
     targetPhysicalEventKeyHash?: string;
     /** Injectable only for deterministic ambiguity testing; production always uses hashPhysicalEventKey. */
@@ -796,6 +798,7 @@ export async function buildReservationPlan(
     deps.fetchCandidates === undefined
   ) {
     return buildContractAReservationPlan(nowMs, {
+      anchor: deps.anchor,
       fetchSourceRows: deps.fetchSourceRows,
       produceDecisions: deps.produceDecisions,
       activeOccurrences: deps.activeOccurrences,
@@ -804,8 +807,8 @@ export async function buildReservationPlan(
     });
   }
 
-  const window = resolveNightWindow(nowMs);
-  const planRunId = buildPlanRunId(nowMs);
+  const window = resolveNightWindow(nowMs, deps.anchor);
+  const planRunId = buildPlanRunId(nowMs, deps.anchor);
   const fetchCandidates =
     deps.fetchCandidates ??
     (async () => {
@@ -3130,13 +3133,13 @@ export function nightReservationEmail(
  */
 export async function ensureAndLoadReservations(
   nowMs: number,
-  opts: { allowCreate?: boolean; selectorMode?: FireModelSelectorMode } = {}
+  opts: { allowCreate?: boolean; selectorMode?: FireModelSelectorMode; anchor?: ReservationAnchor } = {}
 ): Promise<{ planRunId: string; reservations: NightEventReservationRow[]; created: boolean }> {
-  const planRunId = buildPlanRunId(nowMs);
+  const planRunId = buildPlanRunId(nowMs, opts.anchor);
   let reservations = await loadReservations(planRunId);
   let created = false;
   if (reservations.length === 0 && opts.allowCreate) {
-    const plan = await buildReservationPlan(nowMs, { selectorMode: opts.selectorMode });
+    const plan = await buildReservationPlan(nowMs, { selectorMode: opts.selectorMode, anchor: opts.anchor });
     await persistReservationPlan(plan, { force: false });
     reservations = await loadReservations(planRunId);
     created = true;
@@ -3195,7 +3198,7 @@ export interface PlanHealth {
  * Read existing plan rows from DB and compute health diagnostics.
  * Pure read — no writes. Returns zero-counts when the plan does not exist yet.
  */
-export async function loadPlanStatus(planRunId: string, nowMs: number): Promise<PlanHealth> {
+export async function loadPlanStatus(planRunId: string, nowMs: number, anchor?: ReservationAnchor): Promise<PlanHealth> {
   const { supabaseAdmin } = await import("@/lib/supabase/server");
   const { data, error } = await supabaseAdmin
     .from("night_event_reservations")
@@ -3244,7 +3247,7 @@ export async function loadPlanStatus(planRunId: string, nowMs: number): Promise<
   const needsRebuild = isExpiredOnly || badMarketLevelCount > 0 || wcFloorBelowMinimum;
 
   // Horizon bounds computed from current window (read-time, not build-time).
-  const nightWindow = resolveNightWindow(nowMs);
+  const nightWindow = resolveNightWindow(nowMs, anchor);
 
   return {
     has_rows: total > 0,
@@ -3427,17 +3430,18 @@ export async function executeForceRebuild(
   deps: {
     fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
     selectorMode?: FireModelSelectorMode;
+    anchor?: ReservationAnchor;
     repo?: ReservationRepoPort;
     forceRebuildRepo?: ForceRebuildRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
-    loadPlanStatus?: (planRunId: string, nowMs: number) => Promise<PlanHealth>;
+    loadPlanStatus?: (planRunId: string, nowMs: number, anchor?: ReservationAnchor) => Promise<PlanHealth>;
   } = {}
 ): Promise<ForceRebuildResult> {
   const repo = deps.repo ?? createSupabaseReservationRepoPort();
   const forceRebuildRepo = deps.forceRebuildRepo ?? createSupabaseForceRebuildRepoPort();
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
   const loadPlanStatusFn = deps.loadPlanStatus ?? loadPlanStatus;
-  const planRunId = buildPlanRunId(nowMs);
+  const planRunId = buildPlanRunId(nowMs, deps.anchor);
   const startedAt = new Date().toISOString();
 
   try {
@@ -3447,11 +3451,11 @@ export async function executeForceRebuild(
     //    already know the replacement plan is non-empty -- this closes the
     //    incident where an empty replacement plan silently deleted a real
     //    existing reservation with nothing to take its place.
-    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: deps.selectorMode });
+    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: deps.selectorMode, anchor: deps.anchor });
 
     if (plan.reservations.length === 0) {
       const planHealth = await withBoundedRetry("force_rebuild_plan_health_read_aborted", () =>
-        loadPlanStatusFn(planRunId, nowMs)
+        loadPlanStatusFn(planRunId, nowMs, deps.anchor)
       );
       const finishedAt = new Date().toISOString();
       await jobEvidence.writeJobRun({
@@ -3508,7 +3512,7 @@ export async function executeForceRebuild(
 
     // 5. Read back health of the new plan (read, retry-safe).
     const planHealth = await withBoundedRetry("force_rebuild_plan_health_read", () =>
-      loadPlanStatusFn(planRunId, nowMs)
+      loadPlanStatusFn(planRunId, nowMs, deps.anchor)
     );
 
     const finishedAt = new Date().toISOString();

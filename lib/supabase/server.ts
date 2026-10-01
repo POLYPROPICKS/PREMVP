@@ -1,23 +1,12 @@
 // Server-only Supabase admin client
 // Uses SERVICE_ROLE_KEY - must never be exposed to browser code
+//
+// Constructor V1: this process-wide client is the ACTIVE contour's client. The env-var names come
+// from the active ContourInstanceV1 bindings (DEV_LIVE: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY),
+// resolved by the factory. A second instance in the same process must call
+// createSupabaseAdminClient(itsContour) rather than reuse this export.
 
-import { createClient } from "@supabase/supabase-js";
+import { getActiveContour } from "../constructor/devLive";
+import { createSupabaseAdminClient } from "./adminClientFactory";
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseUrl) {
-  throw new Error("Missing required environment variable: SUPABASE_URL");
-}
-
-if (!supabaseServiceKey) {
-  throw new Error("Missing required environment variable: SUPABASE_SERVICE_ROLE_KEY");
-}
-
-// Server-only admin client with elevated privileges
-export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-});
+export const supabaseAdmin = createSupabaseAdminClient(getActiveContour());

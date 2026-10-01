@@ -16,27 +16,36 @@
   "constructor_v1_current_dev_composition": {
     "status": "IMPLEMENTED_SOURCE_AND_TEST",
     "scope": "CURRENT DEV_LIVE expressed as explicit Constructor V1 contracts. Composition/identity only: no stage, identity key, policy, stake, queue, Ireland or settlement behavior of the spine below changed.",
-    "contracts": "lib/constructor/contracts.ts (ContourProfileV1, ContourInstanceV1, ComponentManifestV1, composeContour -- fail-closed, deep-frozen, sha256 manifest digest)",
+    "contracts": "lib/constructor/contracts.ts (ContourProfileV1, ContourInstanceV1, ComponentManifestV1, composeContour -- fail-closed incl. required env bindings, deep-frozen, sha256 manifest digest; resolveEnv / requireEnv)",
     "canonical_declaration": "lib/constructor/devLive.ts (DEV_LIVE_PROFILE, DEV_LIVE_INSTANCE DEV_LIVE_PRIMARY, DEV_LIVE_COMPONENT_MANIFEST premvp-dev-live@1.0.0, getActiveContour)",
     "layers": {
-      "shared_engine": "buildFireModelCandidates / contractADecisions / nightEventReservations / eventExecutionQueue (runEventRebalance) -- no longer hard-code the selector mode on the migrated call sites",
+      "shared_engine": "buildFireModelCandidates / contractADecisions / nightEventReservations / eventExecutionQueue (runEventRebalance*) / nightWindow -- consume selector, anchor and contour as inputs; legacy ambient entries kept only for non-Constructor callers",
       "contour_profile": "selectors {planning: CONTRACT_A_PLANNING_V1, final: CONTRACT_A_V1} + requiredComponents",
-      "contour_instance": "instanceId + runtime identity + env-var NAMES (reservationTimesMinsk -> RESERVATION_TIMES_MINSK); no secret values",
-      "component_manifest": "7 pinned components (selector.planning, selector.final, policy.contractA, reservation.planner, reservation.clock, rebalance.engine, queue.api) with module/symbol/contractVersion"
+      "contour_instance": "instanceId + runtime identity + 4 env-var NAME bindings: reservationTimesMinsk (RESERVATION_TIMES_MINSK), executorCandidatesSecret (EXECUTOR_CANDIDATES_SECRET), supabaseUrl (SUPABASE_URL), supabaseServiceRoleKey (SUPABASE_SERVICE_ROLE_KEY); no secret values",
+      "component_manifest": "10 pinned components: selector.planning, selector.final, policy.contractA, reservation.planner, reservation.clock, rebalance.engine, queue.api, reservation.cron, rebalance.cron, resource.supabaseAdmin (module/symbol/contractVersion)"
     },
     "consumers": [
-      "app/api/cron/night-event-reservations/route.ts (selector x4 + RESERVATION_TIMES_MINSK binding)",
-      "app/api/cron/night-plan-email/route.ts (selector)",
-      "app/api/executor/candidates/route.ts (selector)",
-      "app/api/executor/night-plan/route.ts (selector)",
-      "lib/executor/eventExecutionQueue.ts runEventRebalance + runControlledLiveIntent default candidate fetchers (planning + final selector; injectable via deps.contour)"
+      "app/api/cron/night-event-reservations/route.ts (selector x4, pure schedule parse of the instance binding, explicit anchor to buildReservationPlan / executeForceRebuild / loadPlanStatus)",
+      "app/api/cron/night-plan-email/route.ts (selector + explicit anchor to ensureAndLoadReservations)",
+      "app/api/cron/event-rebalance/route.ts (secret binding; contour passed into runEventRebalanceWithEvidence -> runEventRebalance)",
+      "app/api/executor/{candidates,night-plan,queue,queue/mark,order-events}/route.ts (secret binding; selector where applicable)",
+      "lib/executor/eventExecutionQueue.ts runEventRebalance + runControlledLiveIntent default candidate fetchers (planning + final selector; deps.contour)",
+      "lib/supabase/server.ts (process-wide supabaseAdmin = createSupabaseAdminClient(getActiveContour()); URL/key names from the instance)"
     ],
-    "proof": "tests/constructor/devLiveComposition.test.ts (npm run test:constructor)",
-    "not_yet_constructor_composed": [
-      "EXECUTOR_CANDIDATES_SECRET auth lookup in route handlers (auth boundary, deliberately untouched)",
-      "parseReservationTimesMinsk default parameter still reads ambient process.env.RESERVATION_TIMES_MINSK when the resolved binding is undefined",
-      "persisted-data identity comparisons of CONTRACT_A_PLANNING_V1 (eventExecutionQueue isPlanningReservation, contract_a_version stamp) are data-contract identity, not bindings",
-      "app/api/cron/event-rebalance/route.ts scheduling/env, Ireland (external, protected boundary)"
+    "proof": "tests/constructor/devLiveComposition.test.ts + tests/constructor/secondInstanceRepeatability.test.ts (npm run test:constructor, 28 tests)",
+    "second_instance_proof": "TEST-LOCAL, in-memory synthetic instance SYNTHETIC_TEST_INSTANCE: composes from the same profile policy and manifest model with all four env binding names different; with only DEV env names present every one of its bindings is unresolved; the Supabase factory and the schedule parse do not read DEV names; DEV declaration digest unchanged. No network, DB, secrets or deployment.",
+    "prompt1_blockers": {
+      "schedule_ambient_fallback": "CLOSED (pure parseReservationTimes; anchor threaded explicitly; ambient parseReservationTimesMinsk retained only as documented legacy wrapper)",
+      "supabase_resource_singleton": "CLOSED for process-per-instance (binding explicit via instance + factory); same-process multi-instance requires createSupabaseAdminClient(contour) -- direct supabaseAdmin consumers are not migrated",
+      "event_rebalance_composition": "CLOSED (secret binding + contour passed into the shared rebalance engine; the cron has no schedule/env of its own)",
+      "executor_candidates_secret_binding": "CLOSED (all 8 server routes resolve through the instance binding; fail-closed comparison unchanged)"
+    },
+    "remaining_implicit_bindings": [
+      "getActiveContour() selects the DEV_LIVE declaration unconditionally -- no per-runtime declaration selector yet (additive step for the next mission)",
+      "direct `supabaseAdmin` consumers (many modules) are bound to the process's active contour, not injected",
+      "legacy ambient entries: parseReservationTimesMinsk and the default `times`/`anchor` parameters of nightWindow, for non-Constructor callers",
+      "persisted-data identity comparisons of CONTRACT_A_PLANNING_V1 (eventExecutionQueue) -- data-contract identity, not bindings",
+      "unrelated product/modeling code reads SUPABASE_URL directly (referrals, leads, sms-opt-in, r/[code], signals/resolved, why-trust, liquidity scripts, modeling strategies)"
     ]
   },
 
