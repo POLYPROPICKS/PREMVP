@@ -5,6 +5,8 @@ import {
   runControlledLiveIntent,
 } from "@/lib/executor/eventExecutionQueue";
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "@/lib/ops/emergencyQuiesce";
+import { reconcileStaleClaims, type StaleClaimRow } from "@/lib/executor/staleQueueClaims";
+import { supabaseAdmin } from "@/lib/supabase/server";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
 //   GET/POST /api/cron/event-rebalance          → select one market per due reserved event,
@@ -176,6 +178,37 @@ async function handle(request: NextRequest) {
   }
 
   try {
+    const nowIso = new Date().toISOString();
+    const staleClaims = await reconcileStaleClaims({
+      async loadExpiredClaims(deadline, limit) {
+        const { data, error } = await supabaseAdmin.from("event_execution_queue")
+          .select("id,status,latest_entry_iso,idempotency_key,condition_id,token_id,side,diagnostics")
+          .eq("status", "CLAIMED").lte("latest_entry_iso", deadline)
+          .order("latest_entry_iso", { ascending: false }).limit(limit);
+        if (error) throw new Error(`STALE_CLAIM_READ_FAILED: ${error.message}`);
+        return (data ?? []) as StaleClaimRow[];
+      },
+      async hasMatchingOrderEvent(row) {
+        const { data, error } = await supabaseAdmin.from("executor_order_events")
+          .select("id,condition_id,token_id,side,selected_side")
+          .eq("idempotency_key", row.idempotency_key!).limit(2);
+        if (error) throw new Error(`STALE_CLAIM_ORDER_READ_FAILED: ${error.message}`);
+        if ((data ?? []).length > 1) throw new Error("STALE_CLAIM_AMBIGUOUS_ORDER_EVENTS");
+        const event = data?.[0];
+        if (!event) return false;
+        if (event.condition_id !== row.condition_id || event.token_id !== row.token_id ||
+            (event.side ?? event.selected_side) !== row.side) throw new Error("STALE_CLAIM_ORDER_IDENTITY_CONFLICT");
+        return true;
+      },
+      async expireClaim(row, deadline, diagnostics) {
+        const { data, error } = await supabaseAdmin.from("event_execution_queue")
+          .update({ status: "EXPIRED", selection_reason: "CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT", diagnostics })
+          .eq("id", row.id).eq("status", "CLAIMED").lte("latest_entry_iso", deadline)
+          .select("id").maybeSingle();
+        if (error) throw new Error(`STALE_CLAIM_WRITE_FAILED: ${error.message}`);
+        return Boolean(data);
+      },
+    }, nowIso, !dryRun);
     const result = await runEventRebalanceWithEvidence(Date.now(), {
       write: !dryRun,
       maxQueueWrites: maxQueueWritesParsed.value,
@@ -187,6 +220,7 @@ async function handle(request: NextRequest) {
       {
         ok: !result.blocked_by_max_queue_writes,
         dry_run: dryRun,
+        stale_claims: staleClaims,
         rebalance_diagnostics_version: "blocked-candidates-v2",
         rebalance_run_id: result.rebalance_run_id,
         active_reservations_count: result.active_reservations_count,
