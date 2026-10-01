@@ -17,6 +17,7 @@ import { createHash, randomUUID } from "crypto";
 import { bStrategySupportRegion, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
+  physicalMatchId,
   produceContractAFinalIdentityDecision,
   type ContractAFinalIdentityDecision,
   type ContractAPlanningDecision,
@@ -100,6 +101,8 @@ type ExactProviderSignalPair = {
   signalScore: number;
   eventId: string;
   eventStartIso: string;
+  /** Structured provider match key; owns the physical match when present. */
+  gameId: string | null;
   stakeUsd: number;
   maxEntryPrice: number;
   /** Original candidate entry_price_num, preserved verbatim for analytics — distinct from the Queue execution cap (maxEntryPrice). */
@@ -917,12 +920,13 @@ function exactProviderSignalPair(row: FinalIdentitySourceRow): ExactProviderSign
   // QUEUE_MAX_ENTRY_PRICE, never the raw candidate entry price.
   return {
     id, conditionId, tokenId, side, signalScore, eventId, eventStartIso,
+    gameId: typeof c.gameId === "number" ? String(c.gameId) : text(c.gameId),
     stakeUsd, maxEntryPrice: QUEUE_MAX_ENTRY_PRICE, entryPrice, scoreContractVersion, marketSlug: text(row.market_slug),
   };
 }
 
-function providerPhysicalEventId(eventId: string, eventStartIso: string): string {
-  return `provider:polymarket:${eventId.toLowerCase()}:${eventStartIso.slice(0, 10)}`;
+function providerPhysicalEventId(eventId: string, eventStartIso: string, gameId: string | null): string {
+  return physicalMatchId({ eventId, eventStartIso, gameId });
 }
 
 /**
@@ -1154,7 +1158,7 @@ export function planningDecisionFromReservation(reservation: NightEventReservati
     typeof providerEventId !== "string" || providerEventId === "" ||
     typeof providerEventStartIso !== "string" || !Number.isFinite(Date.parse(providerEventStartIso)) ||
     !sameEventStartInstant(providerEventStartIso, eventStartIso) ||
-    providerPhysicalEventId(providerEventId, providerEventStartIso) !== physicalEventId
+    providerPhysicalEventId(providerEventId, providerEventStartIso, text(lineage.provider_game_id)) !== physicalEventId
   ) return null;
   return {
     decision_version: "CONTRACT_A_DECISION_V1",
@@ -1276,7 +1280,7 @@ async function selectQueueRowFromContractAReservation(
     return { outcome: "SKIPPED", reason: reasonCode, queueRow: null };
   }
   const candidates = rows.map(exactProviderSignalPair).filter((v): v is ExactProviderSignalPair => v !== null)
-    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && providerPhysicalEventId(v.eventId, v.eventStartIso) === physicalEventId);
+    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && providerPhysicalEventId(v.eventId, v.eventStartIso, v.gameId) === physicalEventId);
   if (candidates.length === 0) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
   const planningIdentity = extractPlanningFinalIdentityEvidence(reservation.diagnostics);
   if (planningIdentity === null) {
