@@ -24,6 +24,7 @@ import {
   type R0RawPlanningMetrics,
 } from "./r0PlanningTrace";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
+import { compareExactIdentity } from "./exactIdentityOrder";
 import {
   createSupabaseSchedulerJobEvidencePort,
   sanitizeSchedulerErrorMessage,
@@ -1843,8 +1844,7 @@ function compareShadowEntries(
 ): number {
   return (
     (a.source_created_at ?? "").localeCompare(b.source_created_at ?? "") ||
-    a.condition_id.localeCompare(b.condition_id) ||
-    a.token_id.localeCompare(b.token_id)
+    compareExactIdentity(a, b)
   );
 }
 
@@ -1915,8 +1915,7 @@ function compareManifestEntries(
 ): number {
   return (
     (b.source_created_at ?? "").localeCompare(a.source_created_at ?? "") ||
-    a.condition_id.localeCompare(b.condition_id) ||
-    a.token_id.localeCompare(b.token_id)
+    compareExactIdentity(a, b)
   );
 }
 

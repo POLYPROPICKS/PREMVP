@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BASELINE_SOURCE_VERSION, baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations, classifyObservationalMarket, liveGuardTelemetryRows, recordReservationStrategyDecision, readCompletedFinalT3Universe, type ReservationStrategyDecisionStore } from "../../lib/executor/reservationMarketBaseline";
+import { BASELINE_SOURCE_VERSION, baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations, classifyObservationalMarket, classifyExactEventMarket, liveGuardTelemetryRows, recordReservationStrategyDecision, readCompletedFinalT3Universe, selectReservationT3AbDecisions, persistReservationT3AbDecisions, type ReservationStrategyDecisionStore, type FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
 test("Reservation baseline writes only a V2 reference envelope without market or book work", async () => {
@@ -410,4 +410,60 @@ test("S1/S2/S3 rows are unchanged by A/B telemetry", () => {
   assert.equal(rows[0].executable_depth_usd, 3);
   assert.equal(rows[1].maker_target_state, "NOT_DEFINED_YET");
   assert.equal(rows[2].maker_band_state, "NOT_DEFINED_YET");
+});
+
+test("one exact T3 universe yields Planning A and deterministic priority B", () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "r", physical_event_id: "p", event_start_iso: start,
+    diagnostics: { planning_final_identity_evidence: { condition_id: "m", token_id: "m1", side: "Yes" } },
+  } as unknown as NightEventReservationRow;
+  const row = (condition_id: string, family: string, odds: number, extra: Partial<FinalT3MarketObservation> = {}): FinalT3MarketObservation => ({
+    capture_run_id: "t3", reservation_id: "r", physical_event_id: "p", provider_event_id: "e", event_start_iso: start,
+    observation_phase: "T_MINUS_3", condition_id, token_id: `${condition_id}1`, side: "Yes",
+    canonical_market_family: family, canonical_market_type: ({ SPREADS: "SPREAD", TOTAL_CORNERS: "TOTAL_CORNERS", MONEYLINE: "MONEYLINE", TOTALS: "TOTAL" } as Record<string, string>)[family],
+    best_ask: 1 / odds, ask_decimal_odds: odds, orderbook_fetch_status: "SUCCESS", ...extra,
+  });
+  const corners = row("c", "TOTAL_CORNERS", 2.3, { provider_market_type_raw: "total_corners", market_slug: "total-corners" });
+  const money = row("m", "MONEYLINE", 1.9);
+  const totals = row("t", "TOTALS", 1.9);
+  const spreadZ = row("z", "SPREADS", 1.9);
+  const spreadA = row("a", "SPREADS", 1.9);
+  const choose = (rows: FinalT3MarketObservation[]) => selectReservationT3AbDecisions(reservation, rows);
+  assert.deepEqual(choose([spreadZ, corners, money, totals, spreadA]).a.selectedIdentity,
+    { conditionId: "m", tokenId: "m1", side: "Yes" });
+  assert.equal(choose([spreadZ, corners, money, totals, spreadA]).b.selectedIdentity?.conditionId, "a");
+  assert.deepEqual(choose([spreadZ, corners, money, totals, spreadA]), choose([spreadA, totals, money, corners, spreadZ]));
+  assert.equal(choose([row("z", "SPREADS", 2.01), corners, money, totals]).b.selectedIdentity?.conditionId, "c");
+  assert.equal(choose([row("z", "SPREADS", 2.01), row("c", "TOTAL_CORNERS", 2.51), money, totals]).b.selectedIdentity?.conditionId, "m");
+  assert.equal(choose([totals]).b.selectedIdentity?.conditionId, "t");
+  assert.equal(choose([row("t", "TOTALS", 2.01)]).b.selectedIdentity, null);
+  assert.equal(choose([corners]).a.decisionReason, "PLANNING_IDENTITY_NOT_IN_T3");
+  assert.equal(choose([row("m", "MONEYLINE", 1.9, { orderbook_fetch_status: "FAILED" })]).a.decisionReason, "PLANNING_T3_BOOK_UNAVAILABLE");
+  assert.throws(() => choose([money, { ...corners, physical_event_id: "foreign" }]), /AB_T3_UNIVERSE_LINEAGE_INVALID/);
+  assert.deepEqual(classifyExactEventMarket("total_corners", "total-corners"), { family: "TOTAL_CORNERS", type: "TOTAL_CORNERS" });
+  for (const slug of ["home-team-total-corners", "first-half-total-corners", "last-corner", "corner-race", "odd-even-total-corners"]) {
+    assert.notEqual(classifyExactEventMarket("total_corners", slug).family, "TOTAL_CORNERS");
+    assert.equal(choose([{ ...corners, market_slug: slug }]).b.selectedIdentity, null);
+  }
+  assert.equal(choose([{ ...corners, provider_market_type_raw: "corners" }]).b.selectedIdentity, null);
+});
+
+test("A and B persist on the same completed T3 capture", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "r", physical_event_id: "p", event_start_iso: start,
+    diagnostics: { planning_final_identity_evidence: { condition_id: "m", token_id: "m1", side: "Yes" } },
+  } as unknown as NightEventReservationRow;
+  const universe: FinalT3MarketObservation[] = [{ capture_run_id: "t3", reservation_id: "r", physical_event_id: "p",
+    provider_event_id: "e", event_start_iso: start, observation_phase: "T_MINUS_3", condition_id: "m", token_id: "m1", side: "Yes",
+    canonical_market_family: "MONEYLINE", canonical_market_type: "MONEYLINE", best_ask: 0.52, ask_decimal_odds: 1.92,
+    orderbook_fetch_status: "SUCCESS" }];
+  const recorded: string[] = [];
+  let reads = 0;
+  const decisions = await persistReservationT3AbDecisions(reservation, {
+    readUniverse: async () => { reads++; return universe; },
+    recordDecision: async (decision) => { recorded.push(`${decision.captureRunId}:${decision.strategyVariant}`); return { total: 1, selected: 1, written: 1 }; },
+  });
+  assert.equal(reads, 1);
+  assert.deepEqual(recorded, ["t3:A_CURRENT_CONTROL", "t3:B_FOUR_MARKET_PRIORITY_V1"]);
+  assert.deepEqual(decisions.a.selectedIdentity, decisions.b.selectedIdentity);
 });

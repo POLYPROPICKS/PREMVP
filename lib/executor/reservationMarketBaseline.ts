@@ -3,6 +3,7 @@ import type { NightEventReservationRow } from "./executorQueueTypes";
 import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
 import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from "../liquidity/orderbookMath";
 import { fetchPolymarketEventById } from "../feed/polymarketClient";
+import { compareExactIdentity } from "./exactIdentityOrder";
 
 export const BASELINE_SOURCE_VERSION = "RESERVATION_REFERENCE_BASELINE_V2";
 const MARKET_SOURCE_VERSION = "RESERVATION_MARKET_BASELINE_V1";
@@ -50,6 +51,17 @@ export function classifyObservationalMarket(rawType: unknown): { family: Observa
     case "total_corners": return { family: "TOTAL_CORNERS", type: "TOTAL_CORNERS" };
     default: return { family: "OTHER_STRUCTURED", type: "OTHER_STRUCTURED" };
   }
+}
+
+// The structured provider type is necessary but a slug identifying a team,
+// period, race or other corner derivative cannot certify full-match totals.
+const CORNER_DERIVATIVE_RE = /(?:^|[-_])(team|home|away|first|last|1st|2nd|second|half|halftime|race|odd|even)(?:$|[-_])/i;
+export function classifyExactEventMarket(rawType: unknown, slug: unknown): { family: ObservationalMarketFamily; type: ObservationalMarketType } {
+  const market = classifyObservationalMarket(rawType);
+  if (market.family === "TOTAL_CORNERS" && typeof slug === "string" && CORNER_DERIVATIVE_RE.test(slug)) {
+    return { family: "OTHER_STRUCTURED", type: "OTHER_STRUCTURED" };
+  }
+  return market;
 }
 
 const STRATEGY_VARIANTS = ["S1_TAKER_HOLD", "S2_FIXED_MAKER_HOLD", "S3_MAKER_VALUE_BAND_HOLD"] as const;
@@ -133,6 +145,7 @@ export type FinalT3MarketObservation = {
   provider_event_id: string; event_start_iso: string; observation_phase: string;
   condition_id: string; token_id: string; side: string;
   canonical_market_family: string | null; canonical_market_type: string | null;
+  provider_market_type_raw?: string | null; market_slug?: string | null;
   best_ask: number | null; ask_decimal_odds: number | null;
   orderbook_fetch_status: string | null;
 };
@@ -197,7 +210,7 @@ const defaultFinalT3ReadPort: FinalT3ReadPort = {
   async readObservations(captureRunId, afterId) {
     const { supabaseAdmin } = await import("../supabase/server");
     const { data, error } = await supabaseAdmin.from("reservation_market_observations")
-      .select("id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,condition_id,token_id,side,canonical_market_family,canonical_market_type,best_ask,ask_decimal_odds,orderbook_fetch_status")
+      .select("id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,condition_id,token_id,side,observation_phase,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_ask,ask_decimal_odds,orderbook_fetch_status")
       .eq("capture_run_id", captureRunId).gt("id", afterId).order("id").limit(200);
     if (error) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
     return data ?? [];
@@ -280,7 +293,7 @@ export async function captureReservationMarketObservation(
     const result = books[i];
     const book = result?.ok ? result.book : null;
     const { bestBid, bestAsk } = getBestBidAsk(book);
-    const market = classifyObservationalMarket(token.market.sports_market_type);
+    const market = classifyExactEventMarket(token.market.sports_market_type, token.market.provider_market_slug);
     return {
       id: stableTelemetryId(runId, token.conditionId, token.tokenId, token.side),
       capture_run_id: runId, reservation_id: reservation.id, physical_event_id: reservation.physical_event_id,
@@ -406,6 +419,84 @@ export type ReservationStrategyDecisionInput = {
   selectedIdentity: { conditionId: string; tokenId: string; side: string } | null;
   decisionReason: string;
 };
+
+const AB_VERSION = "P1B1_T3_AB_V1";
+const B_SUPPORT = [
+  { family: "SPREADS", type: "SPREAD", min: 1.85, max: 2.00 },
+  { family: "TOTAL_CORNERS", type: "TOTAL_CORNERS", min: 2.25, max: 2.50 },
+  { family: "MONEYLINE", type: "MONEYLINE", min: 1.85, max: 2.00 },
+  { family: "TOTALS", type: "TOTAL", min: 1.85, max: 2.00 },
+] as const;
+
+export function selectReservationT3AbDecisions(
+  reservation: NightEventReservationRow,
+  universe: readonly FinalT3MarketObservation[],
+): { a: ReservationStrategyDecisionInput; b: ReservationStrategyDecisionInput } {
+  const captureRunId = universe[0]?.capture_run_id;
+  const reservationStart = reservation.event_start_iso;
+  if (!captureRunId || !reservation.id || !reservation.physical_event_id || !reservationStart ||
+      universe.some((row) => row.capture_run_id !== captureRunId || row.reservation_id !== reservation.id ||
+        row.physical_event_id !== reservation.physical_event_id ||
+        Date.parse(row.event_start_iso) !== Date.parse(reservationStart) ||
+        row.observation_phase !== "T_MINUS_3" ||
+        ![row.condition_id, row.token_id, row.side].every((v) => typeof v === "string" && v.trim() !== ""))) {
+    throw new Error("AB_T3_UNIVERSE_LINEAGE_INVALID");
+  }
+  const identity = (row: FinalT3MarketObservation) => ({ conditionId: row.condition_id, tokenId: row.token_id, side: row.side });
+  const hasBook = (row: FinalT3MarketObservation) => row.orderbook_fetch_status === "SUCCESS" &&
+    typeof row.best_ask === "number" && Number.isFinite(row.best_ask) && row.best_ask > 0 &&
+    typeof row.ask_decimal_odds === "number" && Number.isFinite(row.ask_decimal_odds) && row.ask_decimal_odds > 0;
+  const rawPlanning = reservation.diagnostics?.planning_final_identity_evidence as Record<string, unknown> | undefined;
+  const planning = rawPlanning && [rawPlanning.condition_id, rawPlanning.token_id, rawPlanning.side]
+    .every((v) => typeof v === "string" && v.trim() !== "") ? rawPlanning : null;
+  const planningMatches = planning ? universe.filter((row) => row.condition_id === planning.condition_id &&
+    row.token_id === planning.token_id && row.side === planning.side) : [];
+  const aSelected = planningMatches.length === 1 && hasBook(planningMatches[0]) ? planningMatches[0] : null;
+  const aReason = !planning ? "PLANNING_IDENTITY_MISSING" : planningMatches.length === 0
+    ? "PLANNING_IDENTITY_NOT_IN_T3" : planningMatches.length > 1
+      ? "PLANNING_IDENTITY_AMBIGUOUS" : !aSelected ? "PLANNING_T3_BOOK_UNAVAILABLE" : "PLANNING_EXACT_T3_BOOK_SUPPORTED";
+
+  let bSelected: FinalT3MarketObservation | null = null;
+  let bReason = "NO_SUPPORTED_T3_CANDIDATE";
+  for (const support of B_SUPPORT) {
+    const qualifying = universe.filter((row) => row.canonical_market_family === support.family &&
+      row.canonical_market_type === support.type && hasBook(row) &&
+      row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max &&
+      (support.family !== "TOTAL_CORNERS" ||
+        (row.provider_market_type_raw?.trim().toLowerCase() === "total_corners" &&
+          classifyExactEventMarket(row.provider_market_type_raw, row.market_slug).family === "TOTAL_CORNERS")));
+    if (qualifying.length === 0) continue;
+    qualifying.sort(compareExactIdentity);
+    if (qualifying.length > 1 && compareExactIdentity(qualifying[0], qualifying[1]) === 0) {
+      bReason = "AMBIGUOUS_EXACT_IDENTITY_ORDER";
+      break;
+    }
+    bSelected = qualifying[0];
+    bReason = `PRIORITY_${support.family}_IN_SUPPORT`;
+    break;
+  }
+  return {
+    a: { captureRunId, strategyVariant: "A_CURRENT_CONTROL", strategyVersion: AB_VERSION,
+      selectedIdentity: aSelected ? identity(aSelected) : null, decisionReason: aReason },
+    b: { captureRunId, strategyVariant: "B_FOUR_MARKET_PRIORITY_V1", strategyVersion: AB_VERSION,
+      selectedIdentity: bSelected ? identity(bSelected) : null, decisionReason: bReason },
+  };
+}
+
+export async function persistReservationT3AbDecisions(
+  reservation: NightEventReservationRow,
+  deps: {
+    readUniverse?: typeof readCompletedFinalT3Universe;
+    recordDecision?: typeof recordReservationStrategyDecision;
+  } = {},
+): Promise<{ a: ReservationStrategyDecisionInput; b: ReservationStrategyDecisionInput }> {
+  const universe = await (deps.readUniverse ?? readCompletedFinalT3Universe)(reservation);
+  const decisions = selectReservationT3AbDecisions(reservation, universe);
+  const record = deps.recordDecision ?? recordReservationStrategyDecision;
+  await record(decisions.a);
+  await record(decisions.b);
+  return decisions;
+}
 
 export type ReservationStrategyDecisionStore = {
   // Both readers page by ascending id, strictly after `afterId`.
@@ -598,7 +689,10 @@ export async function captureReservationMarketMilestones(
     if (!phase) continue;
     try {
       if (deps.capture) await deps.capture(reservation, phase, observedAt);
-      else await captureReservationMarketObservation(reservation, phase, { observedAt });
+      else {
+        await captureReservationMarketObservation(reservation, phase, { observedAt });
+        if (phase === "T_MINUS_3") await persistReservationT3AbDecisions(reservation);
+      }
     } catch {
       (deps.onError ?? ((code) => console.error(`[reservation-market-milestone] ${code}`)))("CAPTURE_FAILED");
     }
