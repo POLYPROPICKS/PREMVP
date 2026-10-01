@@ -27,8 +27,16 @@ import {
   type ExecutionReconciliationV1,
   type ReconciliationOrderEvent,
 } from "@/lib/executor/executionReconciliation";
-import { recordResultAndAuthorizeMaker, type MakerAuthorizationOutcome } from "@/lib/executor/makerFallbackAuthorization";
-import { createSupabaseMakerFallbackPort } from "@/lib/executor/makerFallbackSupabasePort";
+import {
+  recordResultAndAuthorizeMaker,
+  isMakerAttemptCallback,
+  normalizeMakerCallbackForAccounting,
+  IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED,
+  type MakerAuthorizationOutcome,
+} from "@/lib/executor/makerFallbackAuthorization";
+import { createSupabaseMakerFallbackPort, createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
+import { buildMatchedExecutionLedgerRow } from "@/lib/executor/matchedExecutionLedgerRow";
+import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
 // Keys whose name (case-insensitive, normalised) triggers value removal
 const BANNED_SUBSTRINGS = [
   "secret",
@@ -180,6 +188,24 @@ function isConfirmedEconomicTelemetry(telemetry: EconomicTelemetryV1): boolean {
   return telemetry.executed.execution_status?.toUpperCase() === "CONFIRMED";
 }
 
+/**
+ * Loads the Queue row that is the economic identity authority for a callback. A MAKER_FALLBACK_1
+ * callback resolves the PARENT row through parent_idempotency_key and is viewed with its own
+ * attempt idempotency_key, so telemetry / reconciliation identity checks bind the maker order
+ * event to the same Reservation / Final Identity without a second Queue row.
+ */
+async function loadQueueForAttempt(raw: Record<string, unknown>) {
+  if (!isMakerAttemptCallback(raw)) {
+    return supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", str(raw.idempotency_key) ?? "").single();
+  }
+  const parentKey = str(raw.parent_idempotency_key);
+  const attemptKey = str(raw.idempotency_key);
+  if (!parentKey || !attemptKey) return { data: null, error: { message: "MAKER_PARENT_IDEMPOTENCY_KEY_REQUIRED" } };
+  const res = await supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", parentKey).single();
+  if (res.error || !res.data) return res;
+  return { data: { ...(res.data as Record<string, unknown>), idempotency_key: attemptKey }, error: null };
+}
+
 async function persistEconomicTelemetry(
   raw: Record<string, unknown>,
   storedEventId: string,
@@ -188,7 +214,7 @@ async function persistEconomicTelemetry(
   if (!idempotencyKey) throw new Error("RECONCILIATION_MISSING_IDEMPOTENCY_KEY");
 
   const [{ data: queueData, error: queueError }, { data: eventData, error: eventError }] = await Promise.all([
-    supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", idempotencyKey).single(),
+    loadQueueForAttempt(raw),
     supabaseAdmin.from("executor_order_events").select("*").eq("id", storedEventId).single(),
   ]);
   if (queueError || !queueData) throw new Error("RECONCILIATION_QUEUE_READ_FAILED");
@@ -235,7 +261,7 @@ async function persistExecutionReconciliation(
   const idempotencyKey = str(raw.idempotency_key);
   if (!idempotencyKey) throw new Error("RECONCILIATION_MISSING_IDEMPOTENCY_KEY");
   const [{ data: queueData, error: queueError }, { data: eventData, error: eventError }] = await Promise.all([
-    supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", idempotencyKey).single(),
+    loadQueueForAttempt(raw),
     supabaseAdmin.from("executor_order_events").select("*").eq("id", storedEventId).single(),
   ]);
   if (queueError || !queueData) throw new Error("RECONCILIATION_QUEUE_READ_FAILED");
@@ -283,51 +309,9 @@ async function materializeMatchedExecution(reconciliation: ExecutionReconciliati
   if (eventError || queueError || !event || !queue) throw new Error("LEDGER_SOURCE_READ_FAILED");
   const order = event as Record<string, unknown>;
   const source = queue as EventExecutionQueueRow;
-  const diagnostics = source.diagnostics ?? {};
-  const lineage = diagnostics.model_lineage_v1 && typeof diagnostics.model_lineage_v1 === "object"
-    ? diagnostics.model_lineage_v1 as Record<string, unknown> : {};
-  const candidate = order.candidate_snapshot_json && typeof order.candidate_snapshot_json === "object"
-    ? order.candidate_snapshot_json as Record<string, unknown> : {};
-  const raw = order.raw_event_json && typeof order.raw_event_json === "object"
-    ? order.raw_event_json as Record<string, unknown> : {};
-  const fill = raw.economic_telemetry_v1 && typeof raw.economic_telemetry_v1 === "object"
-    ? raw.economic_telemetry_v1 as Record<string, unknown> : raw;
-  const actualFee = fill.fee_source === "CLOB_TRADES" ? num(fill.fee_usd) : null;
-  const { error } = await supabaseAdmin.from("bet_execution_ledger").insert({
-    id: reconciliation.order_event_id,
-    policy_version: str(lineage.policy_version),
-    model_name: str(lineage.model_name),
-    model_variant: str(lineage.model_variant),
-    model_role: str(lineage.model_role),
-    signal_id: reconciliation.source_signal_pair_id ?? str(order.signal_id),
-    event_id: reconciliation.provider_event_id,
-    condition_id: reconciliation.condition_id,
-    token_id: reconciliation.token_id,
-    selected_side: reconciliation.side,
-    sport: source.sport,
-    league: source.league,
-    event_title: source.event_title,
-    market_title: source.market_title,
-    market_family: source.market_family,
-    game_start_iso: source.game_start_iso,
-    signal_entry_price: num(candidate.entry_price) ?? num(diagnostics.entry_price),
-    limit_price: num(order.submitted_price),
-    fill_price: num(fill.average_fill_price) ?? num(fill.actual_fill_price) ?? num(fill.filled_price),
-    planned_stake: source.stake_usd,
-    executed_stake: num(fill.executed_notional_usd),
-    fee_paid_real: actualFee,
-    real_slippage_cost: null,
-    bet_status: "FILLED",
-    exchange_order_id: reconciliation.clob_order_id,
-    filled_at: str(fill.filled_at),
-    settled_at: null,
-    result_side: null,
-    gross_pnl: null,
-    real_pnl: null,
-    real_roi_on_stake: null,
-    raw_signal: { candidate_snapshot_json: order.candidate_snapshot_json, queue_diagnostics: diagnostics },
-    raw_order: { executor_order_event: order },
-  });
+  const { error } = await supabaseAdmin
+    .from("bet_execution_ledger")
+    .insert(buildMatchedExecutionLedgerRow(order, source, reconciliation));
   // The ledger PK is the order-event PK, so retries and concurrent callbacks
   // converge on the same immutable execution row.
   if (error && error.code !== "23505") throw new Error(`LEDGER_INSERT_FAILED: ${error.message}`);
@@ -369,11 +353,8 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       return data ? toStoredOrderEvent(data as Record<string, unknown>) : null;
     },
     async updateQueueRowStatus(queueId, patch) {
-      const { error } = await supabaseAdmin
-        .from("event_execution_queue")
-        .update({ status: patch.status, diagnostics: patch.diagnostics, updated_at: new Date().toISOString() })
-        .eq("id", queueId);
-      if (error) throw new Error(error.message);
+      // Fresh-read + CAS: a stale diagnostics snapshot can never erase execution_attempts_v1.
+      await casWriteQueue(createSupabaseQueueCasPort(), queueId, () => ({ status: patch.status, diagnostics: patch.diagnostics }));
     },
     async insertOrderEvent(raw, _queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
       const s = sanitize(raw) as Record<string, unknown>;
@@ -594,22 +575,36 @@ export async function POST(request: NextRequest) {
 
   // P2 safe taker->maker authorization: consume the released Ireland execution-result
   // semantics. A callback without a recognised result class changes nothing (silence is never
-  // zero exposure). Failures here never block the existing callback path.
+  // zero exposure). A TAKER-side failure here never blocks the existing callback path; a MAKER
+  // callback that cannot bind to its authorized parent is rejected before any accounting.
+  const makerAttempt = isMakerAttemptCallback(raw);
   let makerFallback: MakerAuthorizationOutcome = { kind: "NO_RESULT" };
   try {
     makerFallback = await recordResultAndAuthorizeMaker(createSupabaseMakerFallbackPort(), raw, new Date());
   } catch (error) {
     console.error("[executor/order-events] Maker fallback authorization failed:", error instanceof Error ? error.message : "unknown");
+    if (makerAttempt) return NextResponse.json({ success: false, error: "MAKER_RESULT_PERSISTENCE_FAILED" }, { status: 500 });
     makerFallback = { kind: "MAKER_BLOCKED", reasons: ["AUTHORIZATION_ERROR"] };
   }
-  // MAKER results are keyed to the parent Queue row and are terminal: persisted above, no further attempt.
-  if (makerFallback.kind === "RESULT_RECORDED_NO_FURTHER_ATTEMPT") {
-    return NextResponse.json({ success: true, maker_fallback: makerFallback }, { status: 200 });
+  if (makerFallback.kind === "MAKER_CALLBACK_REJECTED") {
+    return NextResponse.json(
+      {
+        success: false,
+        error: makerFallback.reason === "PARENT_IDEMPOTENCY_KEY_REQUIRED" ? "MAKER_PARENT_IDEMPOTENCY_KEY_REQUIRED" : "MAKER_CALLBACK_REJECTED",
+        reason: makerFallback.reason,
+        ireland_parent_idempotency_key_required: IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED,
+      },
+      { status: makerFallback.reason === "PARENT_IDEMPOTENCY_KEY_REQUIRED" ? 400 : 409 },
+    );
   }
+
+  // MAKER callbacks enter the SAME order-event -> telemetry -> reconciliation -> ledger path,
+  // using their own idempotency_key and the parent Queue row as identity authority.
+  const accountingRaw = normalizeMakerCallbackForAccounting(raw);
 
   let outcome;
   try {
-    outcome = await handleOrderEventSubmission(createSupabaseOrderEventDbPort(), raw);
+    outcome = await handleOrderEventSubmission(createSupabaseOrderEventDbPort(), accountingRaw);
   } catch (error) {
     console.error("[executor/order-events] Unexpected error:", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });
@@ -622,8 +617,8 @@ export async function POST(request: NextRequest) {
     (outcome.queueMark.kind === "EXECUTED" || outcome.queueMark.kind === "ALREADY_EXECUTED")
   ) {
     try {
-      economicTelemetry = await persistEconomicTelemetry(raw, outcome.row.id);
-      reconciliation = await persistExecutionReconciliation(raw, outcome.row.id);
+      economicTelemetry = await persistEconomicTelemetry(accountingRaw, outcome.row.id);
+      reconciliation = await persistExecutionReconciliation(accountingRaw, outcome.row.id);
       await materializeMatchedExecution(reconciliation);
     } catch (error) {
       console.error(
@@ -641,6 +636,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION" }, { status: 400 });
     case "REJECTED_QUEUE_ROW_NOT_FOUND":
       return NextResponse.json({ success: false, error: "QUEUE_ROW_NOT_FOUND" }, { status: 404 });
+    case "REJECTED_MAKER_PARENT_IDEMPOTENCY_KEY_REQUIRED":
+      return NextResponse.json(
+        { success: false, error: "MAKER_PARENT_IDEMPOTENCY_KEY_REQUIRED", ireland_parent_idempotency_key_required: IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED },
+        { status: 400 },
+      );
+    case "REJECTED_MAKER_NOT_AUTHORIZED":
+      return NextResponse.json({ success: false, error: "MAKER_NOT_AUTHORIZED", reason: outcome.reason }, { status: 409 });
     case "REJECTED_QUEUE_POLICY_MISMATCH":
       return NextResponse.json({ error: "REJECTED_QUEUE_POLICY_MISMATCH", reason: outcome.reason }, { status: 409 });
     case "CONFLICT_IDEMPOTENCY":

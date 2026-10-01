@@ -326,7 +326,36 @@ export type MakerAuthorizationOutcome =
   | { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT"; slot: "taker_attempt_1" | "maker_fallback_1" }
   | { kind: "MAKER_AUTHORIZED"; command: MakerFallbackCommand }
   | { kind: "MAKER_ALREADY_AUTHORIZED"; command: MakerFallbackCommand | null }
-  | { kind: "MAKER_BLOCKED"; reasons: string[] };
+  | { kind: "MAKER_BLOCKED"; reasons: string[] }
+  /** A maker-attempt callback that cannot bind to its authorized parent: no mutation, no accounting. */
+  | { kind: "MAKER_CALLBACK_REJECTED"; reason: "PARENT_IDEMPOTENCY_KEY_REQUIRED" | "PARENT_QUEUE_ROW_NOT_FOUND" | "MAKER_NOT_AUTHORIZED_FOR_PARENT" | "IDENTITY_MISMATCH" };
+
+/** Contract flag surfaced to Ireland: maker callbacks MUST carry parent_idempotency_key. */
+export const IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED = true as const;
+
+/** True for any callback that claims to be the MAKER attempt (by attempt id or execution mode). */
+export function isMakerAttemptCallback(raw: Record<string, unknown>): boolean {
+  const nested = raw.ireland_execution_result;
+  const src: Record<string, unknown> = nested && typeof nested === "object" && !Array.isArray(nested) ? (nested as Record<string, unknown>) : {};
+  return (
+    raw.attempt_id === MAKER_FALLBACK_1 ||
+    raw.execution_mode === "MAKER" ||
+    src.attempt_id === MAKER_FALLBACK_1 ||
+    src.execution_mode === "MAKER"
+  );
+}
+
+/**
+ * Monotonic result merge: a recorded positive fill is never replaced by a result reporting a
+ * smaller (e.g. zero / unknown) filled quantity. Returns the object to keep.
+ */
+export function mergeAttemptResult(
+  prior: IrelandExecutionResult | undefined,
+  next: IrelandExecutionResult,
+): IrelandExecutionResult {
+  if (prior && (prior.filled_quantity ?? 0) > 0 && (next.filled_quantity ?? 0) < (prior.filled_quantity ?? 0)) return prior;
+  return next;
+}
 
 export async function recordResultAndAuthorizeMaker(
   port: MakerFallbackPort,
@@ -334,20 +363,36 @@ export async function recordResultAndAuthorizeMaker(
   now: Date,
 ): Promise<MakerAuthorizationOutcome> {
   const nowIso = now.toISOString();
+  const isMaker = isMakerAttemptCallback(raw);
+
+  if (isMaker) {
+    // The parent Queue row is the economic identity authority: the maker's own
+    // idempotency_key is never treated as a parent key.
+    const makerParentKey = nonEmptyStr(raw.parent_idempotency_key);
+    if (!makerParentKey) return { kind: "MAKER_CALLBACK_REJECTED", reason: "PARENT_IDEMPOTENCY_KEY_REQUIRED" };
+    const parent = await port.loadQueueRowByIdempotencyKey(makerParentKey);
+    if (!parent || !parent.id) return { kind: "MAKER_CALLBACK_REJECTED", reason: "PARENT_QUEUE_ROW_NOT_FOUND" };
+    const command = readExecutionAttempts(parent.diagnostics).maker_fallback_1?.command;
+    if (!command || command.idempotency_key !== nonEmptyStr(raw.idempotency_key) || command.parent_idempotency_key !== makerParentKey) {
+      return { kind: "MAKER_CALLBACK_REJECTED", reason: "MAKER_NOT_AUTHORIZED_FOR_PARENT" };
+    }
+    for (const [reported, authorized] of [[raw.condition_id, command.condition_id], [raw.token_id, command.token_id], [raw.side, command.side]] as const) {
+      if (reported != null && reported !== authorized) return { kind: "MAKER_CALLBACK_REJECTED", reason: "IDENTITY_MISMATCH" };
+    }
+    const makerResult = readIrelandExecutionResult(raw, nowIso);
+    if (!makerResult) return { kind: "NO_RESULT" };
+    // MAKER is terminal for fallback authorization: record only (monotonic), never a third attempt.
+    await port.recordResult(parent.id, "maker_fallback_1", makerResult);
+    return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_fallback_1" };
+  }
+
   const result = readIrelandExecutionResult(raw, nowIso);
   if (!result) return { kind: "NO_RESULT" };
 
-  // Maker callbacks identify their own attempt; they key to the parent Queue row.
-  const parentKey = nonEmptyStr(raw.parent_idempotency_key) ?? nonEmptyStr(raw.idempotency_key);
+  const parentKey = nonEmptyStr(raw.idempotency_key);
   if (!parentKey) return { kind: "MAKER_BLOCKED", reasons: ["MISSING_IDEMPOTENCY_KEY"] };
   const queue = await port.loadQueueRowByIdempotencyKey(parentKey);
   if (!queue || !queue.id) return { kind: "MAKER_BLOCKED", reasons: ["QUEUE_ROW_NOT_FOUND"] };
-
-  // MAKER is terminal for fallback authorization: record only, never a third attempt.
-  if (result.attempt_id === MAKER_FALLBACK_1 || result.execution_mode === "MAKER") {
-    await port.recordResult(queue.id, "maker_fallback_1", result);
-    return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_fallback_1" };
-  }
 
   // A recorded taker result that shows exposure (or is unresolved) is never overwritten by a
   // later callback, and never lets a later zero-proof authorize a maker.
@@ -384,4 +429,47 @@ export async function recordResultAndAuthorizeMaker(
     return { kind: "MAKER_ALREADY_AUTHORIZED", command: readExecutionAttempts(fresh?.diagnostics).maker_fallback_1?.command ?? null };
   }
   return { kind: "MAKER_AUTHORIZED", command: built.command };
+}
+
+// ── accounting normalization (maker callbacks) ────────────────────────────
+
+const FILL_FACT_KEYS = [
+  "executed_size", "filled_size", "executed_shares", "average_fill_price",
+  "actual_fill_price", "filled_price", "executed_notional_usd",
+] as const;
+
+function round8(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100_000_000) / 100_000_000;
+}
+
+/**
+ * Maps Ireland's maker execution-result scalars onto the field names the existing economic
+ * telemetry / reconciliation / ledger path already consumes. Only ACTUAL reported facts are
+ * mapped (filled_quantity, average_fill_price, venue_order_id, fee_usd if reported); nothing is
+ * derived from planned stake. A result that proves no fill removes any fill-implying fields so a
+ * zero-fill maker can never become a ledger fill. Non-maker callbacks are returned untouched.
+ */
+export function normalizeMakerCallbackForAccounting(raw: Record<string, unknown>): Record<string, unknown> {
+  if (!isMakerAttemptCallback(raw)) return raw;
+  const result = readIrelandExecutionResult(raw, "");
+  const out: Record<string, unknown> = { ...raw };
+  if (!result) return out;
+  if (!nonEmptyStr(out.clob_order_id) && result.venue_order_id) out.clob_order_id = result.venue_order_id;
+
+  const filled = result.filled_quantity;
+  const price = result.average_fill_price;
+  const isFillClass = result.result_class === "FULL_FILL" || result.result_class === "PARTIAL_FILL";
+  if (isFillClass && filled !== null && filled > 0 && price !== null && price > 0 && result.venue_order_id) {
+    out.executed_shares = filled;
+    out.executed_size = filled;
+    out.average_fill_price = price;
+    out.executed_notional_usd = round8(filled * price);
+    out.execution_status = "CONFIRMED";
+    if (result.fee_usd !== null) out.fee_usd = result.fee_usd;
+  } else if (!isFillClass || filled === 0) {
+    for (const k of FILL_FACT_KEYS) delete out[k];
+    const status = String(out.order_status ?? out.status ?? "").toLowerCase();
+    if (status === "matched" || status === "filled" || status === "fully_filled") out.order_status = "unfilled";
+  }
+  return out;
 }

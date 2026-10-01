@@ -8,42 +8,29 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { fetchOrderBook } from "@/lib/liquidity/polymarketClient";
 import { getBestBidAsk } from "@/lib/liquidity/orderbookMath";
 import type { EventExecutionQueueRow } from "./executorQueueTypes";
-import {
-  EXECUTION_ATTEMPTS_KEY,
-  readExecutionAttempts,
-  type ExecutionAttemptsV1,
-  type MakerFallbackPort,
-} from "./makerFallbackAuthorization";
+import { claimMakerCommandCas, recordAttemptResultCas, type QueueCasPort, type QueueCasRow } from "./queueAttemptsCas";
+import type { MakerFallbackPort } from "./makerFallbackAuthorization";
 
-const MAX_CAS_RETRIES = 4;
-
-async function mutateAttempts(
-  queueId: string,
-  fn: (attempts: ExecutionAttemptsV1) => ExecutionAttemptsV1 | null,
-): Promise<boolean> {
-  for (let i = 0; i < MAX_CAS_RETRIES; i++) {
-    const { data, error } = await supabaseAdmin
-      .from("event_execution_queue")
-      .select("diagnostics, updated_at")
-      .eq("id", queueId)
-      .single();
-    if (error || !data) throw new Error("MAKER_FALLBACK_QUEUE_READ_FAILED");
-    const row = data as { diagnostics: Record<string, unknown> | null; updated_at: string | null };
-    const next = fn(readExecutionAttempts(row.diagnostics));
-    if (next === null) return false; // nothing to write (e.g. command already exists)
-    let q = supabaseAdmin
-      .from("event_execution_queue")
-      .update({
-        diagnostics: { ...(row.diagnostics ?? {}), [EXECUTION_ATTEMPTS_KEY]: next },
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", queueId);
-    q = row.updated_at ? q.eq("updated_at", row.updated_at) : q.is("updated_at", null);
-    const { data: updated, error: updateError } = await q.select("id");
-    if (updateError) throw new Error("MAKER_FALLBACK_QUEUE_WRITE_FAILED");
-    if (updated && updated.length === 1) return true;
-  }
-  throw new Error("MAKER_FALLBACK_CAS_EXHAUSTED");
+export function createSupabaseQueueCasPort(): QueueCasPort {
+  return {
+    async read(queueId) {
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("status, diagnostics, updated_at")
+        .eq("id", queueId)
+        .maybeSingle();
+      if (error) throw new Error("QUEUE_CAS_READ_FAILED");
+      return (data as QueueCasRow | null) ?? null;
+    },
+    async compareAndSet(queueId, expectedUpdatedAt, columns) {
+      let q = supabaseAdmin.from("event_execution_queue").update(columns).eq("id", queueId);
+      q = expectedUpdatedAt ? q.eq("updated_at", expectedUpdatedAt) : q.is("updated_at", null);
+      const { data, error } = await q
+        .select("id, status, order_key, match_family_key, stake_usd, condition_id, token_id, side, idempotency_key, diagnostics, updated_at");
+      if (error) throw new Error("QUEUE_CAS_WRITE_FAILED");
+      return data && data.length === 1 ? (data[0] as Record<string, unknown>) : null;
+    },
+  };
 }
 
 export function createSupabaseMakerFallbackPort(): MakerFallbackPort {
@@ -66,12 +53,10 @@ export function createSupabaseMakerFallbackPort(): MakerFallbackPort {
       return { bestBid, bestAsk, tickSize: Number.isFinite(tick) && tick > 0 ? tick : null };
     },
     async recordResult(queueId, slot, result) {
-      await mutateAttempts(queueId, (a) => ({ ...a, [slot]: { ...(a[slot] ?? {}), result } }));
+      await recordAttemptResultCas(createSupabaseQueueCasPort(), queueId, slot, result);
     },
     async claimMakerFallback(queueId, command) {
-      return mutateAttempts(queueId, (a) =>
-        a.maker_fallback_1?.command ? null : { ...a, maker_fallback_1: { ...(a.maker_fallback_1 ?? {}), command } },
-      );
+      return claimMakerCommandCas(createSupabaseQueueCasPort(), queueId, command);
     },
   };
 }

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   recordResultAndAuthorizeMaker,
   readExecutionAttempts,
+  makerIdempotencyKey,
   deriveMakerLimitPrice,
   type MakerFallbackPort,
   type MakerFallbackCommand,
@@ -180,7 +181,7 @@ test("maker results never authorize a third attempt (no MAKER_FALLBACK_2)", asyn
     const f = fakePort(queueRow());
     await recordResultAndAuthorizeMaker(f.port, zero(), NOW);
     const out = await recordResultAndAuthorizeMaker(f.port, {
-      idempotency_key: "maker_key", parent_idempotency_key: IDEM,
+      idempotency_key: makerIdempotencyKey(IDEM), parent_idempotency_key: IDEM,
       ireland_execution_result: { attempt_id: "MAKER_FALLBACK_1", execution_mode: "MAKER", result_class: cls, filled_quantity: cls === "PARTIAL_FILL" ? 1 : 0, terminal: true, economic_exposure_proven_zero: true },
     }, NOW);
     assert.equal(out.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT");
