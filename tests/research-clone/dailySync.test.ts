@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   buildKeysetFilter,
   compareWatermarks,
@@ -14,6 +15,18 @@ import {
 
 const older: Watermark = { created_at: "2026-09-01T00:00:00.000Z", id: "00000000-0000-0000-0000-000000000001" };
 const newer: Watermark = { created_at: "2026-09-01T00:00:00.000Z", id: "00000000-0000-0000-0000-000000000002" };
+
+test("telemetry completion remains successful when pending while full sync blocks downstream work", () => {
+  const source = readFileSync(new URL("../../scripts/research-clone-daily-sync.ts", import.meta.url), "utf8");
+  const telemetry = source.split('if (process.argv.includes("--telemetry-only")) {')[1]?.split("const outboxProbe")[0];
+  assert.ok(telemetry);
+  assert.match(telemetry, /RESUME_PENDING: pending/);
+  assert.doesNotMatch(telemetry, /process\.exitCode\s*=/);
+  assert.match(source, /if \(pendingTables\.length > 0\) process\.exitCode = 75/);
+  assert.match(source, /process\.exitCode = 1/);
+  assert.match(source, /const TELEMETRY_PAGE_SIZE = 200/);
+  assert.match(source, /const TELEMETRY_MAX_PAGES = 8/);
+});
 
 test("empty source completes without fetching or writing", async () => {
   const result = await runAppendSync(["created_at", "id"], 2, {

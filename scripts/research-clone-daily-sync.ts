@@ -1006,7 +1006,6 @@ export async function main(): Promise<void> {
       const purge = await purgeTelemetry(target, source, Date.now());
       const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING);
       console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, PURGE: purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
-      if (pending) process.exitCode = 75;
       return;
     }
 
