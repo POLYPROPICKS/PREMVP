@@ -1,4 +1,5 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
+import { getActiveContour } from "@/lib/constructor/devLive";
 import { buildFireModelCandidates } from "@/lib/executor/buildFireModelCandidates";
 import {
   buildNightPortfolioPlan,
@@ -238,7 +239,7 @@ export async function GET(request: NextRequest) {
       "all",
       true,
       undefined,
-      "CONTRACT_A_PLANNING_V1",
+      getActiveContour().profile.selectors.planning,
     );
     const plan = buildNightPortfolioPlan(universe, {
       nowMs: Date.now(),

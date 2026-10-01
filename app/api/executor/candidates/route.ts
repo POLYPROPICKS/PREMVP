@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getActiveContour } from "@/lib/constructor/devLive";
 import {
   buildFireModelCandidates,
   type FireModelCandidate,
@@ -262,7 +263,7 @@ export async function GET(request: NextRequest) {
       scope,
       false,
       undefined,
-      "CONTRACT_A_PLANNING_V1",
+      getActiveContour().profile.selectors.planning,
     );
 
     const candidatesBeforeEventDedupe = pool.length;

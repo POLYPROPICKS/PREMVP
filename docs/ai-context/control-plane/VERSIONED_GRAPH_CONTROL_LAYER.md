@@ -90,6 +90,27 @@ flowchart LR
 
 Bounded observations are deliberately non-equivalent: `npm run firemodel1:funnel` reported 500 raw 24-hour rows but only one allowed-version/final-valid row; `npm run firemodel1:live-readiness` built a 90-candidate standard pool but no `BET_OR_PAPER_GO` candidate within two hours. They are recorded with their runner and timestamp, not collapsed into a provider-universe or Reservation claim. No production HTTPS, Queue endpoint, Ireland host, venue, secret, scheduler, or database write occurred.
 
+## Graph 4 — Constructor V1 composition of CURRENT DEV_LIVE
+
+Evidence label: `SOURCE` + `TEST` (`tests/constructor/devLiveComposition.test.ts`). Composition and identity only; the three graphs above are unchanged.
+
+```mermaid
+flowchart LR
+  DEV[CURRENT DEV_LIVE\ngetActiveContour\nSOURCE: lib/constructor/devLive.ts] --> CI[ContourInstanceV1\nDEV_LIVE_PRIMARY\nenv-var NAMES only]
+  CI --> CP[ContourProfileV1\nselectors planning CONTRACT_A_PLANNING_V1\nfinal CONTRACT_A_V1]
+  CI --> CM[ComponentManifestV1\npremvp-dev-live@1.0.0\nsha256 digest pinned by TEST]
+  CP --> SE[Shared engine\nbuildFireModelCandidates / contractADecisions\nnightEventReservations / runEventRebalance]
+  CM --> SE
+  SE --> SPINE[Graph 1 spine unchanged\nReservation -> Rebalance -> Queue -> Ireland]
+
+  classDef source fill:#fff2cc,stroke:#bf9000,color:#000;
+  classDef accepted fill:#d9ead3,stroke:#38761d,color:#000;
+  class DEV,CI,CP,CM source;
+  class SE,SPINE accepted;
+```
+
+Consumers wired this pass: the reservation cron (selector and `RESERVATION_TIMES_MINSK` binding), `night-plan-email`, `executor/candidates`, `executor/night-plan`, and the default candidate fetchers in `runEventRebalance` / `runControlledLiveIntent` (overridable through `deps.contour`). Not yet Constructor-composed: the `EXECUTOR_CANDIDATES_SECRET` auth lookup, the `parseReservationTimesMinsk` ambient-env default parameter, and the `event-rebalance` cron's own env/scheduling.
+
 ## Deferred — visible, not blockers for this map
 
 - PostgREST / Planning 1,000-row contract cleanup.

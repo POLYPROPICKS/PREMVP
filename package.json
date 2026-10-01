@@ -21,6 +21,7 @@
     "modeling:shadow-regression": "tsx scripts/modeling/prospective-selection-shadow.ts --regression",
     "modeling-dashboard:refresh": "npm run research-clone:modeling-dashboard-refresh && npm run research-live:modeling-dashboard-refresh",
     "test:research-clone-sync": "node --import tsx --test tests/research-clone/*.test.ts",
+    "test:constructor": "node --import tsx --test tests/constructor/*.test.ts",
     "current-serving:backfill": "tsx scripts/current-serving-backfill-runner.ts",
     "resolve:signals": "tsx scripts/resolve-signals.ts",
     "resolve:signals:live-priority": "tsx scripts/resolve-signals.ts --write --priority-live-ledger --dedupe-strict --limit=100 --max-updates=100",

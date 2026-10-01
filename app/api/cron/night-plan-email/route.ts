@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getActiveContour } from "@/lib/constructor/devLive";
 import {
   ensureAndLoadReservations,
   nightReservationEmail,
@@ -90,7 +91,7 @@ export async function GET(request: NextRequest) {
     // mode=plan freezes the reservation plan if it does not exist yet; mode=alert never creates.
     const { planRunId, reservations, created } = await ensureAndLoadReservations(Date.now(), {
       allowCreate: mode === "plan",
-      selectorMode: "CONTRACT_A_PLANNING_V1",
+      selectorMode: getActiveContour().profile.selectors.planning,
     });
     const { subject, text } = nightReservationEmail(planRunId, reservations);
     const shortage = reservations.length === 0;
