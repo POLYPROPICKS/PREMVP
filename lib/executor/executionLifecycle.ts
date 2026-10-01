@@ -38,6 +38,14 @@ export type ExecutionLifecycleResolver = (input: {
   conditionId: string;
 }) => Promise<ProviderMarketResolution>;
 
+/** Rotate bounded pages on the existing 5-10 minute cron without a new cursor table. */
+export function lifecycleCandidateWindow(count: number, limit: number, nowMs: number): { from: number; to: number } | null {
+  if (count <= 0 || limit <= 0) return null;
+  const pages = Math.ceil(count / limit);
+  const from = (Math.floor(nowMs / 600_000) % pages) * limit;
+  return { from, to: Math.min(from + limit - 1, count - 1) };
+}
+
 async function defaultResolver(input: { conditionId: string }): Promise<ProviderMarketResolution> {
   const market = await fetchGammaMarketByConditionId(input.conditionId);
   return resolveProviderMarketWinner(market);
@@ -54,7 +62,7 @@ export async function reconcileExecutionLifecycleWithPort(
   port: ExecutionLifecycleDbPort,
   options: ExecutionLifecycleReconciliationOptions & { resolver?: ExecutionLifecycleResolver },
 ): Promise<ExecutionLifecycleReconciliationSummary> {
-  const limit = Math.min(Math.max(options.limit ?? 200, 1), 200);
+  const limit = Math.min(Math.max(options.limit ?? 20, 1), 20);
   const eventRows = await port.loadEvents({ eventIds: options.eventIds, limit });
   const summary: ExecutionLifecycleReconciliationSummary = { loaded: eventRows.length, eligible: 0, updated: 0, unresolved: 0, conflicts: 0, would_update: 0 };
   const resolver = options.resolver ?? defaultResolver;
@@ -114,11 +122,42 @@ export async function reconcileExecutionLifecycleWithPort(
 function createSupabaseExecutionLifecyclePort(supabase: any): ExecutionLifecycleDbPort {
   return {
     async loadEvents({ eventIds, limit }) {
-      let query = supabase.from("executor_order_events").select("id,created_at,clob_order_id,idempotency_key,executor_meta").not("clob_order_id", "is", null).order("created_at", { ascending: true }).limit(limit);
-      query = eventIds?.length ? query.in("id", eventIds) : query.gte("created_at", new Date(Date.now() - 30 * 24 * 3_600_000).toISOString());
-      const { data, error } = await query;
-      if (error) throw new Error(`EXECUTION_RECONCILIATION_READ_FAILED: ${error.message}`);
-      return (data ?? []) as ExecutionLifecycleEventRow[];
+      const projected = "id,created_at,clob_order_id,idempotency_key,executor_meta";
+      if (eventIds?.length) {
+        const { data, error } = await supabase.from("executor_order_events")
+          .select(projected).not("clob_order_id", "is", null).in("id", eventIds).limit(limit);
+        if (error) throw new Error(`EXECUTION_RECONCILIATION_READ_FAILED: ${error.message}`);
+        return (data ?? []) as ExecutionLifecycleEventRow[];
+      }
+      const since = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString();
+      const pendingLimit = Math.min(limit, 15);
+      const feeLimit = limit - pendingLimit;
+      const [pendingCount, feeCount] = await Promise.all([
+        supabase.from("executor_order_events").select("id", { count: "exact", head: true })
+          .not("clob_order_id", "is", null).gte("created_at", since)
+          .eq("executor_meta->reconciliation_v1->>fill_status", "MATCHED_CONFIRMED")
+          .eq("executor_meta->reconciliation_v1->>settlement_status", "PENDING_MARKET_RESOLUTION"),
+        supabase.from("executor_order_events").select("id", { count: "exact", head: true })
+          .not("clob_order_id", "is", null).gte("created_at", since)
+          .eq("executor_meta->reconciliation_v1->>settlement_status", "RESOLVED_FEE_PENDING"),
+      ]);
+      if (pendingCount.error || feeCount.error) throw new Error(`EXECUTION_RECONCILIATION_COUNT_FAILED: ${pendingCount.error?.message ?? feeCount.error?.message}`);
+      const nowMs = Date.now();
+      const pendingWindow = lifecycleCandidateWindow(pendingCount.count ?? 0, pendingLimit, nowMs);
+      const feeWindow = lifecycleCandidateWindow(feeCount.count ?? 0, feeLimit, nowMs);
+      const [pending, feePending] = await Promise.all([
+        pendingWindow ? supabase.from("executor_order_events")
+          .select(projected).not("clob_order_id", "is", null).gte("created_at", since)
+          .eq("executor_meta->reconciliation_v1->>fill_status", "MATCHED_CONFIRMED")
+          .eq("executor_meta->reconciliation_v1->>settlement_status", "PENDING_MARKET_RESOLUTION")
+          .order("created_at", { ascending: false }).range(pendingWindow.from, pendingWindow.to) : Promise.resolve({ data: [], error: null }),
+        feeWindow ? supabase.from("executor_order_events")
+          .select(projected).not("clob_order_id", "is", null).gte("created_at", since)
+          .eq("executor_meta->reconciliation_v1->>settlement_status", "RESOLVED_FEE_PENDING")
+          .order("created_at", { ascending: false }).range(feeWindow.from, feeWindow.to) : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (pending.error || feePending.error) throw new Error(`EXECUTION_RECONCILIATION_READ_FAILED: ${pending.error?.message ?? feePending.error?.message}`);
+      return [...((pending.data ?? []) as ExecutionLifecycleEventRow[]), ...((feePending.data ?? []) as ExecutionLifecycleEventRow[])];
     },
     async persistEvent(input) {
       const { data, error } = await supabase.from("executor_order_events").update({ executor_meta: input.executor_meta }).eq("id", input.id).eq("idempotency_key", input.idempotency_key).eq("clob_order_id", input.clob_order_id).select("id").single();

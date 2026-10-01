@@ -7,6 +7,7 @@ import {
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "@/lib/ops/emergencyQuiesce";
 import { reconcileStaleClaims, type StaleClaimRow } from "@/lib/executor/staleQueueClaims";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { reconcileExecutionLifecycle } from "@/lib/executor/executionLifecycle";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
 //   GET/POST /api/cron/event-rebalance          → select one market per due reserved event,
@@ -216,11 +217,20 @@ async function handle(request: NextRequest) {
     const diagResult = await persistRebalanceDiagnostics(result, {
       context: "event-rebalance-cron",
     });
+    let executionLifecycle: Awaited<ReturnType<typeof reconcileExecutionLifecycle>> | { error: string };
+    try {
+      executionLifecycle = await reconcileExecutionLifecycle(supabaseAdmin, { writeMode: !dryRun, limit: 20 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "UNKNOWN_LIFECYCLE_ERROR";
+      console.error("[cron/event-rebalance] lifecycle error:", message);
+      executionLifecycle = { error: message };
+    }
     return NextResponse.json(
       {
         ok: !result.blocked_by_max_queue_writes,
         dry_run: dryRun,
         stale_claims: staleClaims,
+        execution_lifecycle: executionLifecycle,
         rebalance_diagnostics_version: "blocked-candidates-v2",
         rebalance_run_id: result.rebalance_run_id,
         active_reservations_count: result.active_reservations_count,

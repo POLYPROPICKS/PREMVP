@@ -11,8 +11,16 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   reconcileExecutionLifecycleWithPort,
+  lifecycleCandidateWindow,
   type ExecutionLifecycleDbPort,
 } from "../../lib/executor/executionLifecycle";
+
+test("bounded lifecycle windows rotate across pending candidates", () => {
+  assert.deepEqual([0, 1, 2, 3].map((step) => lifecycleCandidateWindow(39, 15, step * 600_000)), [
+    { from: 0, to: 14 }, { from: 15, to: 29 }, { from: 30, to: 38 }, { from: 0, to: 14 },
+  ]);
+  assert.equal(lifecycleCandidateWindow(0, 15, 0), null);
+});
 
 const eventId = "a4aefc93-edfd-4967-8564-6077c8f00a24";
 const sourceId = "2dd087ba-bfdf-4c96-b5c6-3fc4a0005e7f";
@@ -54,11 +62,14 @@ function telemetry() {
 }
 
 /** Fails the test outright if the port is ever asked to touch generated_signal_pairs. */
-function makePort(metaByEvent: Record<string, Record<string, unknown>>): ExecutionLifecycleDbPort & { eventWrites: number; writes: Record<string, unknown>[] } {
+function makePort(metaByEvent: Record<string, Record<string, unknown>>): ExecutionLifecycleDbPort & { eventWrites: number; writes: Record<string, unknown>[]; lastLoadOptions: { eventIds?: string[]; limit: number } | null } {
   const port = {
     eventWrites: 0,
     writes: [] as Record<string, unknown>[],
-    async loadEvents({ eventIds }: { eventIds?: string[] }) {
+    lastLoadOptions: null as { eventIds?: string[]; limit: number } | null,
+    async loadEvents(options: { eventIds?: string[]; limit: number }) {
+      port.lastLoadOptions = options;
+      const { eventIds } = options;
       const ids = eventIds ?? Object.keys(metaByEvent);
       return ids.map((id) => ({ id, executor_meta: metaByEvent[id] }));
     },
@@ -70,6 +81,19 @@ function makePort(metaByEvent: Record<string, Record<string, unknown>>): Executi
   };
   return port;
 }
+
+test("normal lifecycle discovers a non-hardcoded matched execution in a bounded pass", async () => {
+  const currentId = "2f106759-8a05-44d1-8bc0-6544da0e5d9c";
+  const port = makePort({ [currentId]: { reconciliation_v1: confirmedFillReconciliation() } });
+  const resolver = async () => ({ resolverState: "resolved_candidate" as const, candidateWinningOutcome: "Yes", candidateWinningTokenId: "token-yes" });
+  const first = await reconcileExecutionLifecycleWithPort(port, { writeMode: true, resolver });
+  assert.deepEqual(port.lastLoadOptions, { eventIds: undefined, limit: 20 });
+  assert.equal(first.updated, 1);
+  assert.equal((port.writes[0].reconciliation_v1 as Record<string, unknown>).settlement_status, "RESOLVED_FEE_PENDING");
+  const second = await reconcileExecutionLifecycleWithPort(port, { writeMode: true, resolver });
+  assert.equal(second.updated, 0);
+  assert.equal(port.eventWrites, 1);
+});
 
 // ── A: source_signal_pair_id present -- GSP is never a live read/write dependency ──
 
