@@ -16,8 +16,13 @@ function minskParts(ms: number) { const x = new Date(ms + MINSK_UTC_OFFSET_HOURS
 function minskWallToUtcMs(y: number, mo: number, d: number, h: number, minute = 0) { return Date.UTC(y, mo, d, h, minute, 0) - MINSK_UTC_OFFSET_HOURS * 3_600_000; }
 function minskDate(y: number, mo: number, d: number) { return `${y.toString().padStart(4, "0")}-${(mo + 1).toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`; }
 
-/** The only Reservation schedule config. Absent retains the historical 17:00 anchor. */
-export function parseReservationTimesMinsk(value: string | undefined = process.env.RESERVATION_TIMES_MINSK): ReservationAnchorTime[] {
+/**
+ * The Reservation schedule parser. Pure: it reads NO environment, so a caller that already
+ * resolved its instance's schedule binding (Constructor path) cannot silently inherit another
+ * instance's key. `undefined` means "no value provided for this instance" and retains the
+ * historical 17:00 anchor; a provided value (including "") is validated exactly as before.
+ */
+export function parseReservationTimes(value: string | undefined): ReservationAnchorTime[] {
   if (value === undefined) return [{ hour: 17, minute: 0, hhmm: "1700" }];
   if (!value.trim()) throw new Error("RESERVATION_TIMES_MINSK_INVALID: expected one or more HH:MM anchors");
   const seen = new Set<string>();
@@ -29,6 +34,16 @@ export function parseReservationTimesMinsk(value: string | undefined = process.e
     seen.add(hhmm); return { hour, minute, hhmm };
   });
   return times.sort((a, b) => a.hour - b.hour || a.minute - b.minute);
+}
+
+/**
+ * LEGACY ambient entry (callers outside a Constructor context: tests, scripts, and the default
+ * arguments below). Reads the process-global RESERVATION_TIMES_MINSK. Constructor-composed paths
+ * must use `parseReservationTimes(contour.resolveEnv("reservationTimesMinsk"))` and pass the
+ * resulting anchor explicitly instead of relying on these defaults.
+ */
+export function parseReservationTimesMinsk(value: string | undefined = process.env.RESERVATION_TIMES_MINSK): ReservationAnchorTime[] {
+  return parseReservationTimes(value);
 }
 
 export function planDateMinsk(nowMs: number): string { const p = minskParts(nowMs); return minskDate(p.y, p.mo, p.d); }

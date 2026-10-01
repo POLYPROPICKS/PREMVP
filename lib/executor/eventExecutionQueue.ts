@@ -24,6 +24,8 @@ import {
 } from "./contractADecisions";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
 import { FROZEN_MODEL_V2_VERSION } from "@/lib/modeling/frozenModelProducerV2Shadow";
+import { getActiveContour } from "@/lib/constructor/devLive";
+import type { ComposedContour } from "@/lib/constructor/contracts";
 import {
   buildRebalanceRunId,
   isDueForRebalance,
@@ -1938,6 +1940,7 @@ export async function runEventRebalance(
   opts: { write?: boolean; maxQueueWrites?: number | null; targetReservationId?: string | null } = {},
   deps: {
     repo?: RebalanceRepoPort;
+    contour?: ComposedContour;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
@@ -1956,13 +1959,13 @@ export async function runEventRebalance(
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_PLANNING_V1");
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning);
     });
   const fetchContractAFinalCandidates =
     deps.fetchContractAFinalCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1");
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final);
     });
   const fetchFinalIdentitySourceRows =
     deps.fetchFinalIdentitySourceRows ??
@@ -2421,6 +2424,7 @@ export async function runControlledLiveIntent(
   opts: { write?: boolean } = {},
   deps: {
     repo?: RebalanceRepoPort;
+    contour?: ComposedContour;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
@@ -2441,13 +2445,13 @@ export async function runControlledLiveIntent(
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_PLANNING_V1");
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning);
     });
   const fetchContractAFinalCandidates =
     deps.fetchContractAFinalCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1");
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final);
     });
   const fetchFinalIdentitySourceRows =
     deps.fetchFinalIdentitySourceRows ??
@@ -2640,6 +2644,7 @@ export async function runEventRebalanceWithEvidence(
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     jobEvidence?: SchedulerJobEvidencePort;
     captureMilestones?: (nowMs: number) => Promise<void>;
+    contour?: ComposedContour;
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
@@ -2660,6 +2665,7 @@ export async function runEventRebalanceWithEvidence(
     const result = await runEventRebalance(nowMs, opts, {
       repo: deps.repo,
       fetchCandidates: deps.fetchCandidates,
+      contour: deps.contour,
     });
     if (write) {
       const finishedAt = new Date().toISOString();

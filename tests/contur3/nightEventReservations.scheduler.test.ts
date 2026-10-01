@@ -12,6 +12,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { DEV_LIVE_PROFILE } from "../../lib/constructor/devLive";
 
 import {
   buildReservationPlan,
@@ -373,8 +374,12 @@ test("A6: an empty planning universe records status=empty, not success, with zer
 
 test("C4: active production daily entry explicitly selects Contract A planning for standard and force-rebuild paths", () => {
   const source = readFileSync(fileURLToPath(new URL("../../app/api/cron/night-event-reservations/route.ts", import.meta.url)), "utf8");
-  assert.match(source, /runReservationCronWithEvidence\([\s\S]*selectorMode:\s*"CONTRACT_A_PLANNING_V1"/);
-  assert.match(source, /executeForceRebuild\(nowMs,\s*\{\s*selectorMode:\s*"CONTRACT_A_PLANNING_V1"\s*\}\)/);
+  // Constructor V1: the selector is supplied by the DEV_LIVE contour profile instead of a literal.
+  // The invariant is unchanged: both production paths explicitly select Contract A planning.
+  assert.match(source, /const selectorMode = contour\.profile\.selectors\.planning;/);
+  assert.match(source, /runReservationCronWithEvidence\([\s\S]*selectorMode,/);
+  assert.match(source, /executeForceRebuild\(nowMs,\s*\{\s*selectorMode,\s*anchor: currentAnchor\s*\}\)/);
+  assert.equal(DEV_LIVE_PROFILE.selectors.planning, "CONTRACT_A_PLANNING_V1");
 });
 
 test("C5: Contract A planning reserves an event five hours away, persisting a structured planning identity and no false final authority", async () => {

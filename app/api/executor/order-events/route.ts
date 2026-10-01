@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getActiveContour } from "@/lib/constructor/devLive";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   handleOrderEventSubmission,
@@ -554,7 +555,7 @@ function buildOrderEventRecord(s: Record<string, unknown>): Record<string, unkno
 
 export async function POST(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
 
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

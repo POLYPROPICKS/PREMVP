@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getActiveContour } from "@/lib/constructor/devLive";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   QUEUE_SCHEMA_VERSION,
@@ -33,7 +34,7 @@ function envCap(): number {
 
 export async function GET(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
