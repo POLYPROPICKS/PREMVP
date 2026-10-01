@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { BASELINE_SOURCE_VERSION, baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations } from "../../lib/executor/reservationMarketBaseline";
+import { BASELINE_SOURCE_VERSION, baselineCompleteness, inventoryTokens, stableTelemetryId, captureReservationMarketBaseline, classifyReservationMarketPhase, captureReservationMarketObservation, captureReservationMarketMilestones, strategyRowsForMarketObservations, classifyObservationalMarket, liveGuardTelemetryRows, recordReservationStrategyDecision, type ReservationStrategyDecisionStore } from "../../lib/executor/reservationMarketBaseline";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
 test("Reservation baseline writes only a V2 reference envelope without market or book work", async () => {
@@ -197,4 +197,179 @@ test("all supplied T10 books succeeding still leaves source-set completeness unp
   assert.equal(run.orderbooks_success_n, 2);
   assert.equal(run.capture_complete, false);
   assert.equal(run.capture_status, "INCOMPLETE_MARKET_SET");
+});
+
+test("classifyObservationalMarket maps structured provider types only", () => {
+  assert.deepEqual(classifyObservationalMarket("moneyline"), { family: "MONEYLINE", type: "MONEYLINE" });
+  assert.deepEqual(classifyObservationalMarket("spread"), { family: "SPREADS", type: "SPREAD" });
+  assert.deepEqual(classifyObservationalMarket("spreads"), { family: "SPREADS", type: "SPREAD" });
+  assert.deepEqual(classifyObservationalMarket("total"), { family: "TOTALS", type: "TOTAL" });
+  assert.deepEqual(classifyObservationalMarket("totals"), { family: "TOTALS", type: "TOTAL" });
+  assert.deepEqual(classifyObservationalMarket("total_corners"), { family: "TOTAL_CORNERS", type: "TOTAL_CORNERS" });
+  assert.deepEqual(classifyObservationalMarket("both_teams_to_score"), { family: "OTHER_STRUCTURED", type: "OTHER_STRUCTURED" });
+  assert.deepEqual(classifyObservationalMarket("corners"), { family: "OTHER_STRUCTURED", type: "OTHER_STRUCTURED" });
+  for (const raw of [null, undefined, "", "   ", "Will the home team win by 2+?", "a/b", 42]) {
+    assert.deepEqual(classifyObservationalMarket(raw), { family: "UNKNOWN", type: "UNKNOWN" });
+  }
+});
+
+test("T-phase rows carry canonical family/type without changing eligibility or token coverage", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "66666666-6666-4666-8666-666666666666", plan_run_id: "plan",
+    physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start,
+    diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: start } },
+  } as unknown as NightEventReservationRow;
+  const types = ["moneyline", "spreads", "totals", "total_corners", "btts", "Free text title?"];
+  const market = (t: string, i: number) => ({ provider_event_id: "123", event_start_iso: start, condition_id: `c${i}`,
+    clob_token_ids: [`a${i}`, `b${i}`], outcomes: ["Yes", "No"], sports_market_type: t, provider_market_slug: `slug-${t}`,
+    sibling_market_count: types.length, last_observed_at: "2026-09-30T00:00:00Z" });
+  let rows: Record<string, unknown>[] = [];
+  await captureReservationMarketObservation(reservation, "T_MINUS_30", {
+    observedAt: "2026-09-30T23:30:00Z", alreadyCaptured: async () => false,
+    readExactEvent: async () => types.map(market),
+    fetchBooks: async (ids) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1,
+      book: { tokenId, bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }], raw: {} } })),
+    write: async (_run, observations) => { rows = observations; },
+  });
+  assert.equal(rows.length, types.length * 2);
+  const byRaw = new Map(rows.map((row) => [row.provider_market_type_raw, [row.canonical_market_family, row.canonical_market_type]]));
+  assert.deepEqual(byRaw.get("moneyline"), ["MONEYLINE", "MONEYLINE"]);
+  assert.deepEqual(byRaw.get("spreads"), ["SPREADS", "SPREAD"]);
+  assert.deepEqual(byRaw.get("totals"), ["TOTALS", "TOTAL"]);
+  assert.deepEqual(byRaw.get("total_corners"), ["TOTAL_CORNERS", "TOTAL_CORNERS"]);
+  assert.deepEqual(byRaw.get("btts"), ["OTHER_STRUCTURED", "OTHER_STRUCTURED"]);
+  assert.deepEqual(byRaw.get("Free text title?"), ["UNKNOWN", "UNKNOWN"]);
+  for (const row of rows) {
+    assert.equal(row.live_policy_eligibility, null);
+    assert.equal(row.live_policy_rejection_reason, null);
+    assert.equal(row.best_bid, 0.4);
+    assert.equal(row.best_ask, 0.5);
+    assert.equal(row.source_version, "RESERVATION_MARKET_BASELINE_V1");
+  }
+});
+
+test("LIVE_GUARD preserves measured fields and never guesses a market family", () => {
+  const start = "2026-10-01T00:00:00Z";
+  const reservation = { id: "77777777-7777-4777-8777-777777777777", plan_run_id: "plan",
+    physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start } as unknown as NightEventReservationRow;
+  const { observation } = liveGuardTelemetryRows(reservation, {
+    attemptId: "att", observedAt: "2026-09-30T23:55:00Z", conditionId: "c", tokenId: "t", side: "Yes",
+    marketSlug: "will-total-goals-be-over-2-5", referenceEntryPrice: 0.5, executionPriceCap: 0.52, requestedStakeUsd: 2,
+    pass: false, rejectionReason: "DEPTH", fetchStatus: "SUCCESS", fetchFailureReason: null, fetchLatencyMs: 7,
+    bestBid: 0.48, bestAsk: 0.5, spread: 0.02, capEligibleAskDepthUsd: 1.61, fullStakeExecutableVwap: 0.505,
+  });
+  assert.equal(observation.canonical_market_family, null);
+  assert.equal(observation.canonical_market_type, null);
+  assert.equal(observation.provider_market_type_raw, null);
+  assert.equal(observation.ask_depth_relevant_usd, 1.61);
+  assert.equal(observation.full_stake_executable_vwap, 0.505);
+  assert.equal(observation.reference_entry_price, 0.5);
+  assert.equal(observation.execution_price_cap, 0.52);
+  assert.equal(observation.requested_stake_usd, 2);
+  assert.equal(observation.live_policy_eligibility, false);
+  assert.equal(observation.live_policy_rejection_reason, "DEPTH");
+});
+
+const RUN = "run-1";
+function decisionStore(candidates: Record<string, unknown>[], persisted: Record<string, unknown>[] = []) {
+  const decisions = [...persisted];
+  const page = (rows: Record<string, unknown>[], after: string, limit: number) =>
+    [...rows].sort((a, b) => String(a.id) < String(b.id) ? -1 : 1).filter((r) => String(r.id) > after).slice(0, limit);
+  const store: ReservationStrategyDecisionStore = {
+    readObservations: async (run, after, limit) => page(candidates.filter((c) => c.capture_run_id === run), after, limit),
+    readDecisions: async (_run, variant, after, limit) => page(decisions.filter((d) => d.strategy_variant === variant), after, limit),
+    upsertDecisions: async (rows) => { for (const r of rows) if (!decisions.some((d) => d.market_observation_id === r.market_observation_id && d.strategy_variant === r.strategy_variant)) decisions.push(r); },
+  };
+  return { store, decisions };
+}
+const candidates = (run = RUN) => ["m1", "m2", "m3", "m4"].map((id, i) => ({ id, capture_run_id: run, reservation_id: "q", physical_event_id: "p",
+  condition_id: `c${i}`, token_id: `t${i}`, side: "Yes", observation_phase: "T_MINUS_10", observed_at: "2026-09-30T23:50:00Z",
+  minutes_to_start: 10, best_ask: 0.5, ask_decimal_odds: 2, spread_abs: 0.01, ask_depth_relevant_usd: null }));
+const decide = (over: Record<string, unknown> = {}) => ({ captureRunId: RUN, strategyVariant: "A_CURRENT_CONTROL" as const, strategyVersion: "v1",
+  selectedIdentity: { conditionId: "c1", tokenId: "t1", side: "Yes" }, decisionReason: "CHOSEN", ...over });
+
+test("A/B decision selects exactly one candidate and marks siblings not selected", async () => {
+  for (const variant of ["A_CURRENT_CONTROL", "B_FOUR_MARKET_PRIORITY_V1"] as const) {
+    const { store, decisions } = decisionStore(candidates());
+    const result = await recordReservationStrategyDecision(decide({ strategyVariant: variant }), { store });
+    assert.deepEqual(result, { total: 4, selected: 1, written: 4 });
+    const selected = decisions.filter((d) => d.evaluation_state === "SELECTED");
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].market_observation_id, "m2");
+    assert.equal(selected[0].eligible, true);
+    assert.equal(selected[0].rejection_reason, null);
+    assert.equal(selected[0].strategy_variant, variant);
+    const siblings = decisions.filter((d) => d.evaluation_state !== "SELECTED");
+    assert.equal(siblings.length, 3);
+    for (const row of siblings) {
+      assert.equal(row.evaluation_state, "EVALUATED_NOT_SELECTED");
+      assert.equal(row.eligible, false);
+      assert.equal(row.rejection_reason, "NOT_SELECTED_BY_STRATEGY");
+    }
+  }
+});
+
+test("A/B SKIP decision selects nothing and carries the supplied reason", async () => {
+  const { store, decisions } = decisionStore(candidates());
+  const result = await recordReservationStrategyDecision(decide({ selectedIdentity: null, decisionReason: "NO_PRIORITY_MARKET" }), { store });
+  assert.equal(result.selected, 0);
+  assert.equal(decisions.length, 4);
+  for (const row of decisions) {
+    assert.equal(row.evaluation_state, "EVALUATED_NOT_SELECTED");
+    assert.equal(row.eligible, false);
+    assert.equal(row.rejection_reason, "NO_PRIORITY_MARKET");
+  }
+});
+
+test("A/B decision is independent of candidate input order", async () => {
+  const forward = decisionStore(candidates());
+  const reversed = decisionStore(candidates().reverse());
+  await recordReservationStrategyDecision(decide(), { store: forward.store });
+  await recordReservationStrategyDecision(decide(), { store: reversed.store });
+  const sorted = (rows: Record<string, unknown>[]) => [...rows].sort((a, b) => String(a.id) < String(b.id) ? -1 : 1);
+  assert.deepEqual(sorted(reversed.decisions), sorted(forward.decisions));
+});
+
+test("A/B decision replay is idempotent and repairs an interrupted write", async () => {
+  const { store, decisions } = decisionStore(candidates());
+  await recordReservationStrategyDecision(decide(), { store });
+  assert.deepEqual(await recordReservationStrategyDecision(decide(), { store }), { total: 4, selected: 1, written: 0 });
+  assert.equal(decisions.length, 4);
+  decisions.splice(2, 2);
+  assert.deepEqual(await recordReservationStrategyDecision(decide(), { store }), { total: 4, selected: 1, written: 2 });
+  assert.equal(decisions.length, 4);
+  assert.equal(new Set(decisions.map((d) => d.id)).size, 4);
+});
+
+test("A/B decision fails closed on empty, ambiguous, missing, foreign or unsupported input", async () => {
+  await assert.rejects(recordReservationStrategyDecision(decide(), { store: decisionStore([]).store }), /STRATEGY_DECISION_NO_OBSERVATIONS/);
+  await assert.rejects(recordReservationStrategyDecision(decide({ selectedIdentity: { conditionId: "zz", tokenId: "t1", side: "Yes" } }), { store: decisionStore(candidates()).store }), /SELECTED_IDENTITY_NOT_FOUND/);
+  const dup = candidates(); dup[3] = { ...dup[3], condition_id: "c1", token_id: "t1" };
+  await assert.rejects(recordReservationStrategyDecision(decide(), { store: decisionStore(dup).store }), /SELECTED_IDENTITY_AMBIGUOUS/);
+  const foreign = decisionStore(candidates()).store;
+  await assert.rejects(recordReservationStrategyDecision(decide(), { store: { ...foreign, readObservations: async (...a) => (await foreign.readObservations(...a)).map((r, i) => i === 0 ? { ...r, capture_run_id: "other" } : r) } }), /CAPTURE_RUN_MISMATCH/);
+  await assert.rejects(recordReservationStrategyDecision(decide({ strategyVariant: "S1_TAKER_HOLD" as never }), { store: decisionStore(candidates()).store }), /UNSUPPORTED_VARIANT/);
+  const { store, decisions } = decisionStore(candidates());
+  await assert.rejects(recordReservationStrategyDecision(decide({ selectedIdentity: null, decisionReason: " " }), { store }), /STRATEGY_DECISION_INPUT_INVALID/);
+  assert.equal(decisions.length, 0);
+});
+
+test("A/B decision conflicting with a persisted decision throws STRATEGY_DECISION_CONFLICT and writes nothing", async () => {
+  const { store, decisions } = decisionStore(candidates());
+  await recordReservationStrategyDecision(decide(), { store });
+  const before = JSON.stringify(decisions);
+  await assert.rejects(recordReservationStrategyDecision(decide({ selectedIdentity: { conditionId: "c2", tokenId: "t2", side: "Yes" } }), { store }), /STRATEGY_DECISION_CONFLICT/);
+  await assert.rejects(recordReservationStrategyDecision(decide({ selectedIdentity: null, decisionReason: "SKIP" }), { store }), /STRATEGY_DECISION_CONFLICT/);
+  assert.equal(JSON.stringify(decisions), before);
+  // A different strategy variant on the same run is independent.
+  await recordReservationStrategyDecision(decide({ strategyVariant: "B_FOUR_MARKET_PRIORITY_V1", selectedIdentity: { conditionId: "c2", tokenId: "t2", side: "Yes" } }), { store });
+  assert.equal(decisions.length, 8);
+});
+
+test("S1/S2/S3 rows are unchanged by A/B telemetry", () => {
+  const rows = strategyRowsForMarketObservations([{ id: "m1", capture_run_id: "r", best_ask: 0.5, ask_decimal_odds: 2, spread_abs: 0.1, ask_depth_relevant_usd: 3 }]);
+  assert.deepEqual(rows.map((r) => [r.evaluation_state, r.strategy_version]), Array(3).fill(["NOT_EVALUATED", null]));
+  assert.equal(rows[0].executable_depth_usd, 3);
+  assert.equal(rows[1].maker_target_state, "NOT_DEFINED_YET");
+  assert.equal(rows[2].maker_band_state, "NOT_DEFINED_YET");
 });
