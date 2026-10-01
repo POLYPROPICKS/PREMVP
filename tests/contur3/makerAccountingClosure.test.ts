@@ -351,3 +351,42 @@ test("no MAKER_FALLBACK_2: command is single-slot and no result class re-authori
   assert.equal(port.claims, 1);
   assert.equal(Object.keys(readExecutionAttempts(cas.st.row.diagnostics)).sort().join(), "maker_fallback_1,taker_attempt_1");
 });
+
+test("stale zero-proof snapshot cannot claim a maker after a racing fill was recorded", async () => {
+  const cas = memoryCas(queueRow());
+  const port = authPort(cas);
+  // callback A evaluated zero-proof on a stale snapshot ...
+  const staleRow = structuredClone(cas.st.row);
+  // ... but callback B's fill is recorded first
+  await recordAttemptResultCas(cas.port, "q1", "taker_attempt_1", {
+    attempt_id: "TAKER_ATTEMPT_1", execution_mode: "TAKER", result_class: "PARTIAL_FILL", requested_quantity: 5, filled_quantity: 2,
+    remaining_quantity: 3, average_fill_price: 0.5, venue_order_id: "v", terminal: false, economic_exposure_proven_zero: false, fee_usd: null, received_at_iso: NOW.toISOString(),
+  });
+  const built = await recordResultAndAuthorizeMaker(
+    { ...port, loadQueueRowByIdempotencyKey: async () => staleRow, recordResult: async () => undefined },
+    takerZero(),
+    NOW,
+  );
+  assert.notEqual(built.kind, "MAKER_AUTHORIZED");
+  assert.equal(readExecutionAttempts(cas.st.row.diagnostics).maker_fallback_1?.command, undefined);
+});
+
+test("MAKER_FALLBACK_2 (any other MAKER_* attempt id) is rejected everywhere", async () => {
+  const { cas, port } = await authorized();
+  const raw = makerCb({ result_class: "PARTIAL_FILL", filled_quantity: 1 }, { attempt_id: "MAKER_FALLBACK_2" });
+  const out = await recordResultAndAuthorizeMaker(port, raw, NOW);
+  assert.deepEqual(out, { kind: "MAKER_CALLBACK_REJECTED", reason: "UNKNOWN_ATTEMPT_ID" });
+  const f = fakeOrderPort(() => cas.st.row);
+  assert.equal((await handleOrderEventSubmission(f.port, raw)).kind, "REJECTED_MAKER_NOT_AUTHORIZED");
+  assert.equal(f.calls.inserts, 0);
+});
+
+test("zero-fill maker strips amounts and any matched status", () => {
+  const n = normalizeMakerCallbackForAccounting(makerCb(
+    { result_class: "PROVEN_ZERO_FILL_EXPIRED", filled_quantity: 0, terminal: true, economic_exposure_proven_zero: true },
+    { status: "matched", taking_amount: 5.1, making_amount: 2.5 },
+  ));
+  assert.equal(n.taking_amount, undefined);
+  assert.equal(n.making_amount, undefined);
+  assert.equal(n.status, "unfilled");
+});

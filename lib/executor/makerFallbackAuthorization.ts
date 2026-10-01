@@ -328,7 +328,7 @@ export type MakerAuthorizationOutcome =
   | { kind: "MAKER_ALREADY_AUTHORIZED"; command: MakerFallbackCommand | null }
   | { kind: "MAKER_BLOCKED"; reasons: string[] }
   /** A maker-attempt callback that cannot bind to its authorized parent: no mutation, no accounting. */
-  | { kind: "MAKER_CALLBACK_REJECTED"; reason: "PARENT_IDEMPOTENCY_KEY_REQUIRED" | "PARENT_QUEUE_ROW_NOT_FOUND" | "MAKER_NOT_AUTHORIZED_FOR_PARENT" | "IDENTITY_MISMATCH" };
+  | { kind: "MAKER_CALLBACK_REJECTED"; reason: "UNKNOWN_ATTEMPT_ID" | "PARENT_IDEMPOTENCY_KEY_REQUIRED" | "PARENT_QUEUE_ROW_NOT_FOUND" | "MAKER_NOT_AUTHORIZED_FOR_PARENT" | "IDENTITY_MISMATCH" };
 
 /** Contract flag surfaced to Ireland: maker callbacks MUST carry parent_idempotency_key. */
 export const IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED = true as const;
@@ -337,12 +337,20 @@ export const IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED = true as const;
 export function isMakerAttemptCallback(raw: Record<string, unknown>): boolean {
   const nested = raw.ireland_execution_result;
   const src: Record<string, unknown> = nested && typeof nested === "object" && !Array.isArray(nested) ? (nested as Record<string, unknown>) : {};
-  return (
-    raw.attempt_id === MAKER_FALLBACK_1 ||
-    raw.execution_mode === "MAKER" ||
-    src.attempt_id === MAKER_FALLBACK_1 ||
-    src.execution_mode === "MAKER"
-  );
+  const isMakerId = (v: unknown) => typeof v === "string" && v.startsWith("MAKER_");
+  return isMakerId(raw.attempt_id) || isMakerId(src.attempt_id) || raw.execution_mode === "MAKER" || src.execution_mode === "MAKER";
+}
+
+/** The only maker attempt identity that exists. Any other MAKER_* id (e.g. MAKER_FALLBACK_2) is rejected. */
+export function makerAttemptIdIsValid(raw: Record<string, unknown>): boolean {
+  const nested = raw.ireland_execution_result;
+  const src: Record<string, unknown> = nested && typeof nested === "object" && !Array.isArray(nested) ? (nested as Record<string, unknown>) : {};
+  return [raw.attempt_id, src.attempt_id].every((v) => v === undefined || v === null || v === MAKER_FALLBACK_1);
+}
+
+/** Authoritative terminal proof of zero exposure for a recorded taker result. */
+export function isZeroProofResult(r: IrelandExecutionResult | undefined): boolean {
+  return !!r && ZERO_PROOF_CLASSES.has(r.result_class) && r.terminal === true && r.filled_quantity === 0 && r.economic_exposure_proven_zero === true;
 }
 
 /**
@@ -366,6 +374,7 @@ export async function recordResultAndAuthorizeMaker(
   const isMaker = isMakerAttemptCallback(raw);
 
   if (isMaker) {
+    if (!makerAttemptIdIsValid(raw)) return { kind: "MAKER_CALLBACK_REJECTED", reason: "UNKNOWN_ATTEMPT_ID" };
     // The parent Queue row is the economic identity authority: the maker's own
     // idempotency_key is never treated as a parent key.
     const makerParentKey = nonEmptyStr(raw.parent_idempotency_key);
@@ -468,8 +477,12 @@ export function normalizeMakerCallbackForAccounting(raw: Record<string, unknown>
     if (result.fee_usd !== null) out.fee_usd = result.fee_usd;
   } else if (!isFillClass || filled === 0) {
     for (const k of FILL_FACT_KEYS) delete out[k];
-    const status = String(out.order_status ?? out.status ?? "").toLowerCase();
-    if (status === "matched" || status === "filled" || status === "fully_filled") out.order_status = "unfilled";
+    delete out.making_amount;
+    delete out.taking_amount;
+    for (const f of ["order_status", "status"] as const) {
+      const st = String(out[f] ?? "").toLowerCase();
+      if (st === "matched" || st === "filled" || st === "fully_filled") out[f] = "unfilled";
+    }
   }
   return out;
 }

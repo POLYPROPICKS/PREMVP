@@ -20,7 +20,7 @@
 // removed at the route).
 
 import { validateOrderEventAgainstQueueRow, type EventExecutionQueueRow, type OrderEventSubmission } from "./executorQueueTypes";
-import { isMakerAttemptCallback, readExecutionAttempts, type MakerFallbackCommand } from "./makerFallbackAuthorization";
+import { isMakerAttemptCallback, makerAttemptIdIsValid, readExecutionAttempts, type MakerFallbackCommand } from "./makerFallbackAuthorization";
 
 // ── shared status contract (single source of truth) ────────────────────────
 
@@ -515,6 +515,7 @@ export async function handleOrderEventSubmission(
   const makerAttempt = isMakerAttemptCallback(raw);
   const parentIdempotencyKey =
     typeof raw.parent_idempotency_key === "string" && raw.parent_idempotency_key.length > 0 ? raw.parent_idempotency_key : null;
+  if (makerAttempt && !makerAttemptIdIsValid(raw)) return { kind: "REJECTED_MAKER_NOT_AUTHORIZED", reason: "UNKNOWN_ATTEMPT_ID" };
   if (makerAttempt && !parentIdempotencyKey) return { kind: "REJECTED_MAKER_PARENT_IDEMPOTENCY_KEY_REQUIRED" };
 
   const queueRow = await port.findQueueRowByIdempotencyKey(makerAttempt ? (parentIdempotencyKey as string) : idempotencyKey);
