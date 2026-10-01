@@ -27,6 +27,8 @@ import {
   type ExecutionReconciliationV1,
   type ReconciliationOrderEvent,
 } from "@/lib/executor/executionReconciliation";
+import { recordResultAndAuthorizeMaker, type MakerAuthorizationOutcome } from "@/lib/executor/makerFallbackAuthorization";
+import { createSupabaseMakerFallbackPort } from "@/lib/executor/makerFallbackSupabasePort";
 // Keys whose name (case-insensitive, normalised) triggers value removal
 const BANNED_SUBSTRINGS = [
   "secret",
@@ -590,6 +592,21 @@ export async function POST(request: NextRequest) {
 
   const raw = body as Record<string, unknown>;
 
+  // P2 safe taker->maker authorization: consume the released Ireland execution-result
+  // semantics. A callback without a recognised result class changes nothing (silence is never
+  // zero exposure). Failures here never block the existing callback path.
+  let makerFallback: MakerAuthorizationOutcome = { kind: "NO_RESULT" };
+  try {
+    makerFallback = await recordResultAndAuthorizeMaker(createSupabaseMakerFallbackPort(), raw, new Date());
+  } catch (error) {
+    console.error("[executor/order-events] Maker fallback authorization failed:", error instanceof Error ? error.message : "unknown");
+    makerFallback = { kind: "MAKER_BLOCKED", reasons: ["AUTHORIZATION_ERROR"] };
+  }
+  // MAKER results are keyed to the parent Queue row and are terminal: persisted above, no further attempt.
+  if (makerFallback.kind === "RESULT_RECORDED_NO_FURTHER_ATTEMPT") {
+    return NextResponse.json({ success: true, maker_fallback: makerFallback }, { status: 200 });
+  }
+
   let outcome;
   try {
     outcome = await handleOrderEventSubmission(createSupabaseOrderEventDbPort(), raw);
@@ -644,6 +661,7 @@ export async function POST(request: NextRequest) {
           queue_mark: outcome.queueMark,
           economic_telemetry: economicTelemetry,
           reconciliation,
+          maker_fallback: makerFallback,
         },
         { status: 200 },
       );
@@ -659,6 +677,7 @@ export async function POST(request: NextRequest) {
           queue_mark: outcome.queueMark,
           economic_telemetry: economicTelemetry,
           reconciliation,
+          maker_fallback: makerFallback,
         },
         { status: 200 },
       );
@@ -678,6 +697,7 @@ export async function POST(request: NextRequest) {
           queue_mark: outcome.queueMark,
           economic_telemetry: economicTelemetry,
           reconciliation,
+          maker_fallback: makerFallback,
         },
         { status: 200 },
       );

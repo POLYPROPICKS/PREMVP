@@ -209,6 +209,9 @@ export interface IrelandQueueCandidate {
    * always "BUY", never guessed from a title or the outcome selector above.
    */
   execution_side: "BUY";
+  /** Explicit attempt identity of the initial Queue instruction (never inferred by Ireland). */
+  execution_mode: "TAKER";
+  attempt_id: "TAKER_ATTEMPT_1";
   market_slug: string | null;
   market_title: string | null;
   market_family: string | null;
@@ -323,6 +326,8 @@ export function mapQueueRowToIrelandCandidate(
     token_id: row.token_id,
     side: row.side,
     execution_side: "BUY",
+    execution_mode: "TAKER",
+    attempt_id: "TAKER_ATTEMPT_1",
     market_slug: row.market_slug,
     market_title: row.market_title ?? null,
     market_family: row.market_family,
