@@ -300,7 +300,7 @@ test("metadata merge preserves unrelated executor metadata and is deterministic"
 test("accepted and duplicate callbacks both invoke canonical economic telemetry persistence", () => {
   const source = readFileSync(path.join(process.cwd(), "app/api/executor/order-events/route.ts"), "utf8");
   assert.match(source, /outcome\.kind === "INSERTED" \|\| outcome\.kind === "DUPLICATE"/);
-  assert.match(source, /persistEconomicTelemetry\(raw, outcome\.row\.id\)/);
+  assert.match(source, /persistEconomicTelemetry\(accountingRaw, outcome\.row\.id\)/);
   assert.match(source, /\.eq\("idempotency_key", telemetry\.identity\.idempotency_key\)/);
   assert.match(source, /\.eq\("clob_order_id", telemetry\.identity\.clob_order_id\)/);
 });

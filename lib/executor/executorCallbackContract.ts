@@ -20,6 +20,7 @@
 // removed at the route).
 
 import { validateOrderEventAgainstQueueRow, type EventExecutionQueueRow, type OrderEventSubmission } from "./executorQueueTypes";
+import { isMakerAttemptCallback, makerAttemptIdIsValid, readExecutionAttempts, type MakerFallbackCommand } from "./makerFallbackAuthorization";
 
 // ── shared status contract (single source of truth) ────────────────────────
 
@@ -383,6 +384,8 @@ export type OrderEventOutcome =
   | { kind: "REJECTED_MISSING_IDEMPOTENCY_KEY" }
   | { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" }
   | { kind: "REJECTED_QUEUE_POLICY_MISMATCH"; reason: string }
+  | { kind: "REJECTED_MAKER_PARENT_IDEMPOTENCY_KEY_REQUIRED" }
+  | { kind: "REJECTED_MAKER_NOT_AUTHORIZED"; reason: string }
   | { kind: "DB_ERROR"; message: string };
 
 // Rejected/failed order statuses -- an order event carrying one of these (or
@@ -444,6 +447,15 @@ async function markQueueTerminalFromOrderEvent(
 
   const classification = classifyOrderEvent(raw);
 
+  // MAKER_FALLBACK_1 is a second execution attempt on the SAME economic bet: its order event
+  // is accounted on the parent Queue identity, but the parent row's status belongs to the
+  // taker attempt and is never re-marked (or downgraded) by a maker callback. An accepted
+  // maker order is reported as ALREADY_EXECUTED so the economic path (telemetry ->
+  // reconciliation -> ledger) runs on the parent identity.
+  if (isMakerAttemptCallback(raw)) {
+    return classification.kind === "ACCEPTED" ? { kind: "ALREADY_EXECUTED", queue_id: queueId } : { kind: "NOT_ACCEPTED" };
+  }
+
   if (classification.kind === "UNKNOWN") return { kind: "NOT_ACCEPTED" };
 
   if (classification.kind === "ACCEPTED") {
@@ -497,9 +509,26 @@ export async function handleOrderEventSubmission(
   const idempotencyKey = typeof raw.idempotency_key === "string" && raw.idempotency_key.length > 0 ? raw.idempotency_key : null;
   if (!idempotencyKey) return { kind: "REJECTED_MISSING_IDEMPOTENCY_KEY" };
 
-  const queueRow = await port.findQueueRowByIdempotencyKey(idempotencyKey);
+  // A MAKER_FALLBACK_1 callback keeps its OWN idempotency_key on the order event but resolves
+  // the immutable economic identity (Reservation / Final Identity) through the explicit
+  // parent_idempotency_key. The maker key is never silently treated as a parent Queue key.
+  const makerAttempt = isMakerAttemptCallback(raw);
+  const parentIdempotencyKey =
+    typeof raw.parent_idempotency_key === "string" && raw.parent_idempotency_key.length > 0 ? raw.parent_idempotency_key : null;
+  if (makerAttempt && !makerAttemptIdIsValid(raw)) return { kind: "REJECTED_MAKER_NOT_AUTHORIZED", reason: "UNKNOWN_ATTEMPT_ID" };
+  if (makerAttempt && !parentIdempotencyKey) return { kind: "REJECTED_MAKER_PARENT_IDEMPOTENCY_KEY_REQUIRED" };
+
+  const queueRow = await port.findQueueRowByIdempotencyKey(makerAttempt ? (parentIdempotencyKey as string) : idempotencyKey);
 
   if (!queueRow) return { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" };
+
+  let makerCommand: MakerFallbackCommand | null = null;
+  if (makerAttempt) {
+    makerCommand = readExecutionAttempts(queueRow.diagnostics).maker_fallback_1?.command ?? null;
+    if (!makerCommand || makerCommand.idempotency_key !== idempotencyKey || makerCommand.parent_idempotency_key !== parentIdempotencyKey) {
+      return { kind: "REJECTED_MAKER_NOT_AUTHORIZED", reason: "MAKER_COMMAND_NOT_AUTHORIZED_FOR_PARENT" };
+    }
+  }
 
   {
     const submission: OrderEventSubmission = {
@@ -516,6 +545,15 @@ export async function handleOrderEventSubmission(
     };
     const validation = validateOrderEventAgainstQueueRow(submission, queueRow);
     if (!validation.ok) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason };
+    // The maker may only rest at or below the authorized passive limit, within the authorized size.
+    if (makerCommand) {
+      if (submission.submitted_price !== null && submission.submitted_price > makerCommand.limit_price + 1e-9) {
+        return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "MAKER_PRICE_ABOVE_COMMAND_LIMIT" };
+      }
+      if (submission.submitted_size !== null && submission.submitted_size > makerCommand.quantity + 1e-9) {
+        return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "MAKER_SIZE_ABOVE_COMMAND_QUANTITY" };
+      }
+    }
   }
 
   const canonical = projectCanonicalOrderEventPayload(raw);

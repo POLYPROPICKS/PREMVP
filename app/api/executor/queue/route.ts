@@ -7,6 +7,7 @@ import {
   mapQueueRowToIrelandCandidate,
   type EventExecutionQueueRow,
 } from "@/lib/executor/executorQueueTypes";
+import { readExecutionAttempts } from "@/lib/executor/makerFallbackAuthorization";
 import { REBALANCE_MINUTES_BEFORE_START } from "@/lib/executor/nightWindow";
 
 // Contur3 queue-only executor endpoint — the ONLY executable source for Ireland.
@@ -61,6 +62,20 @@ export async function GET(request: NextRequest) {
       candidates = candidates.filter((c) => c.entry_state === "IN_WINDOW");
     }
 
+    // MAKER_FALLBACK_1 instructions authorized by PREMVP on the parent taker row (same Final
+    // Identity). Explicit command; Ireland infers nothing. Only before the stated deadline.
+    const { data: makerRows } = await supabaseAdmin
+      .from("event_execution_queue")
+      .select("diagnostics")
+      .not("diagnostics->execution_attempts_v1->maker_fallback_1->command", "is", null)
+      .is("diagnostics->execution_attempts_v1->maker_fallback_1->result", null)
+      .gt("latest_entry_iso", nowIso)
+      .order("latest_entry_iso", { ascending: true })
+      .limit(cap);
+    const makerFallbackCommands = ((makerRows ?? []) as { diagnostics: Record<string, unknown> | null }[])
+      .map((r) => readExecutionAttempts(r.diagnostics).maker_fallback_1?.command)
+      .filter((c): c is NonNullable<typeof c> => !!c && Date.parse(c.deadline_iso) > nowMs);
+
     const planRunId = rows[0]?.plan_run_id ?? null;
 
     // Next upcoming reservation not yet in rebalance window — for Ireland sleep guidance.
@@ -100,6 +115,7 @@ export async function GET(request: NextRequest) {
         include_upcoming: includeUpcoming,
         candidate_count: candidates.length,
         candidates,
+        maker_fallback_commands: makerFallbackCommands,
         next_due_iso: nextDueIso,
         next_check_after_seconds: nextCheckAfterSeconds,
         next_due_reservation: nextRes

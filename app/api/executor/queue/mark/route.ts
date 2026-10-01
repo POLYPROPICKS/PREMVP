@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
+import { createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
 import {
   isQueueMarkAcceptedStatus,
   rejectsExecutedRegression,
@@ -79,14 +81,10 @@ function createSupabaseQueueMarkDbPort(): QueueMarkDbPort {
       return row;
     },
     async updateQueueStatus(queueId, patch) {
-      const { data, error } = await supabaseAdmin
-        .from("event_execution_queue")
-        .update({ status: patch.status, updated_at: new Date().toISOString(), diagnostics: patch.diagnostics })
-        .eq("id", queueId)
-        .select("id, status, order_key, match_family_key, stake_usd, condition_id, token_id, side, idempotency_key, diagnostics, updated_at")
-        .single();
-      if (error) throw new Error(error.message);
-      return toQueueMarkRow(data as Record<string, unknown>);
+      // Fresh-read + CAS: execution_attempts_v1 is always taken from the fresh row.
+      const res = await casWriteQueue(createSupabaseQueueCasPort(), queueId, () => ({ status: patch.status, diagnostics: patch.diagnostics }));
+      if (!res.written) throw new Error("QUEUE_ROW_NOT_FOUND");
+      return toQueueMarkRow(res.row);
     },
   };
 }
@@ -94,28 +92,14 @@ function createSupabaseQueueMarkDbPort(): QueueMarkDbPort {
 function createSupabaseQueueClaimDbPort() {
   return {
     async claimReadyQueueRow(queueId: string) {
-      const { data: ready, error: readError } = await supabaseAdmin
-        .from("event_execution_queue")
-        .select("diagnostics")
-        .eq("id", queueId)
-        .eq("status", "READY")
-        .maybeSingle();
-      if (readError) throw new Error(readError.message);
-      if (!ready) return null;
-      const prior = (ready.diagnostics ?? {}) as Record<string, unknown>;
-      const claimVersion = typeof prior.claim_version === "number" && Number.isInteger(prior.claim_version)
-        ? prior.claim_version + 1 : 1;
-      const { data, error } = await supabaseAdmin
-        .from("event_execution_queue")
-        .update({ status: "CLAIMED", updated_at: new Date().toISOString(), diagnostics: {
-          ...prior, claimed_at: new Date().toISOString(), claim_version: claimVersion,
-        } })
-        .eq("id", queueId)
-        .eq("status", "READY")
-        .select("id, status, order_key, match_family_key, stake_usd, condition_id, token_id, side, idempotency_key, diagnostics, updated_at")
-        .maybeSingle();
-      if (error) throw new Error(error.message);
-      return data ? toQueueMarkRow(data as Record<string, unknown>) : null;
+      const res = await casWriteQueue(createSupabaseQueueCasPort(), queueId, (fresh) => {
+        if (fresh.status !== "READY") return null;
+        const prior = (fresh.diagnostics ?? {}) as Record<string, unknown>;
+        const claimVersion = typeof prior.claim_version === "number" && Number.isInteger(prior.claim_version)
+          ? prior.claim_version + 1 : 1;
+        return { status: "CLAIMED", diagnostics: { ...prior, claimed_at: new Date().toISOString(), claim_version: claimVersion } };
+      });
+      return res.written ? toQueueMarkRow(res.row) : null;
     },
     async findQueueRow(queueId: string) {
       const { data, error } = await supabaseAdmin
@@ -242,45 +226,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, success: true, duplicate: true, queue_id, status: currentStatus, updated: current }, { status: 200 });
     }
 
-    const prevDiag = (current.diagnostics ?? {}) as Record<string, unknown>;
-    const newDiag: Record<string, unknown> = {
-      ...prevDiag,
-      mark_history: [...((prevDiag.mark_history as unknown[]) ?? []), markHistoryEntry],
-    };
-
-    const updatePayload: Record<string, unknown> = {
-      status,
-      updated_at: new Date().toISOString(),
-      diagnostics: newDiag,
-    };
-
-    const { data: updated, error: updateErr } = await supabaseAdmin
-      .from("event_execution_queue")
-      .update(updatePayload)
-      .eq("id", queue_id)
-      .eq("status", currentStatus)
-      .select("id, status, order_key, match_family_key, stake_usd, updated_at")
-      .maybeSingle();
-
-    if (updateErr) {
-      if (updateErr.message?.includes("updated_at")) {
-        const { data: updated2, error: updateErr2 } = await supabaseAdmin
-          .from("event_execution_queue")
-          .update({ status, diagnostics: newDiag })
-          .eq("id", queue_id)
-          .eq("status", currentStatus)
-          .select("id, status, order_key, match_family_key, stake_usd")
-          .maybeSingle();
-        if (updateErr2) throw new Error(updateErr2.message);
-        if (!updated2) return NextResponse.json({ ok: false, success: false, error: "Queue state changed concurrently", queue_id }, { status: 409 });
-        return NextResponse.json({ ok: true, success: true, duplicate: false, queue_id, status: updated2?.status, updated: updated2 }, { status: 200 });
-      }
-      throw new Error(updateErr.message);
+    // Fresh-read + CAS on updated_at with the observed status as a guard; diagnostics are merged
+    // from the FRESH row so execution_attempts_v1 (and concurrent writes) are never erased.
+    const res = await casWriteQueue(createSupabaseQueueCasPort(), queue_id, (fresh) => {
+      if (fresh.status !== currentStatus) return null;
+      const freshDiag = (fresh.diagnostics ?? {}) as Record<string, unknown>;
+      return {
+        status,
+        diagnostics: { ...freshDiag, mark_history: [...((freshDiag.mark_history as unknown[]) ?? []), markHistoryEntry] },
+      };
+    });
+    if (!res.written) {
+      return NextResponse.json({ ok: false, success: false, error: "Queue state changed concurrently", queue_id }, { status: 409 });
     }
-
-    if (!updated) return NextResponse.json({ ok: false, success: false, error: "Queue state changed concurrently", queue_id }, { status: 409 });
-
-    return NextResponse.json({ ok: true, success: true, duplicate: false, queue_id, status: updated?.status, updated }, { status: 200 });
+    const updated = res.row;
+    return NextResponse.json({ ok: true, success: true, duplicate: false, queue_id, status: updated.status, updated }, { status: 200 });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
     console.error("[executor/queue/mark] Error:", msg);

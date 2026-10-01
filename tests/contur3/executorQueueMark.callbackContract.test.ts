@@ -233,5 +233,6 @@ test("the mark route delegates EXECUTED verification to handleQueueMarkExecuted"
 test("the mark route claims only with an atomic READY compare-and-set", () => {
   const source = readFileSync(path.join(root, "app/api/executor/queue/mark/route.ts"), "utf8");
   assert.match(source, /handleQueueClaim/);
-  assert.match(source, /\.update\(\{ status: "CLAIMED"[\s\S]{0,400}\.eq\("status", "READY"\)/);
+  // Atomic claim: fresh read + READY guard + updated_at compare-and-set (execution_attempts_v1 preserved).
+  assert.match(source, /casWriteQueue\([\s\S]{0,200}fresh\.status !== "READY"\) return null;[\s\S]{0,400}status: "CLAIMED"/);
 });

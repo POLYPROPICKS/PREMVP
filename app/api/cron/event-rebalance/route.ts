@@ -1,3 +1,5 @@
+import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
+import { createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
 import { NextRequest, NextResponse } from "next/server";
 import {
   runEventRebalanceWithEvidence,
@@ -201,13 +203,15 @@ async function handle(request: NextRequest) {
             (event.side ?? event.selected_side) !== row.side) throw new Error("STALE_CLAIM_ORDER_IDENTITY_CONFLICT");
         return true;
       },
-      async expireClaim(row, deadline, diagnostics) {
-        const { data, error } = await supabaseAdmin.from("event_execution_queue")
-          .update({ status: "EXPIRED", selection_reason: "CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT", diagnostics })
-          .eq("id", row.id).eq("status", "CLAIMED").lte("latest_entry_iso", deadline)
-          .select("id").maybeSingle();
-        if (error) throw new Error(`STALE_CLAIM_WRITE_FAILED: ${error.message}`);
-        return Boolean(data);
+      async expireClaim(row, _deadline, diagnostics) {
+        // Fresh-read + CAS: a CLAIMED row may already carry execution_attempts_v1 (e.g. a proven-zero
+        // taker result with an authorized maker command); the expiry must never erase it.
+        const res = await casWriteQueue(createSupabaseQueueCasPort(), String(row.id), (fresh) =>
+          fresh.status !== "CLAIMED"
+            ? null
+            : { status: "EXPIRED", diagnostics, extra: { selection_reason: "CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT" } },
+        );
+        return res.written;
       },
     }, nowIso, !dryRun);
     const result = await runEventRebalanceWithEvidence(Date.now(), {
