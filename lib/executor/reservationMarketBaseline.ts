@@ -31,6 +31,27 @@ type InventoryMarket = {
 
 type Token = { conditionId: string; tokenId: string; side: string; outcome: string | null; market: InventoryMarket };
 
+export type ObservationalMarketFamily = "MONEYLINE" | "SPREADS" | "TOTALS" | "TOTAL_CORNERS" | "OTHER_STRUCTURED" | "UNKNOWN";
+export type ObservationalMarketType = "MONEYLINE" | "SPREAD" | "TOTAL" | "TOTAL_CORNERS" | "OTHER_STRUCTURED" | "UNKNOWN";
+
+const STRUCTURED_MARKET_IDENTIFIER = /^[a-z0-9][a-z0-9_-]*$/;
+
+// Telemetry-only classification of the structured provider market type.
+// Never parses title/slug and must not feed live eligibility or admission.
+export function classifyObservationalMarket(rawType: unknown): { family: ObservationalMarketFamily; type: ObservationalMarketType } {
+  const normalized = typeof rawType === "string" ? rawType.trim().toLowerCase() : "";
+  if (!STRUCTURED_MARKET_IDENTIFIER.test(normalized)) return { family: "UNKNOWN", type: "UNKNOWN" };
+  switch (normalized) {
+    case "moneyline": return { family: "MONEYLINE", type: "MONEYLINE" };
+    case "spread":
+    case "spreads": return { family: "SPREADS", type: "SPREAD" };
+    case "total":
+    case "totals": return { family: "TOTALS", type: "TOTAL" };
+    case "total_corners": return { family: "TOTAL_CORNERS", type: "TOTAL_CORNERS" };
+    default: return { family: "OTHER_STRUCTURED", type: "OTHER_STRUCTURED" };
+  }
+}
+
 const STRATEGY_VARIANTS = ["S1_TAKER_HOLD", "S2_FIXED_MAKER_HOLD", "S3_MAKER_VALUE_BAND_HOLD"] as const;
 
 export function strategyRowsForMarketObservations(observations: readonly Record<string, unknown>[]): Record<string, unknown>[] {
@@ -180,13 +201,14 @@ export async function captureReservationMarketObservation(
     const result = books[i];
     const book = result?.ok ? result.book : null;
     const { bestBid, bestAsk } = getBestBidAsk(book);
+    const market = classifyObservationalMarket(token.market.sports_market_type);
     return {
       id: stableTelemetryId(runId, token.conditionId, token.tokenId, token.side),
       capture_run_id: runId, reservation_id: reservation.id, physical_event_id: reservation.physical_event_id,
       provider_event_id: providerEventId, event_start_iso: start, observation_phase: phase,
       observed_at: observedAt, minutes_to_start: minutesToStart,
       condition_id: token.conditionId, token_id: token.tokenId, side: token.side, outcome: token.outcome,
-      canonical_market_family: null, canonical_market_type: null,
+      canonical_market_family: market.family, canonical_market_type: market.type,
       provider_market_type_raw: token.market.sports_market_type, market_slug: token.market.provider_market_slug,
       live_policy_eligibility: null, live_policy_rejection_reason: null,
       best_bid: bestBid, best_ask: bestAsk, mid_price: computeMidPrice(book),
@@ -294,6 +316,123 @@ async function defaultWriter(run: Record<string, unknown>, observations: Record<
     .eq("id", run.id).eq("capture_status", "WRITE_INCOMPLETE");
   if (finishError) throw new Error("MARKET_CAPTURE_FINALIZE_FAILED");
 }
+
+export const AB_STRATEGY_VARIANTS = ["A_CURRENT_CONTROL", "B_FOUR_MARKET_PRIORITY_V1"] as const;
+export type ReservationAbStrategyVariant = (typeof AB_STRATEGY_VARIANTS)[number];
+
+export type ReservationStrategyDecisionInput = {
+  captureRunId: string;
+  strategyVariant: ReservationAbStrategyVariant;
+  strategyVersion: string;
+  selectedIdentity: { conditionId: string; tokenId: string; side: string } | null;
+  decisionReason: string;
+};
+
+export type ReservationStrategyDecisionStore = {
+  // Both readers page by ascending id, strictly after `afterId`.
+  readObservations(captureRunId: string, afterId: string, limit: number): Promise<Record<string, unknown>[]>;
+  readDecisions(captureRunId: string, strategyVariant: string, afterId: string, limit: number): Promise<Record<string, unknown>[]>;
+  upsertDecisions(rows: Record<string, unknown>[]): Promise<void>;
+};
+
+const NIL_UUID = "00000000-0000-0000-0000-000000000000";
+const DECISION_PAGE_SIZE = 200;
+
+async function readAllPages(read: (afterId: string, limit: number) => Promise<Record<string, unknown>[]>): Promise<Record<string, unknown>[]> {
+  const out: Record<string, unknown>[] = [];
+  let lastId = NIL_UUID;
+  for (;;) {
+    const page = await read(lastId, DECISION_PAGE_SIZE);
+    out.push(...page);
+    if (page.length < DECISION_PAGE_SIZE) break;
+    lastId = String(page[page.length - 1].id ?? page[page.length - 1].market_observation_id);
+  }
+  return out;
+}
+
+// Records an ALREADY-MADE A/B strategy decision for one capture run. It never ranks markets
+// and is not called by any live flow; the caller (future Rebalance) supplies the decision.
+export async function recordReservationStrategyDecision(
+  input: ReservationStrategyDecisionInput,
+  deps: { store?: ReservationStrategyDecisionStore } = {},
+): Promise<{ total: number; selected: number; written: number }> {
+  if (!(AB_STRATEGY_VARIANTS as readonly string[]).includes(input.strategyVariant)) throw new Error("STRATEGY_DECISION_UNSUPPORTED_VARIANT");
+  if (!input.captureRunId || !input.strategyVersion?.trim()) throw new Error("STRATEGY_DECISION_INPUT_INVALID");
+  if (!input.decisionReason?.trim()) throw new Error("STRATEGY_DECISION_INPUT_INVALID");
+  const selectedIdentity = input.selectedIdentity;
+  if (selectedIdentity && !(selectedIdentity.conditionId && selectedIdentity.tokenId && selectedIdentity.side)) {
+    throw new Error("STRATEGY_DECISION_SELECTED_IDENTITY_INVALID");
+  }
+  const store = deps.store ?? defaultDecisionStore;
+  const observations = (await readAllPages((after, limit) => store.readObservations(input.captureRunId, after, limit)))
+    .sort((a, b) => String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0);
+  if (observations.length === 0) throw new Error("STRATEGY_DECISION_NO_OBSERVATIONS");
+  if (observations.some((row) => row.capture_run_id !== input.captureRunId)) throw new Error("STRATEGY_DECISION_CAPTURE_RUN_MISMATCH");
+  let selectedId: string | null = null;
+  if (selectedIdentity) {
+    const matches = observations.filter((row) => row.condition_id === selectedIdentity.conditionId
+      && row.token_id === selectedIdentity.tokenId && row.side === selectedIdentity.side);
+    if (matches.length === 0) throw new Error("STRATEGY_DECISION_SELECTED_IDENTITY_NOT_FOUND");
+    if (matches.length > 1) throw new Error("STRATEGY_DECISION_SELECTED_IDENTITY_AMBIGUOUS");
+    selectedId = String(matches[0].id);
+  }
+  const rows = observations.map((market) => {
+    const selected = String(market.id) === selectedId;
+    return {
+      id: stableTelemetryId(String(market.id), input.strategyVariant),
+      market_observation_id: market.id, capture_run_id: market.capture_run_id,
+      reservation_id: market.reservation_id, physical_event_id: market.physical_event_id,
+      condition_id: market.condition_id, token_id: market.token_id, side: market.side,
+      observation_phase: market.observation_phase, evaluated_at: market.observed_at,
+      minutes_to_start: market.minutes_to_start, strategy_variant: input.strategyVariant,
+      strategy_version: input.strategyVersion,
+      evaluation_state: selected ? "SELECTED" : "EVALUATED_NOT_SELECTED", eligible: selected,
+      rejection_reason: selected ? null : selectedIdentity ? "NOT_SELECTED_BY_STRATEGY" : input.decisionReason,
+      available_best_ask: market.best_ask ?? null, available_decimal_odds: market.ask_decimal_odds ?? null,
+      spread_abs: market.spread_abs ?? null, executable_depth_usd: market.ask_depth_relevant_usd ?? null,
+    };
+  });
+  const persisted = new Map<string, Record<string, unknown>>();
+  for (const row of await readAllPages((after, limit) => store.readDecisions(input.captureRunId, input.strategyVariant, after, limit))) {
+    persisted.set(String(row.market_observation_id), row);
+  }
+  for (const row of rows) {
+    const existing = persisted.get(String(row.market_observation_id));
+    if (existing && (existing.evaluation_state !== row.evaluation_state || existing.eligible !== row.eligible
+      || (existing.rejection_reason ?? null) !== row.rejection_reason || existing.strategy_version !== row.strategy_version)) {
+      throw new Error("STRATEGY_DECISION_CONFLICT");
+    }
+  }
+  const missing = rows.filter((row) => !persisted.has(String(row.market_observation_id)));
+  for (let i = 0; i < missing.length; i += DECISION_PAGE_SIZE) await store.upsertDecisions(missing.slice(i, i + DECISION_PAGE_SIZE));
+  return { total: rows.length, selected: selectedId ? 1 : 0, written: missing.length };
+}
+
+const defaultDecisionStore: ReservationStrategyDecisionStore = {
+  async readObservations(captureRunId, afterId, limit) {
+    const { supabaseAdmin } = await import("../supabase/server");
+    const { data, error } = await supabaseAdmin.from("reservation_market_observations")
+      .select("id,capture_run_id,reservation_id,physical_event_id,condition_id,token_id,side,observation_phase,observed_at,minutes_to_start,best_ask,ask_decimal_odds,spread_abs,ask_depth_relevant_usd")
+      .eq("capture_run_id", captureRunId).gt("id", afterId).order("id").limit(limit);
+    if (error) throw new Error("STRATEGY_DECISION_SOURCE_READ_FAILED");
+    return (data ?? []) as Record<string, unknown>[];
+  },
+  async readDecisions(captureRunId, strategyVariant, afterId, limit) {
+    const { supabaseAdmin } = await import("../supabase/server");
+    const { data, error } = await supabaseAdmin.from("reservation_strategy_observations")
+      .select("id,market_observation_id,evaluation_state,eligible,rejection_reason,strategy_version")
+      .eq("capture_run_id", captureRunId).eq("strategy_variant", strategyVariant)
+      .gt("id", afterId).order("id").limit(limit);
+    if (error) throw new Error("STRATEGY_DECISION_READ_FAILED");
+    return (data ?? []) as Record<string, unknown>[];
+  },
+  async upsertDecisions(rows) {
+    const { supabaseAdmin } = await import("../supabase/server");
+    const { error } = await supabaseAdmin.from("reservation_strategy_observations")
+      .upsert(rows, { onConflict: "market_observation_id,strategy_variant", ignoreDuplicates: true });
+    if (error) throw new Error("STRATEGY_DECISION_WRITE_FAILED");
+  },
+};
 
 export type LiveGuardTelemetryInput = {
   attemptId: string;
