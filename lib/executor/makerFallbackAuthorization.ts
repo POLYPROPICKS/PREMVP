@@ -349,6 +349,13 @@ export async function recordResultAndAuthorizeMaker(
     return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_fallback_1" };
   }
 
+  // A recorded taker result that shows exposure (or is unresolved) is never overwritten by a
+  // later callback, and never lets a later zero-proof authorize a maker.
+  const prior = readExecutionAttempts(queue.diagnostics).taker_attempt_1?.result;
+  if (prior && (prior.filled_quantity !== 0 || !ZERO_PROOF_CLASSES.has(prior.result_class))) {
+    return { kind: "MAKER_BLOCKED", reasons: ["PRIOR_TAKER_RESULT_SHOWS_EXPOSURE_OR_UNRESOLVED"] };
+  }
+
   await port.recordResult(queue.id, "taker_attempt_1", result);
 
   const existing = readExecutionAttempts(queue.diagnostics).maker_fallback_1?.command ?? null;

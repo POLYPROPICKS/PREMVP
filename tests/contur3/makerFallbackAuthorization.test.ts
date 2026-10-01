@@ -165,6 +165,16 @@ test("passive price unsafe / non-representable -> no maker", async () => {
   assert.equal(locked.state.claims, 0);
 });
 
+test("a recorded taker fill is never overwritten nor lets a later zero-proof authorize maker", async () => {
+  const f = fakePort(queueRow());
+  const partial = await recordResultAndAuthorizeMaker(f.port, zero({ result_class: "PARTIAL_FILL", filled_quantity: 2, economic_exposure_proven_zero: false }), NOW);
+  assert.equal(partial.kind, "MAKER_BLOCKED");
+  const later = await recordResultAndAuthorizeMaker(f.port, zero(), NOW);
+  assert.equal(later.kind, "MAKER_BLOCKED");
+  assert.equal(f.state.claims, 0);
+  assert.equal(readExecutionAttempts(f.state.row.diagnostics).taker_attempt_1?.result?.result_class, "PARTIAL_FILL");
+});
+
 test("maker results never authorize a third attempt (no MAKER_FALLBACK_2)", async () => {
   for (const cls of ["PARTIAL_FILL", "FULL_FILL", "PROVEN_ZERO_FILL_EXPIRED", "PROVEN_ZERO_FILL_NO_LIQUIDITY", "UNKNOWN_AFTER_SUBMISSION"]) {
     const f = fakePort(queueRow());

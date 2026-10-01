@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
       .not("diagnostics->execution_attempts_v1->maker_fallback_1->command", "is", null)
       .is("diagnostics->execution_attempts_v1->maker_fallback_1->result", null)
       .gt("latest_entry_iso", nowIso)
+      .order("latest_entry_iso", { ascending: true })
       .limit(cap);
     const makerFallbackCommands = ((makerRows ?? []) as { diagnostics: Record<string, unknown> | null }[])
       .map((r) => readExecutionAttempts(r.diagnostics).maker_fallback_1?.command)
