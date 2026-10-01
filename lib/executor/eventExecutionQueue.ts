@@ -14,7 +14,7 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash, randomUUID } from "crypto";
-import { persistLiveGuardTelemetry, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { persistLiveGuardTelemetry, readCompletedFinalT3Universe, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   produceContractAFinalIdentityDecision,
@@ -1821,6 +1821,7 @@ export async function runEventRebalance(
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
     fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>;
     writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>;
+    readFinalT3Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
     onFinalIdentityAttempt?: () => void;
   } = {}
 ): Promise<RebalanceRunResult> {
@@ -2001,6 +2002,18 @@ export async function runEventRebalance(
     if (reservation.id && alreadyQueued.has(reservation.id)) {
       plannedActions.push({ kind: "ALREADY_QUEUED", reservation });
       continue;
+    }
+    // P1A: a finalized exact-event source set is mandatory before any live
+    // Final Rebalance selection. P1B will consume this same array for A/B.
+    // Existing Planning-token selection below remains unchanged for P1A.
+    if (write && (deps.readFinalT3Universe || !deps.repo)) {
+      try {
+        const finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
+        if (finalSiblingUniverse.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+      } catch {
+        plannedActions.push({ kind: "SKIPPED", reservation, reason: "FINAL_T3_SOURCE_UNAVAILABLE" });
+        continue;
+      }
     }
     // B3: a Reservation carrying a supported B2 candidate manifest is
     // resolved ENTIRELY from that manifest — no GSP read, no Serving read,

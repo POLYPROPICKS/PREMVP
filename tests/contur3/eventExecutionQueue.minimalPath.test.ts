@@ -54,6 +54,28 @@ function reservation(
   };
 }
 
+test("failed final T3 source blocks Planning-token fallback and Queue write", async () => {
+  const r = reservation({ condition_id: "cond-low", token_id: "token-cond-low", side: "YES" });
+  const queue: EventExecutionQueueRow[] = [];
+  const skipped: string[] = [];
+  const repo: RebalanceRepoPort = {
+    async loadActiveReservations() { return [r]; },
+    async loadQueuedReservationIds() { return new Set<string>(); },
+    async markReservationsExpired() {}, async markReservationQueued() {},
+    async markReservationSkipped(_id, reason) { skipped.push(reason); },
+    async insertQueueRow(value) { queue.push(value); },
+  };
+  const result = await runEventRebalance(Date.parse(START) - 8 * 60_000, { write: true }, {
+    repo,
+    readFinalT3Universe: async () => { throw new Error("capture unavailable"); },
+    fetchFinalIdentitySourceRows: async () => { throw new Error("Planning fallback forbidden"); },
+    fetchExactTokenOrderbook: async () => { throw new Error("guard forbidden"); },
+  });
+  assert.equal(result.queued_count, 0);
+  assert.equal(queue.length, 0);
+  assert.deepEqual(skipped, ["FINAL_T3_SOURCE_UNAVAILABLE"]);
+});
+
 test("minimal due path selects the validated Planning final identity -- NOT the highest score, NOT the lexicographically-smallest identity -- and creates one Queue row", async () => {
   // cond-low has the LOWEST score (12) of the three siblings AND is NOT the
   // lexicographically-smallest identity (cond-a < cond-b < cond-low) -- it is
