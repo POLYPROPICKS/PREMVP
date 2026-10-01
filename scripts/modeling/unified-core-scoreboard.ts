@@ -214,27 +214,48 @@ async function resolveDb() {
   return createClient(url, key);
 }
 
+function datesInclusive(start: string, end: string): string[] {
+  const out: string[] = [];
+  for (let t = Date.parse(`${start}T00:00:00Z`); t <= Date.parse(`${end}T00:00:00Z`); t += 86_400_000) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/**
+ * Paged per model_date (leading sort key, so the concatenated order is
+ * identical to one global ordered scan) — a single global offset scan over
+ * the wide canonical_row JSON hits the statement timeout (57014) deep into a
+ * 58-day / ~95k-row corpus. Retries a timed-out page a bounded number of times.
+ */
 async function fetchRows(): Promise<ScorecardReadyRow[]> {
   const db = await resolveDb();
   const rows: ScorecardReadyRow[] = [];
-  let from = 0;
-  for (;;) {
-    const { data, error } = await db
-      .from("research_model_ready_rows")
-      .select("canonical_row")
-      .gte("model_date", START)
-      .lte("model_date", END)
-      .order("model_date")
-      .order("population_id")
-      .order("condition_id")
-      .order("selected_token_id")
-      .order("decision_at")
-      .range(from, from + PAGE - 1);
-    if (error) throw new Error(`FETCH_ROWS:${error.code ?? error.message}`);
-    if (!data || data.length === 0) break;
-    for (const r of data as Array<{ canonical_row: ScorecardReadyRow }>) rows.push(r.canonical_row);
-    if (data.length < PAGE) break;
-    from += PAGE;
+  for (const day of datesInclusive(START, END)) {
+    let from = 0;
+    for (;;) {
+      let data: unknown[] | null = null;
+      for (let attempt = 0; ; attempt++) {
+        const res = await db
+          .from("research_model_ready_rows")
+          .select("canonical_row")
+          .eq("model_date", day)
+          .order("population_id")
+          .order("condition_id")
+          .order("selected_token_id")
+          .order("decision_at")
+          .range(from, from + PAGE - 1);
+        if (!res.error) {
+          data = res.data;
+          break;
+        }
+        if (res.error.code !== "57014" || attempt >= 3) throw new Error(`FETCH_ROWS:${res.error.code ?? res.error.message}`);
+      }
+      if (!data || data.length === 0) break;
+      for (const r of data as Array<{ canonical_row: ScorecardReadyRow }>) rows.push(r.canonical_row);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
   }
   return rows;
 }
@@ -352,7 +373,7 @@ async function main() {
     return {
       STATUS: status,
       MODEL: m.id,
-      DATASET: "AUG04_SEP20_COMMON",
+      DATASET: `COMMON_${START}_${END}`,
       PROCESSED: processedN,
       BET: overall.events,
       PROCESSED_TO_BET_PCT: round((overall.events / processedN) * 100, 2),
@@ -784,6 +805,7 @@ async function main() {
 
   const artifact = {
     MISSION: "UNIFIED_CORE_SCOREBOARD_V1",
+    SEPTEMBER_THROUGH_20_KEY_NOTE: "Legacy key name retained for consumers: the SEPTEMBER_THROUGH_20 split is 2026-09-01 through --end (not literally 09-20).",
     DATASET_RANGE: { start: START, end: END },
     SOURCE_ROW_N: rawRows.length,
     PROCESSED_N: processedN,
