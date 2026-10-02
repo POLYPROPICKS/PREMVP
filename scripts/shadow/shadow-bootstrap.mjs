@@ -49,6 +49,10 @@ function psql(url, args) {
 
 export function apply() {
   const url = targetUrl();
+  // Fresh-target guard: a database with no ledger must have NO public tables, so this can never be pointed at
+  // an existing (e.g. DEV) database by a textually different connection string.
+  const state = psql(url, ["-At", "-F", "|", "-c", "SELECT (to_regclass('public.shadow_bootstrap_ledger') IS NOT NULL), (SELECT count(*) FROM information_schema.tables WHERE table_schema='public')"]).trim().split("|");
+  if (state[0] !== "t" && Number(state[1]) > 0) throw new Error("SHADOW_BOOTSTRAP_REFUSED: target has public tables but no bootstrap ledger (not an empty shadow database)");
   psql(url, ["-c", "CREATE TABLE IF NOT EXISTS public.shadow_bootstrap_ledger (file text PRIMARY KEY, sha256 text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())"]);
   const done = new Map(psql(url, ["-At", "-F", "|", "-c", "SELECT file, sha256 FROM public.shadow_bootstrap_ledger"]).split("\n").filter(Boolean).map((l) => l.split("|")));
   let applied = 0, skipped = 0;

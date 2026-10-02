@@ -67,6 +67,12 @@ test("EMPTY DB -> bootstrap -> verify -> second apply is a no-op -> shadow signa
     const node = (args: string[]) => spawnSync("node", ["scripts/shadow/shadow-bootstrap.mjs", ...args], { cwd: ROOT, encoding: "utf8", env: { ...process.env, SHADOW_DATABASE_URL: url } });
     assert.equal(run(admin, ["-c", `CREATE DATABASE ${db}`]).status, 0);
     try {
+      // A non-empty, ledger-less target (e.g. a DEV-like database) must be refused before any DDL.
+      assert.equal(run(url, ["-c", "CREATE TABLE public.preexisting_marker (x int)"]).status, 0);
+      const refused = node(["--apply"]);
+      assert.notEqual(refused.status, 0);
+      assert.match(refused.stderr, /not an empty shadow database/);
+      assert.equal(run(url, ["-c", "DROP TABLE public.preexisting_marker"]).status, 0);
       const first = node(["--apply", "--verify"]);
       assert.equal(first.status, 0, first.stderr);
       assert.match(first.stdout, /"applied":\d+,"skipped":0/);

@@ -18,13 +18,13 @@ No operational rows are copied; every table starts empty and the shadow fills it
 
 ## Sequence (future operator)
 1. Create an empty Supabase project/database (shadow only).
-2. `SHADOW_DATABASE_URL=<shadow postgres url> npm run shadow:db:bootstrap` (apply + verify; re-run is a no-op).
+2. (Refuses a target that already has public tables but no ledger.) `SHADOW_DATABASE_URL=<shadow postgres url> npm run shadow:db:bootstrap` (apply + verify; re-run is a no-op).
 3. Verification is part of step 2 (`required-schema.json`: tables, key columns, serving/evidence functions, probe reads).
 4. Set service variables (values only in Railway): `SHADOW_SUPABASE_URL`, `SHADOW_SUPABASE_SERVICE_ROLE_KEY`, `SHADOW_EXECUTOR_CANDIDATES_SECRET`, `SHADOW_BASE_URL` (cycle runner). Do NOT set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `EXECUTOR_CANDIDATES_SECRET`, `RESERVATION_TIMES_MINSK`.
 5. Selector `CONSTRUCTOR_ACTIVE_CONTOUR=PROD_SHADOW` is pinned in every start command.
 6. Start the signals service (`prod-shadow-signals.toml`): boot-check, `shadow:signals`, `shadow:resolve`.
 7. Shadow GSP and `current_signal_pair_serving` now exist in the shadow DB only.
-8. Run `shadow:cycle reservations`, then `shadow:cycle rebalance` (always after step 6 produced serving rows).
+8. Run `shadow:cycle reservations` (NOTE: no repo-owned recurring scheduler for reservations/rebalance is defined yet; the operator schedules them, rebalance every 5-10 min, always after step 6), then `shadow:cycle rebalance` (always after step 6 produced serving rows).
 9. Start the web service (`prod-shadow-web.toml`); `shadow:boot-check` gates it.
 10. Passive proof: `GET /api/executor/queue`, `POST /api/executor/queue/mark`, `POST /api/executor/order-events` all return 403 `CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED` with zero DB writes.
 
@@ -42,7 +42,7 @@ Remaining relevant leaks: 0.
 - Callbacks (`/api/executor/queue/mark`, `/api/executor/order-events`) read optional body `contour_id`: match -> proceed; mismatch/malformed -> 409 before any DB access; absent -> accepted only on the default contour (`LEGACY_UNSPECIFIED`), rejected (`CONTOUR_ID_REQUIRED`) on non-default ones.
 
 ## IRELAND / Codex only — contour echo delta
-- Current: Queue response candidates and mark/order-events callbacks carry no contour field.
+- Ireland's current state (as seen from PREMVP): it does not echo any contour field on mark/order-events callbacks (PREMVP already emits `contour_id` on the Queue response).
 - Proposed field: `contour_id` (string, e.g. `"DEV_LIVE"`).
 - Request direction (PREMVP -> Ireland): already emitted on the Queue response (top-level `contour_id` and each candidate's `contour_id`).
 - Callback direction (Ireland -> PREMVP): Ireland copies the `contour_id` of the candidate it executed into every `POST /api/executor/queue/mark` and `POST /api/executor/order-events` body, verbatim.
