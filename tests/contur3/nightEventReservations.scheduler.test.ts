@@ -378,7 +378,7 @@ test("C4: active production daily entry explicitly selects Contract A planning f
   // The invariant is unchanged: both production paths explicitly select Contract A planning.
   assert.match(source, /const selectorMode = contour\.profile\.selectors\.planning;/);
   assert.match(source, /runReservationCronWithEvidence\([\s\S]*selectorMode,/);
-  assert.match(source, /executeForceRebuild\(nowMs,\s*\{\s*selectorMode,\s*anchor: currentAnchor\s*\}\)/);
+  assert.match(source, /executeForceRebuild\(nowMs,\s*\{\s*selectorMode,\s*anchor: currentAnchor(?:,\s*runtime)?\s*\}\)/);
   assert.equal(DEV_LIVE_PROFILE.selectors.planning, "CONTRACT_A_PLANNING_V1");
 });
 

@@ -1,3 +1,4 @@
+import type { RuntimeSupabaseClient } from "../constructor/bootstrap";
 import { createHash } from "node:crypto";
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
@@ -244,7 +245,7 @@ type FinalT3ReadPort = {
 /** One finalized source-set snapshot for one reserved physical event. */
 export async function readCompletedFinalT3Universe(
   reservation: NightEventReservationRow,
-  port: FinalT3ReadPort = defaultFinalT3ReadPort,
+  port: FinalT3ReadPort = createFinalT3ReadPort(),
 ): Promise<FinalT3MarketObservation[]> {
   const id = reservation.id;
   const physicalId = reservation.physical_event_id;
@@ -283,9 +284,17 @@ export async function readCompletedFinalT3Universe(
   return rows as FinalT3MarketObservation[];
 }
 
-const defaultFinalT3ReadPort: FinalT3ReadPort = {
+export type RuntimeClientGetter = () => RuntimeSupabaseClient | Promise<RuntimeSupabaseClient>;
+async function defaultProcessClient(): Promise<RuntimeSupabaseClient> {
+  const { supabaseAdmin } = await import("../supabase/server");
+  return supabaseAdmin;
+}
+
+/** Final-T3 reader bound to a client getter; default = the process-wide supabaseAdmin (unchanged). */
+export function createFinalT3ReadPort(getClient: RuntimeClientGetter = defaultProcessClient): FinalT3ReadPort {
+  return {
   async readRuns(reservationId) {
-    const { supabaseAdmin } = await import("../supabase/server");
+    const supabaseAdmin = await getClient();
     const { data, error } = await supabaseAdmin.from("reservation_market_capture_runs")
       .select("id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,source_version,capture_complete,capture_status,market_tokens_expected_n,market_tokens_observed_n")
       .eq("reservation_id", reservationId).eq("observation_phase", FINAL_REBALANCE_PHASE)
@@ -294,7 +303,7 @@ const defaultFinalT3ReadPort: FinalT3ReadPort = {
     return data ?? [];
   },
   async readObservations(captureRunId, afterId) {
-    const { supabaseAdmin } = await import("../supabase/server");
+    const supabaseAdmin = await getClient();
     const { data, error } = await supabaseAdmin.from("reservation_market_observations")
       .select("id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,condition_id,token_id,side,observation_phase,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_ask,ask_decimal_odds,orderbook_fetch_status")
       .eq("capture_run_id", captureRunId).gt("id", afterId).order("id").limit(200);
@@ -302,6 +311,7 @@ const defaultFinalT3ReadPort: FinalT3ReadPort = {
     return data ?? [];
   },
 };
+}
 
 export async function captureReservationMarketBaseline(
   reservation: NightEventReservationRow,
@@ -311,6 +321,8 @@ export async function captureReservationMarketBaseline(
     fetchBooks?: typeof fetchOrderBooksConcurrent;
     write?: (run: Record<string, unknown>, observations: Record<string, unknown>[], strategies?: Record<string, unknown>[]) => Promise<void>;
     observedAt?: string;
+    /** Runtime-bound client getter; omitted => process-wide client. */
+    getClient?: RuntimeClientGetter;
   } = {},
 ): Promise<void> {
   if (!reservation.id) throw new Error("BASELINE_RESERVATION_ID_MISSING");
@@ -332,7 +344,7 @@ export async function captureReservationMarketBaseline(
     orderbooks_success_n: 0, orderbooks_failed_n: 0,
     capture_complete: true, capture_status: "REFERENCE_ONLY", failure_reason: null,
   };
-  await (deps.write ?? defaultWriter)(run, [], []);
+  await (deps.write ?? ((r, o, st) => defaultWriter(r, o, st, deps.getClient)))(run, [], []);
 }
 
 export async function captureReservationMarketObservation(
@@ -347,11 +359,12 @@ export async function captureReservationMarketObservation(
     write?: (run: Record<string, unknown>, observations: Record<string, unknown>[], strategies?: Record<string, unknown>[]) => Promise<void>;
     observedAt?: string;
     alreadyCaptured?: (reservationId: string, phase: ReservationMarketPhase, sourceVersion: string) => Promise<boolean>;
+    getClient?: RuntimeClientGetter;
   } = {},
 ): Promise<void> {
   if (phase === PHASE) return captureReservationMarketBaseline(reservation, deps);
   if (!reservation.id) throw new Error("BASELINE_RESERVATION_ID_MISSING");
-  if (await (deps.alreadyCaptured ?? defaultAlreadyCaptured)(reservation.id, phase, MARKET_SOURCE_VERSION)) return;
+  if (await (deps.alreadyCaptured ?? ((id, ph, sv) => defaultAlreadyCaptured(id, ph, sv, deps.getClient)))(reservation.id, phase, MARKET_SOURCE_VERSION)) return;
   const lineage = reservation.diagnostics?.source_lineage as {
     provider_event_id?: unknown; provider_event_start_iso?: unknown; provider_game_id?: unknown; provider_market_type?: unknown;
   } | undefined;
@@ -455,11 +468,11 @@ export async function captureReservationMarketObservation(
     capture_status: failureReason ? "CAPTURE_FAILED" : completeness.status,
     failure_reason: failureReason ?? (missingIdentity ? "MARKET_TOKEN_IDENTITY_MISSING" : null),
   };
-  await (deps.write ?? defaultWriter)(run, observations, strategyRowsForMarketObservations(observations));
+  await (deps.write ?? ((r, o, st) => defaultWriter(r, o, st, deps.getClient)))(run, observations, strategyRowsForMarketObservations(observations));
 }
 
-async function defaultAlreadyCaptured(reservationId: string, phase: ReservationMarketPhase, sourceVersion: string): Promise<boolean> {
-  const { supabaseAdmin } = await import("../supabase/server");
+async function defaultAlreadyCaptured(reservationId: string, phase: ReservationMarketPhase, sourceVersion: string, getClient: RuntimeClientGetter = defaultProcessClient): Promise<boolean> {
+  const supabaseAdmin = await getClient();
   const { data, error } = await supabaseAdmin.from("reservation_market_capture_runs")
     .select("id,capture_status").eq("reservation_id", reservationId).eq("observation_phase", phase)
     .eq("source_version", sourceVersion).limit(1);
@@ -511,8 +524,8 @@ async function defaultGameEventsReader(gameId: string, eventStartIso: string): P
   return markets;
 }
 
-async function defaultWriter(run: Record<string, unknown>, observations: Record<string, unknown>[], _strategies: Record<string, unknown>[] = []): Promise<void> {
-  const { supabaseAdmin } = await import("../supabase/server");
+async function defaultWriter(run: Record<string, unknown>, observations: Record<string, unknown>[], _strategies: Record<string, unknown>[] = [], getClient: RuntimeClientGetter = defaultProcessClient): Promise<void> {
+  const supabaseAdmin = await getClient();
   if (run.observation_phase === PHASE) {
     const { error } = await supabaseAdmin.from("reservation_market_capture_runs")
       .upsert(run, { onConflict: "reservation_id,observation_phase,source_version", ignoreDuplicates: true });
@@ -639,11 +652,12 @@ export async function persistReservationT3AbDecisions(
   deps: {
     readUniverse?: typeof readCompletedFinalT3Universe;
     recordDecision?: typeof recordReservationStrategyDecision;
+    getClient?: RuntimeClientGetter;
   } = {},
 ): Promise<{ a: ReservationStrategyDecisionInput; b: ReservationStrategyDecisionInput }> {
-  const universe = await (deps.readUniverse ?? readCompletedFinalT3Universe)(reservation);
+  const universe = await (deps.readUniverse ?? ((r) => readCompletedFinalT3Universe(r, createFinalT3ReadPort(deps.getClient))))(reservation);
   const decisions = selectReservationT3AbDecisions(reservation, universe);
-  const record = deps.recordDecision ?? recordReservationStrategyDecision;
+  const record = deps.recordDecision ?? ((i) => recordReservationStrategyDecision(i, { store: createReservationStrategyDecisionStore(deps.getClient) }));
   await record(decisions.a);
   await record(decisions.b);
   return decisions;
@@ -684,7 +698,7 @@ export async function recordReservationStrategyDecision(
   if (selectedIdentity && !(selectedIdentity.conditionId && selectedIdentity.tokenId && selectedIdentity.side)) {
     throw new Error("STRATEGY_DECISION_SELECTED_IDENTITY_INVALID");
   }
-  const store = deps.store ?? defaultDecisionStore;
+  const store = deps.store ?? createReservationStrategyDecisionStore();
   const observations = (await readAllPages((after, limit) => store.readObservations(input.captureRunId, after, limit)))
     .sort((a, b) => String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0);
   if (observations.length === 0) throw new Error("STRATEGY_DECISION_NO_OBSERVATIONS");
@@ -729,9 +743,11 @@ export async function recordReservationStrategyDecision(
   return { total: rows.length, selected: selectedId ? 1 : 0, written: missing.length };
 }
 
-const defaultDecisionStore: ReservationStrategyDecisionStore = {
+/** Strategy-decision store bound to a client getter; default = the process-wide supabaseAdmin (unchanged). */
+export function createReservationStrategyDecisionStore(getClient: RuntimeClientGetter = defaultProcessClient): ReservationStrategyDecisionStore {
+  return {
   async readObservations(captureRunId, afterId, limit) {
-    const { supabaseAdmin } = await import("../supabase/server");
+    const supabaseAdmin = await getClient();
     const { data, error } = await supabaseAdmin.from("reservation_market_observations")
       .select("id,capture_run_id,reservation_id,physical_event_id,condition_id,token_id,side,observation_phase,observed_at,minutes_to_start,best_ask,ask_decimal_odds,spread_abs,ask_depth_relevant_usd")
       .eq("capture_run_id", captureRunId).gt("id", afterId).order("id").limit(limit);
@@ -739,7 +755,7 @@ const defaultDecisionStore: ReservationStrategyDecisionStore = {
     return (data ?? []) as Record<string, unknown>[];
   },
   async readDecisions(captureRunId, strategyVariant, afterId, limit) {
-    const { supabaseAdmin } = await import("../supabase/server");
+    const supabaseAdmin = await getClient();
     const { data, error } = await supabaseAdmin.from("reservation_strategy_observations")
       .select("id,market_observation_id,evaluation_state,eligible,rejection_reason,strategy_version")
       .eq("capture_run_id", captureRunId).eq("strategy_variant", strategyVariant)
@@ -748,12 +764,13 @@ const defaultDecisionStore: ReservationStrategyDecisionStore = {
     return (data ?? []) as Record<string, unknown>[];
   },
   async upsertDecisions(rows) {
-    const { supabaseAdmin } = await import("../supabase/server");
+    const supabaseAdmin = await getClient();
     const { error } = await supabaseAdmin.from("reservation_strategy_observations")
       .upsert(rows, { onConflict: "market_observation_id,strategy_variant", ignoreDuplicates: true });
     if (error) throw new Error("STRATEGY_DECISION_WRITE_FAILED");
   },
 };
+}
 
 export type LiveGuardTelemetryInput = {
   attemptId: string;
@@ -818,9 +835,9 @@ export function liveGuardTelemetryRows(reservation: NightEventReservationRow, in
   return { run, observation, strategies: strategyRowsForMarketObservations([observation]) };
 }
 
-export async function persistLiveGuardTelemetry(reservation: NightEventReservationRow, input: LiveGuardTelemetryInput): Promise<void> {
+export async function persistLiveGuardTelemetry(reservation: NightEventReservationRow, input: LiveGuardTelemetryInput, getClient?: RuntimeClientGetter): Promise<void> {
   const rows = liveGuardTelemetryRows(reservation, input);
-  await defaultWriter(rows.run, [rows.observation], rows.strategies);
+  await defaultWriter(rows.run, [rows.observation], rows.strategies, getClient);
 }
 
 export async function captureReservationMarketMilestones(
@@ -829,20 +846,21 @@ export async function captureReservationMarketMilestones(
     load?: (lowerIso: string, upperIso: string) => Promise<NightEventReservationRow[]>;
     capture?: (reservation: NightEventReservationRow, phase: ReservationMarketPhase, observedAt: string) => Promise<void>;
     onError?: (code: string) => void;
+    getClient?: RuntimeClientGetter;
   } = {},
 ): Promise<void> {
   const observedAt = new Date(nowMs).toISOString();
   const lower = new Date(nowMs + 3 * 60_000).toISOString();
   const upper = new Date(nowMs + 30 * 60_000).toISOString();
-  const rows = await (deps.load ?? defaultMilestoneReservationLoader)(lower, upper);
+  const rows = await (deps.load ?? ((lo, up) => defaultMilestoneReservationLoader(lo, up, deps.getClient)))(lower, upper);
   for (const reservation of rows.slice(0, 200)) {
     const phase = classifyReservationMarketPhase(reservation.event_start_iso ?? "", nowMs);
     if (!phase) continue;
     try {
       if (deps.capture) await deps.capture(reservation, phase, observedAt);
       else {
-        await captureReservationMarketObservation(reservation, phase, { observedAt });
-        if (phase === FINAL_REBALANCE_PHASE) await persistReservationT3AbDecisions(reservation);
+        await captureReservationMarketObservation(reservation, phase, { observedAt, getClient: deps.getClient });
+        if (phase === FINAL_REBALANCE_PHASE) await persistReservationT3AbDecisions(reservation, { getClient: deps.getClient });
       }
     } catch {
       (deps.onError ?? ((code) => console.error(`[reservation-market-milestone] ${code}`)))("CAPTURE_FAILED");
@@ -850,8 +868,8 @@ export async function captureReservationMarketMilestones(
   }
 }
 
-async function defaultMilestoneReservationLoader(lowerIso: string, upperIso: string): Promise<NightEventReservationRow[]> {
-  const { supabaseAdmin } = await import("../supabase/server");
+async function defaultMilestoneReservationLoader(lowerIso: string, upperIso: string, getClient: RuntimeClientGetter = defaultProcessClient): Promise<NightEventReservationRow[]> {
+  const supabaseAdmin = await getClient();
   const { data, error } = await supabaseAdmin.from("night_event_reservations")
     .select("id,plan_run_id,physical_event_id,event_start_iso,diagnostics")
     .gt("event_start_iso", lowerIso).lte("event_start_iso", upperIso)

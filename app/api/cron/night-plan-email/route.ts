@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getActiveContour } from "@/lib/constructor/registry";
+import { bootProcessRuntime } from "@/lib/constructor/bootstrap";
 import {
   ensureAndLoadReservations,
   nightReservationEmail,
@@ -57,7 +57,8 @@ async function sendEmail(opts: {
 
 export async function GET(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
+  const runtime = bootProcessRuntime();
+  const expectedSecret = runtime.contour.resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -90,11 +91,12 @@ export async function GET(request: NextRequest) {
 
   try {
     // mode=plan freezes the reservation plan if it does not exist yet; mode=alert never creates.
-    const contour = getActiveContour();
+    const contour = runtime.contour;
     const nowMs = Date.now();
     const { planRunId, reservations, created } = await ensureAndLoadReservations(nowMs, {
       allowCreate: mode === "plan",
       selectorMode: contour.profile.selectors.planning,
+      runtime,
       anchor: resolveReservationAnchor(nowMs, parseReservationTimes(contour.resolveEnv("reservationTimesMinsk"))),
     });
     const { subject, text } = nightReservationEmail(planRunId, reservations);

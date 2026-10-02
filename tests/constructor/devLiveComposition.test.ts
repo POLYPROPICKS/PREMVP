@@ -52,7 +52,7 @@ test("manifest digest is deterministic and pinned (a composition change must be 
   const b = composeContour(clone(DEV_LIVE)).manifestDigest;
   assert.equal(a, b);
   assert.equal(a, computeManifestDigest(DEV_LIVE_COMPONENT_MANIFEST));
-  assert.equal(a, "b797297736cf0d83d5822eced53eced936a785c3d3a1cf9bfdc71f44761b8381");
+  assert.equal(a, "2a187e5335e990bf619a084058021873e2f8bb1b5f95dc85a7ea47065b6dcaa9");
 });
 
 // ── 2. OLD DEV intent == NEW Constructor-composed DEV intent ─────────────────
@@ -109,7 +109,7 @@ test("migrated active-path call sites no longer hard-code the selector mode", ()
   ];
   for (const rel of sites) {
     const src = read(rel);
-    assert.ok(src.includes("getActiveContour"), `${rel} must consume the composed contour`);
+    assert.ok(src.includes("getActiveContour") || src.includes("bootProcessRuntime"), `${rel} must consume the composed contour`);
     assert.ok(!/["']CONTRACT_A_PLANNING_V1["']/.test(src.replace(/\/\/.*$/gm, "")), `${rel} still hard-codes the selector`);
   }
   const queue = read("lib/executor/eventExecutionQueue.ts");

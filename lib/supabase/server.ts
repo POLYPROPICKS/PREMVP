@@ -6,11 +6,8 @@
 // resolved by the factory. A second instance in the same process must call
 // createSupabaseAdminClient(itsContour) rather than reuse this export.
 
-import { getActiveContour } from "../constructor/registry";
-import { validateContourRuntime } from "../constructor/runtimeContract";
-import { createSupabaseAdminClient } from "./adminClientFactory";
+import { bootProcessRuntime } from "../constructor/bootstrap";
 
 // Passive contours (PROD_SHADOW) must be bound exclusively to their own resources; no-op for DEV_LIVE.
-validateContourRuntime(getActiveContour());
-
-export const supabaseAdmin = createSupabaseAdminClient(getActiveContour());
+// The client is only built from a contour that has been selected AND validated by the shared boot.
+export const supabaseAdmin = bootProcessRuntime().resources.supabaseAdmin();

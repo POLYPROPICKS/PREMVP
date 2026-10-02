@@ -6,18 +6,17 @@
 // initialization, and proves the money boundary refuses. Exit 0 = safe to start; non-zero = refuse.
 
 import { assertMoneyMovementEnabled } from "../../lib/constructor/contracts";
-import { ACTIVE_CONTOUR_ENV, getActiveContour } from "../../lib/constructor/registry";
-import { describeRuntimeContract, validateContourRuntime } from "../../lib/constructor/runtimeContract";
+import { bootProcessRuntime } from "../../lib/constructor/bootstrap";
+import { ACTIVE_CONTOUR_ENV } from "../../lib/constructor/registry";
 
 async function main(): Promise<void> {
   if (process.env[ACTIVE_CONTOUR_ENV] !== "PROD_SHADOW") {
     throw new Error(`SHADOW_BOOT_REFUSED: ${ACTIVE_CONTOUR_ENV} must be explicitly set to PROD_SHADOW`);
   }
-  const contour = getActiveContour();
+  const { contour, contract } = bootProcessRuntime();
   if (contour.profile.contourId !== "PROD_SHADOW" || contour.profile.capabilities.moneyMovement !== "disabled") {
     throw new Error("SHADOW_BOOT_REFUSED: selected contour is not a passive PROD_SHADOW");
   }
-  validateContourRuntime(contour);
 
   // Shared non-money initialization: the process-wide admin client resolves through the shadow bindings.
   const { supabaseAdmin } = await import("../../lib/supabase/server");
@@ -41,7 +40,7 @@ async function main(): Promise<void> {
     if (!/CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED/.test((e as Error).message)) throw e;
   }
 
-  console.log(JSON.stringify({ ok: true, contract: describeRuntimeContract(contour) }, null, 2));
+  console.log(JSON.stringify({ ok: true, contract: contract }, null, 2));
 }
 
 main().then(

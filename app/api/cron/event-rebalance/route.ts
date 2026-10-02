@@ -1,5 +1,5 @@
 import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
-import { getActiveContour } from "@/lib/constructor/registry";
+import { bootProcessRuntime } from "@/lib/constructor/bootstrap";
 import { createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
 import { NextRequest, NextResponse } from "next/server";
 import {
@@ -62,7 +62,8 @@ async function handle(request: NextRequest) {
   }
 
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
+  const runtime = bootProcessRuntime();
+  const expectedSecret = runtime.contour.resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -107,7 +108,7 @@ async function handle(request: NextRequest) {
         write: !dryRun,
         maxQueueWrites: 1,
         targetReservationId,
-      }, { contour: getActiveContour() });
+      }, { runtime });
       const first_failure_code = !result.target_reservation_matched
         ? "CANARY_RESERVATION_NOT_FOUND"
         : result.first_rejection_code === "BLOCKED_BY_MAX_QUEUE_WRITES"
@@ -148,7 +149,7 @@ async function handle(request: NextRequest) {
   // value other than the one pre-authorized fixed test id.
   if (controlledLiveIntent !== null) {
     try {
-      const result = await runControlledLiveIntent(Date.now(), controlledLiveIntent, { write: !dryRun });
+      const result = await runControlledLiveIntent(Date.now(), controlledLiveIntent, { write: !dryRun }, { runtime });
       const status = result.kind === "BLOCKED_INVALID_REQUEST" ? 400 : 200;
       return NextResponse.json(
         {
@@ -218,7 +219,7 @@ async function handle(request: NextRequest) {
     const result = await runEventRebalanceWithEvidence(Date.now(), {
       write: !dryRun,
       maxQueueWrites: maxQueueWritesParsed.value,
-    }, { contour: getActiveContour() });
+    }, { runtime });
     const diagResult = await persistRebalanceDiagnostics(result, {
       context: "event-rebalance-cron",
     });
