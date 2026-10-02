@@ -8,7 +8,7 @@ export const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 export const IN_WINDOW_MS = Date.parse("2026-07-19T18:52:00.000Z"); // T-8m, final write window
 const PHYSICAL_ID = "provider:polymarket:event-1:2026-07-19";
 
-function reservation(): NightEventReservationRow {
+export function reservation(): NightEventReservationRow {
   return {
     id: "shadow-r", physical_event_id: PHYSICAL_ID, event_start_iso: KICKOFF_ISO,
     plan_run_id: "night-plan:2026-07-19:1700-minsk", plan_date_minsk: "2026-07-19",

@@ -521,8 +521,8 @@ async function defaultGameEventsReader(gameId: string, eventStartIso: string): P
   return markets;
 }
 
-async function defaultWriter(run: Record<string, unknown>, observations: Record<string, unknown>[], _strategies: Record<string, unknown>[] = []): Promise<void> {
-  const { supabaseAdmin } = await import("../supabase/server");
+async function defaultWriter(run: Record<string, unknown>, observations: Record<string, unknown>[], _strategies: Record<string, unknown>[] = [], getClient: RuntimeClientGetter = defaultProcessClient): Promise<void> {
+  const supabaseAdmin = await getClient();
   if (run.observation_phase === PHASE) {
     const { error } = await supabaseAdmin.from("reservation_market_capture_runs")
       .upsert(run, { onConflict: "reservation_id,observation_phase,source_version", ignoreDuplicates: true });
@@ -831,9 +831,9 @@ export function liveGuardTelemetryRows(reservation: NightEventReservationRow, in
   return { run, observation, strategies: strategyRowsForMarketObservations([observation]) };
 }
 
-export async function persistLiveGuardTelemetry(reservation: NightEventReservationRow, input: LiveGuardTelemetryInput): Promise<void> {
+export async function persistLiveGuardTelemetry(reservation: NightEventReservationRow, input: LiveGuardTelemetryInput, getClient?: RuntimeClientGetter): Promise<void> {
   const rows = liveGuardTelemetryRows(reservation, input);
-  await defaultWriter(rows.run, [rows.observation], rows.strategies);
+  await defaultWriter(rows.run, [rows.observation], rows.strategies, getClient);
 }
 
 export async function captureReservationMarketMilestones(

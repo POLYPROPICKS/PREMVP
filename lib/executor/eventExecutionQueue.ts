@@ -2012,6 +2012,9 @@ export async function runEventRebalance(
     (runtimeClient
       ? (reservation: NightEventReservationRow) => readCompletedFinalT3Universe(reservation, createFinalT3ReadPort(runtimeClient))
       : readCompletedFinalT3Universe);
+  const persistTelemetry: typeof persistLiveGuardTelemetry = runtimeClient
+    ? (reservation, input) => persistLiveGuardTelemetry(reservation, input, runtimeClient)
+    : persistLiveGuardTelemetry;
   const recordStrategyDecision: typeof recordReservationStrategyDecision = deps.recordStrategyDecision ??
     (runtimeClient
       ? (input) => recordReservationStrategyDecision(input, { store: createReservationStrategyDecisionStore(runtimeClient) })
@@ -2205,7 +2208,7 @@ export async function runEventRebalance(
         ? await selectQueueRowFromT3FinalIdentity(
             reservation, finalSiblingUniverse, rebalanceRunId, nowMs, fetchExactTokenOrderbook,
             recordStrategyDecision,
-            deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined),
+            deps.writeGuardTelemetry ?? (!deps.repo ? persistTelemetry : undefined),
           )
         : manifestResolution?.kind === "SUPPORTED"
         ? await selectQueueRowFromReservationCandidateManifest(
@@ -2213,7 +2216,7 @@ export async function runEventRebalance(
             manifestResolution.candidates,
             rebalanceRunId,
             fetchExactTokenOrderbook,
-            write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined)) : undefined
+            write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistTelemetry : undefined)) : undefined
           )
         : manifestResolution?.kind === "UNSUPPORTED"
           ? { outcome: "SKIPPED" as const, reason: manifestResolution.reason, queueRow: null }
@@ -2228,7 +2231,7 @@ export async function runEventRebalance(
                 nowMs,
                 fetchFinalIdentitySourceRows,
                 fetchExactTokenOrderbook,
-                write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined)) : undefined,
+                write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistTelemetry : undefined)) : undefined,
               )
             : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     // Founder-authorized money envelope ($4.00 stake / 0.62 price). The

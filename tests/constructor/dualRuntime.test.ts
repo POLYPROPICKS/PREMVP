@@ -178,3 +178,17 @@ test("a caller-supplied DEV contour cannot override a SHADOW runtime: the runtim
   );
   assert.equal(calls.insert, 0);
 });
+
+test("live-guard telemetry persistence takes the runtime's client (no mixed-client write in the runtime path)", async () => {
+  const { persistLiveGuardTelemetry } = await import("../../lib/executor/reservationMarketBaseline");
+  const { reservation } = await import("./fixtures/rebalanceFixture");
+  const seen: string[] = [];
+  const stub = { from(table: string) { seen.push(table); throw new Error("STUB_CLIENT_USED"); } };
+  const input = {
+    attemptId: "a", observedAt: "2026-07-19T18:52:00.000Z", conditionId: "c", tokenId: "t", side: "Yes", marketSlug: null,
+    referenceEntryPrice: 0.5, executionPriceCap: 0.55, requestedStakeUsd: 1, pass: true, rejectionReason: null,
+    fetchStatus: "SUCCESS", fetchFailureReason: null, fetchLatencyMs: 1, bestBid: 0.5, bestAsk: 0.52, spread: 0.02,
+  };
+  await assert.rejects(persistLiveGuardTelemetry(reservation(), input as never, () => stub as never), /STUB_CLIENT_USED/);
+  assert.ok(seen.length >= 1);
+});
