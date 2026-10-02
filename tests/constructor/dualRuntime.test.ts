@@ -167,3 +167,14 @@ test("DEFAULT T3 universe read of the shared engine goes through the runtime's c
   assert.ok(seen.includes("reservation_market_capture_runs"), `T3 read hit the runtime client (saw: ${seen.join(",")})`);
   assert.equal(calls.insert, 0);
 });
+
+test("a caller-supplied DEV contour cannot override a SHADOW runtime: the runtime's contour wins and money stays blocked", async () => {
+  const shadow = bootContourRuntime(SHADOW_ENV);
+  const dev = bootContourRuntime(DEV_ENV);
+  const { repo, calls } = spyRepo();
+  await assert.rejects(
+    runEventRebalance(IN_WINDOW_MS, { write: true }, { ...writeDeps(repo), contour: dev.contour, runtime: shadow }),
+    BLOCKED,
+  );
+  assert.equal(calls.insert, 0);
+});
