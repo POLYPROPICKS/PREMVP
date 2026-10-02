@@ -12,11 +12,13 @@ const MARKET_SOURCE_VERSION = "RESERVATION_MARKET_BASELINE_V1";
 const PHASE = "RESERVATION_BASELINE";
 export type ReservationMarketPhase = typeof PHASE | "T_MINUS_30" | "T_MINUS_10" | "T_MINUS_3" | "LIVE_GUARD";
 
+/** Single authority for the live Final Rebalance source phase (T_MINUS_3 is historical-only). */
+export const FINAL_REBALANCE_PHASE = "T_MINUS_10" as const;
+
 export function classifyReservationMarketPhase(eventStartIso: string, nowMs: number): Exclude<ReservationMarketPhase, typeof PHASE> | null {
   const minutes = (Date.parse(eventStartIso) - nowMs) / 60_000;
   if (minutes > 20 && minutes <= 30) return "T_MINUS_30";
   if (minutes > 9 && minutes <= 15) return "T_MINUS_10";
-  if (minutes > 3 && minutes <= 9) return "T_MINUS_3";
   return null;
 }
 
@@ -256,7 +258,7 @@ export async function readCompletedFinalT3Universe(
   const run = runs[0];
   if (run.reservation_id !== id || run.physical_event_id !== physicalId ||
       run.provider_event_id !== providerId || Date.parse(String(run.event_start_iso)) !== Date.parse(start) ||
-      run.observation_phase !== "T_MINUS_3" || run.source_version !== MARKET_SOURCE_VERSION ||
+      run.observation_phase !== FINAL_REBALANCE_PHASE || run.source_version !== MARKET_SOURCE_VERSION ||
       run.capture_complete !== true || run.capture_status !== "COMPLETE" ||
       typeof run.id !== "string" || !run.id ||
       !Number.isSafeInteger(run.market_tokens_observed_n) || Number(run.market_tokens_observed_n) <= 0 ||
@@ -275,7 +277,7 @@ export async function readCompletedFinalT3Universe(
   if (rows.length !== run.market_tokens_observed_n || rows.some((row) =>
     row.capture_run_id !== run.id || row.reservation_id !== id || row.physical_event_id !== physicalId ||
     row.provider_event_id !== providerId || Date.parse(String(row.event_start_iso)) !== Date.parse(start) ||
-    row.observation_phase !== "T_MINUS_3" ||
+    row.observation_phase !== FINAL_REBALANCE_PHASE ||
     ![row.condition_id, row.token_id, row.side].every((value) => typeof value === "string" && value.trim() !== "")
   )) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
   return rows as FinalT3MarketObservation[];
@@ -286,7 +288,7 @@ const defaultFinalT3ReadPort: FinalT3ReadPort = {
     const { supabaseAdmin } = await import("../supabase/server");
     const { data, error } = await supabaseAdmin.from("reservation_market_capture_runs")
       .select("id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,source_version,capture_complete,capture_status,market_tokens_expected_n,market_tokens_observed_n")
-      .eq("reservation_id", reservationId).eq("observation_phase", "T_MINUS_3")
+      .eq("reservation_id", reservationId).eq("observation_phase", FINAL_REBALANCE_PHASE)
       .eq("source_version", MARKET_SOURCE_VERSION).limit(2);
     if (error) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
     return data ?? [];
@@ -587,7 +589,7 @@ export function selectReservationT3AbDecisions(
       universe.some((row) => row.capture_run_id !== captureRunId || row.reservation_id !== reservation.id ||
         row.physical_event_id !== reservation.physical_event_id ||
         Date.parse(row.event_start_iso) !== Date.parse(reservationStart) ||
-        row.observation_phase !== "T_MINUS_3" ||
+        row.observation_phase !== FINAL_REBALANCE_PHASE ||
         ![row.condition_id, row.token_id, row.side].every((v) => typeof v === "string" && v.trim() !== ""))) {
     throw new Error("AB_T3_UNIVERSE_LINEAGE_INVALID");
   }
@@ -840,7 +842,7 @@ export async function captureReservationMarketMilestones(
       if (deps.capture) await deps.capture(reservation, phase, observedAt);
       else {
         await captureReservationMarketObservation(reservation, phase, { observedAt });
-        if (phase === "T_MINUS_3") await persistReservationT3AbDecisions(reservation);
+        if (phase === FINAL_REBALANCE_PHASE) await persistReservationT3AbDecisions(reservation);
       }
     } catch {
       (deps.onError ?? ((code) => console.error(`[reservation-market-milestone] ${code}`)))("CAPTURE_FAILED");

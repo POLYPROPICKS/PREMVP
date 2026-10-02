@@ -96,7 +96,9 @@ test("milestone windows have deterministic non-overlapping boundaries", () => {
   assert.equal(classifyReservationMarketPhase(start, at(30)), "T_MINUS_30");
   assert.equal(classifyReservationMarketPhase(start, at(20)), null);
   assert.equal(classifyReservationMarketPhase(start, at(15)), "T_MINUS_10");
-  assert.equal(classifyReservationMarketPhase(start, at(9)), "T_MINUS_3");
+  assert.equal(classifyReservationMarketPhase(start, at(9.5)), "T_MINUS_10");
+  assert.equal(classifyReservationMarketPhase(start, at(9)), null);
+  assert.equal(classifyReservationMarketPhase(start, at(5)), null); // no live T_MINUS_3 capture
   assert.equal(classifyReservationMarketPhase(start, at(3)), null);
 });
 
@@ -112,7 +114,7 @@ test("persisted milestone skips inventory and CLOB on a repeated tick", async ()
 test("QUEUED and SKIPPED persisted reservations remain in the telemetry cohort", async () => {
   const start = "2026-10-01T00:00:00Z";
   const captured: string[] = [];
-  for (const [status, minutes, expected] of [["QUEUED", 10, "T_MINUS_10"], ["SKIPPED", 5, "T_MINUS_3"]] as const) {
+  for (const [status, minutes, expected] of [["QUEUED", 10, "T_MINUS_10"], ["SKIPPED", 12, "T_MINUS_10"]] as const) {
     const row = { id: status, status, event_start_iso: start } as unknown as NightEventReservationRow;
     await captureReservationMarketMilestones(Date.parse(start) - minutes * 60_000, {
       load: async () => [row],
@@ -175,10 +177,10 @@ test("completed T3 reader returns only one exact same-event capture and rejects 
   const reservation = { id: "reservation", physical_event_id: "event", event_start_iso: start,
     diagnostics: { source_lineage: { provider_event_id: "provider" } } } as unknown as NightEventReservationRow;
   const run = { id: "run-t3", reservation_id: "reservation", physical_event_id: "event", provider_event_id: "provider",
-    event_start_iso: start, observation_phase: "T_MINUS_3", source_version: "RESERVATION_MARKET_BASELINE_V1",
+    event_start_iso: start, observation_phase: "T_MINUS_10", source_version: "RESERVATION_MARKET_BASELINE_V1",
     capture_complete: true, capture_status: "COMPLETE", market_tokens_expected_n: 2, market_tokens_observed_n: 2 };
   const first = { id: "a", capture_run_id: "run-t3", reservation_id: "reservation", physical_event_id: "event",
-    provider_event_id: "provider", event_start_iso: start, observation_phase: "T_MINUS_3", condition_id: "spread",
+    provider_event_id: "provider", event_start_iso: start, observation_phase: "T_MINUS_10", condition_id: "spread",
     token_id: "spread-token", side: "Yes", canonical_market_family: "SPREADS", canonical_market_type: "SPREAD",
     best_ask: 0.5, ask_decimal_odds: 2, orderbook_fetch_status: "SUCCESS" };
   const second = { ...first, id: "b", condition_id: "corners", token_id: "corners-token", canonical_market_family: "TOTAL_CORNERS", orderbook_fetch_status: "FAILED" };
@@ -189,7 +191,7 @@ test("completed T3 reader returns only one exact same-event capture and rejects 
   for (const bad of [
     { ...run, capture_complete: false }, { ...run, reservation_id: "foreign" },
     { ...run, physical_event_id: "foreign" }, { ...run, provider_event_id: "foreign" },
-    { ...run, event_start_iso: "2026-10-02T00:00:00Z" }, { ...run, observation_phase: "T_MINUS_10" },
+    { ...run, event_start_iso: "2026-10-02T00:00:00Z" }, { ...run, observation_phase: "T_MINUS_3" },
   ]) await assert.rejects(read([bad], [first, second]), /FINAL_T3_SOURCE_UNAVAILABLE/);
   for (const bad of [
     { ...second, capture_run_id: "other" }, { ...second, reservation_id: "foreign" },
@@ -423,7 +425,7 @@ test("one exact T3 universe yields Planning A and deterministic priority B", () 
   } as unknown as NightEventReservationRow;
   const row = (condition_id: string, family: string, odds: number, extra: Partial<FinalT3MarketObservation> = {}): FinalT3MarketObservation => ({
     capture_run_id: "t3", reservation_id: "r", physical_event_id: "p", provider_event_id: "e", event_start_iso: start,
-    observation_phase: "T_MINUS_3", condition_id, token_id: `${condition_id}1`, side: "Yes",
+    observation_phase: "T_MINUS_10", condition_id, token_id: `${condition_id}1`, side: "Yes",
     canonical_market_family: family, canonical_market_type: ({ SPREADS: "SPREAD", TOTAL_CORNERS: "TOTAL_CORNERS", MONEYLINE: "MONEYLINE", TOTALS: "TOTAL" } as Record<string, string>)[family],
     best_ask: 1 / odds, ask_decimal_odds: odds, orderbook_fetch_status: "SUCCESS", ...extra,
   });
@@ -458,7 +460,7 @@ test("A and B persist on the same completed T3 capture", async () => {
     diagnostics: { planning_final_identity_evidence: { condition_id: "m", token_id: "m1", side: "Yes" } },
   } as unknown as NightEventReservationRow;
   const universe: FinalT3MarketObservation[] = [{ capture_run_id: "t3", reservation_id: "r", physical_event_id: "p",
-    provider_event_id: "e", event_start_iso: start, observation_phase: "T_MINUS_3", condition_id: "m", token_id: "m1", side: "Yes",
+    provider_event_id: "e", event_start_iso: start, observation_phase: "T_MINUS_10", condition_id: "m", token_id: "m1", side: "Yes",
     canonical_market_family: "MONEYLINE", canonical_market_type: "MONEYLINE", best_ask: 0.52, ask_decimal_odds: 1.92,
     orderbook_fetch_status: "SUCCESS" }];
   const recorded: string[] = [];

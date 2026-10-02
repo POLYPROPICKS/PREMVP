@@ -14,7 +14,7 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash, randomUUID } from "crypto";
-import { bStrategySupportRegion, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   physicalIdUnderStoredFormat,
@@ -1553,6 +1553,10 @@ type T3FinalIdentity = Readonly<{
 }>;
 
 /** The current Planning Reservation contour has one live strategy, fixed for this release. */
+// Upper edge of the T_MINUS_10 capture window; Queue may open once it passes.
+const FINAL_REBALANCE_OPEN_MINUTES = 15;
+// Capture window lower edge: before this the T_MINUS_10 snapshot may still be pending.
+const FINAL_REBALANCE_CAPTURE_PENDING_MINUTES = 9;
 const LIVE_T3_STRATEGY = "B_FOUR_MARKET_PRIORITY_V1" as const;
 
 async function selectQueueRowFromT3FinalIdentity(
@@ -2015,14 +2019,15 @@ export async function runEventRebalance(
     expired = [];
   }
   // The broad Rebalance window remains available for comparisons. Only the
-  // final 3 < minutes_to_start <= 9 window may freeze an economic instruction.
+  // final-rebalance window (completed T_MINUS_10 source, minutes_to_start <= 15,
+  // latest_entry still T-3) may freeze an economic instruction.
   // Keep early reservations active; do not resolve identity, run LIVE_GUARD,
   // write Queue, or mark a terminal Reservation state for them.
   const waitingForFinal = write ? due.filter((r) =>
-    (Date.parse(r.game_start_iso) - nowMs) / 60_000 > 9
+    (Date.parse(r.game_start_iso) - nowMs) / 60_000 > FINAL_REBALANCE_OPEN_MINUTES
   ) : [];
   if (write) due = due.filter((r) =>
-    (Date.parse(r.game_start_iso) - nowMs) / 60_000 <= 9
+    (Date.parse(r.game_start_iso) - nowMs) / 60_000 <= FINAL_REBALANCE_OPEN_MINUTES
   );
   const upcoming = all
     .filter((r) => {
@@ -2152,6 +2157,14 @@ export async function runEventRebalance(
         finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
         if (finalSiblingUniverse.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
       } catch {
+        // T_MINUS_10 capture may still be in flight inside its window: wait, do not skip terminally.
+        if ((Date.parse(reservation.game_start_iso) - nowMs) / 60_000 > FINAL_REBALANCE_CAPTURE_PENDING_MINUTES) {
+          outcomes.push({
+            match_family_key: reservation.match_family_key, reservation_id: reservation.id ?? null,
+            result: "WAITING_FINAL_REBALANCE", reason: "FINAL_REBALANCE_SOURCE_PENDING",
+          });
+          continue;
+        }
         plannedActions.push({ kind: "SKIPPED", reservation, reason: "FINAL_T3_SOURCE_UNAVAILABLE" });
         continue;
       }
