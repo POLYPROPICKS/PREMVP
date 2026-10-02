@@ -274,7 +274,7 @@ test("PMEA-9: Reservation physical id is validated against the game-based identi
 
 test("PMEA-10: B selection over the same-match universe never picks exact score / halftime", () => {
   const obs = (m: Mkt, family: string, type: string, ask: number): FinalT3MarketObservation => ({
-    capture_run_id: "run", reservation_id: "77777777-7777-4777-8777-777777777777", observation_phase: "T_MINUS_3", physical_event_id: idA, event_start_iso: START, condition_id: m.condition_id!,
+    capture_run_id: "run", reservation_id: "77777777-7777-4777-8777-777777777777", observation_phase: "T_MINUS_10", physical_event_id: idA, event_start_iso: START, condition_id: m.condition_id!,
     token_id: String(m.clob_token_ids), side: "Yes", canonical_market_family: family, canonical_market_type: type,
     provider_market_type_raw: m.sports_market_type, market_slug: m.provider_market_slug,
     best_ask: ask, ask_decimal_odds: 1 / ask, orderbook_fetch_status: "SUCCESS", spread_abs: 0.01,
@@ -347,7 +347,7 @@ test("PMEA-14: a claimed gameId must be confirmed by the exact-event payload (pa
 async function captureT3(res: NightEventReservationRow, askFor: (tokenId: string) => number) {
   let run: Record<string, unknown> = {};
   let observations: Record<string, unknown>[] = [];
-  await captureReservationMarketObservation(res, "T_MINUS_3", {
+  await captureReservationMarketObservation(res, "T_MINUS_10", {
     observedAt: "2026-10-01T16:42:00Z", alreadyCaptured: async () => false,
     readExactEvent: async () => withCount(exactScore("1039754", GAME_A)),
     readGameEvents: async () => withCount(gameEvents(GAME_A)),

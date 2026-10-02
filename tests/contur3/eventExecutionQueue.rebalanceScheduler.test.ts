@@ -25,7 +25,8 @@ import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/e
 import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
-import type { FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
+import { FINAL_REBALANCE_PHASE, classifyReservationMarketPhase, captureReservationMarketMilestones, readCompletedFinalT3Universe, type FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
+import { LATEST_ENTRY_MINUTES_BEFORE } from "../../lib/executor/reservationRebalanceContract.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -50,7 +51,7 @@ test("P1B2: one T3 array persists A/B before B Final Identity, exact guard, and 
   });
   const market = (condition: string, token: string, family: string, type: string): FinalT3MarketObservation => ({
     capture_run_id: "one-t3-run", reservation_id: "p1b2-r", physical_event_id: physicalId,
-    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_3",
+    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_10",
     condition_id: condition, token_id: token, side: "Yes", canonical_market_family: family,
     canonical_market_type: type, best_ask: 0.52, ask_decimal_odds: 1 / 0.52,
     orderbook_fetch_status: "SUCCESS", market_slug: condition,
@@ -109,7 +110,7 @@ test("P1B2: B skip, persistence failure, foreign event, and guard reject never q
     diagnostics: { contract_a_stage: "PLANNING", planning_final_identity_evidence: { condition_id: "a", token_id: "a-token", side: "Yes" } },
   });
   const a: FinalT3MarketObservation = { capture_run_id: "t3", reservation_id: "p1b2-r", physical_event_id: physicalId,
-    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_3", condition_id: "a",
+    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_10", condition_id: "a",
     token_id: "a-token", side: "Yes", canonical_market_family: "MONEYLINE", canonical_market_type: "MONEYLINE",
     best_ask: 0.59, ask_decimal_odds: 1 / 0.59, orderbook_fetch_status: "SUCCESS" };
   for (const mode of ["B_SKIP", "PERSIST_FAIL", "FOREIGN_EVENT", "POLICY_MISMATCH", "GUARD_REJECT"] as const) {
@@ -1770,4 +1771,101 @@ test("CERT-NEG: queue-route serializer exposes no secret-bearing field (no diagn
   for (const k of keys) {
     assert.doesNotMatch(k, /secret|password|apikey|api_key|private|passphrase|authorization/i);
   }
+});
+
+// ── FINAL_REBALANCE_T10_TWO_MILESTONE_V1 ────────────────────────────────────
+test("T10-A/B/C: live milestones are exactly T_MINUS_30 and T_MINUS_10; no T_MINUS_3 capture is ever classified", async () => {
+  assert.equal(FINAL_REBALANCE_PHASE, "T_MINUS_10");
+  const phases = new Set<string>();
+  const reservation = baseReservation({ id: "t10-r", event_start_iso: KICKOFF_ISO });
+  for (let minute = 31; minute >= 0; minute -= 0.5) {
+    const seen = classifyReservationMarketPhase(KICKOFF_ISO, KICKOFF_MS - minute * 60_000);
+    if (seen) phases.add(seen);
+    await captureReservationMarketMilestones(KICKOFF_MS - minute * 60_000, {
+      load: async () => [reservation],
+      capture: async (_r, phase) => { phases.add(phase); },
+    });
+  }
+  assert.deepEqual([...phases].sort(), ["T_MINUS_10", "T_MINUS_30"]);
+  assert.equal(classifyReservationMarketPhase(KICKOFF_ISO, KICKOFF_MS - 9 * 60_000), null);
+  assert.equal(classifyReservationMarketPhase(KICKOFF_ISO, KICKOFF_MS - 5 * 60_000), null);
+});
+
+test("T10-D/E: completed T10 is the Final Rebalance source; incomplete T10 and a T3-only run fail closed", async () => {
+  const reservation = baseReservation({ id: "t10-r", physical_event_id: "p", event_start_iso: KICKOFF_ISO,
+    diagnostics: { source_lineage: { provider_event_id: "event-1" } } });
+  const run = (extra: Record<string, unknown> = {}) => ({ id: "run-10", reservation_id: "t10-r", physical_event_id: "p",
+    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_10",
+    source_version: "RESERVATION_MARKET_BASELINE_V1", capture_complete: true, capture_status: "COMPLETE",
+    market_tokens_expected_n: 1, market_tokens_observed_n: 1, ...extra });
+  const obs = { id: "o1", capture_run_id: "run-10", reservation_id: "t10-r", physical_event_id: "p", provider_event_id: "event-1",
+    event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_10", condition_id: "c", token_id: "t", side: "Yes" };
+  const read = (r: Record<string, unknown>, o = obs) => readCompletedFinalT3Universe(reservation,
+    { readRuns: async () => [r], readObservations: async (_id, after) => (after.startsWith("0000") ? [o] : []) });
+  assert.equal((await read(run())).length, 1);
+  await assert.rejects(read(run({ capture_complete: false })), /FINAL_T3_SOURCE_UNAVAILABLE/);
+  await assert.rejects(read(run({ capture_status: "PARTIAL" })), /FINAL_T3_SOURCE_UNAVAILABLE/);
+  await assert.rejects(read(run({ market_tokens_expected_n: 2 })), /FINAL_T3_SOURCE_UNAVAILABLE/);
+  await assert.rejects(read(run({ observation_phase: "T_MINUS_3" })), /FINAL_T3_SOURCE_UNAVAILABLE/);
+});
+
+async function t10Run(nowMs: number, guardOk: boolean) {
+  const physicalId = "provider:polymarket:event-1:2026-07-19";
+  const reservation = baseReservation({ id: "t10-r", physical_event_id: physicalId, event_start_iso: KICKOFF_ISO,
+    diagnostics: { contract_a_stage: "PLANNING", planning_final_identity_evidence: { condition_id: "a", token_id: "a-token", side: "Yes" } } });
+  const universe: FinalT3MarketObservation[] = [{ capture_run_id: "t10-run", reservation_id: "t10-r", physical_event_id: physicalId,
+    provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_10", condition_id: "a",
+    token_id: "a-token", side: "Yes", canonical_market_family: "MONEYLINE", canonical_market_type: "MONEYLINE",
+    best_ask: 0.52, ask_decimal_odds: 1 / 0.52, orderbook_fetch_status: "SUCCESS" }];
+  const repo = makeFakeRepo([reservation]);
+  const log: string[] = [];
+  const result = await runEventRebalance(nowMs, { write: true }, {
+    repo, readFinalT3Universe: async () => universe,
+    recordStrategyDecision: async (d: { captureRunId: string; strategyVariant: string }) => { log.push(`${d.captureRunId}:${d.strategyVariant}`); return { total: 1, selected: 1, written: 1 }; },
+    fetchExactTokenOrderbook: async (tokenId: string) => { log.push(`guard:${tokenId}`);
+      return guardOk
+        ? { ok: true as const, tokenId, latencyMs: 1, book: { tokenId, bids: [{ price: 0.5, size: 100 }], asks: [{ price: 0.52, size: 100 }], raw: {} } }
+        : { ok: false as const, tokenId, latencyMs: 1, reason: "FETCH_FAILED" } as never; },
+  });
+  return { result, repo, log };
+}
+
+test("T10-F/G/H/I: at T-12 A and B share one T10 run, LIVE_GUARD runs on the exact token, and Guard PASS queues", async () => {
+  const { result, repo, log } = await t10Run(KICKOFF_MS - 12 * 60_000, true);
+  assert.deepEqual(log, ["t10-run:A_CURRENT_CONTROL", "t10-run:B_FOUR_MARKET_PRIORITY_V1", "guard:a-token"]);
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows[0].token_id, "a-token");
+  assert.equal((repo.queueRows[0].diagnostics.final_identity as Record<string, unknown>).capture_run_id, "t10-run");
+});
+
+test("T10-J: Guard reject at T-12 creates no Queue row", async () => {
+  const { result, repo, log } = await t10Run(KICKOFF_MS - 12 * 60_000, false);
+  assert.ok(log.includes("guard:a-token"));
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+});
+
+test("T10-window: before T-15 waits; T10 source pending in (9,15] waits instead of terminal skip; latest_entry stays T-3", async () => {
+  const early = await t10Run(KICKOFF_MS - 16 * 60_000, true);
+  assert.equal(early.repo.queueRows.length, 0);
+  assert.equal(early.log.length, 0);
+  assert.equal(LATEST_ENTRY_MINUTES_BEFORE, 3);
+  const physicalId = "provider:polymarket:event-1:2026-07-19";
+  const reservation = baseReservation({ id: "t10-r", physical_event_id: physicalId, event_start_iso: KICKOFF_ISO,
+    diagnostics: { contract_a_stage: "PLANNING" } });
+  const repo = makeFakeRepo([reservation]);
+  const pending = await runEventRebalance(KICKOFF_MS - 12 * 60_000, { write: true }, {
+    repo, readFinalT3Universe: async () => { throw new Error("FINAL_T3_SOURCE_UNAVAILABLE"); },
+  });
+  assert.equal(pending.queued_count, 0);
+  assert.equal(reservation.status === "SKIPPED", false);
+  const late = await runEventRebalance(KICKOFF_MS - 8 * 60_000, { write: true }, {
+    repo, readFinalT3Universe: async () => { throw new Error("FINAL_T3_SOURCE_UNAVAILABLE"); },
+  });
+  assert.equal(late.queued_count, 0);
+});
+
+test("T10-K: Queue latest_entry_iso remains kickoff minus 3 minutes", async () => {
+  const { repo } = await t10Run(KICKOFF_MS - 12 * 60_000, true);
+  assert.equal(Date.parse(repo.queueRows[0].latest_entry_iso!), KICKOFF_MS - 3 * 60_000);
 });
