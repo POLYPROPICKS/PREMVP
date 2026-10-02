@@ -1,0 +1,27 @@
+# Service-scoped Railway config for the PASSIVE shadow SIGNAL PIPELINE cron. NOT PROVISIONED, NOT DEPLOYED.
+# Not auto-discovered (not named railway.toml, not at the repo root); takes effect only for a service whose
+# Config-as-code path is set to `ops/railway/prod-shadow-signals.toml`.
+#
+# SHADOW_SCHEDULER_CONTRACT (one run = one ordered cycle, contour PROD_SHADOW, DEDICATED shadow database):
+#   1. shadow:boot-check        refuses unless selector == PROD_SHADOW, SHADOW_* bound, no DEV binding present
+#   2. shadow:signals           producer (scripts/generate-signals.ts): scores + writes generated_signal_pairs,
+#                               projects current_signal_pair_serving, publishes primary evidence, all inside the
+#                               booted runtime's scope => ONLY the shadow Supabase project
+#   3. shadow:resolve           resolver (scripts/resolve-signals.ts): resolves expired shadow signals, same scope
+#   Reservation + rebalance run AFTER signals exist, from the shadow WEB service's cron routes, via
+#   `npm run shadow:cycle -- reservations|rebalance` (ordering in
+#   docs/ai-context/SHADOW_PROVISIONING_RECIPE.md). Reservation/rebalance never run before step 2 has produced
+#   serving rows for the cycle.
+#
+# Required variables (NAMES only; values live in Railway, never in the repo):
+#   SHADOW_SUPABASE_URL, SHADOW_SUPABASE_SERVICE_ROLE_KEY, SHADOW_EXECUTOR_CANDIDATES_SECRET
+#   plus the provider/data-source variables the producer already needs (not Supabase, not DEV-owned).
+# Must NOT be set: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, EXECUTOR_CANDIDATES_SECRET, RESERVATION_TIMES_MINSK.
+
+[build]
+buildCommand = "npm ci --ignore-scripts"
+
+[deploy]
+startCommand = "sh -c 'export CONSTRUCTOR_ACTIVE_CONTOUR=PROD_SHADOW && npm run shadow:boot-check && npm run shadow:signals && npm run shadow:resolve'"
+cronSchedule = "*/30 * * * *"
+restartPolicyType = "NEVER"

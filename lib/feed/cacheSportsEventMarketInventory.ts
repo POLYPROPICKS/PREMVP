@@ -20,6 +20,8 @@
 // scripts/generate-signals.ts sets. Every other caller (buildLandingCards,
 // buildSportsLandingCards, debug HTTP routes) never touches this module.
 
+import { scopedSupabaseAdmin } from "../constructor/runtimeScope";
+
 export type SportsConfirmationSource =
   | "specific_sports_tag"
   | "generic_sports_tag_only"
@@ -328,7 +330,7 @@ export interface SportsInventoryRepoPort {
 export function createSupabaseSportsInventoryRepoPort(): SportsInventoryRepoPort {
   return {
     async upsertBatch(rows) {
-      const { supabaseAdmin } = await import("../supabase/server");
+      const supabaseAdmin = await scopedSupabaseAdmin();
       const { error, count } = await supabaseAdmin
         .from("sports_event_market_inventory")
         .upsert(rows, { onConflict: SPORTS_INVENTORY_CONFLICT_TARGET, count: "exact" });

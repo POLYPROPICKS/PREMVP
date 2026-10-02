@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { supabaseAdmin } from "../supabase/server";
+import { scopedSupabaseAdmin } from "@/lib/constructor/runtimeScope";
 import { buildGeneratedSignalPairRows, type WritePairsInput } from "./cacheGeneratedSignals";
 
 export type PrimaryServingPublicationResult = {
@@ -31,7 +31,7 @@ export async function publishPrimaryEvidenceToServing(args: {
 }): Promise<PrimaryServingPublicationResult> {
   const startedAt = Date.now();
   const rows = buildPrimaryEvidenceRows(args.observationId, args.input);
-  const { data, error } = await supabaseAdmin.rpc("publish_primary_signal_observation", {
+  const { data, error } = await (await scopedSupabaseAdmin()).rpc("publish_primary_signal_observation", {
     p_observation_id: args.observationId,
     p_observed_at: args.observedAt,
     p_rows: rows,

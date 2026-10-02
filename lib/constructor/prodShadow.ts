@@ -46,7 +46,7 @@ export const PROD_SHADOW_INSTANCE: ContourInstanceV1 = {
   runtime: {
     service: "polypropicks-premvp-shadow",
     repository: "POLYPROPICKS/PREMVP",
-    scheduler: "UNPROVISIONED",
+    scheduler: "ops/railway/prod-shadow-signals.toml (signals) + shadow:cycle (reservations, rebalance); UNPROVISIONED",
   },
   envBindings: {
     reservationTimesMinsk: "SHADOW_RESERVATION_TIMES_MINSK",

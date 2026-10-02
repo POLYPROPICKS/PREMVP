@@ -3,7 +3,7 @@
 // Never reads or writes generated_signal_pairs.
 // Never affects API reads, UI, or resolver behavior.
 
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { scopedSupabaseAdmin } from "@/lib/constructor/runtimeScope";
 import { ResearchEligibleSignalSnapshot } from "./types";
 import { buildResearchScoreObservation } from "./researchScoreObservation";
 import { chunkArray, SHADOW_INSERT_CHUNK } from "./writeBatching";
@@ -94,7 +94,7 @@ export async function writeResearchEligibleSignalSnapshots({
 
   let inserted = 0;
   for (const chunk of chunkArray(rows, SHADOW_INSERT_CHUNK)) {
-    const { error, count } = await supabaseAdmin
+    const { error, count } = await (await scopedSupabaseAdmin())
       .from("generated_signal_research_snapshots")
       .upsert(chunk, {
         onConflict: "snapshot_run_id,condition_id,selected_token_id",

@@ -23,6 +23,8 @@ import { shouldSuppressSportsInventoryWrite } from "../lib/feed/cacheSportsEvent
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
 import { isDatabaseTimeout, resolveSignalProducerMode } from "../lib/feed/moneyProducerMode";
 import { FORMULA_VERSION } from "../lib/feed/types";
+import { bootProcessRuntime } from "../lib/constructor/bootstrap";
+import { runWithContourRuntime, scopedSupabaseAdmin } from "../lib/constructor/runtimeScope";
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "../lib/ops/emergencyQuiesce";
 
 const CONFIG = {
@@ -67,7 +69,7 @@ async function loadActiveReservationPins(): Promise<ActiveReservationPinLoadResu
   };
 
   try {
-    const { supabaseAdmin } = await import("../lib/supabase/server");
+    const supabaseAdmin = await scopedSupabaseAdmin();
     const nowIso = new Date().toISOString();
     const horizonIso = new Date(Date.now() + RESERVATION_PIN_HORIZON_MS).toISOString();
 
@@ -839,4 +841,7 @@ async function main() {
   }
 }
 
-main();
+// The whole producer cycle runs inside the booted process runtime's scope: every GSP write, serving
+// projection, evidence publication and reservation-pin read uses THAT runtime's Supabase client
+// (PROD_SHADOW => the shadow project), never an ambient or process-global one.
+runWithContourRuntime(bootProcessRuntime(), main);

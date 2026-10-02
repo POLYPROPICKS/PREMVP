@@ -1,7 +1,7 @@
 // Cache layer for generated signal pairs
 // Handles read/write operations to Supabase generated_signal_pairs and job_runs tables
 
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { scopedSupabaseAdmin } from "@/lib/constructor/runtimeScope";
 import { PremiumSignal, MarketSource, LandingCardDiagnostics, LandingCardPair } from "./types";
 import type { WcShadowEntry } from "./discoverSportsMarkets";
 import { hasEligibleEventVolume } from "./eventLiquidityGate";
@@ -137,7 +137,7 @@ export function buildFireModel1_1ResearchRows(
 export async function readLatestGeneratedSignalPairs(
   limit: number
 ): Promise<CachedSignalPair[]> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await (await scopedSupabaseAdmin())
     .from("generated_signal_pairs")
     .select("id, premium_signal, market_source, diagnostics, score, created_at, expires_at")
     .gt("expires_at", new Date().toISOString())
@@ -185,7 +185,7 @@ export async function readCurrentServingSignalPairs(
   limit: number
 ): Promise<CachedSignalPair[]> {
   const nowIso = new Date().toISOString();
-  const { data: servingRows, error: servingError } = await supabaseAdmin
+  const { data: servingRows, error: servingError } = await (await scopedSupabaseAdmin())
     .from("current_signal_pair_serving")
     .select("observation_id, observed_at, expires_at")
     .eq("projection_status", "ACTIVE")
@@ -214,7 +214,7 @@ export async function readCurrentServingSignalPairs(
 
   // Bounded by construction: at most one row per producer cycle, and only the
   // exact cycle timestamps the current Serving rows above actually reference.
-  const { data: outboxRows, error: outboxError } = await supabaseAdmin
+  const { data: outboxRows, error: outboxError } = await (await scopedSupabaseAdmin())
     .from("primary_evidence_outbox")
     .select("observed_at, evidence_rows")
     .in("observed_at", observedAtValues);
@@ -302,7 +302,7 @@ export async function writeGeneratedSignalPairsWithTelemetry(
   const rows = buildGeneratedSignalPairRows(input);
 
   const persistStartedAt = Date.now();
-  const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(rows) as any;
+  const insertQuery = (await scopedSupabaseAdmin()).from("generated_signal_pairs").insert(rows) as any;
   const { data, error, count } = typeof insertQuery.select === "function"
     ? await insertQuery.select("id")
     : await insertQuery;
@@ -604,7 +604,7 @@ export async function writeStrategicShadowPairs(
   );
   const existingKeys = new Set<string>();
   for (const chunk of dedupChunks) {
-    const { data: existing, error: dedupError } = await supabaseAdmin
+    const { data: existing, error: dedupError } = await (await scopedSupabaseAdmin())
       .from("current_signal_pair_serving")
       .select("condition_id, selected_token_id, metric_formula_version, diagnostics")
       .in("condition_id", chunk)
@@ -743,7 +743,7 @@ export async function writeStrategicShadowPairs(
 
   let inserted = 0;
   for (const chunk of chunkArray(rows, SHADOW_INSERT_CHUNK)) {
-    const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(chunk) as any;
+    const insertQuery = (await scopedSupabaseAdmin()).from("generated_signal_pairs").insert(chunk) as any;
     const { data, error, count } = typeof insertQuery.select === "function"
       ? await insertQuery.select("id")
       : await insertQuery;
@@ -795,7 +795,7 @@ export async function writeFireModel1_1ResearchPairsWithDetail(
   // Read-before-write dedup: suppress only identities that are currently
   // serving. Historical generated rows remain append-only lineage.
   const conditionIds = validPairs.map((p) => p.diagnostics.conditionId as string);
-  const { data: existing } = await supabaseAdmin
+  const { data: existing } = await (await scopedSupabaseAdmin())
     .from("current_signal_pair_serving")
     .select("condition_id, selected_token_id, diagnostics")
     .in("condition_id", conditionIds)
@@ -817,7 +817,7 @@ export async function writeFireModel1_1ResearchPairsWithDetail(
 
   const rows = buildFireModel1_1ResearchRows(newPairs, defaultExpiresAt);
 
-  const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(rows) as any;
+  const insertQuery = (await scopedSupabaseAdmin()).from("generated_signal_pairs").insert(rows) as any;
   const { data, error, count } = typeof insertQuery.select === "function"
     ? await insertQuery.select("id")
     : await insertQuery;
@@ -842,5 +842,5 @@ export async function writeFireModel1_1ResearchPairs(
  */
 export async function writeJobRun(input: JobRunInput): Promise<void> {
   const { writeJobRunWith } = await import("./jobRunWriter");
-  await writeJobRunWith(supabaseAdmin, input);
+  await writeJobRunWith(await scopedSupabaseAdmin(), input);
 }

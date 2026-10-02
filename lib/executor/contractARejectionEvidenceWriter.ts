@@ -8,7 +8,7 @@ export function createSupabaseContractARejectionEvidencePort(
   return {
     async upsert(rows) {
       // Runtime-bound when a client getter is supplied; otherwise the process-wide client (legacy).
-      const supabaseAdmin = (getClient ? await getClient() : (await import("@/lib/supabase/server")).supabaseAdmin) as typeof import("@/lib/supabase/server").supabaseAdmin;
+      const supabaseAdmin = (getClient ? await getClient() : await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin()) as Awaited<ReturnType<typeof import("@/lib/constructor/runtimeScope").scopedSupabaseAdmin>>;
       for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
         const { error } = await supabaseAdmin
           .from("contract_a_rejection_evidence")

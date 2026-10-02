@@ -498,6 +498,15 @@ async function reconcilePendingExecutionSettlements(
 }
 
 async function main() {
+  // Load .env.local before the runtime is booted (the boot reads the contour's env bindings).
+  loadEnvConfig(process.cwd());
+  const { bootProcessRuntime } = await import("../lib/constructor/bootstrap");
+  const { runWithContourRuntime } = await import("../lib/constructor/runtimeScope");
+  // Resolution writes into the booted runtime's own Supabase project (PROD_SHADOW => shadow project).
+  return runWithContourRuntime(bootProcessRuntime(), runMain);
+}
+
+async function runMain() {
   // Load .env.local before any module that reads process.env at import time
   loadEnvConfig(process.cwd());
 
@@ -508,7 +517,8 @@ async function main() {
     process.exit(0);
   }
 
-  const { supabaseAdmin } = await import("../lib/supabase/server");
+  const { scopedSupabaseAdmin } = await import("../lib/constructor/runtimeScope");
+  const supabaseAdmin = await scopedSupabaseAdmin();
   // Dynamic import keeps loadEnvConfig ordering: env must be loaded before any
   // module that reads process.env at initialisation time (supabaseAdmin).
   const { writeJobRun } = await import("../lib/feed/cacheGeneratedSignals");

@@ -3,8 +3,8 @@
 // `describeRuntimeContract` answers "how do I boot this contour safely?" from the declaration alone
 // (env-var NAMES only, never values). `validateContourRuntime` is the startup gate:
 //
-//   - money-enabled contours (DEV_LIVE): returns immediately. DEV startup semantics are unchanged.
-//   - passive contours (PROD_SHADOW): the process must be fully and exclusively bound to its OWN
+//   - the default contour with money movement (DEV_LIVE): returns immediately. DEV startup semantics are unchanged.
+//   - every other contour (PROD_SHADOW, any future non-default one): the process must be fully and exclusively bound to its OWN
 //     dedicated resources. Missing required bindings fail; any other declaration's binding present in
 //     the environment fails. A passive process can therefore never silently run on DEV resources,
 //     including through code that still reads SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY directly.
@@ -15,7 +15,16 @@
 // layer that does not exist. The shadow therefore gets its own project.
 
 import type { ComposedContour, ContourEnvBindingsV1 } from "./contracts";
-import { ACTIVE_CONTOUR_ENV, CONTOUR_REGISTRY } from "./registry";
+import { ACTIVE_CONTOUR_ENV, CONTOUR_REGISTRY, DEFAULT_CONTOUR_ID } from "./registry";
+
+/**
+ * A process serving ANY non-default contour (or any contour without money movement) must be bound
+ * exclusively to its own declared resources. Only the default contour (DEV_LIVE) may coexist with
+ * ambient env, because the ambient SUPABASE_* / EXECUTOR_* names ARE its bindings.
+ */
+export function requiresExclusiveBinding(contour: ComposedContour): boolean {
+  return contour.profile.contourId !== DEFAULT_CONTOUR_ID || contour.profile.capabilities.moneyMovement !== "enabled";
+}
 
 export const CONSTRUCTOR_RUNTIME_INVALID = "CONSTRUCTOR_RUNTIME_INVALID" as const;
 
@@ -62,7 +71,7 @@ function foreignBindingNames(contour: ComposedContour): { name: string; owner: s
 }
 
 export function describeRuntimeContract(contour: ComposedContour): RuntimeContractV1 {
-  const passive = contour.profile.capabilities.moneyMovement !== "enabled";
+  const passive = requiresExclusiveBinding(contour);
   const bindings = {} as Record<keyof ContourEnvBindingsV1, { envVar: string; required: boolean }>;
   for (const key of BINDING_KEYS) {
     bindings[key] = {
@@ -103,7 +112,7 @@ export function validateContourRuntime(
   contour: ComposedContour,
   env: Record<string, string | undefined> = process.env,
 ): void {
-  if (contour.profile.capabilities.moneyMovement === "enabled") return;
+  if (!requiresExclusiveBinding(contour)) return;
 
   const own = new Set(Object.values(contour.instance.envBindings));
   const foreign = foreignBindingNames(contour);

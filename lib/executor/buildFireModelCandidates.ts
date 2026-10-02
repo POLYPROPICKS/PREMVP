@@ -1401,7 +1401,7 @@ function contractATimingBucket(minutesUntilStart: number): TimingBucket {
 export type ServingClientGetter = () => RuntimeSupabaseClient | Promise<RuntimeSupabaseClient>;
 async function resolveServingClient(getClient?: ServingClientGetter): Promise<RuntimeSupabaseClient> {
   if (getClient) return getClient();
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const supabaseAdmin = await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin();
   return supabaseAdmin;
 }
 

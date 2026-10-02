@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveContour } from "@/lib/constructor/registry";
+import { rejectContourMismatch, rejectPassiveCallback } from "@/lib/executor/callbackBoundary";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   handleOrderEventSubmission,
@@ -560,6 +561,9 @@ export async function POST(request: NextRequest) {
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Passive contour: reject before the maker-fallback, order-event, queue-mark and ledger mutations.
+  const passive = rejectPassiveCallback("EXECUTOR_ORDER_EVENTS");
+  if (passive) return passive;
 
   let body: unknown;
   try {
@@ -571,6 +575,8 @@ export async function POST(request: NextRequest) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return NextResponse.json({ error: "Body must be a JSON object" }, { status: 400 });
   }
+  const mismatch = rejectContourMismatch((body as Record<string, unknown>).contour_id);
+  if (mismatch) return mismatch;
 
   const raw = body as Record<string, unknown>;
 
