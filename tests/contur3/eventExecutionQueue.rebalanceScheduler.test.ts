@@ -27,6 +27,7 @@ import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightE
 import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
 import { FINAL_REBALANCE_PHASE, classifyReservationMarketPhase, captureReservationMarketMilestones, readCompletedFinalT3Universe, type FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
 import { LATEST_ENTRY_MINUTES_BEFORE } from "../../lib/executor/reservationRebalanceContract.mjs";
+import { captureFixture, fixtureReservation, universeFromRows } from "./helpers/t10SameGameFixture";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
@@ -1868,4 +1869,80 @@ test("T10-window: before T-15 waits; T10 source pending in (9,15] waits instead 
 test("T10-K: Queue latest_entry_iso remains kickoff minus 3 minutes", async () => {
   const { repo } = await t10Run(KICKOFF_MS - 12 * 60_000, true);
   assert.equal(Date.parse(repo.queueRows[0].latest_entry_iso!), KICKOFF_MS - 3 * 60_000);
+});
+
+// ── T10_DISCOVERY_AUDIT_AND_TOTAL_CORNERS_PROOF_V1 ──────────────────────────
+// Live-shaped same-game fixture -> real T10 capture -> B_FOUR_MARKET_PRIORITY_V1 ->
+// exact TOTAL_CORNERS Final Identity -> fresh exact-token LIVE_GUARD -> Queue.
+async function t10TotalCornersRun() {
+  const fx = fixtureReservation();
+  const captured = await captureFixture("T_MINUS_10");
+  const universe = universeFromRows(captured.rows);
+  const reservation = baseReservation({ id: fx.id!, physical_event_id: fx.physical_event_id,
+    event_start_iso: KICKOFF_ISO, game_start_iso: KICKOFF_ISO, diagnostics: fx.diagnostics });
+  const repo = makeFakeRepo([reservation]);
+  type LoggedDecision = { strategyVariant: string; captureRunId: string; decisionReason: string;
+    selectedIdentity: { conditionId: string; tokenId: string; side: string } | null };
+  const decisions: LoggedDecision[] = [];
+  const guardTokens: string[] = [];
+  let legacyCandidateFetches = 0;
+  const result = await runEventRebalance(KICKOFF_MS - 12 * 60_000, { write: true }, {
+    repo, readFinalT3Universe: async () => universe,
+    fetchCandidates: async () => { legacyCandidateFetches++; throw new Error("legacy candidate path forbidden"); },
+    recordStrategyDecision: async (d: LoggedDecision) => { decisions.push(d); return { total: 1, selected: 1, written: 1 }; },
+    fetchExactTokenOrderbook: async (tokenId: string) => { guardTokens.push(tokenId);
+      return { ok: true as const, tokenId, latencyMs: 1,
+        book: { tokenId, bids: [{ price: 0.4, size: 100 }], asks: [{ price: 0.42, size: 100 }], raw: {} } }; },
+  });
+  return { captured, universe, result, repo, decisions, guardTokens, legacyCandidateFetches };
+}
+
+test("T10-R: B selects the exact full-match TOTAL_CORNERS candidate when higher-priority SPREADS has none in its support band", async () => {
+  const { universe, decisions, captured } = await t10TotalCornersRun();
+  const spreads = universe.filter((r) => r.canonical_market_family === "SPREADS");
+  assert.ok(spreads.length > 0, "SPREADS is in the live universe");
+  assert.equal(spreads.some((r) => r.ask_decimal_odds! >= 1.85 && r.ask_decimal_odds! <= 2.0), false, "no SPREADS candidate inside the B band");
+  const corners = universe.filter((r) => r.canonical_market_family === "TOTAL_CORNERS" && r.ask_decimal_odds! >= 2.25 && r.ask_decimal_odds! <= 2.5);
+  assert.equal(corners.length, 1, "exactly one deterministic TOTAL_CORNERS candidate in 2.25-2.50");
+  const b = decisions.find((d) => d.strategyVariant === "B_FOUR_MARKET_PRIORITY_V1")!;
+  assert.equal(b.decisionReason, "PRIORITY_TOTAL_CORNERS_IN_SUPPORT");
+  assert.deepEqual(b.selectedIdentity, { conditionId: "c-tc", tokenId: "t-tc-yes", side: "Over" });
+  assert.equal(b.captureRunId, captured.run.id);
+  assert.equal(captured.run.observation_phase, "T_MINUS_10");
+});
+
+test("T10-T: the exact TOTAL_CORNERS Final Identity reaches fresh LIVE_GUARD and ONE Queue row with the same token, no sibling substitution", async () => {
+  const { result, repo, guardTokens, captured } = await t10TotalCornersRun();
+  assert.deepEqual(guardTokens, ["t-tc-yes"], "Guard runs on the exact selected token only");
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  const row = repo.queueRows[0];
+  assert.equal(row.condition_id, "c-tc");
+  assert.equal(row.token_id, "t-tc-yes");
+  assert.equal(row.side, "Over");
+  assert.equal(row.market_family, "TOTAL_CORNERS");
+  const fi = row.diagnostics.final_identity as Record<string, unknown>;
+  assert.equal(fi.condition_id, "c-tc");
+  assert.equal(fi.token_id, "t-tc-yes");
+  assert.equal(fi.side, "Over");
+  assert.equal(fi.canonical_market_family, "TOTAL_CORNERS");
+  assert.equal(fi.canonical_market_type, "TOTAL_CORNERS");
+  assert.equal(fi.capture_run_id, captured.run.id);
+  assert.equal(fi.strategy_variant, "B_FOUR_MARKET_PRIORITY_V1");
+});
+
+test("T10-S: the legacy CORNERS_NOT_LIVE_EXECUTABLE guard cannot veto the T10 B path", async () => {
+  const { repo, legacyCandidateFetches } = await t10TotalCornersRun();
+  // The queued market's own slug is exactly what the legacy corners regex vetoes.
+  assert.match(repo.queueRows[0].market_slug ?? "", /total[\s_-]corners?/i);
+  assert.equal(repo.queueRows.length, 1, "queued despite a slug the legacy guard rejects");
+  assert.equal(legacyCandidateFetches, 0, "the write contour never consults the legacy candidate universe");
+  const source = readFileSync(path.join(root, "lib/executor/eventExecutionQueue.ts"), "utf8");
+  const start = source.indexOf("async function selectQueueRowFromT3FinalIdentity(");
+  assert.ok(start > 0);
+  const body = source.slice(start, source.indexOf("\n}\n", start));
+  for (const legacy of ["isCorners", "isExecutableMarket", "CORNERS_NOT_LIVE_EXECUTABLE", "CORNERS_MARKET_RE"]) {
+    assert.equal(body.includes(legacy), false, `T10 B Final Identity must not route through ${legacy}`);
+  }
+  assert.ok(source.includes('"CORNERS_NOT_LIVE_EXECUTABLE"'), "the legacy guard is retained, not deleted");
 });
