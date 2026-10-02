@@ -78,8 +78,8 @@ test("REALISTIC PASSIVE PATH (child process): PROD_SHADOW -> bootstrap -> shadow
     timeout: 120_000,
   });
   assert.equal(r.status, 0, r.stderr);
-  const out = JSON.parse(r.stdout.trim().split("\n").pop()!) as { blocked: boolean; inserts: number; instance: string };
-  assert.deepEqual(out, { blocked: true, inserts: 0, instance: "PROD_SHADOW_PASSIVE" });
+  const out = JSON.parse(r.stdout.trim().split("\n").pop()!) as { blocked: boolean; inserts: number; guard: number; instance: string };
+  assert.deepEqual(out, { blocked: true, inserts: 0, guard: 1, instance: "PROD_SHADOW_PASSIVE" });
 });
 
 test("manifest delta is exactly the bootstrap component; DEV bindings/capability/selectors untouched, shadow shares the set", async () => {

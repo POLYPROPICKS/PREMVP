@@ -14,7 +14,7 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash, randomUUID } from "crypto";
-import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, createFinalT3ReadPort, createReservationStrategyDecisionStore, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   physicalIdUnderStoredFormat,
@@ -25,6 +25,7 @@ import {
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
 import { FROZEN_MODEL_V2_VERSION } from "@/lib/modeling/frozenModelProducerV2Shadow";
 import { getActiveContour } from "@/lib/constructor/registry";
+import type { ContourRuntimeV1, RuntimeSupabaseClient } from "@/lib/constructor/bootstrap";
 import { assertMoneyMovementEnabled, type ComposedContour } from "@/lib/constructor/contracts";
 import {
   buildRebalanceRunId,
@@ -992,10 +993,19 @@ function selectByPlanningFinalIdentityEvidence<T extends { conditionId: string; 
   );
 }
 
-export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
+/**
+ * `getClient` is the contour-bound admin client of a booted runtime (ContourRuntimeV1.resources).
+ * Omitted => the process-wide `supabaseAdmin` (the process's own contour), exactly as before.
+ */
+async function defaultProcessSupabaseClient(): Promise<RuntimeSupabaseClient> {
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  return supabaseAdmin;
+}
+
+export function createSupabaseRebalanceRepoPort(getClient: () => RuntimeSupabaseClient | Promise<RuntimeSupabaseClient> = defaultProcessSupabaseClient): RebalanceRepoPort {
   return {
     async loadActiveReservations() {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("night_event_reservations")
         .select("*")
@@ -1004,7 +1014,7 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
       return (data ?? []) as unknown as NightEventReservationRow[];
     },
     async loadQueuedReservationIds() {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("event_execution_queue")
         .select("reservation_id, status")
@@ -1018,21 +1028,21 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
     },
     async markReservationsExpired(ids) {
       if (ids.length === 0) return;
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       await supabaseAdmin
         .from("night_event_reservations")
         .update({ status: "EXPIRED", selection_reason: "MISSED_REBALANCE_WINDOW" })
         .in("id", ids);
     },
     async markReservationSkipped(id, reason) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       await supabaseAdmin
         .from("night_event_reservations")
         .update({ status: "SKIPPED", selection_reason: reason })
         .eq("id", id);
     },
     async insertQueueRow(row) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { error } = await supabaseAdmin.from("event_execution_queue").insert(row);
       if (error) {
         // Preserve the PostgreSQL error code (23505 = unique_violation) so
@@ -1047,7 +1057,7 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
       }
     },
     async markReservationQueued(id, reason) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       await supabaseAdmin
         .from("night_event_reservations")
         .update({ status: "QUEUED", selection_reason: reason })
@@ -1061,7 +1071,7 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
       return [] as FinalIdentitySourceRow[];
     },
     async findQueueRowsByRebalanceRunId(rebalanceRunId) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("event_execution_queue")
         .select("*")
@@ -1070,13 +1080,13 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
       return (data ?? []) as unknown as EventExecutionQueueRow[];
     },
     async findQueueRowsByIdempotencyKey(idempotencyKey) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", idempotencyKey);
       if (error) throw new Error(`queue idempotency lookup failed: ${error.message}`);
       return (data ?? []) as unknown as EventExecutionQueueRow[];
     },
     async loadDeadlinePassedReadyQueueRows(nowIso) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("event_execution_queue")
         .select("*")
@@ -1087,7 +1097,7 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
     },
     async hasExecutorOrderEventEvidence(row) {
       if (!row.idempotency_key) return false;
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       // Canonical join used by Queue execution/callback handling: idempotency_key
       // with an identity cross-check on condition_id / token_id / side. A row
       // that matches means the instruction already entered execution and must
@@ -1112,7 +1122,7 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
     },
     async markReadyQueueRowsExpired(entries) {
       if (entries.length === 0) return;
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       for (const entry of entries) {
         const { error } = await supabaseAdmin
           .from("event_execution_queue")
@@ -1957,9 +1967,11 @@ function selectQueueRowForDueReservation(
 export async function runEventRebalance(
   nowMs: number,
   opts: { write?: boolean; maxQueueWrites?: number | null; targetReservationId?: string | null } = {},
-  deps: {
+  rawDeps: {
     repo?: RebalanceRepoPort;
     contour?: ComposedContour;
+    /** A booted instance: supplies the contour AND its resources (default repo client). Wins over `contour`. */
+    runtime?: ContourRuntimeV1;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
@@ -1970,21 +1982,22 @@ export async function runEventRebalance(
     onFinalIdentityAttempt?: () => void;
   } = {}
 ): Promise<RebalanceRunResult> {
+  const deps = rawDeps.runtime ? { ...rawDeps, contour: rawDeps.runtime.contour } : rawDeps;
   const write = opts.write === true;
   const maxQueueWrites = typeof opts.maxQueueWrites === "number" ? opts.maxQueueWrites : null;
   const rebalanceRunId = buildRebalanceRunId(nowMs);
-  const repo = deps.repo ?? createSupabaseRebalanceRepoPort();
+  const repo = deps.repo ?? createSupabaseRebalanceRepoPort(rawDeps.runtime?.resources.supabaseAdmin);
   const fetchCandidates =
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning, undefined, rawDeps.runtime?.resources.supabaseAdmin);
     });
   const fetchContractAFinalCandidates =
     deps.fetchContractAFinalCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final, undefined, rawDeps.runtime?.resources.supabaseAdmin);
     });
   const fetchFinalIdentitySourceRows =
     deps.fetchFinalIdentitySourceRows ??
@@ -1992,6 +2005,17 @@ export async function runEventRebalance(
       ? (reservation: NightEventReservationRow) => repo.loadFinalIdentitySourceRows!(reservation)
       : null);
   const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? ((tokenId: string) => fetchOrderBook(tokenId));
+  // A booted runtime routes the shared T3 reads/decision store through ITS client; without one the
+  // process-wide client is used exactly as before.
+  const runtimeClient = rawDeps.runtime?.resources.supabaseAdmin;
+  const readFinalT3Universe = deps.readFinalT3Universe ??
+    (runtimeClient
+      ? (reservation: NightEventReservationRow) => readCompletedFinalT3Universe(reservation, createFinalT3ReadPort(runtimeClient))
+      : readCompletedFinalT3Universe);
+  const recordStrategyDecision: typeof recordReservationStrategyDecision = deps.recordStrategyDecision ??
+    (runtimeClient
+      ? (input) => recordReservationStrategyDecision(input, { store: createReservationStrategyDecisionStore(runtimeClient) })
+      : recordReservationStrategyDecision);
 
   // Due reservations: active status + start within the rebalance window.
   const all = await repo.loadActiveReservations();
@@ -2154,7 +2178,7 @@ export async function runEventRebalance(
     let finalSiblingUniverse: FinalT3MarketObservation[] | null = null;
     if (write) {
       try {
-        finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
+        finalSiblingUniverse = await readFinalT3Universe(reservation);
         if (finalSiblingUniverse.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
       } catch {
         // T_MINUS_10 capture may still be in flight inside its window: wait, do not skip terminally.
@@ -2180,7 +2204,7 @@ export async function runEventRebalance(
       write && currentPlanningContour && finalSiblingUniverse
         ? await selectQueueRowFromT3FinalIdentity(
             reservation, finalSiblingUniverse, rebalanceRunId, nowMs, fetchExactTokenOrderbook,
-            deps.recordStrategyDecision ?? recordReservationStrategyDecision,
+            recordStrategyDecision,
             deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined),
           )
         : manifestResolution?.kind === "SUPPORTED"

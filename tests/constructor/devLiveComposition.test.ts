@@ -52,7 +52,7 @@ test("manifest digest is deterministic and pinned (a composition change must be 
   const b = composeContour(clone(DEV_LIVE)).manifestDigest;
   assert.equal(a, b);
   assert.equal(a, computeManifestDigest(DEV_LIVE_COMPONENT_MANIFEST));
-  assert.equal(a, "84a97661cc537933cae60a183ba1cf8c8c4f26d06772f3443673ab89e6133e74");
+  assert.equal(a, "2a187e5335e990bf619a084058021873e2f8bb1b5f95dc85a7ea47065b6dcaa9");
 });
 
 // ── 2. OLD DEV intent == NEW Constructor-composed DEV intent ─────────────────

@@ -44,7 +44,7 @@ export const DEV_LIVE_PROFILE: ContourProfileV1 = {
 export const DEV_LIVE_COMPONENT_MANIFEST: ComponentManifestV1 = {
   schema: COMPONENT_MANIFEST_SCHEMA,
   manifestId: "premvp-dev-live",
-  version: "1.2.0",
+  version: "1.3.0",
   contourId: DEV_LIVE_CONTOUR_ID,
   components: [
     {
@@ -137,10 +137,10 @@ export const DEV_LIVE_COMPONENT_MANIFEST: ComponentManifestV1 = {
     },
     {
       id: "runtime.bootstrap",
-      role: "runtime-instance-boot",
+      role: "runtime-instance-boot-and-resources",
       module: "lib/constructor/bootstrap.ts",
       symbol: "bootContourRuntime",
-      contractVersion: "RUNTIME_BOOTSTRAP_V1",
+      contractVersion: "RUNTIME_CONTEXT_V1",
     },
   ],
 };

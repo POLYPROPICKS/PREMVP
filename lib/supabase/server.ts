@@ -7,8 +7,7 @@
 // createSupabaseAdminClient(itsContour) rather than reuse this export.
 
 import { bootProcessRuntime } from "../constructor/bootstrap";
-import { createSupabaseAdminClient } from "./adminClientFactory";
 
 // Passive contours (PROD_SHADOW) must be bound exclusively to their own resources; no-op for DEV_LIVE.
 // The client is only built from a contour that has been selected AND validated by the shared boot.
-export const supabaseAdmin = createSupabaseAdminClient(bootProcessRuntime().contour);
+export const supabaseAdmin = bootProcessRuntime().resources.supabaseAdmin();

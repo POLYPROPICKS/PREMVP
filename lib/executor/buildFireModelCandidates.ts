@@ -1,4 +1,5 @@
 ﻿import { createHash } from "crypto";
+import type { RuntimeSupabaseClient } from "@/lib/constructor/bootstrap";
 import {
   classifyMarketText,
   isAllowedFullMatchMarketClass,
@@ -1396,15 +1397,24 @@ function contractATimingBucket(minutesUntilStart: number): TimingBucket {
  * requires it explicitly (fails closed rather than silently re-deriving a
  * different row set via a fresh, undocumented query).
  */
+/** Contour-bound admin client getter of a booted runtime; omitted => the process-wide supabaseAdmin (unchanged). */
+export type ServingClientGetter = () => RuntimeSupabaseClient | Promise<RuntimeSupabaseClient>;
+async function resolveServingClient(getClient?: ServingClientGetter): Promise<RuntimeSupabaseClient> {
+  if (getClient) return getClient();
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  return supabaseAdmin;
+}
+
 async function buildContractAV1Candidates(
   limit: number,
-  injectedRows?: readonly Record<string, unknown>[]
+  injectedRows?: readonly Record<string, unknown>[],
+  getClient?: ServingClientGetter
 ): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
   let sourceRows: readonly ExportRow[];
   if (injectedRows !== undefined) {
     sourceRows = injectedRows as readonly ExportRow[];
   } else {
-    const { supabaseAdmin } = await import("@/lib/supabase/server");
+    const supabaseAdmin = await resolveServingClient(getClient);
     const lookbackIso = new Date(Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000).toISOString();
     sourceRows = await fetchAllPlanningRows(
       () => supabaseAdmin.from("generated_signal_pairs").select("*").gte("created_at", lookbackIso).order("created_at", { ascending: false }),
@@ -1609,10 +1619,11 @@ export async function fetchPlanningSourceRowSets(
   planningMode: boolean,
   versions: readonly string[],
   planningLookbackIso: string,
-  includePlanningShadowRows = true
+  includePlanningShadowRows = true,
+  getClient?: ServingClientGetter
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ scoredRows: any[]; planningShadowRows: any[] }> {
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const supabaseAdmin = await resolveServingClient(getClient);
   // Freeze both disjoint reads to one causal point.  This prevents rows written
   // while pagination is in flight from moving between pages or changing the
   // source universe of a single planning run.
@@ -1715,8 +1726,9 @@ function normalizeServingSourceRow(row: Record<string, unknown>): Record<string,
 async function fetchContractAPlanningServingRowSets(
   snapshotAsOfIso: string,
   includePlanningShadowRows: boolean,
+  getClient?: ServingClientGetter,
 ): Promise<{ scoredRows: Record<string, unknown>[]; planningShadowRows: Record<string, unknown>[] }> {
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const supabaseAdmin = await resolveServingClient(getClient);
   // CONTRACT_A_SERVING_COMPLETE_PAGINATION_V1: a single .limit(10_000) request
   // was silently capped by the transport at 1000 rows, truncating the source
   // before Contract A. Read the whole bounded snapshot by deterministic
@@ -1828,13 +1840,14 @@ export async function buildFireModelCandidates(
   planningMode = false,
   injectedRows?: readonly Record<string, unknown>[],
   selectorMode: FireModelSelectorMode = "CONTUR3_CURRENT",
-  nowMs = Date.now()
+  nowMs = Date.now(),
+  getClient?: ServingClientGetter
 ): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
   if (!KNOWN_SELECTOR_MODES.includes(selectorMode)) {
     throw new Error(`UNKNOWN_SELECTOR_MODE: ${String(selectorMode)}`);
   }
   if (selectorMode === "CONTRACT_A_V1") {
-    return await buildContractAV1Candidates(limit, injectedRows);
+    return await buildContractAV1Candidates(limit, injectedRows, getClient);
   }
   const versions = planningMode ? PLANNING_ALLOWED_VERSIONS : ALLOWED_VERSIONS;
   if (!planningMode) {
@@ -1898,11 +1911,12 @@ export async function buildFireModelCandidates(
     const loaded = await fetchContractAPlanningServingRowSets(
       new Date(nowMs).toISOString(),
       planningMode,
+      getClient,
     );
     scoredRows = loaded.scoredRows;
     planningShadowRows = loaded.planningShadowRows;
   } else {
-    const loaded = await fetchPlanningSourceRowSets(planningMode, versions, planningLookbackIso);
+    const loaded = await fetchPlanningSourceRowSets(planningMode, versions, planningLookbackIso, true, getClient);
     scoredRows = loaded.scoredRows;
     planningShadowRows = loaded.planningShadowRows;
   }

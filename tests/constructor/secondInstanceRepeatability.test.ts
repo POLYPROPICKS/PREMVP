@@ -194,7 +194,7 @@ test("a second instance's supabase binding cannot silently reuse CURRENT DEV's",
 test("process-wide supabaseAdmin is the ACTIVE contour's client built by the factory (no direct env reads)", () => {
   const src = stripComments(read("lib/supabase/server.ts"));
   assert.ok(!/process\.env/.test(src));
-  assert.ok(src.includes("createSupabaseAdminClient(bootProcessRuntime().contour)"));
+  assert.ok(src.includes("bootProcessRuntime().resources.supabaseAdmin()"));
   const factory = stripComments(read("lib/supabase/adminClientFactory.ts"));
   assert.ok(factory.includes('requireEnv("supabaseUrl"') && factory.includes('requireEnv("supabaseServiceRoleKey"'));
 });
