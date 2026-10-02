@@ -429,7 +429,7 @@ export async function readCompletedFinalT3Universe(
 
 export type RuntimeClientGetter = () => RuntimeSupabaseClient | Promise<RuntimeSupabaseClient>;
 async function defaultProcessClient(): Promise<RuntimeSupabaseClient> {
-  const { supabaseAdmin } = await import("../supabase/server");
+  const supabaseAdmin = await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin();
   return supabaseAdmin;
 }
 

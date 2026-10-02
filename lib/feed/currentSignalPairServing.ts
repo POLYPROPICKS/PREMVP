@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase/server";
+import { scopedSupabaseAdmin } from "@/lib/constructor/runtimeScope";
 
 // Raised from 25 (see supabase/migrations/20260918160000_current_signal_pair_serving_prune_batch_raise.sql):
 // 25 rows/call could not keep pace with sustained ACTIVE-row accumulation on
@@ -30,7 +30,7 @@ export async function refreshCurrentSignalPairServing(sourceGeneratedSignalPairI
   const startedAt = Date.now();
   const ids = [...new Set(sourceGeneratedSignalPairIds.filter((id): id is string => typeof id === "string" && id.length > 0))];
   if (ids.length === 0) return { projectedCount: 0, durationMs: Date.now() - startedAt };
-  const { error } = await supabaseAdmin.rpc("refresh_current_signal_pair_serving", {
+  const { error } = await (await scopedSupabaseAdmin()).rpc("refresh_current_signal_pair_serving", {
     p_source_generated_signal_pair_ids: ids,
   });
   if (error) throw new ServingProjectionPendingError(ids, error);
@@ -85,7 +85,7 @@ export async function pruneCurrentSignalPairServing(
   let deletedRows = 0;
 
   for (const resolvedIds of batches) {
-    const { data, error } = await supabaseAdmin.rpc("prune_current_signal_pair_serving", {
+    const { data, error } = await (await scopedSupabaseAdmin()).rpc("prune_current_signal_pair_serving", {
       p_batch_size: CURRENT_SERVING_PRUNE_BATCH_SIZE,
       p_resolved_source_generated_signal_pair_ids: resolvedIds,
     });

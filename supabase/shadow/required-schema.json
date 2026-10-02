@@ -1,0 +1,315 @@
+{
+  "_doc": "Required PROD_SHADOW schema inventory: the transitive database closure of producer -> generated_signal_pairs -> current_signal_pair_serving -> Contract A -> Reservation -> baseline/evidence -> rebalance -> Queue boundary. Checked by `shadow-bootstrap.mjs --verify` and tests/shadow/. No reference rows are required: every table starts empty and is filled by the shadow's own pipeline.",
+  "referenceRowsRequired": false,
+  "tables": [
+    "generated_signal_pairs",
+    "current_signal_pair_serving",
+    "current_signal_pair_serving_backfill_checkpoint",
+    "primary_evidence_outbox",
+    "generated_signal_research_snapshots",
+    "sports_event_market_inventory",
+    "job_runs",
+    "contract_a_rejection_evidence",
+    "night_event_reservations",
+    "event_execution_queue",
+    "reservation_market_capture_runs",
+    "reservation_market_observations",
+    "reservation_strategy_observations",
+    "executor_order_events",
+    "executor_audit_events"
+  ],
+  "columns": {
+    "generated_signal_pairs": [
+      "id",
+      "created_at",
+      "source",
+      "formula_version",
+      "metric_formula_version",
+      "event_slug",
+      "market_slug",
+      "condition_id",
+      "selected_outcome",
+      "selected_token_id",
+      "premium_signal",
+      "market_source",
+      "market_sources",
+      "diagnostics",
+      "score",
+      "expires_at",
+      "entry_price_num",
+      "signal_confidence_num",
+      "expected_return_pct_num",
+      "trust_metrics",
+      "smart_money_score_num",
+      "whale_public_score_num",
+      "pre_event_score_num",
+      "signal_result",
+      "resolved_at",
+      "winning_outcome",
+      "realized_return_pct"
+    ],
+    "job_runs": [
+      "source",
+      "formula_version",
+      "started_at",
+      "finished_at",
+      "status",
+      "generated_count",
+      "rejected_count",
+      "duration_ms",
+      "error_message",
+      "diagnostics"
+    ],
+    "current_signal_pair_serving": [
+      "condition_id",
+      "selected_token_id",
+      "metric_formula_version",
+      "source_generated_signal_pair_id",
+      "diagnostics",
+      "expires_at",
+      "signal_result",
+      "projection_status"
+    ],
+    "contract_a_rejection_evidence": [
+      "rejection_key",
+      "plan_run_id",
+      "decision_at",
+      "stage",
+      "reason_code",
+      "identity_level",
+      "side"
+    ]
+  },
+  "functions": [
+    "refresh_current_signal_pair_serving",
+    "prune_current_signal_pair_serving",
+    "publish_primary_signal_observation",
+    "backfill_current_signal_pair_serving"
+  ],
+  "probeTables": [
+    "generated_signal_pairs",
+    "current_signal_pair_serving",
+    "night_event_reservations",
+    "event_execution_queue",
+    "job_runs"
+  ],
+  "columnContracts": {
+    "generated_signal_pairs": {
+      "id": {
+        "type": "uuid",
+        "notNull": true,
+        "default": "gen_random_uuid()"
+      },
+      "created_at": {
+        "type": "timestamp with time zone",
+        "notNull": true,
+        "default": "now()"
+      },
+      "source": {
+        "type": "text",
+        "notNull": true,
+        "default": "'polymarket'::text"
+      },
+      "formula_version": {
+        "type": "text",
+        "notNull": true,
+        "default": "'trusted-initial-formula-v1.1'::text"
+      },
+      "premium_signal": {
+        "type": "jsonb",
+        "notNull": true
+      },
+      "market_source": {
+        "type": "jsonb",
+        "notNull": true
+      },
+      "diagnostics": {
+        "type": "jsonb",
+        "notNull": true,
+        "default": "'{}'::jsonb"
+      },
+      "expires_at": {
+        "type": "timestamp with time zone",
+        "notNull": true,
+        "default": "(now() + '02:00:00'::interval)"
+      },
+      "condition_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "selected_token_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "selected_outcome": {
+        "type": "text",
+        "notNull": false
+      },
+      "metric_formula_version": {
+        "type": "text",
+        "notNull": false
+      },
+      "signal_result": {
+        "type": "text",
+        "notNull": false
+      },
+      "resolved_at": {
+        "type": "timestamp with time zone",
+        "notNull": false
+      },
+      "entry_price_num": {
+        "type": "numeric",
+        "notNull": false
+      },
+      "signal_confidence_num": {
+        "type": "numeric",
+        "notNull": false
+      },
+      "realized_return_pct": {
+        "type": "numeric",
+        "notNull": false
+      }
+    },
+    "job_runs": {
+      "id": {
+        "type": "uuid",
+        "notNull": true,
+        "default": "gen_random_uuid()"
+      },
+      "source": {
+        "type": "text",
+        "notNull": true,
+        "default": "'polymarket'::text"
+      },
+      "formula_version": {
+        "type": "text",
+        "notNull": true,
+        "default": "'trusted-initial-formula-v1.1'::text"
+      },
+      "started_at": {
+        "type": "timestamp with time zone",
+        "notNull": true,
+        "default": "now()"
+      },
+      "finished_at": {
+        "type": "timestamp with time zone",
+        "notNull": false
+      },
+      "status": {
+        "type": "text",
+        "notNull": true,
+        "default": "'running'::text"
+      },
+      "generated_count": {
+        "type": "integer",
+        "notNull": true,
+        "default": "0"
+      },
+      "rejected_count": {
+        "type": "integer",
+        "notNull": true,
+        "default": "0"
+      },
+      "duration_ms": {
+        "type": "integer",
+        "notNull": false
+      },
+      "error_message": {
+        "type": "text",
+        "notNull": false
+      },
+      "diagnostics": {
+        "type": "jsonb",
+        "notNull": true,
+        "default": "'{}'::jsonb"
+      }
+    },
+    "contract_a_rejection_evidence": {
+      "rejection_key": {
+        "type": "text",
+        "notNull": true
+      },
+      "rejection_evidence_version": {
+        "type": "text",
+        "notNull": true
+      },
+      "plan_run_id": {
+        "type": "text",
+        "notNull": true
+      },
+      "decision_at": {
+        "type": "timestamp with time zone",
+        "notNull": true
+      },
+      "decision_version": {
+        "type": "text",
+        "notNull": false
+      },
+      "contract_a_version": {
+        "type": "text",
+        "notNull": false
+      },
+      "stage": {
+        "type": "text",
+        "notNull": false
+      },
+      "reason_code": {
+        "type": "text",
+        "notNull": false
+      },
+      "reason_detail": {
+        "type": "text",
+        "notNull": false
+      },
+      "identity_level": {
+        "type": "text",
+        "notNull": true
+      },
+      "physical_event_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "observation_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "generated_signal_pair_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "provider_event_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "provider_event_start_iso": {
+        "type": "text",
+        "notNull": false
+      },
+      "producer_source": {
+        "type": "text",
+        "notNull": false
+      },
+      "source_created_at": {
+        "type": "text",
+        "notNull": false
+      },
+      "condition_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "selected_token_id": {
+        "type": "text",
+        "notNull": false
+      },
+      "side": {
+        "type": "text",
+        "notNull": false
+      }
+    }
+  },
+  "forbiddenColumns": {
+    "job_runs": [
+      "created_at"
+    ]
+  }
+}

@@ -998,7 +998,7 @@ function selectByPlanningFinalIdentityEvidence<T extends { conditionId: string; 
  * Omitted => the process-wide `supabaseAdmin` (the process's own contour), exactly as before.
  */
 async function defaultProcessSupabaseClient(): Promise<RuntimeSupabaseClient> {
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const supabaseAdmin = await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin();
   return supabaseAdmin;
 }
 
@@ -3019,7 +3019,7 @@ export interface BattleBatchRepoPort {
 export function createSupabaseBattleBatchRepoPort(): BattleBatchRepoPort {
   return {
     async fetchSignalPairs() {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin();
       const { data, error } = await supabaseAdmin
         .from("generated_signal_pairs")
         .select(
@@ -3037,7 +3037,7 @@ export function createSupabaseBattleBatchRepoPort(): BattleBatchRepoPort {
       return (data ?? []) as unknown as RawSignalPairRow[];
     },
     async findBlockingQueueRowByIdentity(conditionId, tokenId, side) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin();
       const { data, error } = await supabaseAdmin
         .from("event_execution_queue")
         .select("*")
@@ -3049,7 +3049,7 @@ export function createSupabaseBattleBatchRepoPort(): BattleBatchRepoPort {
       return (data ?? []) as unknown as EventExecutionQueueRow[];
     },
     async findQueueRowByIdempotencyKey(key) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin();
       const { data, error } = await supabaseAdmin
         .from("event_execution_queue")
         .select("*")
@@ -3059,7 +3059,7 @@ export function createSupabaseBattleBatchRepoPort(): BattleBatchRepoPort {
       return (data as EventExecutionQueueRow | null) ?? null;
     },
     async insertQueueRow(row) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin();
       const { error } = await supabaseAdmin.from("event_execution_queue").insert(row);
       if (error) {
         if ((error as { code?: string }).code === "23505") {

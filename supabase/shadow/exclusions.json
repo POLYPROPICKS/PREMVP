@@ -1,0 +1,19 @@
+{
+  "_doc": "Migrations in supabase/migrations that the PROD_SHADOW bootstrap does NOT apply. Every other migration (including future ones) is applied in lexical order after 000_prehistory_baseline.sql, so current-main schema truth is never frozen. A migration is excluded only if the shadow-reachable path (producer -> GSP/serving -> Contract A -> Reservation -> baseline -> rebalance -> Queue boundary -> passive block) provably never touches its objects.",
+  "exclusions": {
+    "20260518_whop_v0_1_payment_foundation.sql": "payments; not on the shadow path",
+    "20260525_referral_mvp_foundation.sql": "referral product; not on the shadow path",
+    "20260601_sms_consent_events.sql": "sms consent product; not on the shadow path",
+    "20260618_model_one_per_match_backtest.sql": "offline research backtest tables",
+    "20260626_liquidity_pool_mvp_foundation.sql": "liquidity watchlist product tables",
+    "20260702_track_record_window_results.sql": "track-record display product (needs track_record_display_signals)",
+    "20260704_track_record_window_refresh_rpc.sql": "track-record display product",
+    "20260830085522_create_strategic_jul15_aug27_identity_snapshot.sql": "historical research snapshot",
+    "20260830090340_lock_strategic_jul15_aug27_identity_snapshot.sql": "historical research snapshot",
+    "20260919080000_research_evidence_page_v2.sql": "research evidence page read RPC (product UI)",
+    "20260919100000_research_evidence_page_v3.sql": "research evidence page read RPC (product UI)",
+    "20260923090003_research_evidence_page_v4.sql": "research evidence page read RPC (product UI)",
+    "20260929120000_bet_execution_ledger_nullable_model_name.sql": "execution ledger exists only after a filled order; money movement is disabled on the shadow",
+    "20260929130000_live_feedback_daily_view.sql": "view over the execution ledger; money movement is disabled on the shadow"
+  }
+}

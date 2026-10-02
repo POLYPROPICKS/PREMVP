@@ -65,7 +65,8 @@ export async function GET(request: NextRequest) {
     if (error) throw new Error(error.message);
 
     const rows = (data ?? []) as EventExecutionQueueRow[];
-    let candidates = rows.map((r) => mapQueueRowToIrelandCandidate(r, nowMs));
+    const contourId = getActiveContour().profile.contourId;
+    let candidates = rows.map((r) => ({ ...mapQueueRowToIrelandCandidate(r, nowMs), contour_id: contourId }));
     if (!includeUpcoming) {
       candidates = candidates.filter((c) => c.entry_state === "IN_WINDOW");
     }
@@ -113,6 +114,7 @@ export async function GET(request: NextRequest) {
         schema: QUEUE_SCHEMA_VERSION,
         execution_mode: QUEUE_EXECUTION_MODE,
         source: QUEUE_SOURCE,
+        contour_id: contourId,
         plan_run_id: planRunId,
         generated_at_iso: nowIso,
         max_candidate_count: cap,

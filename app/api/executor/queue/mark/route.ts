@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getActiveContour } from "@/lib/constructor/registry";
+import { rejectContourMismatch, rejectPassiveCallback } from "@/lib/executor/callbackBoundary";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
 import { createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
@@ -120,6 +121,9 @@ export async function POST(request: NextRequest) {
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, success: false, error: "Unauthorized" }, { status: 401 });
   }
+  // Passive contour: reject before any queue lifecycle mutation (claim/executed/...).
+  const passive = rejectPassiveCallback("EXECUTOR_QUEUE_MARK");
+  if (passive) return passive;
 
   let body: Record<string, unknown>;
   try {
@@ -127,6 +131,8 @@ export async function POST(request: NextRequest) {
   } catch {
     return NextResponse.json({ ok: false, success: false, error: "Invalid JSON body" }, { status: 400 });
   }
+  const mismatch = rejectContourMismatch((body as Record<string, unknown> | null)?.contour_id);
+  if (mismatch) return mismatch;
 
   const { queue_id, status, source, reason, live_order_confirmed,
     polymarket_order_id, tx_hash, sent_at_iso, executed_at_iso, diagnostics } = body as Record<string, unknown>;

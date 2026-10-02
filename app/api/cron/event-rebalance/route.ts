@@ -9,7 +9,6 @@ import {
 } from "@/lib/executor/eventExecutionQueue";
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "@/lib/ops/emergencyQuiesce";
 import { reconcileStaleClaims, type StaleClaimRow } from "@/lib/executor/staleQueueClaims";
-import { supabaseAdmin } from "@/lib/supabase/server";
 import { reconcileExecutionLifecycle } from "@/lib/executor/executionLifecycle";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
@@ -186,7 +185,7 @@ async function handle(request: NextRequest) {
     const nowIso = new Date().toISOString();
     const staleClaims = await reconcileStaleClaims({
       async loadExpiredClaims(deadline, limit) {
-        const { data, error } = await supabaseAdmin.from("event_execution_queue")
+        const { data, error } = await runtime.resources.supabaseAdmin().from("event_execution_queue")
           .select("id,status,latest_entry_iso,idempotency_key,condition_id,token_id,side,diagnostics")
           .eq("status", "CLAIMED").lte("latest_entry_iso", deadline)
           .order("latest_entry_iso", { ascending: false }).limit(limit);
@@ -194,7 +193,7 @@ async function handle(request: NextRequest) {
         return (data ?? []) as StaleClaimRow[];
       },
       async hasMatchingOrderEvent(row) {
-        const { data, error } = await supabaseAdmin.from("executor_order_events")
+        const { data, error } = await runtime.resources.supabaseAdmin().from("executor_order_events")
           .select("id,condition_id,token_id,side,selected_side")
           .eq("idempotency_key", row.idempotency_key!).limit(2);
         if (error) throw new Error(`STALE_CLAIM_ORDER_READ_FAILED: ${error.message}`);
@@ -225,7 +224,7 @@ async function handle(request: NextRequest) {
     });
     let executionLifecycle: Awaited<ReturnType<typeof reconcileExecutionLifecycle>> | { error: string };
     try {
-      executionLifecycle = await reconcileExecutionLifecycle(supabaseAdmin, { writeMode: !dryRun, limit: 20 });
+      executionLifecycle = await reconcileExecutionLifecycle(runtime.resources.supabaseAdmin(), { writeMode: !dryRun, limit: 20 });
     } catch (error) {
       const message = error instanceof Error ? error.message : "UNKNOWN_LIFECYCLE_ERROR";
       console.error("[cron/event-rebalance] lifecycle error:", message);
