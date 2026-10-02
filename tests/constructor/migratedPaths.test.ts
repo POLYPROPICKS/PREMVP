@@ -175,6 +175,7 @@ test("GUARD (migrated runtime paths only): no global client / global-default wir
 
 test("GUARD: the event-rebalance cron boundary hands the engine a booted runtime, not a bare contour", () => {
   const src = readFileSync(path.join(ROOT, "app/api/cron/event-rebalance/route.ts"), "utf8");
-  assert.equal((src.match(/runtime: bootProcessRuntime\(\)/g) ?? []).length, 3);
-  assert.doesNotMatch(src, /contour: getActiveContour\(\)/);
+  assert.match(src, /const runtime = bootProcessRuntime\(\);/);
+  assert.equal((src.match(/\{ runtime \}/g) ?? []).length, 3);
+  assert.doesNotMatch(src, /getActiveContour/);
 });

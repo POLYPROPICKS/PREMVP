@@ -1,0 +1,65 @@
+// Shared reservation-planning fixture (copied verbatim from the contur3 scheduler test candidate).
+import type { FireModelCandidate } from "../../../lib/executor/buildFireModelCandidates";
+
+// 2026-07-19T14:00:00Z = 17:00 Minsk (the canonical reservation anchor).
+export const ANCHOR_NOW_MS = Date.parse("2026-07-19T14:00:00.000Z");
+export const KICKOFF_ISO = "2026-07-19T19:00:00.000Z"; // T-5h from anchor, within the 18h horizon
+
+export function baseCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCandidate {
+  return {
+    signal_id: "sig-esp-arg",
+    strategy: "TIER1_CORE_STRICT_72_COV50",
+    market_slug: "spain-vs-argentina-moneyline",
+    match_family_key: "pair:argentina-vs-spain:2026-07-19",
+    match_family_key_source: "event_slug",
+    match_family_key_is_weak: false,
+    event_slug: "fifwc-esp-arg-2026-07-19",
+    condition_id: "cond-esp-arg",
+    token_id: "token-esp-arg-spain",
+    side: "Spain",
+    selected_outcome: "Spain",
+    inferred_sport: "soccer",
+    market_family: "allowed_fullmatch_moneyline",
+    strategic_scope: "WC",
+    timing_bucket: "T_2_6H",
+    identity_quality: "STRONG",
+    identity_warning_codes: [],
+    canonical_event_key: "pair:argentina-vs-spain:2026-07-19",
+    canonical_market_key: "cond-esp-arg",
+    activity_label_detected: false,
+    sport_classification_confidence: "HIGH",
+    live_eligible: true,
+    live_rejection_reason: null,
+    side_mapping_status: "PROVEN_BY_TOKEN_ID",
+    live_block_reason: null,
+    live_policy_version: "v1",
+    paper_eligible: true,
+    max_entry_price: 0.55,
+    stake_usd: 7,
+    max_order_usd: 7,
+    max_spread: 0.03,
+    one_order_only: true,
+    executor_mode_allowed: "dry_run_only",
+    first_live_test_allowed: true,
+    stale_after: KICKOFF_ISO,
+    no_trade_after: KICKOFF_ISO,
+    idempotency_key: "candidate-idem-esp-arg",
+    model_rule_id: "v1:P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1",
+    created_at: "2026-07-19T12:00:00.000Z",
+    source: "FireModel1_private_executor_2026_06_15",
+    diagnostics: {
+      executor_action: "BET_OR_PAPER_GO",
+      paper_only: false,
+      real_trade: false,
+      score: 80,
+      coverage: 60,
+      smart_money: null,
+      entry_price: 0.5,
+      game_start_iso: KICKOFF_ISO,
+      hours_to_start_now: 5,
+      fire_model_alias: "FireModel1",
+      version: "v2-lite-growth-safe",
+    },
+    ...overrides,
+  } as FireModelCandidate;
+}

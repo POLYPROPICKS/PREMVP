@@ -1823,8 +1823,8 @@ async function fetchContractAPlanningServingRowSets(
  * `buildFireModelCandidates` as injected rows, so candidate eligibility is
  * decided in exactly one place.
  */
-export async function loadContractAPlanningSourceRows(nowMs = Date.now()): Promise<Record<string, unknown>[]> {
-  const { scoredRows } = await fetchContractAPlanningServingRowSets(new Date(nowMs).toISOString(), false);
+export async function loadContractAPlanningSourceRows(nowMs = Date.now(), getClient?: ServingClientGetter): Promise<Record<string, unknown>[]> {
+  const { scoredRows } = await fetchContractAPlanningServingRowSets(new Date(nowMs).toISOString(), false, getClient);
   // Contract A Planning consumes only rows carrying the admitted producer score.
   // The shadow branch is intentionally score-null and cannot become a Planning
   // Decision; reading its unbounded historical pages here delays the real

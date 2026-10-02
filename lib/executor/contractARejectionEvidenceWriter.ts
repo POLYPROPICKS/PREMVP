@@ -2,10 +2,13 @@ import type { ContractARejectionEvidenceRow, ContractARejectionEvidenceWritePort
 
 const UPSERT_CHUNK = 500;
 
-export function createSupabaseContractARejectionEvidencePort(): ContractARejectionEvidenceWritePort {
+export function createSupabaseContractARejectionEvidencePort(
+  getClient?: () => unknown | Promise<unknown>,
+): ContractARejectionEvidenceWritePort {
   return {
     async upsert(rows) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      // Runtime-bound when a client getter is supplied; otherwise the process-wide client (legacy).
+      const supabaseAdmin = (getClient ? await getClient() : (await import("@/lib/supabase/server")).supabaseAdmin) as typeof import("@/lib/supabase/server").supabaseAdmin;
       for (let i = 0; i < rows.length; i += UPSERT_CHUNK) {
         const { error } = await supabaseAdmin
           .from("contract_a_rejection_evidence")

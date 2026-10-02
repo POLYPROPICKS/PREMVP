@@ -8,9 +8,10 @@ import {
   buildReservationPlan,
   buildCanaryPreview,
   persistReservationPlan,
+  createSupabaseReservationRepoPort,
   loadReservations,
 } from "@/lib/executor/nightEventReservations";
-import { getActiveContour } from "@/lib/constructor/registry";
+import { bootProcessRuntime } from "@/lib/constructor/bootstrap";
 import {
   buildPlanRunId,
   resolveNightWindow,
@@ -54,7 +55,8 @@ async function handle(request: NextRequest) {
   }
 
   const secret = request.headers.get("x-executor-secret");
-  const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
+  const runtime = bootProcessRuntime();
+  const expectedSecret = runtime.contour.resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -75,7 +77,7 @@ async function handle(request: NextRequest) {
     // Constructor V1: selector policy and the anchor-schedule env binding come from the
     // composed DEV_LIVE contour, not from literals/ambient env keys in this handler. The resolved
     // anchor is passed explicitly to every downstream call so none re-reads the ambient schedule.
-    const contour = getActiveContour();
+    const contour = runtime.contour;
     const selectorMode = contour.profile.selectors.planning;
     const reservationTimes = parseReservationTimes(contour.resolveEnv("reservationTimesMinsk"));
     const currentAnchor = resolveReservationAnchor(nowMs, reservationTimes);
@@ -92,7 +94,7 @@ async function handle(request: NextRequest) {
           { status: 400, headers: { "Cache-Control": "no-store" } }
         );
       }
-      const plan = await buildReservationPlan(nowMs, { selectorMode, anchor: currentAnchor });
+      const plan = await buildReservationPlan(nowMs, { selectorMode, anchor: currentAnchor, runtime });
       const preview_groups = buildCanaryPreview(plan, nowMs);
       return NextResponse.json(
         {
@@ -122,6 +124,7 @@ async function handle(request: NextRequest) {
         );
       }
       const plan = await buildReservationPlan(nowMs, {
+        runtime,
         selectorMode,
         anchor: currentAnchor,
         targetPhysicalEventKeyHash,
@@ -153,7 +156,7 @@ async function handle(request: NextRequest) {
           { status: 200, headers: { "Cache-Control": "no-store" } }
         );
       }
-      const persisted = await persistReservationPlan(plan, { force: false });
+      const persisted = await persistReservationPlan(plan, { force: false }, createSupabaseReservationRepoPort(runtime.resources.supabaseAdmin));
       if (persisted.already_exists) {
         return NextResponse.json(
           {
@@ -167,7 +170,7 @@ async function handle(request: NextRequest) {
           { status: 200, headers: { "Cache-Control": "no-store" } }
         );
       }
-      const rows = await loadReservations(plan.plan_run_id);
+      const rows = await loadReservations(plan.plan_run_id, runtime.resources.supabaseAdmin);
       const createdRow = rows.find((r) => r.match_family_key === plan.diagnostics.canary_target_group_key);
       return NextResponse.json(
         {
@@ -188,7 +191,7 @@ async function handle(request: NextRequest) {
     if (mode === "status" || dryRun) {
       const planRunId = buildPlanRunId(nowMs, currentAnchor);
       const window = resolveNightWindow(nowMs, currentAnchor);
-      const planHealth = await loadPlanStatus(planRunId, nowMs, currentAnchor);
+      const planHealth = await loadPlanStatus(planRunId, nowMs, currentAnchor, runtime.resources.supabaseAdmin);
       return NextResponse.json(
         {
           ok: true,
@@ -211,7 +214,7 @@ async function handle(request: NextRequest) {
     // (unless the replacement plan is empty, in which case nothing is deleted --
     // see executeForceRebuild's ABORTED_NO_REPLACEMENT path.)
     if (forceRebuild) {
-      const result = await executeForceRebuild(nowMs, { selectorMode, anchor: currentAnchor });
+      const result = await executeForceRebuild(nowMs, { selectorMode, anchor: currentAnchor, runtime });
       const diagResult = await persistReservationPlanDiagnostics(result.plan, {
         context: "force-rebuild",
       });
@@ -246,7 +249,7 @@ async function handle(request: NextRequest) {
     if (!dueAnchor && !force && !forceCreate) {
       const planRunId = buildPlanRunId(nowMs, currentAnchor);
       const window = resolveNightWindow(nowMs, currentAnchor);
-      const planHealth = await loadPlanStatus(planRunId, nowMs, currentAnchor);
+      const planHealth = await loadPlanStatus(planRunId, nowMs, currentAnchor, runtime.resources.supabaseAdmin);
       return NextResponse.json(
         {
           ok: true,
@@ -273,7 +276,7 @@ async function handle(request: NextRequest) {
       force: force || forceCreate,
       selectorMode,
       anchor: dueAnchor ?? currentAnchor,
-    });
+    }, { runtime });
 
     // Persist diagnostics (non-fatal if it fails).
     const diagResult = await persistReservationPlanDiagnostics(plan, {
@@ -290,7 +293,7 @@ async function handle(request: NextRequest) {
     const expired_count = statusBuckets["EXPIRED"] ?? 0;
 
     // Compute plan_health from DB (always reflects actual current state).
-    const planHealth = await loadPlanStatus(result.plan_run_id, nowMs, currentAnchor);
+    const planHealth = await loadPlanStatus(result.plan_run_id, nowMs, currentAnchor, runtime.resources.supabaseAdmin);
 
     return NextResponse.json(
       {

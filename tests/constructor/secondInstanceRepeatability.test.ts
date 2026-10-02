@@ -129,7 +129,7 @@ test("anchor is threaded through every cron-reachable reservation entry (source 
   const route = stripComments(read("app/api/cron/night-event-reservations/route.ts"));
   assert.ok(!/parseReservationTimesMinsk/.test(route), "cron route must use the pure parser");
   assert.equal((route.match(/anchor: currentAnchor/g) ?? []).length, 3);
-  assert.equal((route.match(/loadPlanStatus\([^)]*, currentAnchor\)/g) ?? []).length, 3);
+  assert.equal((route.match(/loadPlanStatus\([^)]*, currentAnchor(?:, runtime\.resources\.supabaseAdmin)?\)/g) ?? []).length, 3);
 });
 
 // ── Phase 4: auth / EXECUTOR_CANDIDATES_SECRET binding ───────────────────────
@@ -149,7 +149,11 @@ test("all 8 server routes resolve the shared secret through the instance binding
   for (const rel of AUTH_ROUTES) {
     const src = stripComments(read(rel));
     assert.ok(!/process\.env\.EXECUTOR_CANDIDATES_SECRET/.test(src), `${rel} still reads the ambient secret`);
-    assert.ok(src.includes('getActiveContour().resolveEnv("executorCandidatesSecret")'), `${rel} must use the binding`);
+    assert.ok(
+      src.includes('getActiveContour().resolveEnv("executorCandidatesSecret")') ||
+        src.includes('runtime.contour.resolveEnv("executorCandidatesSecret")'),
+      `${rel} must use the binding`,
+    );
     assert.ok(/!expectedSecret \|\| secret !== expectedSecret/.test(src), `${rel} lost the fail-closed comparison`);
   }
 });
@@ -203,7 +207,7 @@ test("process-wide supabaseAdmin is the ACTIVE contour's client built by the fac
 
 test("event-rebalance cron consumes the contour for auth and passes its booted runtime into the shared engine", () => {
   const src = stripComments(read("app/api/cron/event-rebalance/route.ts"));
-  assert.equal((src.match(/\{ runtime: bootProcessRuntime\(\) \}/g) ?? []).length, 3, "both WithEvidence calls and the controlled-intent call");
+  assert.equal((src.match(/\{ runtime \}/g) ?? []).length, 3, "both WithEvidence calls and the controlled-intent call");
   const q = stripComments(read("lib/executor/eventExecutionQueue.ts"));
   assert.ok(/contour: deps\.contour,/.test(q) && /runtime: deps\.runtime,/.test(q), "WithEvidence must forward contour and runtime to runEventRebalance");
 });

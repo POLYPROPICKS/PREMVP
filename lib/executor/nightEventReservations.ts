@@ -13,6 +13,8 @@
 // Read input only via buildFireModelCandidates (raw universe). No 6h hardcoded
 // eligibility: horizon is governed by nightWindow.ts.
 
+import type { ContourRuntimeV1, RuntimeSupabaseClient } from "@/lib/constructor/bootstrap";
+import type { RuntimeClientGetter } from "./reservationMarketBaseline";
 import type {
   FireModelCandidate,
   FireModelSelectorMode,
@@ -763,6 +765,8 @@ type ReservationCandidateFetchResult = {
 export async function buildReservationPlan(
   nowMs: number,
   deps: {
+    /** A booted instance: candidate/source reads go through ITS client. */
+    runtime?: ContourRuntimeV1;
     fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
     selectorMode?: FireModelSelectorMode;
     /** Explicit instance schedule anchor. Absent = legacy ambient resolution (non-Constructor callers). */
@@ -798,6 +802,7 @@ export async function buildReservationPlan(
     deps.fetchCandidates === undefined
   ) {
     return buildContractAReservationPlan(nowMs, {
+      runtime: deps.runtime,
       anchor: deps.anchor,
       fetchSourceRows: deps.fetchSourceRows,
       produceDecisions: deps.produceDecisions,
@@ -813,7 +818,7 @@ export async function buildReservationPlan(
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, deps.selectorMode ?? "CONTUR3_CURRENT");
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, deps.selectorMode ?? "CONTUR3_CURRENT", undefined, deps.runtime?.resources.supabaseAdmin);
     });
   const { candidates: receivedCandidates, rawDiagnostics } = await fetchCandidates();
 
@@ -1616,10 +1621,17 @@ async function findExistingReservationOccurrence(
   return legacyStartMs === current.eventStartMs ? legacy : null;
 }
 
-export function createSupabaseReservationRepoPort(): ReservationRepoPort {
+/** Contour-bound admin client getter of a booted runtime; omitted => the process-wide supabaseAdmin (legacy, unchanged). */
+export type ReservationClientGetter = RuntimeClientGetter;
+async function defaultProcessReservationClient(): Promise<RuntimeSupabaseClient> {
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  return supabaseAdmin;
+}
+
+export function createSupabaseReservationRepoPort(getClient: ReservationClientGetter = defaultProcessReservationClient): ReservationRepoPort {
   return {
     async findByPlanRunId(planRunId) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("night_event_reservations")
         .select("*")
@@ -1629,7 +1641,7 @@ export function createSupabaseReservationRepoPort(): ReservationRepoPort {
       return (data ?? []) as unknown as NightEventReservationRow[];
     },
     async findByPhysicalEventId(physicalEventId) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("night_event_reservations")
         .select("*")
@@ -1639,7 +1651,7 @@ export function createSupabaseReservationRepoPort(): ReservationRepoPort {
       return (data as unknown as NightEventReservationRow | null) ?? null;
     },
     async deleteByPlanRunId(planRunId) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { error } = await supabaseAdmin
         .from("night_event_reservations")
         .delete()
@@ -1647,7 +1659,7 @@ export function createSupabaseReservationRepoPort(): ReservationRepoPort {
       if (error) throw new Error(`reservation force-delete failed: ${error.message}`);
     },
     async insert(rows) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { error } = await supabaseAdmin.from("night_event_reservations").insert(rows);
       if (error) throw new Error(`reservation insert failed: ${error.message}`);
     },
@@ -2644,6 +2656,7 @@ function providerVolumeByPhysicalEventId(
 export async function buildContractAReservationPlan(
   nowMs: number,
   deps: {
+    runtime?: ContourRuntimeV1;
     anchor?: ReservationAnchor;
     fetchSourceRows?: () => Promise<readonly Record<string, unknown>[]>;
     produceDecisions?: (
@@ -2663,7 +2676,7 @@ export async function buildContractAReservationPlan(
     ? await deps.fetchSourceRows()
     : await (async () => {
         const { loadContractAPlanningSourceRows } = await import("./buildFireModelCandidates");
-        return loadContractAPlanningSourceRows();
+        return loadContractAPlanningSourceRows(undefined, deps.runtime?.resources.supabaseAdmin);
       })();
 
   const produce =
@@ -2864,13 +2877,17 @@ export async function runReservationCronWithEvidence(
     hashPhysicalEventKey?: (key: string) => string;
     contractARejectionEvidencePort?: ContractARejectionEvidenceWritePort;
     captureBaseline?: (reservation: NightEventReservationRow) => Promise<void>;
+    /** A booted instance: planner reads, reservation writes, baseline capture, rejection + job evidence all use ITS client. */
+    runtime?: ContourRuntimeV1;
   } = {}
 ): Promise<{ plan: ReservationPlan; persisted: PersistReservationsResult }> {
-  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
+  const runtimeClient = deps.runtime?.resources.supabaseAdmin;
+  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort(runtimeClient);
   const startedAt = new Date().toISOString();
   try {
     const plan = opts.selectorMode === "CONTRACT_A_PLANNING_V1"
       ? await buildContractAReservationPlan(nowMs, {
+          runtime: deps.runtime,
           anchor: opts.anchor,
           fetchSourceRows: deps.fetchSourceRows,
           produceDecisions: deps.produceDecisions,
@@ -2878,6 +2895,7 @@ export async function runReservationCronWithEvidence(
           hashPhysicalEventKey: deps.hashPhysicalEventKey,
         })
       : await buildReservationPlan(nowMs, {
+          runtime: deps.runtime,
           fetchCandidates: deps.fetchCandidates,
           selectorMode: opts.selectorMode,
           targetPhysicalEventKeyHash: deps.targetPhysicalEventKeyHash,
@@ -2885,7 +2903,9 @@ export async function runReservationCronWithEvidence(
         });
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
-      : await persistReservationPlan(plan, opts);
+      : runtimeClient
+        ? await persistReservationPlan(plan, opts, createSupabaseReservationRepoPort(runtimeClient))
+        : await persistReservationPlan(plan, opts);
     // Capture only newly inserted natural Reservations, after their database IDs exist.
     // This telemetry is deliberately fail-open for Reservation and live execution.
     if (!opts.force && persisted.written_count > 0 && (!deps.repo || deps.captureBaseline)) {
@@ -2893,7 +2913,7 @@ export async function runReservationCronWithEvidence(
         try {
           const saved = deps.repo?.findByPhysicalEventId
             ? await deps.repo.findByPhysicalEventId(row.physical_event_id!)
-            : await createSupabaseReservationRepoPort().findByPhysicalEventId!(row.physical_event_id!);
+            : await createSupabaseReservationRepoPort(runtimeClient).findByPhysicalEventId!(row.physical_event_id!);
           if (!saved?.id || saved.physical_event_id !== row.physical_event_id ||
               Date.parse(saved.event_start_iso ?? "") !== Date.parse(row.event_start_iso ?? "")) {
             throw new Error("BASELINE_PERSISTED_IDENTITY_UNRESOLVED");
@@ -2901,7 +2921,7 @@ export async function runReservationCronWithEvidence(
           if (deps.captureBaseline) await deps.captureBaseline(saved);
           else {
             const { captureReservationMarketBaseline } = await import("./reservationMarketBaseline");
-            await captureReservationMarketBaseline(saved);
+            await captureReservationMarketBaseline(saved, { getClient: runtimeClient });
           }
         } catch (error) {
           console.warn("[reservation-baseline] capture failed:", error instanceof Error ? error.message : "UNKNOWN");
@@ -2912,8 +2932,11 @@ export async function runReservationCronWithEvidence(
     // This optional carrier is fail-open and cannot affect candidate selection or money flow.
     if (plan.rejection_evidence?.length) {
       try {
-        const { persistContractARejectionEvidenceFailOpen } = await import("./contractARejectionEvidenceWriter");
-        await persistContractARejectionEvidenceFailOpen(plan.rejection_evidence, deps.contractARejectionEvidencePort);
+        const { persistContractARejectionEvidenceFailOpen, createSupabaseContractARejectionEvidencePort } = await import("./contractARejectionEvidenceWriter");
+        await persistContractARejectionEvidenceFailOpen(
+          plan.rejection_evidence,
+          deps.contractARejectionEvidencePort ?? (runtimeClient ? createSupabaseContractARejectionEvidencePort(runtimeClient) : undefined),
+        );
       } catch {
         // A telemetry import or write failure must never block Reservation processing.
       }
@@ -3133,23 +3156,24 @@ export function nightReservationEmail(
  */
 export async function ensureAndLoadReservations(
   nowMs: number,
-  opts: { allowCreate?: boolean; selectorMode?: FireModelSelectorMode; anchor?: ReservationAnchor } = {}
+  opts: { allowCreate?: boolean; selectorMode?: FireModelSelectorMode; anchor?: ReservationAnchor; runtime?: ContourRuntimeV1 } = {}
 ): Promise<{ planRunId: string; reservations: NightEventReservationRow[]; created: boolean }> {
   const planRunId = buildPlanRunId(nowMs, opts.anchor);
-  let reservations = await loadReservations(planRunId);
+  const runtimeClient = opts.runtime?.resources.supabaseAdmin;
+  let reservations = await loadReservations(planRunId, runtimeClient);
   let created = false;
   if (reservations.length === 0 && opts.allowCreate) {
-    const plan = await buildReservationPlan(nowMs, { selectorMode: opts.selectorMode, anchor: opts.anchor });
-    await persistReservationPlan(plan, { force: false });
-    reservations = await loadReservations(planRunId);
+    const plan = await buildReservationPlan(nowMs, { selectorMode: opts.selectorMode, anchor: opts.anchor, runtime: opts.runtime });
+    await persistReservationPlan(plan, { force: false }, runtimeClient ? createSupabaseReservationRepoPort(runtimeClient) : undefined);
+    reservations = await loadReservations(planRunId, runtimeClient);
     created = true;
   }
   return { planRunId, reservations, created };
 }
 
 /** Read frozen reservations for a plan_run_id, rank-ordered. */
-export async function loadReservations(planRunId: string): Promise<NightEventReservationRow[]> {
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+export async function loadReservations(planRunId: string, getClient: ReservationClientGetter = defaultProcessReservationClient): Promise<NightEventReservationRow[]> {
+  const supabaseAdmin = await getClient();
   const { data, error } = await supabaseAdmin
     .from("night_event_reservations")
     .select("*")
@@ -3198,8 +3222,8 @@ export interface PlanHealth {
  * Read existing plan rows from DB and compute health diagnostics.
  * Pure read — no writes. Returns zero-counts when the plan does not exist yet.
  */
-export async function loadPlanStatus(planRunId: string, nowMs: number, anchor?: ReservationAnchor): Promise<PlanHealth> {
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+export async function loadPlanStatus(planRunId: string, nowMs: number, anchor?: ReservationAnchor, getClient: ReservationClientGetter = defaultProcessReservationClient): Promise<PlanHealth> {
+  const supabaseAdmin = await getClient();
   const { data, error } = await supabaseAdmin
     .from("night_event_reservations")
     .select("*")
@@ -3339,10 +3363,10 @@ export interface ForceRebuildRepoPort {
   deleteReservationsByPlanRunId(planRunId: string): Promise<{ deletedCount: number }>;
 }
 
-export function createSupabaseForceRebuildRepoPort(): ForceRebuildRepoPort {
+export function createSupabaseForceRebuildRepoPort(getClient: ReservationClientGetter = defaultProcessReservationClient): ForceRebuildRepoPort {
   return {
     async deleteQueueByPlanRunId(planRunId) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("event_execution_queue")
         .delete()
@@ -3352,7 +3376,7 @@ export function createSupabaseForceRebuildRepoPort(): ForceRebuildRepoPort {
       return { deletedCount: data?.length ?? 0 };
     },
     async deleteReservationsByPlanRunId(planRunId) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const supabaseAdmin = await getClient();
       const { data, error } = await supabaseAdmin
         .from("night_event_reservations")
         .delete()
@@ -3435,12 +3459,15 @@ export async function executeForceRebuild(
     forceRebuildRepo?: ForceRebuildRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
     loadPlanStatus?: (planRunId: string, nowMs: number, anchor?: ReservationAnchor) => Promise<PlanHealth>;
+    /** A booted instance: planning reads, repos, plan status and job evidence all use ITS client. */
+    runtime?: ContourRuntimeV1;
   } = {}
 ): Promise<ForceRebuildResult> {
-  const repo = deps.repo ?? createSupabaseReservationRepoPort();
-  const forceRebuildRepo = deps.forceRebuildRepo ?? createSupabaseForceRebuildRepoPort();
-  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
-  const loadPlanStatusFn = deps.loadPlanStatus ?? loadPlanStatus;
+  const runtimeClient = deps.runtime?.resources.supabaseAdmin;
+  const repo = deps.repo ?? createSupabaseReservationRepoPort(runtimeClient);
+  const forceRebuildRepo = deps.forceRebuildRepo ?? createSupabaseForceRebuildRepoPort(runtimeClient);
+  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort(runtimeClient);
+  const loadPlanStatusFn = deps.loadPlanStatus ?? ((id: string, now: number, anchor?: ReservationAnchor) => loadPlanStatus(id, now, anchor, runtimeClient));
   const planRunId = buildPlanRunId(nowMs, deps.anchor);
   const startedAt = new Date().toISOString();
 
@@ -3451,7 +3478,7 @@ export async function executeForceRebuild(
     //    already know the replacement plan is non-empty -- this closes the
     //    incident where an empty replacement plan silently deleted a real
     //    existing reservation with nothing to take its place.
-    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: deps.selectorMode, anchor: deps.anchor });
+    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: deps.selectorMode, anchor: deps.anchor, runtime: deps.runtime });
 
     if (plan.reservations.length === 0) {
       const planHealth = await withBoundedRetry("force_rebuild_plan_health_read_aborted", () =>

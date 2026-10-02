@@ -109,7 +109,7 @@ test("migrated active-path call sites no longer hard-code the selector mode", ()
   ];
   for (const rel of sites) {
     const src = read(rel);
-    assert.ok(src.includes("getActiveContour"), `${rel} must consume the composed contour`);
+    assert.ok(src.includes("getActiveContour") || src.includes("bootProcessRuntime"), `${rel} must consume the composed contour`);
     assert.ok(!/["']CONTRACT_A_PLANNING_V1["']/.test(src.replace(/\/\/.*$/gm, "")), `${rel} still hard-codes the selector`);
   }
   const queue = read("lib/executor/eventExecutionQueue.ts");
