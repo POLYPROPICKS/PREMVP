@@ -14,6 +14,7 @@ export const SHADOW_JOBS = {
 };
 export const DEV_AMBIENT = ["EXECUTOR_CANDIDATES_SECRET", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "RESERVATION_TIMES_MINSK"];
 
+/** @param {string} job @param {{ env?: Record<string, string | undefined>, fetchImpl: (url: string, init: any) => Promise<any> }} opts */
 export async function runShadowJob(job, { env = process.env, fetchImpl } = {}) {
   const path = SHADOW_JOBS[job];
   if (!path) return { exitCode: 1, reason: "UNKNOWN_JOB" };

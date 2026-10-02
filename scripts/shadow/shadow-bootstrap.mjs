@@ -78,10 +78,26 @@ export function verify() {
     ...Object.entries(inv.columns).flatMap(([t, cs]) => cs.filter((c) => !cols.has(`${t}.${c}`)).map((c) => `column:${t}.${c}`)),
     ...inv.functions.filter((f) => !fns.has(f)).map((f) => `function:${f}`),
   ];
+  // Contract parity for the reconstructed pre-history tables: type, NOT NULL and defaults of the FINAL schema
+  // (after every later migration), compared to the live-schema-verified contract.
+  const meta = new Map(q("SELECT table_name||'.'||column_name||'|'||data_type||'|'||is_nullable||'|'||coalesce(column_default,'') FROM information_schema.columns WHERE table_schema='public'")
+    .map((l) => { const [k, type, nullable, def] = l.split("|"); return [k, { type, notNull: nullable === "NO", def }]; }));
+  const drift = [];
+  for (const [t, cs] of Object.entries(inv.columnContracts ?? {})) {
+    for (const [c, want] of Object.entries(cs)) {
+      const got = meta.get(`${t}.${c}`);
+      if (!got) { drift.push(`${t}.${c}:absent`); continue; }
+      if (got.type !== want.type) drift.push(`${t}.${c}:type ${got.type}!=${want.type}`);
+      if (got.notNull !== want.notNull) drift.push(`${t}.${c}:notNull ${got.notNull}!=${want.notNull}`);
+      if (want.default !== undefined && got.def !== want.default) drift.push(`${t}.${c}:default ${got.def}!=${want.default}`);
+    }
+  }
+  for (const [t, cs] of Object.entries(inv.forbiddenColumns ?? {})) for (const c of cs) if (meta.has(`${t}.${c}`)) drift.push(`${t}.${c}:must not exist`);
+  if (drift.length) throw new Error(`SHADOW_SCHEMA_DRIFT: ${drift.join("; ")}`);
   if (missing.length) throw new Error(`SHADOW_SCHEMA_INCOMPLETE: ${missing.join(", ")}`);
   // Startup probe: the reads the shadow runtime performs first must be executable.
   for (const t of inv.probeTables) psql(url, ["-c", `SELECT 1 FROM public.${t} LIMIT 0`]);
-  return { tables: inv.tables.length, functions: inv.functions.length };
+  return { tables: inv.tables.length, functions: inv.functions.length, contractColumns: Object.values(inv.columnContracts ?? {}).reduce((n, c) => n + Object.keys(c).length, 0) };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

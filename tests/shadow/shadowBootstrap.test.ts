@@ -48,8 +48,8 @@ test("shadow cycle runner: only SHADOW_* names, refuses DEV ambient, hits only t
     calls.push(`${url}|${init.headers["x-executor-secret"]}`);
     return { ok: true, status: 200, json: async () => ({ ok: true }) };
   };
-  const env = { SHADOW_BASE_URL: "https://shadow.invalid", SHADOW_EXECUTOR_CANDIDATES_SECRET: "sh" };
-  assert.deepEqual(await runShadowJob("reservations", { env, fetchImpl }), { exitCode: 0, status: 200 });
+  const env: Record<string, string | undefined> = { SHADOW_BASE_URL: "https://shadow.invalid", SHADOW_EXECUTOR_CANDIDATES_SECRET: "sh" };
+  assert.deepEqual(await runShadowJob("reservations", { env: env, fetchImpl }), { exitCode: 0, status: 200 });
   assert.deepEqual(calls, [`https://shadow.invalid${SHADOW_JOBS.reservations}|sh`]);
   const refused = await runShadowJob("rebalance", { env: { ...env, EXECUTOR_CANDIDATES_SECRET: "dev" }, fetchImpl });
   assert.match(String(refused.reason), /AMBIENT_FOREIGN_BINDING_PRESENT/);
@@ -74,11 +74,19 @@ test("EMPTY DB -> bootstrap -> verify -> second apply is a no-op -> shadow signa
       assert.equal(second.status, 0, second.stderr);
       assert.match(second.stdout, /"applied":0,"skipped":\d+/);
 
+      // Contract parity: the verifier must CATCH drift in the reconstructed pre-history tables.
+      assert.equal(run(url, ["-c", "ALTER TABLE job_runs ADD COLUMN created_at timestamptz", "-c", "ALTER TABLE contract_a_rejection_evidence ALTER COLUMN stage SET NOT NULL", "-c", "ALTER TABLE contract_a_rejection_evidence ALTER COLUMN source_created_at TYPE timestamptz USING NULL"]).status, 0);
+      const drift = node(["--verify"]);
+      assert.notEqual(drift.status, 0);
+      assert.match(drift.stderr, /SHADOW_SCHEMA_DRIFT.*stage:notNull.*source_created_at:type.*job_runs\.created_at:must not exist/);
+      assert.equal(run(url, ["-c", "ALTER TABLE job_runs DROP COLUMN created_at", "-c", "ALTER TABLE contract_a_rejection_evidence ALTER COLUMN stage DROP NOT NULL", "-c", "ALTER TABLE contract_a_rejection_evidence ALTER COLUMN source_created_at TYPE text"]).status, 0);
+      assert.equal(node(["--verify"]).status, 0);
+
       // Own shadow signal -> GSP -> serving projection (real SQL), starting from zero rows.
       const rows = run(url, ["-c", "SELECT count(*) FROM generated_signal_pairs"]).stdout.trim();
       assert.equal(rows, "0");
-      const ins = run(url, ["-c", `INSERT INTO generated_signal_pairs (source, formula_version, metric_formula_version, condition_id, selected_token_id, selected_outcome, expires_at, diagnostics)
-        VALUES ('shadow-test','v','shadow-strategic-sports-v1','c1','t1','Yes', now() + interval '1 day', '{}'::jsonb) RETURNING id`]);
+      const ins = run(url, ["-c", `INSERT INTO generated_signal_pairs (metric_formula_version, condition_id, selected_token_id, selected_outcome, premium_signal, market_source)
+        VALUES ('shadow-strategic-sports-v1','c1','t1','Yes','{}'::jsonb,'{}'::jsonb) RETURNING id`]);
       assert.equal(ins.status, 0, ins.stderr);
       const id = ins.stdout.trim().split("\n")[0];
       const refresh = run(url, ["-c", `SELECT refresh_current_signal_pair_serving(ARRAY['${id}']::uuid[])`]);
