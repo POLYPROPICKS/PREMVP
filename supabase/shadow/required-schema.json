@@ -1,0 +1,23 @@
+{
+  "_doc": "Required PROD_SHADOW schema inventory: the transitive database closure of producer -> generated_signal_pairs -> current_signal_pair_serving -> Contract A -> Reservation -> baseline/evidence -> rebalance -> Queue boundary. Checked by `shadow-bootstrap.mjs --verify` and tests/shadow/. No reference rows are required: every table starts empty and is filled by the shadow's own pipeline.",
+  "referenceRowsRequired": false,
+  "tables": [
+    "generated_signal_pairs", "current_signal_pair_serving", "current_signal_pair_serving_backfill_checkpoint",
+    "primary_evidence_outbox", "generated_signal_research_snapshots", "sports_event_market_inventory",
+    "job_runs", "contract_a_rejection_evidence",
+    "night_event_reservations", "event_execution_queue",
+    "reservation_market_capture_runs", "reservation_market_observations", "reservation_strategy_observations",
+    "executor_order_events", "executor_audit_events"
+  ],
+  "columns": {
+    "generated_signal_pairs": ["id", "created_at", "source", "formula_version", "metric_formula_version", "event_slug", "market_slug", "condition_id", "selected_outcome", "selected_token_id", "premium_signal", "market_source", "market_sources", "diagnostics", "score", "expires_at", "entry_price_num", "signal_confidence_num", "expected_return_pct_num", "trust_metrics", "smart_money_score_num", "whale_public_score_num", "pre_event_score_num", "signal_result", "resolved_at", "winning_outcome", "realized_return_pct"],
+    "job_runs": ["source", "formula_version", "started_at", "finished_at", "status", "generated_count", "rejected_count", "duration_ms", "error_message", "diagnostics"],
+    "current_signal_pair_serving": ["condition_id", "selected_token_id", "metric_formula_version", "source_generated_signal_pair_id", "diagnostics", "expires_at", "signal_result", "projection_status"],
+    "contract_a_rejection_evidence": ["rejection_key", "plan_run_id", "decision_at", "stage", "reason_code", "identity_level", "side"]
+  },
+  "functions": [
+    "refresh_current_signal_pair_serving", "prune_current_signal_pair_serving",
+    "publish_primary_signal_observation", "backfill_current_signal_pair_serving"
+  ],
+  "probeTables": ["generated_signal_pairs", "current_signal_pair_serving", "night_event_reservations", "event_execution_queue", "job_runs"]
+}
