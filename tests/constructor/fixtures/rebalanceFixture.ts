@@ -41,6 +41,7 @@ export function spyRepo() {
     async markReservationsExpired() {}, async markReservationSkipped() {},
     async markReservationQueued() { calls.markQueued += 1; },
     async insertQueueRow(row) { calls.insert += 1; queue.push(row); },
+    async findQueueRowsByRebalanceRunId(id: string) { return queue.filter((r) => r.rebalance_run_id === id); },
   };
   return { repo, calls, queue };
 }

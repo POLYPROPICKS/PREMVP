@@ -201,11 +201,11 @@ test("process-wide supabaseAdmin is the ACTIVE contour's client built by the fac
 
 // ── Phase 2: event-rebalance composition ─────────────────────────────────────
 
-test("event-rebalance cron consumes the contour for auth and passes it into the shared engine", () => {
+test("event-rebalance cron consumes the contour for auth and passes its booted runtime into the shared engine", () => {
   const src = stripComments(read("app/api/cron/event-rebalance/route.ts"));
-  assert.equal((src.match(/\{ contour: getActiveContour\(\) \}/g) ?? []).length, 2, "both runEventRebalanceWithEvidence calls");
+  assert.equal((src.match(/\{ runtime: bootProcessRuntime\(\) \}/g) ?? []).length, 3, "both WithEvidence calls and the controlled-intent call");
   const q = stripComments(read("lib/executor/eventExecutionQueue.ts"));
-  assert.ok(/contour: deps\.contour,/.test(q), "WithEvidence must forward the contour to runEventRebalance");
+  assert.ok(/contour: deps\.contour,/.test(q) && /runtime: deps\.runtime,/.test(q), "WithEvidence must forward contour and runtime to runEventRebalance");
 });
 
 // ── Phase 7: second-instance reproducibility ─────────────────────────────────

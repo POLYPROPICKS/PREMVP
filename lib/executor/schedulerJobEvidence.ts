@@ -42,7 +42,25 @@ export function sanitizeSchedulerErrorMessage(raw: string): string {
 let cachedRealPort: SchedulerJobEvidencePort | null = null;
 
 /** Real Supabase-backed job evidence port. Lazily constructed; safe to call repeatedly. */
-export function createSupabaseSchedulerJobEvidencePort(): SchedulerJobEvidencePort {
+export function createSupabaseSchedulerJobEvidencePort(
+  getClient?: () => unknown | Promise<unknown>,
+): SchedulerJobEvidencePort {
+  // A runtime-bound port writes through ITS client and is never cached or shared across runtimes.
+  if (getClient) {
+    return {
+      async writeJobRun(input) {
+        try {
+          const { writeJobRunWith } = await import("../feed/jobRunWriter");
+          await writeJobRunWith(await getClient(), input);
+        } catch (err) {
+          console.warn(
+            "[schedulerJobEvidence] job_runs write failed (non-fatal):",
+            err instanceof Error ? err.message : String(err)
+          );
+        }
+      },
+    };
+  }
   if (cachedRealPort) return cachedRealPort;
   cachedRealPort = {
     async writeJobRun(input) {

@@ -841,20 +841,6 @@ export async function writeFireModel1_1ResearchPairs(
  * Write job run record to track generation attempts
  */
 export async function writeJobRun(input: JobRunInput): Promise<void> {
-  const { error } = await supabaseAdmin.from("job_runs").insert({
-    source: input.source,
-    formula_version: input.formulaVersion,
-    started_at: input.startedAt,
-    finished_at: input.finishedAt,
-    status: input.status,
-    generated_count: input.generatedCount,
-    rejected_count: input.rejectedCount,
-    duration_ms: input.durationMs,
-    error_message: input.errorMessage ?? null,
-    diagnostics: input.diagnostics ?? null,
-  });
-
-  if (error) {
-    throw new Error(`Failed to write job run: ${error.message}`);
-  }
+  const { writeJobRunWith } = await import("./jobRunWriter");
+  await writeJobRunWith(supabaseAdmin, input);
 }

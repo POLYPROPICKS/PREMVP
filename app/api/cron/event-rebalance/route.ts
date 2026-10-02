@@ -1,4 +1,5 @@
 import { casWriteQueue } from "@/lib/executor/queueAttemptsCas";
+import { bootProcessRuntime } from "@/lib/constructor/bootstrap";
 import { getActiveContour } from "@/lib/constructor/registry";
 import { createSupabaseQueueCasPort } from "@/lib/executor/makerFallbackSupabasePort";
 import { NextRequest, NextResponse } from "next/server";
@@ -107,7 +108,7 @@ async function handle(request: NextRequest) {
         write: !dryRun,
         maxQueueWrites: 1,
         targetReservationId,
-      }, { contour: getActiveContour() });
+      }, { runtime: bootProcessRuntime() });
       const first_failure_code = !result.target_reservation_matched
         ? "CANARY_RESERVATION_NOT_FOUND"
         : result.first_rejection_code === "BLOCKED_BY_MAX_QUEUE_WRITES"
@@ -148,7 +149,7 @@ async function handle(request: NextRequest) {
   // value other than the one pre-authorized fixed test id.
   if (controlledLiveIntent !== null) {
     try {
-      const result = await runControlledLiveIntent(Date.now(), controlledLiveIntent, { write: !dryRun });
+      const result = await runControlledLiveIntent(Date.now(), controlledLiveIntent, { write: !dryRun }, { runtime: bootProcessRuntime() });
       const status = result.kind === "BLOCKED_INVALID_REQUEST" ? 400 : 200;
       return NextResponse.json(
         {
@@ -218,7 +219,7 @@ async function handle(request: NextRequest) {
     const result = await runEventRebalanceWithEvidence(Date.now(), {
       write: !dryRun,
       maxQueueWrites: maxQueueWritesParsed.value,
-    }, { contour: getActiveContour() });
+    }, { runtime: bootProcessRuntime() });
     const diagResult = await persistRebalanceDiagnostics(result, {
       context: "event-rebalance-cron",
     });

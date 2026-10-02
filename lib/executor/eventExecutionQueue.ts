@@ -1961,6 +1961,38 @@ function selectQueueRowForDueReservation(
 }
 
 /**
+ * Resolve the runtime-dependent defaults of the shared rebalance engines in ONE place.
+ * Precedence: a booted runtime is authoritative -- its contour overwrites any caller-supplied one and
+ * every default Supabase read/write below goes through ITS client. With no runtime the legacy
+ * defaults apply unchanged (process-wide client, caller contour or process contour).
+ */
+function bindRuntimeDefaults<
+  D extends {
+    runtime?: ContourRuntimeV1;
+    contour?: ComposedContour;
+    readFinalT3Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
+    recordStrategyDecision?: typeof recordReservationStrategyDecision;
+  },
+>(rawDeps: D) {
+  const deps = rawDeps.runtime ? { ...rawDeps, contour: rawDeps.runtime.contour } : rawDeps;
+  const runtimeClient = rawDeps.runtime?.resources.supabaseAdmin;
+  const readFinalT3Universe =
+    deps.readFinalT3Universe ??
+    (runtimeClient
+      ? (reservation: NightEventReservationRow) => readCompletedFinalT3Universe(reservation, createFinalT3ReadPort(runtimeClient))
+      : readCompletedFinalT3Universe);
+  const persistTelemetry: typeof persistLiveGuardTelemetry = runtimeClient
+    ? (reservation, input) => persistLiveGuardTelemetry(reservation, input, runtimeClient)
+    : persistLiveGuardTelemetry;
+  const recordStrategyDecision: typeof recordReservationStrategyDecision =
+    deps.recordStrategyDecision ??
+    (runtimeClient
+      ? (input) => recordReservationStrategyDecision(input, { store: createReservationStrategyDecisionStore(runtimeClient) })
+      : recordReservationStrategyDecision);
+  return { deps, runtimeClient, readFinalT3Universe, persistTelemetry, recordStrategyDecision };
+}
+
+/**
  * Run the per-event rebalance. write=false → pure dry-run (no DB writes).
  * Loads the candidate universe once and selects one market per due reservation.
  */
@@ -1982,22 +2014,22 @@ export async function runEventRebalance(
     onFinalIdentityAttempt?: () => void;
   } = {}
 ): Promise<RebalanceRunResult> {
-  const deps = rawDeps.runtime ? { ...rawDeps, contour: rawDeps.runtime.contour } : rawDeps;
+  const { deps, runtimeClient, readFinalT3Universe, persistTelemetry, recordStrategyDecision } = bindRuntimeDefaults(rawDeps);
   const write = opts.write === true;
   const maxQueueWrites = typeof opts.maxQueueWrites === "number" ? opts.maxQueueWrites : null;
   const rebalanceRunId = buildRebalanceRunId(nowMs);
-  const repo = deps.repo ?? createSupabaseRebalanceRepoPort(rawDeps.runtime?.resources.supabaseAdmin);
+  const repo = deps.repo ?? createSupabaseRebalanceRepoPort(runtimeClient);
   const fetchCandidates =
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning, undefined, rawDeps.runtime?.resources.supabaseAdmin);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning, undefined, runtimeClient);
     });
   const fetchContractAFinalCandidates =
     deps.fetchContractAFinalCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final, undefined, rawDeps.runtime?.resources.supabaseAdmin);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final, undefined, runtimeClient);
     });
   const fetchFinalIdentitySourceRows =
     deps.fetchFinalIdentitySourceRows ??
@@ -2005,20 +2037,6 @@ export async function runEventRebalance(
       ? (reservation: NightEventReservationRow) => repo.loadFinalIdentitySourceRows!(reservation)
       : null);
   const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? ((tokenId: string) => fetchOrderBook(tokenId));
-  // A booted runtime routes the shared T3 reads/decision store through ITS client; without one the
-  // process-wide client is used exactly as before.
-  const runtimeClient = rawDeps.runtime?.resources.supabaseAdmin;
-  const readFinalT3Universe = deps.readFinalT3Universe ??
-    (runtimeClient
-      ? (reservation: NightEventReservationRow) => readCompletedFinalT3Universe(reservation, createFinalT3ReadPort(runtimeClient))
-      : readCompletedFinalT3Universe);
-  const persistTelemetry: typeof persistLiveGuardTelemetry = runtimeClient
-    ? (reservation, input) => persistLiveGuardTelemetry(reservation, input, runtimeClient)
-    : persistLiveGuardTelemetry;
-  const recordStrategyDecision: typeof recordReservationStrategyDecision = deps.recordStrategyDecision ??
-    (runtimeClient
-      ? (input) => recordReservationStrategyDecision(input, { store: createReservationStrategyDecisionStore(runtimeClient) })
-      : recordReservationStrategyDecision);
 
   // Due reservations: active status + start within the rebalance window.
   const all = await repo.loadActiveReservations();
@@ -2477,9 +2495,11 @@ export async function runControlledLiveIntent(
   nowMs: number,
   requestedTestId: unknown,
   opts: { write?: boolean } = {},
-  deps: {
+  rawDeps: {
     repo?: RebalanceRepoPort;
     contour?: ComposedContour;
+    /** A booted instance; authoritative over `contour`, supplies the default client for every read/write. */
+    runtime?: ContourRuntimeV1;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
@@ -2494,19 +2514,20 @@ export async function runControlledLiveIntent(
     return { kind: "BLOCKED_INVALID_REQUEST", reason: validation.reason, wrote: false };
   }
 
+  const { deps, runtimeClient, readFinalT3Universe, persistTelemetry, recordStrategyDecision } = bindRuntimeDefaults(rawDeps);
   const write = opts.write === true;
-  const repo = deps.repo ?? createSupabaseRebalanceRepoPort();
+  const repo = deps.repo ?? createSupabaseRebalanceRepoPort(runtimeClient);
   const fetchCandidates =
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.planning, undefined, runtimeClient);
     });
   const fetchContractAFinalCandidates =
     deps.fetchContractAFinalCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, (deps.contour ?? getActiveContour()).profile.selectors.final, undefined, runtimeClient);
     });
   const fetchFinalIdentitySourceRows =
     deps.fetchFinalIdentitySourceRows ??
@@ -2568,13 +2589,13 @@ export async function runControlledLiveIntent(
     if (write && reservation.diagnostics?.contract_a_stage === "PLANNING") {
       let finalSiblingUniverse: FinalT3MarketObservation[];
       try {
-        finalSiblingUniverse = await (deps.readFinalT3Universe ?? readCompletedFinalT3Universe)(reservation);
+        finalSiblingUniverse = await readFinalT3Universe(reservation);
         if (finalSiblingUniverse.length === 0) continue;
       } catch { continue; }
       finalSelection = await selectQueueRowFromT3FinalIdentity(
         reservation, finalSiblingUniverse, rebalanceRunId, nowMs, fetchExactTokenOrderbook,
-        deps.recordStrategyDecision ?? recordReservationStrategyDecision,
-        deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined),
+        recordStrategyDecision,
+        deps.writeGuardTelemetry ?? (!deps.repo ? persistTelemetry : undefined),
       );
     }
     // The current write contour uses the same T3 Final Identity selector as
@@ -2595,7 +2616,7 @@ export async function runControlledLiveIntent(
             manifestResolution.candidates,
             rebalanceRunId,
             fetchExactTokenOrderbook,
-            write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistLiveGuardTelemetry : undefined)) : undefined
+            write ? (deps.writeGuardTelemetry ?? (!deps.repo ? persistTelemetry : undefined)) : undefined
           )
         : requireContractAFinalIdentity
           ? await selectQueueRowFromContractAReservation(
@@ -2700,10 +2721,13 @@ export async function runEventRebalanceWithEvidence(
     jobEvidence?: SchedulerJobEvidencePort;
     captureMilestones?: (nowMs: number) => Promise<void>;
     contour?: ComposedContour;
+    /** A booted instance: evidence, milestones, repo and engine all go through ITS client; wins over `contour`. */
+    runtime?: ContourRuntimeV1;
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
-  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
+  const runtimeClient = deps.runtime?.resources.supabaseAdmin;
+  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort(runtimeClient);
   const startedAt = new Date().toISOString();
   try {
     if (write && !opts.targetReservationId && (!deps.repo || deps.captureMilestones)) {
@@ -2711,7 +2735,7 @@ export async function runEventRebalanceWithEvidence(
         if (deps.captureMilestones) await deps.captureMilestones(nowMs);
         else {
           const { captureReservationMarketMilestones } = await import("./reservationMarketBaseline");
-          await captureReservationMarketMilestones(nowMs);
+          await captureReservationMarketMilestones(nowMs, { getClient: runtimeClient });
         }
       } catch {
         console.error("[event-rebalance] milestone telemetry failed");
@@ -2721,6 +2745,7 @@ export async function runEventRebalanceWithEvidence(
       repo: deps.repo,
       fetchCandidates: deps.fetchCandidates,
       contour: deps.contour,
+      runtime: deps.runtime,
     });
     if (write) {
       const finishedAt = new Date().toISOString();
