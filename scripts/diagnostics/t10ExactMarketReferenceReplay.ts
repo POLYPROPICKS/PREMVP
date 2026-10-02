@@ -28,7 +28,7 @@ function arg(name: string): string | undefined {
 }
 const lit = (value: string) => `'${value.replace(/'/g, "''")}'`;
 
-async function readOnlySql<T>(query: string): Promise<T[]> {
+export async function readOnlySql<T>(query: string): Promise<T[]> {
   const ref = process.env.SUPABASE_PROJECT_REF;
   const token = process.env.SUPABASE_ACCESS_TOKEN;
   if (!ref || !token) throw new Error("REPLAY_ENV_MISSING: SUPABASE_PROJECT_REF / SUPABASE_ACCESS_TOKEN");
@@ -42,7 +42,7 @@ async function readOnlySql<T>(query: string): Promise<T[]> {
 }
 
 // Classified candidate universe, one row per T10 B-family token (stays DB-side).
-function candidateCte(since: string): string {
+export function candidateCte(since: string): string {
   const regions = B_FAMILIES.map((f) => {
     const r = bStrategySupportRegion(f);
     return r ? `(${lit(f)}, ${r.min}, ${r.max})` : null;
@@ -240,7 +240,9 @@ LIMIT ${DETAIL_LIMIT}`);
   if (parityMismatch > 0) process.exitCode = 2;
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

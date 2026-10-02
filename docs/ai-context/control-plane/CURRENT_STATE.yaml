@@ -423,5 +423,17 @@
     "a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when"
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
+  "t10_economic_action_policy": {
+    "architecture_id": "T10_REBALANCE_PRICE_DISCIPLINE_AND_EXECUTION_ARCHITECTURE_V1",
+    "architecture_doc": "docs/ai-context/control-plane/T10_REBALANCE_PRICE_DISCIPLINE_AND_EXECUTION_ARCHITECTURE_V1.md",
+    "policy_version": "T10_ECONOMIC_ACTION_POLICY_SHADOW_V1",
+    "price_authority_version": "T30_BID_ANCHOR_V1",
+    "design_base_main_sha": "ef6ad01c783de306ae1b3010312a573a10dbff08",
+    "design_result": "branch claude/elegant-brown-q4sy99; exact RESULT_SHA/REVIEWED_SHA recorded in the mission completion envelope",
+    "rollout_status": "SHADOW_POLICY_FREEZE",
+    "MONEY_PATH_ACTIVE": "NO",
+    "first_remaining_blocker": "T10 capture persists best bid/ask only; tick_size and full-stake ask-ladder VWAP are null pre-Queue and no fee carrier exists",
+    "next_transition": "T10_EXACT_MARKET_MONEY_ACTIVATION_V1"
+  },
   "last_accepted_completion_id": "research-clone-pr318-current-evidence-v1"
 }
