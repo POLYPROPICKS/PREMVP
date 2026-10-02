@@ -21,6 +21,7 @@
     "modeling:shadow-regression": "tsx scripts/modeling/prospective-selection-shadow.ts --regression",
     "modeling-dashboard:refresh": "npm run research-clone:modeling-dashboard-refresh && npm run research-live:modeling-dashboard-refresh",
     "test:research-clone-sync": "node --import tsx --test tests/research-clone/*.test.ts",
+    "shadow:boot-check": "tsx scripts/constructor/shadow-boot-check.ts",
     "test:constructor": "node --import tsx --test tests/constructor/*.test.ts",
     "current-serving:backfill": "tsx scripts/current-serving-backfill-runner.ts",
     "resolve:signals": "tsx scripts/resolve-signals.ts",
