@@ -7,6 +7,10 @@
 // createSupabaseAdminClient(itsContour) rather than reuse this export.
 
 import { getActiveContour } from "../constructor/registry";
+import { validateContourRuntime } from "../constructor/runtimeContract";
 import { createSupabaseAdminClient } from "./adminClientFactory";
+
+// Passive contours (PROD_SHADOW) must be bound exclusively to their own resources; no-op for DEV_LIVE.
+validateContourRuntime(getActiveContour());
 
 export const supabaseAdmin = createSupabaseAdminClient(getActiveContour());

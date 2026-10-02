@@ -1,0 +1,34 @@
+# Service-scoped Railway config for the PASSIVE `prod-shadow-web` service ONLY. NOT PROVISIONED, NOT DEPLOYED.
+#
+# Like ops/railway/research-clone-daily-sync.toml this file is intentionally NOT named
+# `railway.toml` / `railway.json` and is not at the repository root, so Railway does not
+# auto-discover it. It takes effect only for a service whose Settings > Config-as-code path is set to
+# `ops/railway/prod-shadow-web.toml`; no existing service reads it.
+#
+# This service runs the PROD_SHADOW Constructor contour (lib/constructor/prodShadow.ts):
+# moneyMovement = DISABLED. It may compose, read, calculate and observe. It can never admit an executable
+# queue row (admitExecutableQueueRow -> CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED) and GET /api/executor/queue
+# returns 403. It holds NO wallet, NO Ireland access and NO live credentials.
+#
+# SHADOW_DATA_TOPOLOGY = DEDICATED: the service needs its OWN Supabase project (never the live one).
+#
+# Required service variables (values are set in Railway only; none live in this repository):
+#   SHADOW_SUPABASE_URL                 dedicated shadow project URL
+#   SHADOW_SUPABASE_SERVICE_ROLE_KEY    dedicated shadow project service-role key
+#   SHADOW_EXECUTOR_CANDIDATES_SECRET   a secret DISTINCT from the live EXECUTOR_CANDIDATES_SECRET
+# Optional:
+#   SHADOW_RESERVATION_TIMES_MINSK      reservation anchors; absent = historical default anchor
+#
+# Must NOT be set on this service (startup fails closed if any is present):
+#   RESERVATION_TIMES_MINSK, EXECUTOR_CANDIDATES_SECRET, SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+#
+# The selector is pinned in the start command itself, so a forgotten service variable can never make
+# this service silently become DEV_LIVE. `shadow:boot-check` refuses to continue unless the selector is
+# exactly PROD_SHADOW, the shadow bindings are complete, no foreign binding is present and the money
+# boundary blocks. `next start` additionally re-validates in instrumentation.register().
+
+[build]
+buildCommand = "npm ci --ignore-scripts && npm run build"
+
+[deploy]
+startCommand = "sh -c 'export CONSTRUCTOR_ACTIVE_CONTOUR=PROD_SHADOW && npm run shadow:boot-check && npm start'"
