@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getActiveContour } from "@/lib/constructor/devLive";
+import { getActiveContour } from "@/lib/constructor/registry";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   handleOrderEventSubmission,

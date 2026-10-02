@@ -16,8 +16,8 @@ import {
   DEV_LIVE_COMPONENT_MANIFEST,
   DEV_LIVE_INSTANCE,
   DEV_LIVE_PROFILE,
-  getActiveContour,
 } from "../../lib/constructor/devLive";
+import { getActiveContour } from "../../lib/constructor/registry";
 import { parseReservationTimesMinsk } from "../../lib/executor/nightWindow";
 
 const ROOT = join(__dirname, "..", "..");
@@ -52,7 +52,7 @@ test("manifest digest is deterministic and pinned (a composition change must be 
   const b = composeContour(clone(DEV_LIVE)).manifestDigest;
   assert.equal(a, b);
   assert.equal(a, computeManifestDigest(DEV_LIVE_COMPONENT_MANIFEST));
-  assert.equal(a, "775f23a09f0ebf2c83821b4e4b25ad3177b20b65b445a78bea0241597ffc4663");
+  assert.equal(a, "b797297736cf0d83d5822eced53eced936a785c3d3a1cf9bfdc71f44761b8381");
 });
 
 // ── 2. OLD DEV intent == NEW Constructor-composed DEV intent ─────────────────

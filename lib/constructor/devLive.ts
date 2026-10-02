@@ -8,9 +8,8 @@ import {
   COMPONENT_MANIFEST_SCHEMA,
   CONTOUR_INSTANCE_SCHEMA,
   CONTOUR_PROFILE_SCHEMA,
-  composeContour,
   type ComponentManifestV1,
-  type ComposedContour,
+  type ContourDeclarationV1,
   type ContourInstanceV1,
   type ContourProfileV1,
 } from "./contracts";
@@ -22,6 +21,7 @@ export const DEV_LIVE_PROFILE: ContourProfileV1 = {
   schema: CONTOUR_PROFILE_SCHEMA,
   contourId: DEV_LIVE_CONTOUR_ID,
   selectors: { planning: "CONTRACT_A_PLANNING_V1", final: "CONTRACT_A_V1" },
+  capabilities: { moneyMovement: "enabled" },
   requiredComponents: [
     "selector.planning",
     "selector.final",
@@ -33,6 +33,9 @@ export const DEV_LIVE_PROFILE: ContourProfileV1 = {
     "reservation.cron",
     "rebalance.cron",
     "resource.supabaseAdmin",
+    "contour.registry",
+    "contour.selector",
+    "capability.moneyMovementGuard",
   ],
 };
 
@@ -40,7 +43,7 @@ export const DEV_LIVE_PROFILE: ContourProfileV1 = {
 export const DEV_LIVE_COMPONENT_MANIFEST: ComponentManifestV1 = {
   schema: COMPONENT_MANIFEST_SCHEMA,
   manifestId: "premvp-dev-live",
-  version: "1.0.0",
+  version: "1.1.0",
   contourId: DEV_LIVE_CONTOUR_ID,
   components: [
     {
@@ -110,6 +113,27 @@ export const DEV_LIVE_COMPONENT_MANIFEST: ComponentManifestV1 = {
       module: "app/api/executor/queue/route.ts",
       contractVersion: "EXECUTOR_QUEUE_V1",
     },
+    {
+      id: "contour.registry",
+      role: "contour-declaration-registry",
+      module: "lib/constructor/registry.ts",
+      symbol: "CONTOUR_REGISTRY",
+      contractVersion: "CONTOUR_REGISTRY_V1",
+    },
+    {
+      id: "contour.selector",
+      role: "active-contour-selector",
+      module: "lib/constructor/registry.ts",
+      symbol: "resolveActiveContourId",
+      contractVersion: "CONTOUR_SELECTOR_V1",
+    },
+    {
+      id: "capability.moneyMovementGuard",
+      role: "money-movement-capability-guard",
+      module: "lib/constructor/contracts.ts",
+      symbol: "assertMoneyMovementEnabled",
+      contractVersion: "MONEY_MOVEMENT_CAPABILITY_V1",
+    },
   ],
 };
 
@@ -132,14 +156,8 @@ export const DEV_LIVE_INSTANCE: ContourInstanceV1 = {
   },
 };
 
-let active: ComposedContour | null = null;
-
-/** The contour the running process serves. Composed once, fail-closed. */
-export function getActiveContour(): ComposedContour {
-  active ??= composeContour({
-    profile: DEV_LIVE_PROFILE,
-    instance: DEV_LIVE_INSTANCE,
-    manifest: DEV_LIVE_COMPONENT_MANIFEST,
-  });
-  return active;
-}
+export const DEV_LIVE_DECLARATION: ContourDeclarationV1 = {
+  profile: DEV_LIVE_PROFILE,
+  instance: DEV_LIVE_INSTANCE,
+  manifest: DEV_LIVE_COMPONENT_MANIFEST,
+};

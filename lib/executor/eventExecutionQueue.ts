@@ -24,8 +24,8 @@ import {
 } from "./contractADecisions";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
 import { FROZEN_MODEL_V2_VERSION } from "@/lib/modeling/frozenModelProducerV2Shadow";
-import { getActiveContour } from "@/lib/constructor/devLive";
-import type { ComposedContour } from "@/lib/constructor/contracts";
+import { getActiveContour } from "@/lib/constructor/registry";
+import { assertMoneyMovementEnabled, type ComposedContour } from "@/lib/constructor/contracts";
 import {
   buildRebalanceRunId,
   isDueForRebalance,
@@ -727,6 +727,21 @@ export class QueueInsertConflictError extends Error {
     this.name = "QueueInsertConflictError";
     this.code = code;
   }
+}
+
+/**
+ * THE money boundary. A READY event_execution_queue row is the executable instruction Ireland
+ * consumes, so every path that creates one (rebalance, controlled live intent, battle batch)
+ * admits it here. The contour's moneyMovement capability is checked BEFORE the repo is touched:
+ * a passive contour throws CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED and nothing is written.
+ */
+export async function admitExecutableQueueRow(
+  contour: ComposedContour,
+  repo: { insertQueueRow(row: EventExecutionQueueRow): Promise<void> },
+  row: EventExecutionQueueRow,
+): Promise<void> {
+  assertMoneyMovementEnabled(contour, "EXECUTABLE_QUEUE_ROW_ADMISSION");
+  await repo.insertQueueRow(row);
 }
 
 function isPostgresUniqueViolation(err: unknown): err is { code: string; message?: string } {
@@ -2280,7 +2295,7 @@ export async function runEventRebalance(
     const row = action.row;
     if (write) {
       try {
-        await repo.insertQueueRow(row);
+        await admitExecutableQueueRow(deps.contour ?? getActiveContour(), repo, row);
       } catch (err) {
         if (isPostgresUniqueViolation(err) && row.idempotency_key && repo.findQueueRowsByIdempotencyKey) {
           const existing = await repo.findQueueRowsByIdempotencyKey(row.idempotency_key);
@@ -2570,7 +2585,7 @@ export async function runControlledLiveIntent(
     }
 
     try {
-      await repo.insertQueueRow(controlledRow);
+      await admitExecutableQueueRow(deps.contour ?? getActiveContour(), repo, controlledRow);
     } catch (err) {
       if (isPostgresUniqueViolation(err)) {
         // The database itself rejected a second controlled row (partial
@@ -3226,7 +3241,7 @@ export async function runFounderBattleBatch(
   nowMs: number,
   env: Record<string, string | undefined>,
   opts: { write?: boolean } = {},
-  deps: { repo?: BattleBatchRepoPort } = {}
+  deps: { repo?: BattleBatchRepoPort; contour?: ComposedContour } = {}
 ): Promise<FounderBattleBatchResult> {
   const gate = validateFounderBattleBatchGate(env);
   if (!gate.ok) {
@@ -3297,7 +3312,7 @@ export async function runFounderBattleBatch(
     }
 
     try {
-      await repo.insertQueueRow(row);
+      await admitExecutableQueueRow(deps.contour ?? getActiveContour(), repo, row);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       skipped.push({ order_key: row.order_key ?? "", reason: `INSERT_FAILED: ${msg}` });

@@ -6,7 +6,7 @@
 // resolved by the factory. A second instance in the same process must call
 // createSupabaseAdminClient(itsContour) rather than reuse this export.
 
-import { getActiveContour } from "../constructor/devLive";
+import { getActiveContour } from "../constructor/registry";
 import { createSupabaseAdminClient } from "./adminClientFactory";
 
 export const supabaseAdmin = createSupabaseAdminClient(getActiveContour());

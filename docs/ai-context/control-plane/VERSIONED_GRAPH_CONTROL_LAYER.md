@@ -90,33 +90,42 @@ flowchart LR
 
 Bounded observations are deliberately non-equivalent: `npm run firemodel1:funnel` reported 500 raw 24-hour rows but only one allowed-version/final-valid row; `npm run firemodel1:live-readiness` built a 90-candidate standard pool but no `BET_OR_PAPER_GO` candidate within two hours. They are recorded with their runner and timestamp, not collapsed into a provider-universe or Reservation claim. No production HTTPS, Queue endpoint, Ireland host, venue, secret, scheduler, or database write occurred.
 
-## Graph 4 — Constructor V1 composition of CURRENT DEV_LIVE
+## Graph 4 — Constructor V1 composition: declaration registry, runtime selector, passive money boundary
 
-Evidence label: `SOURCE` + `TEST` (`tests/constructor/*`, 28 tests). Composition and identity only; Graphs 1–3 are unchanged.
+Evidence label: `SOURCE` + `TEST` (`tests/constructor/*`, 46 tests). Composition, identity, declaration selection and the passive money boundary; Graphs 1–3 are unchanged for the DEV_LIVE contour. `PROD_SHADOW` is a code-level declaration only: NOT deployed, no PROD environment, no resource and no credential exists for it.
 
 ```mermaid
 flowchart LR
-  DEV[CURRENT DEV_LIVE\ngetActiveContour\nSOURCE: lib/constructor/devLive.ts] --> CI[ContourInstanceV1\nDEV_LIVE_PRIMARY\n4 env-var NAME bindings: schedule / executor secret\nsupabase url / service key]
+  REG[Declaration registry\nCONTOUR_REGISTRY: DEV_LIVE, PROD_SHADOW\nSOURCE: lib/constructor/registry.ts] --> SEL[Selector\nresolveActiveContourId / getActiveContour\nenv CONSTRUCTOR_ACTIVE_CONTOUR, unset = DEV_LIVE\ninvalid = fail closed, pinned per process]
+  SEL --> DEV[CURRENT DEV_LIVE\nmoneyMovement: enabled\nSOURCE: lib/constructor/devLive.ts]
+  SEL -.selectable, not deployed.-> SH[PROD_SHADOW passive\nmoneyMovement: disabled\n4 placeholder SHADOW_* env-var NAMES, never resolved\nSOURCE: lib/constructor/prodShadow.ts]
+  DEV --> CI[ContourInstanceV1\nDEV_LIVE_PRIMARY\n4 env-var NAME bindings: schedule / executor secret\nsupabase url / service key]
   CI --> CP[ContourProfileV1\nselectors planning CONTRACT_A_PLANNING_V1\nfinal CONTRACT_A_V1]
-  CI --> CM[ComponentManifestV1\npremvp-dev-live@1.0.0\n10 components, sha256 digest pinned by TEST]
+  CI --> CM[ComponentManifestV1\npremvp-dev-live@1.1.0\n13 components, sha256 digest pinned by TEST]
   CP --> SE[Shared engine\nbuildFireModelCandidates / contractADecisions\nnightEventReservations / nightWindow / runEventRebalance]
   CM --> SE
   CI --> RES[Resource + auth bindings\ncreateSupabaseAdminClient / resolveEnv executorCandidatesSecret\nconsumed by cron + executor routes]
   RES --> SE
-  SE --> SPINE[Graph 1 spine unchanged\nReservation -> Rebalance -> Queue -> Ireland]
+  SE --> GUARD{Money boundary\nadmitExecutableQueueRow\nassertMoneyMovementEnabled}
+  GUARD -->|enabled: DEV_LIVE| SPINE[Graph 1 spine unchanged\nReservation -> Rebalance -> Queue -> Ireland]
+  SH -.shared engine may plan.-> SE
+  GUARD -.disabled: throws CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED, zero inserts.-> BLOCK[No READY queue row\nqueue GET handoff returns 403]
   SYN[Synthetic second instance\nTEST-LOCAL, in memory\nall binding names differ, no DEV leakage] -.composes from same model.-> CM
 
   classDef source fill:#fff2cc,stroke:#bf9000,color:#000;
   classDef accepted fill:#d9ead3,stroke:#38761d,color:#000;
   classDef test fill:#cfe2f3,stroke:#1155cc,color:#000;
-  class DEV,CI,CP,CM,RES source;
+  class REG,SEL,DEV,SH,CI,CP,CM,RES,GUARD source;
   class SE,SPINE accepted;
+  class BLOCK test;
   class SYN test;
 ```
 
 Consumers wired: the reservation cron (selector; pure schedule parse; explicit anchor into `buildReservationPlan`, `executeForceRebuild`, `loadPlanStatus`), `night-plan-email` (selector + explicit anchor), `event-rebalance` (secret binding; contour passed into `runEventRebalanceWithEvidence` → `runEventRebalance`), the five `executor/*` routes (secret binding), the default candidate fetchers in `runEventRebalance` / `runControlledLiveIntent`, and `lib/supabase/server.ts` (process-wide `supabaseAdmin` = factory over the active contour’s declared URL/key names).
 
-Remaining implicit bindings (honest list): `getActiveContour()` selects `DEV_LIVE` unconditionally (no per-runtime declaration selector yet); direct `supabaseAdmin` consumers are bound to the process’s active contour rather than injected (process-per-instance is supported; same-process multi-instance must use the factory); legacy ambient entries in `nightWindow` for non-Constructor callers; persisted-data `CONTRACT_A_PLANNING_V1` identity comparisons; unrelated product/modeling code that reads `SUPABASE_URL` directly.
+Registry / selector / passive boundary (implemented, TEST-proven): `getActiveContour()` pins one declaration per process from `CONSTRUCTOR_ACTIVE_CONTOUR` (unset = `DEV_LIVE`; any other unregistered value, including blank, throws `CONSTRUCTOR_CONTOUR_UNKNOWN`); re-selection after process start is intentionally unsupported. Every executable queue-row insert in `eventExecutionQueue.ts` (rebalance, controlled live intent, battle batch) goes through `admitExecutableQueueRow`, and `GET /api/executor/queue` refuses to hand off for a passive contour. Shadow isolation still open (no infrastructure authorized): its own Supabase project/URL/key, executor secret and scheduler behind the `SHADOW_*` names; none exist.
+
+Remaining implicit bindings (honest list): direct `supabaseAdmin` consumers are bound to the process’s active contour rather than injected (process-per-instance is supported; same-process multi-instance must use the factory); legacy ambient entries in `nightWindow` for non-Constructor callers; persisted-data `CONTRACT_A_PLANNING_V1` identity comparisons; unrelated product/modeling code that reads `SUPABASE_URL` directly.
 
 ## Deferred — visible, not blockers for this map
 
