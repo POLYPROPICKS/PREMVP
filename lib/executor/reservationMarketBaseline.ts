@@ -105,6 +105,111 @@ export function providerEventIdentityContradiction(
 export const PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS = "PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS";
 export const PHYSICAL_EVENT_GAME_ID_UNRESOLVED = "PHYSICAL_EVENT_GAME_ID_UNRESOLVED";
 
+export const DISCOVERY_AUDIT_VERSION = "T10_DISCOVERY_AUDIT_V1";
+export const DISCOVERY_AUDIT_MAX_MARKET_TYPES = 64;
+export const DISCOVERY_AUDIT_OVERFLOW = "DISCOVERY_AUDIT_OVERFLOW";
+export const DISCOVERY_AUDIT_TYPE_KEY_MISSING = "__missing__";
+export const DISCOVERY_AUDIT_TYPE_KEY_INVALID = "__invalid_format__";
+
+export type DiscoveryAuditReason =
+  | "OTHER_GAME_ID" | "OTHER_EVENT_START" | "PROVIDER_EVENT_ID_INVALID"
+  | "STRUCTURED_MARKET_TYPE_MISSING" | "UNSUPPORTED_STRUCTURED_MARKET_TYPE"
+  | "CORNER_DERIVATIVE_TEAM" | "CORNER_DERIVATIVE_FIRST_HALF" | "CORNER_DERIVATIVE_SECOND_HALF"
+  | "CORNER_DERIVATIVE_FIRST_LAST" | "CORNER_DERIVATIVE_ODD_EVEN"
+  | "MARKET_TOKEN_IDENTITY_MISSING" | "SUPPORTED_FULL_MATCH_MARKET";
+export type DiscoveryAuditExclusionReason = Exclude<DiscoveryAuditReason, "SUPPORTED_FULL_MATCH_MARKET">;
+
+export type DiscoveryAuditMarketType = {
+  raw_discovered_n: number; same_game_n: number; same_start_n: number; identity_valid_n: number;
+  canonical_market_family: ObservationalMarketFamily; canonical_market_type: ObservationalMarketType;
+  admitted_n: number; excluded_n: number;
+  exclusion_reason_counts: Partial<Record<DiscoveryAuditExclusionReason, number>>;
+};
+
+/** Compact counts only: never raw provider payloads, books, titles or slugs. */
+export type DiscoveryAuditV1 = {
+  version: typeof DISCOVERY_AUDIT_VERSION;
+  provider_game_id: string;
+  provider_events_discovered_n: number;
+  raw_markets_discovered_n: number;
+  admitted_markets_n: number;
+  excluded_markets_n: number;
+  market_types: Record<string, DiscoveryAuditMarketType>;
+  /** Set only when the provider exceeded the bounded market-type key space (fail closed). */
+  audit_overflow?: true;
+  distinct_market_types_n?: number;
+};
+
+const CORNER_DERIVATIVE_EXACT: Readonly<Record<string, DiscoveryAuditExclusionReason>> = {
+  soccer_team_total_corners: "CORNER_DERIVATIVE_TEAM",
+  soccer_first_half_total_corners: "CORNER_DERIVATIVE_FIRST_HALF",
+  soccer_second_half_total_corners: "CORNER_DERIVATIVE_SECOND_HALF",
+  soccer_game_corners_odd_even: "CORNER_DERIVATIVE_ODD_EVEN",
+  soccer_first_corner: "CORNER_DERIVATIVE_FIRST_LAST",
+  soccer_last_corner: "CORNER_DERIVATIVE_FIRST_LAST",
+};
+
+/** Names WHY a corner derivative is excluded. Never grants admission. */
+function cornerDerivativeReason(text: string, requireCornerWord: boolean): DiscoveryAuditExclusionReason | null {
+  const exact = CORNER_DERIVATIVE_EXACT[text];
+  if (exact) return exact;
+  if (requireCornerWord && !/corner/.test(text)) return null;
+  const words = new Set(text.split(/[-_]/));
+  const has = (...w: string[]) => w.some((x) => words.has(x));
+  if (has("odd", "even")) return "CORNER_DERIVATIVE_ODD_EVEN";
+  if (has("half", "halftime")) {
+    if (has("second", "2nd")) return "CORNER_DERIVATIVE_SECOND_HALF";
+    if (has("first", "1st")) return "CORNER_DERIVATIVE_FIRST_HALF";
+    return null;
+  }
+  if (has("team", "home", "away")) return "CORNER_DERIVATIVE_TEAM";
+  if (has("first", "last")) return "CORNER_DERIVATIVE_FIRST_LAST";
+  return null;
+}
+
+function discoveryAuditTypeKey(rawType: unknown): string {
+  const normalized = typeof rawType === "string" ? rawType.trim().toLowerCase() : "";
+  if (!normalized) return DISCOVERY_AUDIT_TYPE_KEY_MISSING;
+  if (normalized.length > 64 || !STRUCTURED_MARKET_IDENTIFIER.test(normalized)) return DISCOVERY_AUDIT_TYPE_KEY_INVALID;
+  return normalized;
+}
+
+function marketIdentityValid(m: Pick<InventoryMarket, "condition_id" | "clob_token_ids" | "outcomes">): boolean {
+  const ids = stringArray(m.clob_token_ids);
+  const outcomes = stringArray(m.outcomes);
+  return !!m.condition_id?.trim() && ids.length > 0 && ids.length === outcomes.length &&
+    ids.every((id, i) => id.trim() !== "" && outcomes[i].trim() !== "");
+}
+
+/**
+ * Pure. Classifies ONE pre-filter discovered market through every source->canonical
+ * edge, independently. The reason is the first failing edge in pipeline order.
+ */
+function classifyDiscoveredMarket(m: InventoryMarket, gameId: string, startMs: number) {
+  const eventIdValid = typeof m.provider_event_id === "string" && /^\d+$/.test(m.provider_event_id);
+  const sameGame = m.provider_game_id === gameId;
+  const sameStart = Date.parse(m.event_start_iso) === startMs;
+  const typeKey = discoveryAuditTypeKey(m.sports_market_type);
+  const typePresent = typeKey !== DISCOVERY_AUDIT_TYPE_KEY_MISSING && typeKey !== DISCOVERY_AUDIT_TYPE_KEY_INVALID;
+  const identityValid = marketIdentityValid(m);
+  const typeLevel = classifyObservationalMarket(m.sports_market_type);
+  const exact = classifyExactEventMarket(m.sports_market_type, m.provider_market_slug);
+  let reason: DiscoveryAuditReason;
+  if (!eventIdValid) reason = "PROVIDER_EVENT_ID_INVALID";
+  else if (!sameGame) reason = "OTHER_GAME_ID";
+  else if (!sameStart) reason = "OTHER_EVENT_START";
+  else if (!typePresent) reason = "STRUCTURED_MARKET_TYPE_MISSING";
+  else if (!LIVE_B_UNIVERSE_FAMILIES.has(exact.family)) {
+    // Raw `total_corners` demoted by a derivative slug is named from the slug;
+    // every other unsupported structured type is named from its own type.
+    const slug = typeof m.provider_market_slug === "string" ? m.provider_market_slug.toLowerCase() : "";
+    reason = (typeLevel.family === "TOTAL_CORNERS" ? cornerDerivativeReason(slug, false) : cornerDerivativeReason(typeKey, true))
+      ?? "UNSUPPORTED_STRUCTURED_MARKET_TYPE";
+  } else if (!identityValid) reason = "MARKET_TOKEN_IDENTITY_MISSING";
+  else reason = "SUPPORTED_FULL_MATCH_MARKET";
+  return { eventIdValid, sameGame, sameStart, typeKey, identityValid, typeLevel, reason };
+}
+
 /**
  * Pure. The CURRENT supported market universe of ONE physical match, from the
  * Reservation's exact lineage event plus the provider events returned by the
@@ -122,7 +227,7 @@ export function sameGameLiveUniverse(
   eventStartIso: string,
   own: readonly InventoryMarket[],
   discovered: readonly InventoryMarket[],
-): { markets: InventoryMarket[]; eventSetsComplete: boolean } {
+): { markets: InventoryMarket[]; eventSetsComplete: boolean; audit: DiscoveryAuditV1 } {
   const startMs = Date.parse(eventStartIso);
   const byEvent = new Map<string, InventoryMarket[]>();
   const accept = (m: InventoryMarket) => {
@@ -134,15 +239,53 @@ export function sameGameLiveUniverse(
     if (list) list.push(m); else byEvent.set(eventId, [m]);
   };
   const ownEventIds = new Set(own.map((m) => m.provider_event_id));
-  own.forEach(accept);
-  discovered.filter((m) => !ownEventIds.has(m.provider_event_id)).forEach(accept);
+  const preFilter = [...own, ...discovered.filter((m) => !ownEventIds.has(m.provider_event_id))];
+  preFilter.forEach(accept);
   let eventSetsComplete = byEvent.size > 0;
   const markets: InventoryMarket[] = [];
   for (const list of byEvent.values()) {
     if (!list.every((m) => m.sibling_market_count === list.length)) eventSetsComplete = false;
     markets.push(...list.filter(isLiveBUniverseMarket));
   }
-  return { markets, eventSetsComplete };
+  return { markets, eventSetsComplete, audit: buildDiscoveryAudit(gameId, startMs, preFilter) };
+}
+
+/** Pure. Built from the PRE-filter discovered set, never inferred from the final universe. */
+export function buildDiscoveryAudit(gameId: string, startMs: number, preFilter: readonly InventoryMarket[]): DiscoveryAuditV1 {
+  const marketTypes: Record<string, DiscoveryAuditMarketType> = {};
+  let admitted = 0;
+  let excluded = 0;
+  for (const m of preFilter) {
+    const c = classifyDiscoveredMarket(m, gameId, startMs);
+    let entry = marketTypes[c.typeKey];
+    if (!entry) {
+      entry = marketTypes[c.typeKey] = {
+        raw_discovered_n: 0, same_game_n: 0, same_start_n: 0, identity_valid_n: 0,
+        canonical_market_family: c.typeLevel.family, canonical_market_type: c.typeLevel.type,
+        admitted_n: 0, excluded_n: 0, exclusion_reason_counts: {},
+      };
+    }
+    entry.raw_discovered_n++;
+    if (c.sameGame) entry.same_game_n++;
+    if (c.sameStart) entry.same_start_n++;
+    if (c.identityValid) entry.identity_valid_n++;
+    if (c.reason === "SUPPORTED_FULL_MATCH_MARKET") { entry.admitted_n++; admitted++; }
+    else {
+      entry.excluded_n++; excluded++;
+      entry.exclusion_reason_counts[c.reason] = (entry.exclusion_reason_counts[c.reason] ?? 0) + 1;
+    }
+  }
+  const base = {
+    version: DISCOVERY_AUDIT_VERSION, provider_game_id: gameId,
+    provider_events_discovered_n: new Set(preFilter.map((m) => String(m.provider_event_id))).size,
+    raw_markets_discovered_n: preFilter.length,
+  } as const;
+  const distinct = Object.keys(marketTypes).length;
+  // Fail closed: never silently truncate an over-wide provider market-type space.
+  if (distinct > DISCOVERY_AUDIT_MAX_MARKET_TYPES) {
+    return { ...base, admitted_markets_n: 0, excluded_markets_n: 0, market_types: {}, audit_overflow: true, distinct_market_types_n: distinct };
+  }
+  return { ...base, admitted_markets_n: admitted, excluded_markets_n: excluded, market_types: marketTypes };
 }
 
 const STRATEGY_VARIANTS = ["S1_TAKER_HOLD", "S2_FIXED_MAKER_HOLD", "S3_MAKER_VALUE_BAND_HOLD"] as const;
@@ -365,6 +508,7 @@ export async function captureReservationMarketObservation(
   let markets: InventoryMarket[] = [];
   let failureReason: string | null = null;
   let eventSetsComplete: boolean | undefined;
+  let discoveryAudit: DiscoveryAuditV1 | null = null;
   // The Reservation owns the physical MATCH (game id when structured, else the
   // legacy provider event id); the provider event id is source lineage only.
   const expectedPhysicalId = providerEventId && start
@@ -392,8 +536,10 @@ export async function captureReservationMarketObservation(
           try {
             const discovered = await (deps.readGameEvents ?? defaultGameEventsReader)(providerGameId, start);
             const universe = sameGameLiveUniverse(providerGameId, start, own, discovered);
-            markets = universe.markets;
+            discoveryAudit = universe.audit;
+            markets = universe.audit.audit_overflow ? [] : universe.markets;
             eventSetsComplete = universe.eventSetsComplete;
+            if (universe.audit.audit_overflow) failureReason = DISCOVERY_AUDIT_OVERFLOW;
           } catch (error) {
             failureReason = error instanceof Error && error.message === PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS
               ? PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS : "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
@@ -454,6 +600,7 @@ export async function captureReservationMarketObservation(
     orderbooks_failed_n: failed, capture_complete: completeness.complete,
     capture_status: failureReason ? "CAPTURE_FAILED" : completeness.status,
     failure_reason: failureReason ?? (missingIdentity ? "MARKET_TOKEN_IDENTITY_MISSING" : null),
+    discovery_audit_v1: discoveryAudit,
   };
   await (deps.write ?? defaultWriter)(run, observations, strategyRowsForMarketObservations(observations));
 }
@@ -495,18 +642,25 @@ async function defaultExactEventReader(providerEventId: string, eventStartIso: s
   return inventoryMarketsFromEvent(event, providerEventId, eventStartIso);
 }
 
-/** One bounded gameId-scoped Gamma query. A full page, or a non-list response, is ambiguous and fails closed. */
+/** The event's start as the provider states it; the Reservation start when any provider time matches it. */
+function providerEventStartIso(event: PolymarketRawEvent, reservationStartIso: string): string {
+  if (eventStartMatches(event, reservationStartIso)) return reservationStartIso;
+  return [event.startTime, event.endDateIso, event.endDate].find((v): v is string => typeof v === "string" && Number.isFinite(Date.parse(v))) ?? "";
+}
+
+/**
+ * One bounded gameId-scoped Gamma query. A full page, or a non-list response, is ambiguous and fails closed.
+ * Returns the RAW discovered set: other-game, other-start and invalid-id markets are NOT dropped here, so the
+ * pre-filter discovery audit sees them; `sameGameLiveUniverse` is the single place that filters (never substitutes).
+ */
 async function defaultGameEventsReader(gameId: string, eventStartIso: string): Promise<InventoryMarket[]> {
   const events = await fetchPolymarketEventsByGameId(gameId);
   if (events === null) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
   if (events.length >= GAMMA_GAME_EVENTS_LIMIT) throw new Error(PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS);
   const markets: InventoryMarket[] = [];
   for (const event of events) {
-    const eventId = String(event?.id ?? "");
-    if (!/^\d+$/.test(eventId) || !Array.isArray(event.markets)) continue;
-    if (String(event.gameId ?? "").trim() !== gameId) continue; // other game: never substituted
-    if (!eventStartMatches(event, eventStartIso)) continue; // same game id, different start: not this physical match
-    markets.push(...inventoryMarketsFromEvent(event, eventId, eventStartIso));
+    if (!event || !Array.isArray(event.markets)) continue;
+    markets.push(...inventoryMarketsFromEvent(event, String(event.id ?? ""), providerEventStartIso(event, eventStartIso)));
   }
   return markets;
 }
