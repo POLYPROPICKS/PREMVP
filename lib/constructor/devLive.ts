@@ -36,6 +36,7 @@ export const DEV_LIVE_PROFILE: ContourProfileV1 = {
     "contour.registry",
     "contour.selector",
     "capability.moneyMovementGuard",
+    "runtime.bootstrap",
   ],
 };
 
@@ -43,7 +44,7 @@ export const DEV_LIVE_PROFILE: ContourProfileV1 = {
 export const DEV_LIVE_COMPONENT_MANIFEST: ComponentManifestV1 = {
   schema: COMPONENT_MANIFEST_SCHEMA,
   manifestId: "premvp-dev-live",
-  version: "1.1.0",
+  version: "1.2.0",
   contourId: DEV_LIVE_CONTOUR_ID,
   components: [
     {
@@ -133,6 +134,13 @@ export const DEV_LIVE_COMPONENT_MANIFEST: ComponentManifestV1 = {
       module: "lib/constructor/contracts.ts",
       symbol: "assertMoneyMovementEnabled",
       contractVersion: "MONEY_MOVEMENT_CAPABILITY_V1",
+    },
+    {
+      id: "runtime.bootstrap",
+      role: "runtime-instance-boot",
+      module: "lib/constructor/bootstrap.ts",
+      symbol: "bootContourRuntime",
+      contractVersion: "RUNTIME_BOOTSTRAP_V1",
     },
   ],
 };

@@ -173,7 +173,7 @@ function reservation(): NightEventReservationRow {
 
 const market = (condition: string, token: string, family: string, type: string): FinalT3MarketObservation => ({
   capture_run_id: "t3-run", reservation_id: "shadow-r", physical_event_id: PHYSICAL_ID,
-  provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_3",
+  provider_event_id: "event-1", event_start_iso: KICKOFF_ISO, observation_phase: "T_MINUS_10",
   condition_id: condition, token_id: token, side: "Yes", canonical_market_family: family,
   canonical_market_type: type, best_ask: 0.52, ask_decimal_odds: 1 / 0.52,
   orderbook_fetch_status: "SUCCESS", market_slug: condition,

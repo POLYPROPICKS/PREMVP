@@ -32,7 +32,7 @@ export const PROD_SHADOW_PROFILE: ContourProfileV1 = {
 export const PROD_SHADOW_COMPONENT_MANIFEST: ComponentManifestV1 = {
   schema: COMPONENT_MANIFEST_SCHEMA,
   manifestId: "premvp-prod-shadow",
-  version: "1.0.0",
+  version: "1.1.0",
   contourId: PROD_SHADOW_CONTOUR_ID,
   components: DEV_LIVE_COMPONENT_MANIFEST.components,
 };
