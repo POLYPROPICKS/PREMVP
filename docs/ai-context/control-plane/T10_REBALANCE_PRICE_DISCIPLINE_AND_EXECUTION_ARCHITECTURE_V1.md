@@ -142,7 +142,7 @@ ELSE SKIP
 
 ## 17. One physical event = one economic exposure
 
-A candidate set is one `physical_event_id`; exactly one action (or SKIP) comes out. Existing exposure on the event forces SKIP.
+A candidate set is one `physical_event_id`; exactly one action (or SKIP) comes out. Existing exposure, or being past latest-entry, on **any** sibling forces SKIP for the whole event (`EVENT_EXPOSURE_EXISTS` / `EVENT_AFTER_LATEST_ENTRY`).
 
 ## 18. Immutable future Queue contract (not implemented here)
 
@@ -177,7 +177,7 @@ The activation mission must keep enough data to reconstruct: authorized physical
 1. **T10 persists no ask ladder, depth, fee or tick.** Consequence on recorded data: 100% of STRONG candidates with an anchor are `TAKER_EXECUTION_EVIDENCE_MISSING`; Maker is `TICK_UNKNOWN` unless a tick is supplied. The tick exists at order time (the maker fallback reads `tick_size` from the live book) but is not persisted at T10. **Activation needs an authoritative pre-Queue tick, ladder and fee carrier, or a decision to read them live inside the activation mission.**
 2. "Meaningful best bid" semantics are not proven (`NOT_PROVEN`).
 3. Latest-entry and exposure state are not in the T10 tables; the replay assumes `beforeLatestEntry = true`, `exposureExists = false`.
-4. The anchor equals the T30 bid, which is close to the T10 bid, so in every simulated Maker case the limit equalled the anchor (cushion 0). The Maker therefore rests **at the bid**, and the policy has no evidence about its fill rate. Fill rate is unknown by design; it is the reason maker alternatives are retained for calibration.
+4. The maker limit is bounded by the **T30 bid** (the anchor), which may sit above the current T10 bid (it is not a code property that it equals the T10 bid). Empirically on the replay the T30 and T10 bids were close, and in every simulated Maker case the limit equalled the anchor (cushion 0). The policy has no evidence about the fill rate of such an order. Fill rate is unknown by design; it is the reason maker alternatives are retained for calibration.
 5. TAKER is structurally rare under this anchor: it needs the ask to fall to or below the prior bid. On the 72h replay 0 reservations had `best_ask ≤ P_BUY_MAX` for any STRONG candidate.
 6. Only 27 reservations / 3 days were available; the coverage numbers below are small-sample.
 7. The anchor is not +EV evidence (section 0).

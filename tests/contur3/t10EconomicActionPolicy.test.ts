@@ -248,3 +248,32 @@ test("18: no arbitrary fill probability anywhere in the policy source", () => {
   const r = evaluateT10EconomicAction(cand());
   assert.deepEqual(Object.keys(r.maker).sort(), ["cushionVsAnchor", "eligible", "limitPrice", "meaningfulBidGuard", "rejectReason", "ticksToAsk"]);
 });
+
+test("16c: exposure or late entry on ANY sibling blocks the whole physical event", () => {
+  const ok = cand({ token: "a", cond: "0xa" });
+  const exposed = { ...cand({ token: "b", cond: "0xb" }), exposureExists: true };
+  assert.equal(decideEventAction([ok, exposed]).action, "SKIP");
+  assert.equal(decideEventAction([ok, exposed]).reason, "EVENT_EXPOSURE_EXISTS");
+  const late = { ...cand({ token: "c", cond: "0xc" }), beforeLatestEntry: false };
+  assert.equal(decideEventAction([ok, late]).reason, "EVENT_AFTER_LATEST_ENTRY");
+  assert.equal(decideEventAction([ok]).action, "MAKER_FIRST");
+});
+
+test("4b: only an identity-exact T30_BOOK anchors; a T10 book or wrong-phase witness in the T30 slot does not; key is surfaced", () => {
+  const identity = id("tok-a", "Under");
+  assert.equal(evaluateT10EconomicAction(cand({ t30Override: book("T10_BOOK", identity, 0.5, 0.52) })).priceAuthority.reason, "SOURCE_NOT_T30_BOOK");
+  const wrongPhase = { ...book("T30_BOOK", identity, 0.5, 0.52), observationPhase: "T_MINUS_10" };
+  const r = evaluateT10EconomicAction(cand({ t30Override: wrongPhase }));
+  assert.equal(r.priceAuthority.available, false);
+  assert.match(r.priceAuthority.reason, /PHASE_LABEL_MISMATCH/);
+  assert.equal(evaluateT10EconomicAction(cand()).priceAuthority.t30ObservationKey, "T30_BOOK:tok-a");
+});
+
+test("14b: cushion key is isolated when both siblings are STRONG-equal in status (WEAK vs WEAK)", () => {
+  const w = (token: string, cond: string, t10: [number, number]) => cand({ token, cond, t10, t30: [0.5, 0.52] });
+  const a = w("tok-a", "0xa", [0.45, 0.5]);   // WEAK (wide T10 spread), limit 0.49, cushion 0.01
+  const b = w("tok-b", "0xb", [0.45, 0.53]);  // WEAK, limit 0.50, cushion 0
+  assert.equal(a.reference.status, "WEAK");
+  assert.equal(b.reference.status, "WEAK");
+  assert.equal(decideEventAction([b, a]).selected?.candidateIdentity.tokenId, "tok-a");
+});

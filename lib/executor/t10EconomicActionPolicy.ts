@@ -71,6 +71,8 @@ export type PolicyEvaluation = {
   priceAuthority: {
     version: typeof PRICE_AUTHORITY_VERSION;
     source: "T30_BOOK" | null;
+    /** Observation key of the T30 witness the anchor came from (to be frozen in the Queue contract). */
+    t30ObservationKey: string | null;
     available: boolean;
     pBuyMax: number | null;
     reason: string;
@@ -123,7 +125,7 @@ export function walkAskLevels(levels: readonly AskLevel[], stakeUsd: number, har
 export function t30ExactBidAnchor(identity: ExactMarketIdentity, evidence: ReferenceEvidence | null, hardCap: number):
   PolicyEvaluation["priceAuthority"] {
   const none = (reason: string): PolicyEvaluation["priceAuthority"] =>
-    ({ version: PRICE_AUTHORITY_VERSION, source: null, available: false, pBuyMax: null, reason });
+    ({ version: PRICE_AUTHORITY_VERSION, source: null, t30ObservationKey: null, available: false, pBuyMax: null, reason });
   if (!evidence) return none("NO_T30_EXACT_WITNESS");
   if (evidence.source !== "T30_BOOK") return none("SOURCE_NOT_T30_BOOK");
   // Reuse the canonical engine's identity + capture + window + book-quality rules for the witness.
@@ -131,7 +133,7 @@ export function t30ExactBidAnchor(identity: ExactMarketIdentity, evidence: Refer
   if (check.status !== "WEAK" || !num(evidence.bestBid) || evidence.bestBid <= 0) {
     return none(`T30_WITNESS_REJECTED:${check.rejected_sources[0]?.reason ?? check.reason}`);
   }
-  return { version: PRICE_AUTHORITY_VERSION, source: "T30_BOOK", available: true,
+  return { version: PRICE_AUTHORITY_VERSION, source: "T30_BOOK", t30ObservationKey: evidence.observationKey, available: true,
     pBuyMax: r6(Math.min(evidence.bestBid, hardCap)), reason: "T30_EXACT_BID_ANCHOR" };
 }
 
@@ -255,6 +257,13 @@ export function decideEventAction(candidates: readonly PolicyCandidateInput[]): 
   const events = new Set(candidates.map((c) => c.identity.physicalEventId));
   if (events.size > 1) throw new Error("T10_POLICY_MULTIPLE_PHYSICAL_EVENTS");
   const ranked: Ranked[] = candidates.map((input) => ({ input, evaluation: evaluateT10EconomicAction(input) }));
+  // One physical event = one economic exposure: any sibling flag blocks the whole event, not just that sibling.
+  const eventGate = candidates.some((c) => c.exposureExists) ? "EVENT_EXPOSURE_EXISTS"
+    : candidates.some((c) => !c.beforeLatestEntry) ? "EVENT_AFTER_LATEST_ENTRY" : null;
+  if (eventGate) {
+    return { policyVersion: T10_ECONOMIC_ACTION_POLICY_VERSION, physicalEventId: candidates[0]?.identity.physicalEventId ?? null,
+      action: "SKIP", selected: null, bestMakerAlternative: null, evaluations: ranked.map((r) => r.evaluation), reason: eventGate };
+  }
   const takers = ranked.filter((r) => r.evaluation.taker.eligible).sort(compareTaker);
   const makers = ranked.filter((r) => r.evaluation.maker.eligible).sort(compareMaker);
   const winner = takers[0] ?? makers[0] ?? null;
