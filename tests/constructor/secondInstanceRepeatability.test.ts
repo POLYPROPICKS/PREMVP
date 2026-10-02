@@ -17,8 +17,8 @@ import {
   DEV_LIVE_COMPONENT_MANIFEST,
   DEV_LIVE_INSTANCE,
   DEV_LIVE_PROFILE,
-  getActiveContour,
 } from "../../lib/constructor/devLive";
+import { getActiveContour } from "../../lib/constructor/registry";
 import { createSupabaseAdminClient } from "../../lib/supabase/adminClientFactory";
 import {
   parseReservationTimes,

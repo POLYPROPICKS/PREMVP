@@ -10,7 +10,7 @@ import {
   persistReservationPlan,
   loadReservations,
 } from "@/lib/executor/nightEventReservations";
-import { getActiveContour } from "@/lib/constructor/devLive";
+import { getActiveContour } from "@/lib/constructor/registry";
 import {
   buildPlanRunId,
   resolveNightWindow,

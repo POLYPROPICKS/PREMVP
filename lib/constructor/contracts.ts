@@ -17,6 +17,10 @@ export const CONTOUR_INSTANCE_SCHEMA = "CONTOUR_INSTANCE_V1" as const;
 export const COMPONENT_MANIFEST_SCHEMA = "COMPONENT_MANIFEST_V1" as const;
 
 export const CONSTRUCTOR_COMPOSE_INVALID = "CONSTRUCTOR_COMPOSE_INVALID" as const;
+export const CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED = "CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED" as const;
+
+/** May a contour cause real-money execution? The only capability Constructor V1 knows. */
+export type MoneyMovementCapability = "enabled" | "disabled";
 
 export interface ContourProfileV1 {
   readonly schema: typeof CONTOUR_PROFILE_SCHEMA;
@@ -25,6 +29,14 @@ export interface ContourProfileV1 {
   readonly selectors: {
     readonly planning: FireModelSelectorMode;
     readonly final: FireModelSelectorMode;
+  };
+  /**
+   * What this contour is allowed to do. `moneyMovement: "disabled"` makes it a passive contour:
+   * it may plan and observe but can never admit an executable queue row (see
+   * `assertMoneyMovementEnabled`). Carries no wallet, amount or venue detail.
+   */
+  readonly capabilities: {
+    readonly moneyMovement: MoneyMovementCapability;
   };
   /** Manifest component ids this contour requires; composition fails if any is absent. */
   readonly requiredComponents: readonly string[];
@@ -143,6 +155,9 @@ export function composeContour(declaration: ContourDeclarationV1): ComposedConto
   if (profile.schema !== CONTOUR_PROFILE_SCHEMA) invalid("PROFILE_SCHEMA");
   if (instance.schema !== CONTOUR_INSTANCE_SCHEMA) invalid("INSTANCE_SCHEMA");
   if (manifest.schema !== COMPONENT_MANIFEST_SCHEMA) invalid("MANIFEST_SCHEMA");
+  if (profile.capabilities?.moneyMovement !== "enabled" && profile.capabilities?.moneyMovement !== "disabled") {
+    invalid("CAPABILITY_MONEY_MOVEMENT_INVALID");
+  }
   if (!profile.contourId || !instance.instanceId || !manifest.manifestId || !manifest.version) invalid("EMPTY_IDENTITY");
 
   if (instance.profileRef.contourId !== profile.contourId) invalid("INSTANCE_PROFILE_MISMATCH");
@@ -203,4 +218,15 @@ export function composeContour(declaration: ContourDeclarationV1): ComposedConto
       return value;
     },
   };
+}
+
+/**
+ * Fail-closed money boundary. Throws unless the contour's capability is exactly "enabled", so a
+ * missing, malformed or "disabled" capability all block. Call it immediately before any step that
+ * makes an instruction executable (queue admission) or hands one to the executor.
+ */
+export function assertMoneyMovementEnabled(contour: ComposedContour, boundary: string): void {
+  if (contour.profile.capabilities.moneyMovement !== "enabled") {
+    throw new Error(`${CONSTRUCTOR_MONEY_MOVEMENT_BLOCKED}: ${boundary} contour=${contour.identity}`);
+  }
 }

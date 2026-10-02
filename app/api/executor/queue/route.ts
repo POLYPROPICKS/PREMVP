@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getActiveContour } from "@/lib/constructor/devLive";
+import { assertMoneyMovementEnabled } from "@/lib/constructor/contracts";
+import { getActiveContour } from "@/lib/constructor/registry";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   QUEUE_SCHEMA_VERSION,
@@ -37,6 +38,12 @@ export async function GET(request: NextRequest) {
   const expectedSecret = getActiveContour().resolveEnv("executorCandidatesSecret");
   if (!expectedSecret || secret !== expectedSecret) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+  // Handoff boundary: a passive contour never hands an executable instruction to the executor.
+  try {
+    assertMoneyMovementEnabled(getActiveContour(), "EXECUTOR_QUEUE_HANDOFF");
+  } catch (error) {
+    return NextResponse.json({ ok: false, error: (error as Error).message }, { status: 403 });
   }
 
   const { searchParams } = new URL(request.url);
