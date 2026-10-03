@@ -15,7 +15,13 @@
 
 import { createHash, randomUUID } from "crypto";
 import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, createFinalT3ReadPort, createReservationStrategyDecisionStore, persistLiveGuardTelemetry, readCompletedFinalT3Universe, readCompletedT30Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
-import { decideT10EconomicEvent, isT10EconomicActivationOn, reverifySelectedAction, T10_ECONOMIC_TAKER_SELECTION_REASON } from "./t10EconomicActivation";
+import {
+  decideT10EconomicEvent,
+  isT10EconomicActivationOn,
+  reverifySelectedAction,
+  T10_ECONOMIC_MAKER_SELECTION_REASON,
+  T10_ECONOMIC_TAKER_SELECTION_REASON,
+} from "./t10EconomicActivation";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   physicalIdUnderStoredFormat,
@@ -44,9 +50,11 @@ import {
   QUEUE_MAX_ENTRY_PRICE,
   LIVE_EXECUTION_MAX_SPREAD,
   queueMoneyEnvelopeViolation,
+  readT10FrozenContract,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
 } from "./executorQueueTypes";
+import { isZeroProofResult, readExecutionAttempts } from "./makerFallbackAuthorization";
 import {
   createSupabaseSchedulerJobEvidencePort,
   sanitizeSchedulerErrorMessage,
@@ -767,6 +775,11 @@ export interface RebalanceRepoPort {
   loadFinalIdentitySourceRows?(reservation: NightEventReservationRow): Promise<FinalIdentitySourceRow[]>;
   /** Exact idempotency conflict read; never used for market selection. */
   findQueueRowsByIdempotencyKey?(idempotencyKey: string): Promise<EventExecutionQueueRow[]>;
+  /**
+   * Every Queue row (any status) already bound to this Reservation or its physical event. The T10
+   * activation ON path requires it (absent -> exposure unproven -> fail closed).
+   */
+  loadEventExposureQueueRows?(reservation: NightEventReservationRow): Promise<EventExecutionQueueRow[]>;
   // Optional so existing normal-mode repo fakes (constructed before this method
   // existed) keep compiling unchanged. Required in practice by the controlled
   // one-shot live-intent seam, which throws if it is absent (see
@@ -1013,6 +1026,20 @@ export function createSupabaseRebalanceRepoPort(getClient: () => RuntimeSupabase
         .in("status", ["RESERVED", "REBALANCE_PENDING"]);
       if (error) throw new Error(`reservation due-query failed: ${error.message}`);
       return (data ?? []) as unknown as NightEventReservationRow[];
+    },
+    async loadEventExposureQueueRows(reservation) {
+      const supabaseAdmin = await getClient();
+      const filters: Array<[string, string]> = [];
+      if (reservation.id) filters.push(["reservation_id", reservation.id]);
+      if (reservation.match_family_key) filters.push(["match_family_key", reservation.match_family_key]);
+      if (reservation.physical_event_id) filters.push(["diagnostics->>physical_event_id", reservation.physical_event_id]);
+      const byId = new Map<string, EventExecutionQueueRow>();
+      for (const [column, value] of filters) {
+        const { data, error } = await supabaseAdmin.from("event_execution_queue").select("*").eq(column, value).limit(200);
+        if (error) throw new Error(`queue exposure-query failed: ${error.message}`);
+        for (const row of (data ?? []) as unknown as EventExecutionQueueRow[]) byId.set(row.id ?? `${column}:${byId.size}`, row);
+      }
+      return [...byId.values()];
     },
     async loadQueuedReservationIds() {
       const supabaseAdmin = await getClient();
@@ -1686,9 +1713,30 @@ async function selectQueueRowFromT3FinalIdentity(
 type T10EconomicActivationDeps = {
   readT30Universe: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
   fetchTokenFeeSchedule: (tokenId: string) => Promise<TokenFeeScheduleResult>;
-  /** Existing exposure authority: a non-terminal Queue row already exists for this Reservation. */
-  exposureExists: boolean;
+  /**
+   * Existing exposure authority: every Queue row already bound to this Reservation / physical event.
+   * null (loader unavailable) is unproven exposure and fails closed.
+   */
+  loadEventExposureQueueRows: ((reservation: NightEventReservationRow) => Promise<EventExecutionQueueRow[]>) | null;
 };
+
+/**
+ * One-event / one-exposure invariant over existing Queue state (no new table). A prior Queue row
+ * for the same Reservation or physical event is exposure-free ONLY when it provably never reached
+ * the venue (SKIPPED / CANCELLED, or EXPIRED by the PREMVP READY-deadline sweep, which requires the
+ * absence of any order-event evidence) or every recorded attempt is an authoritative terminal ZERO.
+ * Positive, partial, UNKNOWN, unrecorded or unreadable exposure is never zero.
+ */
+export function eventExposureNotProvenZero(rows: readonly EventExecutionQueueRow[]): boolean {
+  return rows.some((row) => {
+    if (row.status === "SKIPPED" || row.status === "CANCELLED") return false;
+    if (row.status === "EXPIRED" && row.selection_reason === READY_QUEUE_EXPIRY_REASON) return false;
+    const a = readExecutionAttempts(row.diagnostics);
+    const recorded = [a.taker_attempt_1?.result, a.maker_first?.result, a.maker_fallback_1?.result].filter((r) => r !== undefined);
+    if (a.maker_fallback_1?.command && !a.maker_fallback_1.result) return true;
+    return !(recorded.length > 0 && recorded.every((r) => isZeroProofResult(r)));
+  });
+}
 
 /**
  * T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1 -- activation ON path.
@@ -1717,12 +1765,18 @@ async function selectQueueRowFromT10EconomicAction(
   if (policy && policy.allowed !== true) return { outcome: "SKIPPED", reason: "PLANNING_MARKET_POLICY_NOT_ALLOWED", queueRow: null };
   let t30: FinalT3MarketObservation[] | null = null;
   try { t30 = await economic.readT30Universe(reservation); } catch { t30 = null; }
+  // Exposure is read from the existing Queue state at decision time; unreadable = exposure exists.
+  let exposureExists = true;
+  try {
+    exposureExists = economic.loadEventExposureQueueRows === null ||
+      eventExposureNotProvenZero(await economic.loadEventExposureQueueRows(reservation));
+  } catch { exposureExists = true; }
   const event = await decideT10EconomicEvent({
     physicalEventId, eventStartIso, t10Universe: universe, t30Universe: t30, nowMs,
-    exposureExists: economic.exposureExists,
+    exposureExists,
     deps: { fetchExactTokenOrderbook, fetchTokenFeeSchedule: economic.fetchTokenFeeSchedule },
   });
-  const guard = await reverifySelectedAction({ event, nowMs, exposureExists: economic.exposureExists, fetchExactTokenOrderbook });
+  const guard = await reverifySelectedAction({ event, nowMs, exposureExists, fetchExactTokenOrderbook });
   const sel = event.decision.selected;
   if (sel && reservation.id && writeGuardTelemetry) {
     const ev = guard.evidence;
@@ -1743,10 +1797,15 @@ async function selectQueueRowFromT10EconomicAction(
   }
   if (!guard.ok) return { outcome: "SKIPPED", reason: guard.reason, queueRow: null };
   const contract = guard.contract;
-  // Only TAKER_FIRST can reach here while IRELAND_PRIMARY_MAKER_CONTRACT_SUPPORTED is false.
-  if (contract.execution_mode !== "TAKER_FIRST" || !contract.taker) {
+  // Exactly one frozen mode with exactly its own price authority; anything else never reaches the Queue.
+  const taker = contract.execution_mode === "TAKER_FIRST" && contract.taker && !contract.maker ? contract.taker : null;
+  const maker = contract.execution_mode === "MAKER_FIRST" && contract.maker && !contract.taker ? contract.maker : null;
+  if (!taker && !maker) {
     return { outcome: "SKIPPED", reason: "T10_ECON_UNSUPPORTED_EXECUTION_MODE", queueRow: null };
   }
+  const selectionReason = taker ? T10_ECONOMIC_TAKER_SELECTION_REASON : T10_ECONOMIC_MAKER_SELECTION_REASON;
+  // Ireland price authority: TAKER = fee-inclusive limit; MAKER = frozen maker limit. Both <= P_BUY_MAX <= 0.54.
+  const priceAuthority = taker ? taker.price_limit : maker!.maker_limit_price;
   const observation = universe.find((r) => r.condition_id === contract.condition_id && r.token_id === contract.token_id && r.side === contract.side);
   if (!observation) return { outcome: "SKIPPED", reason: "T10_ECON_SELECTED_IDENTITY_NOT_IN_UNIVERSE", queueRow: null };
   const identity = { condition_id: contract.condition_id, token_id: contract.token_id, side: contract.side };
@@ -1767,7 +1826,7 @@ async function selectQueueRowFromT10EconomicAction(
     market_family: observation.canonical_market_family, score: null, coverage: null,
     tier: reservation.event_tier ?? EXECUTABLE_TIER, stake_usd: EXECUTABLE_STAKE_USD,
     preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: contract.latest_entry_iso,
-    selection_rank: reservation.reservation_rank ?? 1, selection_reason: T10_ECONOMIC_TAKER_SELECTION_REASON,
+    selection_rank: reservation.reservation_rank ?? 1, selection_reason: selectionReason,
     status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
     diagnostics: {
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
@@ -1777,21 +1836,26 @@ async function selectQueueRowFromT10EconomicAction(
       planning_final_identity_evidence: reservation.diagnostics?.planning_final_identity_evidence ?? null,
       source_lineage: reservation.diagnostics?.source_lineage ?? null,
       model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
-      // Ireland price authority: the fee-inclusive TAKER limit, always <= P_BUY_MAX <= 0.54.
-      max_entry_price: contract.taker.price_limit, entry_price: contract.taker.authorized_raw_vwap,
+      max_entry_price: priceAuthority, entry_price: taker ? taker.authorized_raw_vwap : priceAuthority,
       stake_guard_usd: EXECUTABLE_STAKE_USD, max_stake_usd: QUEUE_MAX_STAKE_USD,
       source_authority: "T10_ECONOMIC_ACTION_POLICY",
-      current_executable_price: contract.taker.authorized_raw_vwap,
-      current_executable_depth_usd: contract.taker.full_stake_depth_usd_at_limit,
+      current_executable_price: taker ? taker.authorized_raw_vwap : priceAuthority,
+      current_executable_depth_usd: taker ? taker.full_stake_depth_usd_at_limit : null,
       current_spread: contract.spread_telemetry,
       orderbook_refresh_at: contract.execution_book_observed_at,
       orderbook_refresh_latency_ms: contract.execution_book_latency_ms,
       t10_economic_action_v1: contract,
-      mechanical_guard_trace: ["T3_AB_PERSISTED", "T10_ECONOMIC_POLICY_SELECTED", "EXACT_TOKEN_REFETCHED",
-        "TICK_UNCHANGED", "FULL_STAKE_AT_LIMIT", "EFFECTIVE_COST_LE_P_BUY_MAX", "HARD_CAP_OK", "DEADLINE_OK", "EXPOSURE_CLEAR"],
+      mechanical_guard_trace: taker
+        ? ["T3_AB_PERSISTED", "T10_ECONOMIC_POLICY_SELECTED", "EXACT_TOKEN_REFETCHED", "TICK_UNCHANGED",
+          "FULL_STAKE_AT_LIMIT", "EFFECTIVE_COST_LE_P_BUY_MAX", "HARD_CAP_OK", "MIN_ORDER_SIZE_OK", "DEADLINE_OK", "EXPOSURE_CLEAR"]
+        : ["T3_AB_PERSISTED", "T10_ECONOMIC_POLICY_SELECTED", "EXACT_TOKEN_REFETCHED", "TICK_UNCHANGED",
+          "MAKER_LIMIT_LE_P_BUY_MAX", "HARD_CAP_OK", "MIN_ORDER_SIZE_OK", "DEADLINE_OK", "EXPOSURE_CLEAR"],
     },
   };
-  return { outcome: "QUEUED", reason: T10_ECONOMIC_TAKER_SELECTION_REASON, queueRow: row };
+  // The persisted row must satisfy the same strict frozen-contract reader the Queue wire uses.
+  const frozen = readT10FrozenContract(row);
+  if (!frozen.ok) return { outcome: "SKIPPED", reason: `T10_ECON_FROZEN_CONTRACT_INVALID:${frozen.reason}`, queueRow: null };
+  return { outcome: "QUEUED", reason: selectionReason, queueRow: row };
 }
 
 /**
@@ -2358,7 +2422,9 @@ export async function runEventRebalance(
             deps.writeGuardTelemetry ?? (!deps.repo ? persistTelemetry : undefined),
             t10EconomicActivation ? {
               readT30Universe, fetchTokenFeeSchedule: readFeeSchedule,
-              exposureExists: Boolean(reservation.id && alreadyQueued.has(reservation.id)),
+              loadEventExposureQueueRows: repo.loadEventExposureQueueRows
+                ? (r: NightEventReservationRow) => repo.loadEventExposureQueueRows!(r)
+                : null,
             } : undefined,
           )
         : manifestResolution?.kind === "SUPPORTED"

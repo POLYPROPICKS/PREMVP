@@ -209,9 +209,13 @@ export interface IrelandQueueCandidate {
    * always "BUY", never guessed from a title or the outcome selector above.
    */
   execution_side: "BUY";
-  /** Explicit attempt identity of the initial Queue instruction (never inferred by Ireland). */
-  execution_mode: "TAKER";
-  attempt_id: "TAKER_ATTEMPT_1";
+  /**
+   * Explicit attempt identity of the initial Queue instruction (never inferred by Ireland).
+   * A frozen T10 MAKER_FIRST row is emitted as MAKER_FIRST / MAKER_FIRST with the primary-maker
+   * fields below; every other row is TAKER / TAKER_ATTEMPT_1 (unchanged wire).
+   */
+  execution_mode: "TAKER" | "MAKER_FIRST";
+  attempt_id: "TAKER_ATTEMPT_1" | "MAKER_FIRST";
   market_slug: string | null;
   market_title: string | null;
   market_family: string | null;
@@ -235,6 +239,111 @@ export interface IrelandQueueCandidate {
   selection_rank: number;
   status: QueueStatus;
   is_executable: true;
+  // ── present ONLY on a frozen T10 MAKER_FIRST row (released Ireland primary-maker contract) ──
+  maker_limit_price?: number;
+  maker_shares?: number;
+  requested_quantity?: number;
+  tick_size?: number;
+  minimum_order_size?: number;
+  p_buy_max?: number;
+  price_authority_version?: string;
+  price_authority_observation_id?: string;
+  execution_policy_version?: string;
+  economic_policy_version?: string;
+}
+
+// ── T10 frozen execution contract (diagnostics.t10_economic_action_v1) ──────
+
+export const T10_ECONOMIC_ACTION_DIAGNOSTICS_KEY = "t10_economic_action_v1" as const;
+export const PRIMARY_MAKER_ATTEMPT_ID = "MAKER_FIRST" as const;
+
+/**
+ * Frozen execution mode of a Queue row. null = not a T10 economic-policy row (legacy wire);
+ * "INVALID" = a T10 contract is present but its mode is unrecognised (always fails closed).
+ */
+export function t10FrozenExecutionMode(
+  diagnostics: Record<string, unknown> | null | undefined
+): "TAKER_FIRST" | "MAKER_FIRST" | "INVALID" | null {
+  const c = diagnostics?.[T10_ECONOMIC_ACTION_DIAGNOSTICS_KEY];
+  if (c === undefined || c === null) return null;
+  if (typeof c !== "object" || Array.isArray(c)) return "INVALID";
+  const mode = (c as Record<string, unknown>).execution_mode;
+  return mode === "TAKER_FIRST" || mode === "MAKER_FIRST" ? mode : "INVALID";
+}
+
+export type T10FrozenContractScalars = {
+  execution_mode: "TAKER_FIRST" | "MAKER_FIRST";
+  p_buy_max: number;
+  tick_size: number;
+  minimum_order_size: number;
+  price_authority_version: string;
+  price_authority_observation_id: string;
+  execution_policy_version: string;
+  economic_policy_version: string;
+  maker: { maker_limit_price: number; maker_shares: number } | null;
+};
+
+const finitePos = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+const nonEmpty = (v: unknown): v is string => typeof v === "string" && v.trim() !== "";
+const onTick = (price: number, tick: number) => Math.abs(price / tick - Math.round(price / tick)) <= 1e-6;
+
+/**
+ * Strict read of the frozen T10 contract scalars on a Queue row. Every authority the money path
+ * depends on must be present and self-consistent with the row; anything else is a reason string.
+ */
+export function readT10FrozenContract(
+  row: Pick<EventExecutionQueueRow, "condition_id" | "token_id" | "side" | "stake_usd" | "latest_entry_iso" | "diagnostics">
+): { ok: true; contract: T10FrozenContractScalars } | { ok: false; reason: string } {
+  const mode = t10FrozenExecutionMode(row.diagnostics);
+  if (mode === null) return { ok: false, reason: "T10_CONTRACT_ABSENT" };
+  if (mode === "INVALID") return { ok: false, reason: "T10_EXECUTION_MODE_INVALID" };
+  const c = row.diagnostics[T10_ECONOMIC_ACTION_DIAGNOSTICS_KEY] as Record<string, unknown>;
+  if (c.condition_id !== row.condition_id || c.token_id !== row.token_id || c.side !== row.side) {
+    return { ok: false, reason: "T10_CONTRACT_IDENTITY_MISMATCH" };
+  }
+  if (c.stake_usd !== row.stake_usd || !finitePos(row.stake_usd) || row.stake_usd > QUEUE_DEFAULT_STAKE_USD) {
+    return { ok: false, reason: "T10_CONTRACT_STAKE_MISMATCH" };
+  }
+  if (c.latest_entry_iso !== row.latest_entry_iso) return { ok: false, reason: "T10_CONTRACT_DEADLINE_MISMATCH" };
+  if (!finitePos(c.p_buy_max) || c.p_buy_max > QUEUE_MAX_ENTRY_PRICE) return { ok: false, reason: "T10_P_BUY_MAX_INVALID" };
+  if (!finitePos(c.tick_size) || c.tick_size >= 1) return { ok: false, reason: "T10_TICK_SIZE_INVALID" };
+  if (!finitePos(c.minimum_order_size)) return { ok: false, reason: "T10_MINIMUM_ORDER_SIZE_UNKNOWN" };
+  if (!nonEmpty(c.price_authority_version) || !nonEmpty(c.price_authority_observation_id)) {
+    return { ok: false, reason: "T10_PRICE_AUTHORITY_LINEAGE_MISSING" };
+  }
+  if (!nonEmpty(c.execution_policy_version) || !nonEmpty(c.economic_policy_version)) {
+    return { ok: false, reason: "T10_POLICY_VERSION_MISSING" };
+  }
+  let maker: T10FrozenContractScalars["maker"] = null;
+  if (mode === "MAKER_FIRST") {
+    const m = c.maker as Record<string, unknown> | null | undefined;
+    const limit = m?.maker_limit_price;
+    const shares = m?.maker_shares;
+    if (c.taker !== null && c.taker !== undefined) return { ok: false, reason: "T10_MAKER_CONTRACT_CARRIES_TAKER" };
+    if (!finitePos(limit) || limit > c.p_buy_max + 1e-9 || limit > QUEUE_MAX_ENTRY_PRICE || !onTick(limit, c.tick_size)) {
+      return { ok: false, reason: "T10_MAKER_LIMIT_INVALID" };
+    }
+    if (!finitePos(shares) || shares * limit > row.stake_usd + 1e-9) return { ok: false, reason: "T10_MAKER_SHARES_INVALID" };
+    if (shares + 1e-9 < c.minimum_order_size) return { ok: false, reason: "T10_MAKER_BELOW_MINIMUM_ORDER_SIZE" };
+    if (row.diagnostics.max_entry_price !== limit) return { ok: false, reason: "T10_MAKER_PRICE_CAP_MISMATCH" };
+    maker = { maker_limit_price: limit, maker_shares: shares };
+  }
+  return {
+    ok: true,
+    contract: {
+      execution_mode: mode, p_buy_max: c.p_buy_max, tick_size: c.tick_size, minimum_order_size: c.minimum_order_size,
+      price_authority_version: c.price_authority_version, price_authority_observation_id: c.price_authority_observation_id,
+      execution_policy_version: c.execution_policy_version, economic_policy_version: c.economic_policy_version, maker,
+    },
+  };
+}
+
+/** A frozen MAKER_FIRST row whose primary-maker contract is malformed. Never mapped to TAKER. */
+export class QueueWireContractError extends Error {
+  constructor(readonly reason: string, readonly queueId: string | null) {
+    super(`QUEUE_WIRE_CONTRACT_INVALID:${reason}`);
+    this.name = "QueueWireContractError";
+  }
 }
 
 function extractMaxEntryPrice(diagnostics: Record<string, unknown>): number | null {
@@ -299,6 +408,33 @@ export function mapQueueRowToIrelandCandidate(
   const maxEntryPrice = extractMaxEntryPrice(row.diagnostics ?? {});
   const providerEventId = extractProviderEventId(row.diagnostics ?? {});
   const signalPairId = extractSignalPairId(row.diagnostics ?? {});
+  // Primary MAKER_FIRST: emitted explicitly or not at all (throws) -- never falls through to TAKER.
+  const frozenMode = t10FrozenExecutionMode(row.diagnostics);
+  let primaryMaker: Partial<IrelandQueueCandidate> | null = null;
+  if (frozenMode === "INVALID") throw new QueueWireContractError("T10_EXECUTION_MODE_INVALID", row.id ?? null);
+  if (frozenMode === "MAKER_FIRST") {
+    const frozen = readT10FrozenContract(row);
+    if (!frozen.ok || !frozen.contract.maker) {
+      throw new QueueWireContractError(frozen.ok ? "T10_MAKER_CONTRACT_MISSING" : frozen.reason, row.id ?? null);
+    }
+    const c = frozen.contract;
+    primaryMaker = {
+      execution_mode: "MAKER_FIRST",
+      attempt_id: PRIMARY_MAKER_ATTEMPT_ID,
+      maker_limit_price: c.maker!.maker_limit_price,
+      maker_shares: c.maker!.maker_shares,
+      requested_quantity: c.maker!.maker_shares,
+      tick_size: c.tick_size,
+      minimum_order_size: c.minimum_order_size,
+      p_buy_max: c.p_buy_max,
+      price_authority_version: c.price_authority_version,
+      price_authority_observation_id: c.price_authority_observation_id,
+      execution_policy_version: c.execution_policy_version,
+      economic_policy_version: c.economic_policy_version,
+      max_entry_price: c.maker!.maker_limit_price,
+      price_cap: c.maker!.maker_limit_price,
+    };
+  }
   return {
     candidate_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
     queue_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
@@ -348,6 +484,7 @@ export function mapQueueRowToIrelandCandidate(
     selection_rank: row.selection_rank,
     status: row.status,
     is_executable: true,
+    ...(primaryMaker ?? {}),
   };
 }
 

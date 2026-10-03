@@ -19,8 +19,16 @@
 // request field, only a stale server-side insert attempt that has been
 // removed at the route).
 
-import { validateOrderEventAgainstQueueRow, type EventExecutionQueueRow, type OrderEventSubmission } from "./executorQueueTypes";
-import { isMakerAttemptCallback, makerAttemptIdIsValid, readExecutionAttempts, type MakerFallbackCommand } from "./makerFallbackAuthorization";
+import { readT10FrozenContract, t10FrozenExecutionMode, validateOrderEventAgainstQueueRow, type EventExecutionQueueRow, type OrderEventSubmission } from "./executorQueueTypes";
+import {
+  FILL_RESULT_CLASSES,
+  isMakerAttemptCallback,
+  isPrimaryMakerCallback,
+  makerAttemptIdIsValid,
+  readExecutionAttempts,
+  readIrelandExecutionResult,
+  type MakerFallbackCommand,
+} from "./makerFallbackAuthorization";
 
 // ── shared status contract (single source of truth) ────────────────────────
 
@@ -456,6 +464,18 @@ async function markQueueTerminalFromOrderEvent(
     return classification.kind === "ACCEPTED" ? { kind: "ALREADY_EXECUTED", queue_id: queueId } : { kind: "NOT_ACCEPTED" };
   }
 
+  // Primary MAKER_FIRST: a released fill outcome with a venue order id is an accepted order even when
+  // the resting remainder was cancelled/expired -- a partial fill is never marked FAILED.
+  if (isPrimaryMakerCallback(raw) && classification.kind === "REJECTED" && classification.clobOrderId) {
+    const result = readIrelandExecutionResult(raw, "");
+    if (result && FILL_RESULT_CLASSES.has(result.result_class)) {
+      if (queueRow.status === "EXECUTED") return { kind: "ALREADY_EXECUTED", queue_id: queueId };
+      const newDiag: Record<string, unknown> = { ...(queueRow.diagnostics ?? {}), clob_order_id: classification.clobOrderId, order_event_id: storedEvent.id };
+      await port.updateQueueRowStatus(queueId, { status: "EXECUTED", diagnostics: newDiag });
+      return { kind: "EXECUTED", queue_id: queueId };
+    }
+  }
+
   if (classification.kind === "UNKNOWN") return { kind: "NOT_ACCEPTED" };
 
   if (classification.kind === "ACCEPTED") {
@@ -522,6 +542,24 @@ export async function handleOrderEventSubmission(
 
   if (!queueRow) return { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" };
 
+  // Frozen execution mode is binding: a MAKER_FIRST row accepts only its primary-maker attempt (never a
+  // TAKER, never a fallback); a primary-maker callback is accepted only on a MAKER_FIRST row.
+  const frozenMode = t10FrozenExecutionMode(queueRow.diagnostics);
+  const primaryMaker = isPrimaryMakerCallback(raw);
+  if (frozenMode === "INVALID") return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "T10_EXECUTION_MODE_INVALID" };
+  if (primaryMaker && frozenMode !== "MAKER_FIRST") {
+    return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "PRIMARY_MAKER_NOT_FROZEN_ON_QUEUE_ROW" };
+  }
+  if (!primaryMaker && frozenMode === "MAKER_FIRST") {
+    return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "MAKER_FIRST_ROW_REQUIRES_PRIMARY_MAKER_ATTEMPT" };
+  }
+  let primaryMakerShares: number | null = null;
+  if (primaryMaker) {
+    const frozen = readT10FrozenContract(queueRow);
+    if (!frozen.ok || !frozen.contract.maker) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "PRIMARY_MAKER_FROZEN_CONTRACT_INVALID" };
+    primaryMakerShares = frozen.contract.maker.maker_shares;
+  }
+
   let makerCommand: MakerFallbackCommand | null = null;
   if (makerAttempt) {
     makerCommand = readExecutionAttempts(queueRow.diagnostics).maker_fallback_1?.command ?? null;
@@ -545,6 +583,10 @@ export async function handleOrderEventSubmission(
     };
     const validation = validateOrderEventAgainstQueueRow(submission, queueRow);
     if (!validation.ok) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason };
+    // Primary maker: never above the frozen maker shares (price is bounded by max_entry_price = maker limit).
+    if (primaryMakerShares !== null && submission.submitted_size !== null && submission.submitted_size > primaryMakerShares + 1e-9) {
+      return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "PRIMARY_MAKER_SIZE_ABOVE_FROZEN_SHARES" };
+    }
     // The maker may only rest at or below the authorized passive limit, within the authorized size.
     if (makerCommand) {
       if (submission.submitted_price !== null && submission.submitted_price > makerCommand.limit_price + 1e-9) {
