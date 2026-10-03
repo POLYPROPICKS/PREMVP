@@ -14,6 +14,7 @@ import {
   isZeroProofResult,
   mergeAttemptResult,
   readExecutionAttempts,
+  type AttemptResultSlot,
   type ExecutionAttemptsV1,
   type IrelandExecutionResult,
   type MakerFallbackCommand,
@@ -82,7 +83,7 @@ export async function casWriteQueue(
 export async function recordAttemptResultCas(
   port: QueueCasPort,
   queueId: string,
-  slot: "taker_attempt_1" | "maker_fallback_1",
+  slot: AttemptResultSlot,
   result: IrelandExecutionResult,
 ): Promise<void> {
   await casWriteQueue(port, queueId, (fresh) => {

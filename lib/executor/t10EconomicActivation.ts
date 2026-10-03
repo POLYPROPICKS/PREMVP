@@ -28,11 +28,15 @@
 // MAKER limit (unchanged policy formula): floor_to_tick(min(P_BUY_MAX, current_ask - tick, 0.54)).
 //   Never bestBid + tick. No fill probability anywhere.
 //
-// Ireland boundary: the published Queue contract (mapQueueRowToIrelandCandidate) emits every row as
-// execution_mode "TAKER" / TAKER_ATTEMPT_1 with price_cap = max_entry_price. TAKER_FIRST is consumable
-// through that contract. A primary MAKER_FIRST instruction is NOT expressible in it, so a MAKER_FIRST
-// decision is never written to the Queue (IRELAND_PRIMARY_MAKER_CONTRACT_SUPPORTED = false) and is never
-// translated into a TAKER.
+// Ireland boundary: TAKER_FIRST is emitted as execution_mode "TAKER" / TAKER_ATTEMPT_1 with
+// price_cap = the fee-inclusive limit. A frozen MAKER_FIRST row is emitted explicitly through the
+// released primary-maker contract (execution_mode = attempt_id = MAKER_FIRST, maker_limit_price,
+// maker_shares, tick_size, minimum_order_size, p_buy_max, price-authority lineage); a malformed one is
+// never emitted and never translated into a TAKER (mapQueueRowToIrelandCandidate).
+//
+// Minimum order: the provider min_order_size of the exact token must be known for BOTH modes and the
+// $2.50 stake must reach it at the frozen price; unknown or below-minimum fails closed. The stake is
+// never increased and the quantity never inflated.
 import { getBestBidAsk, computeSpread } from "@/lib/liquidity/orderbookMath";
 import type { FetchOrderBookResult } from "@/lib/liquidity/types";
 import type { TokenFeeScheduleResult } from "@/lib/liquidity/polymarketClient";
@@ -54,8 +58,9 @@ import {
 export const T10_ECONOMIC_ACTIVATION_ENV = "T10_ECONOMIC_ACTION_ACTIVATION" as const;
 export const T10_EXECUTION_POLICY_VERSION = "T10_ECONOMIC_ACTION_EXECUTION_V1" as const;
 export const T10_ECONOMIC_TAKER_SELECTION_REASON = "T10_ECONOMIC_ACTION_TAKER_FIRST_V1" as const;
-/** Published Ireland Queue contract has no primary-maker instruction (see header). */
-export const IRELAND_PRIMARY_MAKER_CONTRACT_SUPPORTED = false as const;
+export const T10_ECONOMIC_MAKER_SELECTION_REASON = "T10_ECONOMIC_ACTION_MAKER_FIRST_V1" as const;
+/** Released Ireland primary-maker contract is consumed (see header). */
+export const IRELAND_PRIMARY_MAKER_CONTRACT_SUPPORTED = true as const;
 
 /** The single rollback switch. Exactly "ON" activates; unset / anything else = released behaviour. */
 export function isT10EconomicActivationOn(env: Record<string, string | undefined> = process.env): boolean {
@@ -321,7 +326,7 @@ export type FrozenExecutionContract = {
   execution_book_provider_timestamp_ms: number | null;
   execution_book_latency_ms: number | null;
   tick_size: number;
-  minimum_order_size: number | null;
+  minimum_order_size: number;
   spread_telemetry: number | null;
   taker: null | {
     price_limit: number;
@@ -380,6 +385,8 @@ export async function reverifySelectedAction(input: {
   if (!num(ev.tickSize)) return fail("T10_ECON_GUARD_TICK_UNKNOWN", null, ev);
   if (Math.abs(ev.tickSize - exec.evidence.tickSize) > EPS) return fail("T10_ECON_GUARD_TICK_CHANGED", null, ev);
   if (!num(ev.bestAsk)) return fail("T10_ECON_GUARD_NO_ASK", null, ev);
+  if (!num(ev.minimumOrderSize) || !(ev.minimumOrderSize > 0)) return fail("T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN", null, ev);
+  const minOrder = ev.minimumOrderSize;
 
   const common = {
     execution_policy_version: T10_EXECUTION_POLICY_VERSION, economic_policy_version: T10_ECONOMIC_ACTION_POLICY_VERSION,
@@ -389,7 +396,7 @@ export async function reverifySelectedAction(input: {
     token_id: sel.candidateIdentity.tokenId, side: sel.candidateIdentity.side, market_family: sel.candidateIdentity.family,
     stake_usd: stake, hard_price_cap: cap, latest_entry_iso: input.event.latestEntryIso,
     execution_book_observed_at: ev.observedAtIso, execution_book_provider_timestamp_ms: ev.providerTimestampMs,
-    execution_book_latency_ms: ev.latencyMs, tick_size: ev.tickSize, minimum_order_size: ev.minimumOrderSize,
+    execution_book_latency_ms: ev.latencyMs, tick_size: ev.tickSize, minimum_order_size: minOrder,
     spread_telemetry: ev.spread, activation_switch: T10_ECONOMIC_ACTIVATION_ENV,
   } as const;
 
@@ -404,6 +411,9 @@ export async function reverifySelectedAction(input: {
     }
     if (walk.effectiveCost > pBuyMax + EPS) return fail(`T10_ECON_GUARD_EFFECTIVE_COST_ABOVE_P_BUY_MAX: cost=${walk.effectiveCost} p_buy_max=${pBuyMax}`, null, ev);
     if (walk.rawVwap > cap + EPS) return fail("T10_ECON_GUARD_ABOVE_HARD_CAP", null, ev);
+    if (walk.shares + EPS < minOrder) {
+      return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder}`, null, ev);
+    }
     return { ok: true, evidence: ev, contract: { ...common, execution_mode: "TAKER_FIRST", maker: null, taker: {
       price_limit: limit, authorized_raw_vwap: walk.rawVwap, authorized_effective_cost: walk.effectiveCost,
       authorized_fee_usd: walk.feeUsd, full_stake_depth_usd_at_limit: walk.depthUsd,
@@ -416,11 +426,10 @@ export async function reverifySelectedAction(input: {
   const makerLimit = makerLimitPrice(pBuyMax, ev.bestAsk, ev.tickSize, cap);
   if (makerLimit === null) return fail("T10_ECON_GUARD_MAKER_LIMIT_INVALID", null, ev);
   const shares = Math.floor((stake / makerLimit) * 100) / 100;
-  if (num(ev.minimumOrderSize) && shares + EPS < ev.minimumOrderSize) {
-    return fail(`T10_ECON_GUARD_MAKER_BELOW_MIN_ORDER_SIZE: shares=${shares} min=${ev.minimumOrderSize}`, null, ev);
+  if (!(shares > 0) || shares + EPS < minOrder) {
+    return fail(`T10_ECON_GUARD_MAKER_BELOW_MIN_ORDER_SIZE: shares=${shares} min=${minOrder}`, null, ev);
   }
   const contract: FrozenExecutionContract = { ...common, execution_mode: "MAKER_FIRST", taker: null,
     maker: { maker_limit_price: makerLimit, maker_shares: shares } };
-  if (!IRELAND_PRIMARY_MAKER_CONTRACT_SUPPORTED) return fail("MAKER_FIRST_AWAITING_IRELAND_COMPATIBILITY", contract, ev);
   return { ok: true, contract, evidence: ev };
 }

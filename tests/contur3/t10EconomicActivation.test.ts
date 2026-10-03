@@ -14,7 +14,7 @@ import {
   walkTakerFill,
 } from "../../lib/executor/t10EconomicActivation";
 import { runEventRebalance, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
-import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import { mapQueueRowToIrelandCandidate, QueueWireContractError, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 import type { FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
 
 const KICKOFF = "2026-07-19T19:00:00.000Z";
@@ -280,11 +280,15 @@ function reservation(): NightEventReservationRow {
       planning_final_identity_evidence: { condition_id: "a-spread", token_id: "a-token", side: "Yes" } },
   } as NightEventReservationRow;
 }
-function repoOf(reservations: NightEventReservationRow[]): RebalanceRepoPort & { queueRows: EventExecutionQueueRow[]; queued: Set<string> } {
+function repoOf(reservations: NightEventReservationRow[], prior: EventExecutionQueueRow[] = [], exposureLoader = true): RebalanceRepoPort & { queueRows: EventExecutionQueueRow[]; queued: Set<string> } {
   const queueRows: EventExecutionQueueRow[] = [];
   const queued = new Set<string>();
   return {
     queueRows, queued,
+    ...(exposureLoader ? { async loadEventExposureQueueRows(r: NightEventReservationRow) {
+      return [...prior, ...queueRows].filter((q) => q.reservation_id === r.id || q.match_family_key === r.match_family_key ||
+        q.diagnostics?.physical_event_id === r.physical_event_id);
+    } } : {}),
     async loadActiveReservations() { return reservations.filter((r) => r.status === "RESERVED" || r.status === "REBALANCE_PENDING"); },
     async loadQueuedReservationIds() { return new Set(queued); },
     async markReservationsExpired() {},
@@ -340,11 +344,102 @@ test("19-20: activation ON -> exactly one immutable Queue row freezing mode, tok
   assert.equal(repo.queueRows.length, 1);
 });
 
-test("MAKER_FIRST is never queued and never translated into TAKER (Ireland contract lacks primary maker)", async () => {
+test("MAKER_FIRST is queued as an explicit primary-maker instruction, never translated into TAKER", async () => {
   const { result, repo } = await run(true, [A]);
+  assert.equal(result.queued_count, 1);
+  const row = repo.queueRows[0];
+  assert.equal(row.selection_reason, "T10_ECONOMIC_ACTION_MAKER_FIRST_V1");
+  const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
+  assert.equal(c.execution_mode, "MAKER_FIRST");
+  assert.equal(c.taker, null);
+  assert.deepEqual(c.maker, { maker_limit_price: 0.5, maker_shares: 5 });
+  assert.equal(c.minimum_order_size, 5);
+  assert.equal(row.stake_usd, 2.5, "stake never increased");
+  assert.equal(row.diagnostics.max_entry_price, 0.5, "price cap = frozen maker limit <= P_BUY_MAX");
+  // Read back from the timestamptz column ("+00:00") the frozen deadline still matches.
+  const dbRow = { ...row, id: "q-maker", latest_entry_iso: row.latest_entry_iso.replace(".000Z", "+00:00") };
+  const wire = mapQueueRowToIrelandCandidate(dbRow, NOW);
+  assert.equal(wire.execution_mode, "MAKER_FIRST");
+  assert.equal(wire.attempt_id, "MAKER_FIRST");
+  assert.equal(wire.maker_limit_price, 0.5);
+  assert.equal(wire.maker_shares, 5);
+  assert.equal(wire.requested_quantity, 5);
+  assert.equal(wire.tick_size, 0.01);
+  assert.equal(wire.minimum_order_size, 5);
+  assert.equal(wire.p_buy_max, 0.5);
+  assert.equal(wire.price_cap, 0.5);
+  assert.equal(wire.stake_usd, 2.5);
+  assert.equal(wire.price_authority_version, "T30_EXACT_BID_ANCHOR_V1");
+  assert.equal(wire.price_authority_observation_id, "T30_BOOK:T_MINUS_30-run:a-token:Yes");
+  assert.equal(Date.parse(wire.latest_entry_iso), Date.parse("2026-07-19T18:57:00.000Z"));
+  assert.equal(wire.idempotency_key, row.idempotency_key);
+  // Malformed MAKER_FIRST data fails closed: never emitted, never a TAKER.
+  for (const broken of [
+    { ...c, maker: null }, { ...c, maker: { maker_limit_price: 0.505, maker_shares: 5 } },
+    { ...c, maker: { maker_limit_price: 0.5, maker_shares: 4.9 } }, { ...c, minimum_order_size: null },
+    { ...c, p_buy_max: 0.49 }, { ...c, execution_mode: "MAKER" }, { ...c, price_authority_observation_id: "" },
+    { ...c, token_id: "other" }, { ...c, latest_entry_iso: "2026-07-19T18:58:00.000Z" }, { ...c, latest_entry_iso: null },
+  ]) {
+    assert.throws(() => mapQueueRowToIrelandCandidate({ ...row, diagnostics: { ...row.diagnostics, t10_economic_action_v1: broken } }, NOW),
+      QueueWireContractError);
+  }
+});
+
+test("minimum order: unknown or below-minimum fails closed for TAKER_FIRST and MAKER_FIRST; stake never inflated", async () => {
+  const cases: Array<[Row[], Record<string, FetchOrderBookResult>, RegExp]> = [
+    [[A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, null) }, /T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN/],
+    [[A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, 6) }, /T10_ECON_GUARD_MAKER_BELOW_MIN_ORDER_SIZE/],
+    [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, null) }, /T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN/],
+    [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, 6) }, /T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE/],
+  ];
+  for (const [rows, books, reason] of cases) {
+    const { result, repo } = await run(true, rows, books);
+    assert.equal(repo.queueRows.length, 0);
+    assert.match(result.outcomes.map((o) => o.reason).join(","), reason);
+  }
+});
+
+test("event exposure: any prior Queue attempt on the physical event that is not proven zero blocks the ON path", async () => {
+  const prior = (over: Partial<EventExecutionQueueRow>): EventExecutionQueueRow => ({
+    id: "q-prior", reservation_id: "res-other", plan_run_id: "p0", rebalance_run_id: "r0", match_family_key: "other",
+    event_title: null, event_slug: null, sport: null, league: null, game_start_iso: KICKOFF, condition_id: "x", token_id: "x-token",
+    side: "Yes", market_slug: null, market_title: null, market_family: null, score: null, coverage: null, tier: "TIER1",
+    stake_usd: 2.5, preferred_entry_iso: KICKOFF, latest_entry_iso: KICKOFF, selection_rank: 1, selection_reason: null,
+    status: "EXECUTED", order_key: null, idempotency_key: "k0", diagnostics: { physical_event_id: EVENT }, ...over,
+  });
+  const zero = { result_class: "PROVEN_ZERO_FILL_EXPIRED", terminal: true, filled_quantity: 0, economic_exposure_proven_zero: true };
+  const blocked: EventExecutionQueueRow[] = [
+    prior({}),                                                                      // accepted, nothing recorded
+    prior({ status: "FAILED" }),                                                    // rejection signal is not zero proof
+    prior({ status: "EXPIRED", selection_reason: "MISSED" }),                       // not the evidence-checked sweep
+    prior({ diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { taker_attempt_1: { result: { ...zero, result_class: "PARTIAL_FILL", filled_quantity: 2 } } } } }),
+    prior({ diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { maker_first: { result: { ...zero, result_class: "UNKNOWN_AFTER_SUBMISSION", terminal: null, filled_quantity: null, economic_exposure_proven_zero: null } } } } }),
+    prior({ diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { taker_attempt_1: { result: zero }, maker_fallback_1: { command: { attempt_id: "MAKER_FALLBACK_1" } } } } }),
+    // A later SKIPPED / CANCELLED / swept status never erases a recorded partial or UNKNOWN result.
+    prior({ status: "SKIPPED", diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { maker_first: { result: { ...zero, result_class: "PARTIAL_FILL_CANCELLED", filled_quantity: 2, economic_exposure_proven_zero: false } } } } }),
+    prior({ status: "CANCELLED", diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { taker_attempt_1: { result: { ...zero, result_class: "UNKNOWN_AFTER_SUBMISSION", terminal: null, filled_quantity: null, economic_exposure_proven_zero: null } } } } }),
+    prior({ status: "EXPIRED", selection_reason: "LATEST_ENTRY_WINDOW_PASSED", diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { maker_first: { result: { ...zero, result_class: "FULL_FILL", filled_quantity: 5, economic_exposure_proven_zero: false } } } } }),
+  ];
+  for (const p of blocked) {
+    const res = reservation();
+    const { result, repo } = await run(true, [A, B], LIVE, { res, repo: repoOf([res], [p]) });
+    assert.equal(repo.queueRows.length, 0, JSON.stringify(p.diagnostics));
+    assert.match(result.outcomes.map((o) => o.reason).join(","), /EVENT_EXPOSURE_EXISTS/);
+  }
+  const clear: EventExecutionQueueRow[] = [
+    prior({ status: "SKIPPED" }),
+    prior({ status: "EXPIRED", selection_reason: "LATEST_ENTRY_WINDOW_PASSED" }),
+    prior({ diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { taker_attempt_1: { result: zero } } } }),
+  ];
+  for (const p of clear) {
+    const res = reservation();
+    const { repo } = await run(true, [A, B], LIVE, { res, repo: repoOf([res], [p]) });
+    assert.equal(repo.queueRows.length, 1);
+  }
+  // No exposure authority available -> unproven -> fail closed.
+  const res = reservation();
+  const { repo } = await run(true, [A, B], LIVE, { res, repo: repoOf([res], [], false) });
   assert.equal(repo.queueRows.length, 0);
-  assert.equal(result.queued_count, 0);
-  assert.match(result.outcomes.map((o) => o.reason).join(","), /MAKER_FIRST_AWAITING_IRELAND_COMPATIBILITY/);
 });
 
 test("21: activation OFF (default and explicit) preserves released B priority + LIVE_GUARD", async () => {

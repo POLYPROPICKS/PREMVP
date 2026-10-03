@@ -14,19 +14,33 @@
 // rules stay intact).
 
 import { createHash } from "node:crypto";
-import { QUEUE_MAX_ENTRY_PRICE, extractMaxStakeUsd, type EventExecutionQueueRow } from "./executorQueueTypes";
+import {
+  PRIMARY_MAKER_ATTEMPT_ID,
+  QUEUE_MAX_ENTRY_PRICE,
+  extractMaxStakeUsd,
+  readT10FrozenContract,
+  t10FrozenExecutionMode,
+  type EventExecutionQueueRow,
+} from "./executorQueueTypes";
 
 export const EXECUTION_ATTEMPTS_KEY = "execution_attempts_v1" as const;
 export const TAKER_ATTEMPT_1 = "TAKER_ATTEMPT_1" as const;
 export const MAKER_FALLBACK_1 = "MAKER_FALLBACK_1" as const;
-export type AttemptId = typeof TAKER_ATTEMPT_1 | typeof MAKER_FALLBACK_1;
-export type ExecutionMode = "TAKER" | "MAKER";
+/** Primary maker attempt of a frozen T10 MAKER_FIRST Queue row. Never a fallback. */
+export const MAKER_FIRST = PRIMARY_MAKER_ATTEMPT_ID;
+export type AttemptId = typeof TAKER_ATTEMPT_1 | typeof MAKER_FALLBACK_1 | typeof MAKER_FIRST;
+export type ExecutionMode = "TAKER" | "MAKER" | "MAKER_FIRST";
+/** Released Ireland result envelope key; its `outcome` is the authoritative classification. */
+export const EXECUTION_RESULT_V1_KEY = "execution_result_v1" as const;
 
 export const IRELAND_RESULT_CLASSES = [
   "FULL_FILL",
   "PARTIAL_FILL",
+  "PARTIAL_FILL_CANCELLED",
+  "PARTIAL_FILL_EXPIRED",
   "PROVEN_ZERO_FILL_PRICE",
   "PROVEN_ZERO_FILL_NO_LIQUIDITY",
+  "PROVEN_ZERO_FILL_CANCELLED",
   "PROVEN_ZERO_FILL_EXPIRED",
   "PROVEN_REJECTED_BEFORE_SUBMISSION",
   "UNKNOWN_AFTER_SUBMISSION",
@@ -38,8 +52,23 @@ export type IrelandResultClass = (typeof IRELAND_RESULT_CLASSES)[number];
 const ZERO_PROOF_CLASSES: ReadonlySet<IrelandResultClass> = new Set([
   "PROVEN_ZERO_FILL_PRICE",
   "PROVEN_ZERO_FILL_NO_LIQUIDITY",
+  "PROVEN_ZERO_FILL_CANCELLED",
   "PROVEN_ZERO_FILL_EXPIRED",
   "PROVEN_REJECTED_BEFORE_SUBMISSION",
+]);
+/** Classes whose venue facts may carry a positive fill. */
+export const FILL_RESULT_CLASSES: ReadonlySet<IrelandResultClass> = new Set([
+  "FULL_FILL",
+  "PARTIAL_FILL",
+  "PARTIAL_FILL_CANCELLED",
+  "PARTIAL_FILL_EXPIRED",
+]);
+/** Classes that are terminal by their released definition (used only when `terminal` is not reported). */
+const TERMINAL_RESULT_CLASSES: ReadonlySet<IrelandResultClass> = new Set([
+  "FULL_FILL",
+  "PARTIAL_FILL_CANCELLED",
+  "PARTIAL_FILL_EXPIRED",
+  ...ZERO_PROOF_CLASSES,
 ]);
 
 export interface IrelandExecutionResult {
@@ -67,30 +96,42 @@ function strictBool(v: unknown): boolean | null {
   return typeof v === "boolean" ? v : null;
 }
 
+function objectOrNull(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
 /**
- * Reads the released Ireland execution-result semantics off a callback payload.
- * Returns null when the callback carries no (recognisable) result class: absence
- * is never mapped to any class, and in particular never to zero exposure.
+ * Reads the released Ireland execution-result semantics off a callback payload:
+ * execution_result_v1.outcome (released contract), else the legacy
+ * ireland_execution_result / top-level result_class. Returns null when the callback carries
+ * no recognisable class: absence is never mapped to any class, never to zero exposure.
+ * Only venue-reported scalars are read; fill facts are never derived from the plan. When the
+ * released envelope omits `terminal` / `economic_exposure_proven_zero`, they follow from the
+ * outcome's released definition (UNKNOWN_* and PARTIAL_FILL stay unresolved, fills never zero).
  */
 export function readIrelandExecutionResult(raw: Record<string, unknown>, nowIso: string): IrelandExecutionResult | null {
-  const nested = raw.ireland_execution_result;
-  const src: Record<string, unknown> =
-    nested && typeof nested === "object" && !Array.isArray(nested) ? (nested as Record<string, unknown>) : raw;
-  const cls = nonEmptyStr(src.result_class);
+  const v1 = objectOrNull(raw[EXECUTION_RESULT_V1_KEY]);
+  const src: Record<string, unknown> = v1 ?? objectOrNull(raw.ireland_execution_result) ?? raw;
+  const cls = nonEmptyStr(v1 ? v1.outcome : src.result_class);
   if (!cls || !(IRELAND_RESULT_CLASSES as readonly string[]).includes(cls)) return null;
+  const resultClass = cls as IrelandResultClass;
   const attempt = nonEmptyStr(src.attempt_id ?? raw.attempt_id);
   const mode = nonEmptyStr(src.execution_mode ?? raw.execution_mode);
+  const reportedTerminal = strictBool(src.terminal);
+  const reportedZero = strictBool(src.economic_exposure_proven_zero);
+  const outcomeOnly = v1 !== null;
   return {
-    attempt_id: attempt === TAKER_ATTEMPT_1 || attempt === MAKER_FALLBACK_1 ? attempt : null,
-    execution_mode: mode === "TAKER" || mode === "MAKER" ? mode : null,
-    result_class: cls as IrelandResultClass,
+    attempt_id: attempt === TAKER_ATTEMPT_1 || attempt === MAKER_FALLBACK_1 || attempt === MAKER_FIRST ? attempt : null,
+    execution_mode: mode === "TAKER" || mode === "MAKER" || mode === "MAKER_FIRST" ? mode : null,
+    result_class: resultClass,
     requested_quantity: finiteNum(src.requested_quantity),
     filled_quantity: finiteNum(src.filled_quantity),
     remaining_quantity: finiteNum(src.remaining_quantity),
     average_fill_price: finiteNum(src.average_fill_price),
     venue_order_id: nonEmptyStr(src.venue_order_id),
-    terminal: strictBool(src.terminal),
-    economic_exposure_proven_zero: strictBool(src.economic_exposure_proven_zero),
+    terminal: reportedTerminal ?? (outcomeOnly && TERMINAL_RESULT_CLASSES.has(resultClass) ? true : null),
+    economic_exposure_proven_zero: reportedZero ?? (!outcomeOnly ? null
+      : ZERO_PROOF_CLASSES.has(resultClass) ? true : FILL_RESULT_CLASSES.has(resultClass) ? false : null),
     fee_usd: finiteNum(src.fee_usd),
     received_at_iso: nowIso,
   };
@@ -127,7 +168,10 @@ export interface MakerFallbackCommand {
 export interface ExecutionAttemptsV1 {
   taker_attempt_1?: { result?: IrelandExecutionResult };
   maker_fallback_1?: { command?: MakerFallbackCommand; result?: IrelandExecutionResult };
+  /** Primary maker of a frozen T10 MAKER_FIRST row. Result only: it can never authorize a fallback. */
+  maker_first?: { result?: IrelandExecutionResult };
 }
+export type AttemptResultSlot = "taker_attempt_1" | "maker_fallback_1" | "maker_first";
 
 export function readExecutionAttempts(diagnostics: Record<string, unknown> | null | undefined): ExecutionAttemptsV1 {
   const v = diagnostics?.[EXECUTION_ATTEMPTS_KEY];
@@ -152,7 +196,8 @@ export type MakerBlockReason =
   | "QUEUE_ROW_NOT_AUTHORITATIVE"
   | "FINAL_IDENTITY_INVALID"
   | "IDENTITY_MISMATCH"
-  | "DEADLINE_PASSED";
+  | "DEADLINE_PASSED"
+  | "PRIMARY_MAKER_ROW_NO_FALLBACK";
 
 export interface MakerEligibilityInput {
   result: IrelandExecutionResult | null;
@@ -211,6 +256,10 @@ export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEli
   }
 
   if (deadline === null || nowMs >= Date.parse(deadline)) reasons.push("DEADLINE_PASSED");
+  // A frozen MAKER_FIRST row (or an unreadable T10 mode) can never authorize MAKER_FALLBACK_1:
+  // the fallback exists only after TAKER_ATTEMPT_1 of a TAKER row.
+  const frozenMode = t10FrozenExecutionMode(queue.diagnostics);
+  if (frozenMode === "MAKER_FIRST" || frozenMode === "INVALID") reasons.push("PRIMARY_MAKER_ROW_NO_FALLBACK");
 
   return { eligible: reasons.length === 0, reasons, deadline_iso: deadline };
 }
@@ -248,9 +297,57 @@ export function deriveMakerLimitPrice(input: {
 }
 
 type MakerPriceFailure = Extract<MakerPriceResult, { ok: false }>["reason"];
+export type T10FallbackPriceFailure =
+  | "T10_CONTRACT_INVALID"
+  | "T10_BOOK_INCOMPLETE"
+  | "T10_TICK_CHANGED"
+  | "T10_MAKER_LIMIT_INVALID"
+  | "MINIMUM_ORDER_SIZE_UNKNOWN"
+  | "BELOW_MINIMUM_ORDER_SIZE";
 export type BuildCommandResult =
   | { ok: true; command: MakerFallbackCommand }
-  | { ok: false; reason: MakerPriceFailure | "STAKE_UNREPRESENTABLE" | "PRICE_CAP_MISSING" };
+  | { ok: false; reason: MakerPriceFailure | T10FallbackPriceFailure | "STAKE_UNREPRESENTABLE" | "PRICE_CAP_MISSING" };
+
+/**
+ * The frozen T10 policy MAKER formula (identical to t10EconomicActivation.makerLimitPrice, kept
+ * local so the callback path does not load the decision module): on-tick, strictly below ask.
+ */
+export function t10MakerLimitPrice(pBuyMax: number, ask: number, tick: number, cap: number): number | null {
+  if (![pBuyMax, ask, tick, cap].every((v) => Number.isFinite(v)) || !(tick > 0) || tick >= 1) return null;
+  const limit = Math.round(Math.floor(Math.min(pBuyMax, ask - tick, cap) / tick + 1e-9) * tick * 1e6) / 1e6;
+  return limit > 0 && limit < ask - 1e-9 && limit <= cap + 1e-9 ? limit : null;
+}
+
+/**
+ * T10 economic-policy rows only: MAKER_FALLBACK_1 price authority is the frozen P_BUY_MAX, never
+ * bestBid + tick. limit = floor_to_tick(min(P_BUY_MAX, current ask - tick, parent Queue cap, 0.54))
+ * on the SAME token, and the stake-derived size must meet the authoritative minimum order.
+ * The stake is never increased and the quantity never inflated to reach the minimum.
+ */
+export function deriveT10FallbackLimit(input: {
+  queue: EventExecutionQueueRow;
+  book: { bestAsk: number | null; tickSize: number | null; minimumOrderSize?: number | null };
+  priceCap: number;
+  stakeUsd: number;
+}): { ok: true; limit_price: number; quantity: number } | { ok: false; reason: T10FallbackPriceFailure } {
+  const frozen = readT10FrozenContract(input.queue);
+  if (!frozen.ok || frozen.contract.execution_mode !== "TAKER_FIRST") return { ok: false, reason: "T10_CONTRACT_INVALID" };
+  const { bestAsk, tickSize } = input.book;
+  if (bestAsk === null || !(bestAsk > 0) || tickSize === null || !(tickSize > 0) || tickSize >= 1) {
+    return { ok: false, reason: "T10_BOOK_INCOMPLETE" };
+  }
+  if (Math.abs(tickSize - frozen.contract.tick_size) > 1e-9) return { ok: false, reason: "T10_TICK_CHANGED" };
+  const limit = t10MakerLimitPrice(frozen.contract.p_buy_max, bestAsk, tickSize, Math.min(input.priceCap, QUEUE_MAX_ENTRY_PRICE));
+  if (limit === null || limit > frozen.contract.p_buy_max + 1e-9) return { ok: false, reason: "T10_MAKER_LIMIT_INVALID" };
+  const liveMin = input.book.minimumOrderSize;
+  if (liveMin !== undefined && liveMin !== null && !(Number.isFinite(liveMin) && liveMin > 0)) {
+    return { ok: false, reason: "MINIMUM_ORDER_SIZE_UNKNOWN" };
+  }
+  const minimum = Math.max(frozen.contract.minimum_order_size, liveMin ?? 0);
+  const quantity = Math.floor((input.stakeUsd / limit) * 100) / 100;
+  if (quantity + 1e-9 < minimum) return { ok: false, reason: "BELOW_MINIMUM_ORDER_SIZE" };
+  return { ok: true, limit_price: limit, quantity };
+}
 
 /**
  * Builds the explicit MAKER_FALLBACK_1 instruction. Identity and stake are copied verbatim
@@ -258,7 +355,7 @@ export type BuildCommandResult =
  */
 export function buildMakerFallbackCommand(input: {
   queue: EventExecutionQueueRow;
-  book: { bestBid: number | null; bestAsk: number | null; tickSize: number | null };
+  book: { bestBid: number | null; bestAsk: number | null; tickSize: number | null; minimumOrderSize?: number | null };
   deadlineIso: string;
   nowIso: string;
 }): BuildCommandResult {
@@ -267,12 +364,23 @@ export function buildMakerFallbackCommand(input: {
   const rawCap = d.max_entry_price;
   const priceCap = typeof rawCap === "number" && Number.isFinite(rawCap) ? rawCap : null;
   if (priceCap === null) return { ok: false, reason: "PRICE_CAP_MISSING" };
-  const price = deriveMakerLimitPrice({ bestBid: book.bestBid, bestAsk: book.bestAsk, tickSize: book.tickSize, priceCap });
-  if (!price.ok) return { ok: false, reason: price.reason };
-
   const maxStake = extractMaxStakeUsd(d, queue.stake_usd);
   const stake = queue.stake_usd; // never above the original authorized stake
-  const quantity = Math.floor((stake / price.limit_price) * 100) / 100;
+
+  let price: { limit_price: number };
+  let quantity: number;
+  if (t10FrozenExecutionMode(d) !== null) {
+    // T10 economic-policy row: frozen P_BUY_MAX discipline (no standalone bestBid + tick authority).
+    const t10 = deriveT10FallbackLimit({ queue, book, priceCap, stakeUsd: stake });
+    if (!t10.ok) return { ok: false, reason: t10.reason };
+    price = { limit_price: t10.limit_price };
+    quantity = t10.quantity;
+  } else {
+    const legacy = deriveMakerLimitPrice({ bestBid: book.bestBid, bestAsk: book.bestAsk, tickSize: book.tickSize, priceCap });
+    if (!legacy.ok) return { ok: false, reason: legacy.reason };
+    price = legacy;
+    quantity = Math.floor((stake / price.limit_price) * 100) / 100;
+  }
   if (!(quantity > 0) || quantity * price.limit_price > Math.min(stake, maxStake) + 1e-9) {
     return { ok: false, reason: "STAKE_UNREPRESENTABLE" };
   }
@@ -311,9 +419,9 @@ export function buildMakerFallbackCommand(input: {
 
 export interface MakerFallbackPort {
   loadQueueRowByIdempotencyKey(key: string): Promise<EventExecutionQueueRow | null>;
-  fetchBook(tokenId: string): Promise<{ bestBid: number | null; bestAsk: number | null; tickSize: number | null } | null>;
+  fetchBook(tokenId: string): Promise<{ bestBid: number | null; bestAsk: number | null; tickSize: number | null; minimumOrderSize?: number | null } | null>;
   /** Persist a result under diagnostics.execution_attempts_v1.<slot>.result (last write wins, never authorizes). */
-  recordResult(queueId: string, slot: "taker_attempt_1" | "maker_fallback_1", result: IrelandExecutionResult): Promise<void>;
+  recordResult(queueId: string, slot: AttemptResultSlot, result: IrelandExecutionResult): Promise<void>;
   /**
    * Atomic compare-and-set: writes maker_fallback_1.command only if none exists yet.
    * Returns true for the single winner; false for every replay / concurrent loser.
@@ -323,29 +431,88 @@ export interface MakerFallbackPort {
 
 export type MakerAuthorizationOutcome =
   | { kind: "NO_RESULT" }
-  | { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT"; slot: "taker_attempt_1" | "maker_fallback_1" }
+  | { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT"; slot: AttemptResultSlot }
   | { kind: "MAKER_AUTHORIZED"; command: MakerFallbackCommand }
   | { kind: "MAKER_ALREADY_AUTHORIZED"; command: MakerFallbackCommand | null }
   | { kind: "MAKER_BLOCKED"; reasons: string[] }
   /** A maker-attempt callback that cannot bind to its authorized parent: no mutation, no accounting. */
-  | { kind: "MAKER_CALLBACK_REJECTED"; reason: "UNKNOWN_ATTEMPT_ID" | "PARENT_IDEMPOTENCY_KEY_REQUIRED" | "PARENT_QUEUE_ROW_NOT_FOUND" | "MAKER_NOT_AUTHORIZED_FOR_PARENT" | "IDENTITY_MISMATCH" };
+  | { kind: "MAKER_CALLBACK_REJECTED"; reason: "UNKNOWN_ATTEMPT_ID" | "PARENT_IDEMPOTENCY_KEY_REQUIRED" | "PARENT_QUEUE_ROW_NOT_FOUND" | "MAKER_NOT_AUTHORIZED_FOR_PARENT" | "IDENTITY_MISMATCH" | PrimaryMakerRejectReason };
+
+/** Reasons a primary MAKER_FIRST callback is rejected before any mutation or accounting. */
+export type PrimaryMakerRejectReason =
+  | "PRIMARY_MAKER_ATTEMPT_IDENTITY_INVALID"
+  | "PRIMARY_MAKER_IDEMPOTENCY_KEY_REQUIRED"
+  | "PRIMARY_MAKER_QUEUE_ROW_NOT_FOUND"
+  | "PRIMARY_MAKER_NOT_FROZEN_ON_QUEUE_ROW"
+  | "PRIMARY_MAKER_FROZEN_CONTRACT_INVALID"
+  | "PRIMARY_MAKER_IDENTITY_MISMATCH"
+  | "PRIMARY_MAKER_PRICE_ABOVE_FROZEN_LIMIT"
+  | "PRIMARY_MAKER_QUANTITY_ABOVE_FROZEN_SHARES";
 
 /** Contract flag surfaced to Ireland: maker callbacks MUST carry parent_idempotency_key. */
 export const IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED = true as const;
 
-/** True for any callback that claims to be the MAKER attempt (by attempt id or execution mode). */
+function attemptSources(raw: Record<string, unknown>): Record<string, unknown>[] {
+  return [raw, objectOrNull(raw.ireland_execution_result) ?? {}, objectOrNull(raw[EXECUTION_RESULT_V1_KEY]) ?? {}];
+}
+
+/** True for any callback that claims the PRIMARY maker attempt (attempt id or mode MAKER_FIRST). */
+export function isPrimaryMakerCallback(raw: Record<string, unknown>): boolean {
+  return attemptSources(raw).some((s) => s.attempt_id === MAKER_FIRST || s.execution_mode === MAKER_FIRST);
+}
+
+/**
+ * True for any callback that claims the MAKER FALLBACK attempt (by attempt id or execution mode).
+ * A primary MAKER_FIRST callback is never a fallback and is handled by its own path.
+ */
 export function isMakerAttemptCallback(raw: Record<string, unknown>): boolean {
-  const nested = raw.ireland_execution_result;
-  const src: Record<string, unknown> = nested && typeof nested === "object" && !Array.isArray(nested) ? (nested as Record<string, unknown>) : {};
+  if (isPrimaryMakerCallback(raw)) return false;
   const isMakerId = (v: unknown) => typeof v === "string" && v.startsWith("MAKER_");
-  return isMakerId(raw.attempt_id) || isMakerId(src.attempt_id) || raw.execution_mode === "MAKER" || src.execution_mode === "MAKER";
+  return attemptSources(raw).some((s) => isMakerId(s.attempt_id) || s.execution_mode === "MAKER");
 }
 
 /** The only maker attempt identity that exists. Any other MAKER_* id (e.g. MAKER_FALLBACK_2) is rejected. */
 export function makerAttemptIdIsValid(raw: Record<string, unknown>): boolean {
-  const nested = raw.ireland_execution_result;
-  const src: Record<string, unknown> = nested && typeof nested === "object" && !Array.isArray(nested) ? (nested as Record<string, unknown>) : {};
-  return [raw.attempt_id, src.attempt_id].every((v) => v === undefined || v === null || v === MAKER_FALLBACK_1);
+  return attemptSources(raw).every((s) => s.attempt_id === undefined || s.attempt_id === null || s.attempt_id === MAKER_FALLBACK_1);
+}
+
+/**
+ * Validates a primary MAKER_FIRST callback against its OWN Queue row: the row must have frozen
+ * execution_mode=MAKER_FIRST, every reported attempt id / mode must be exactly MAKER_FIRST, the
+ * exact identity must match, and reported price / quantity may never exceed the frozen maker
+ * limit / shares. Returns the row on success. Pure apart from the row load.
+ */
+export async function validatePrimaryMakerCallback(
+  load: (key: string) => Promise<EventExecutionQueueRow | null>,
+  raw: Record<string, unknown>,
+): Promise<{ ok: true; queue: EventExecutionQueueRow } | { ok: false; reason: PrimaryMakerRejectReason }> {
+  const fail = (reason: PrimaryMakerRejectReason) => ({ ok: false as const, reason });
+  for (const s of attemptSources(raw)) {
+    if (s.attempt_id !== undefined && s.attempt_id !== null && s.attempt_id !== MAKER_FIRST) return fail("PRIMARY_MAKER_ATTEMPT_IDENTITY_INVALID");
+    if (s.execution_mode !== undefined && s.execution_mode !== null && s.execution_mode !== MAKER_FIRST) return fail("PRIMARY_MAKER_ATTEMPT_IDENTITY_INVALID");
+  }
+  if (!attemptSources(raw).some((s) => s.attempt_id === MAKER_FIRST)) return fail("PRIMARY_MAKER_ATTEMPT_IDENTITY_INVALID");
+  const key = nonEmptyStr(raw.idempotency_key);
+  if (!key) return fail("PRIMARY_MAKER_IDEMPOTENCY_KEY_REQUIRED");
+  const queue = await load(key);
+  if (!queue || !queue.id) return fail("PRIMARY_MAKER_QUEUE_ROW_NOT_FOUND");
+  if (t10FrozenExecutionMode(queue.diagnostics) !== "MAKER_FIRST") return fail("PRIMARY_MAKER_NOT_FROZEN_ON_QUEUE_ROW");
+  const frozen = readT10FrozenContract(queue);
+  if (!frozen.ok || !frozen.contract.maker) return fail("PRIMARY_MAKER_FROZEN_CONTRACT_INVALID");
+  const side = raw.side ?? raw.selected_side;
+  if (raw.condition_id !== queue.condition_id || raw.token_id !== queue.token_id || side !== queue.side) {
+    return fail("PRIMARY_MAKER_IDENTITY_MISMATCH");
+  }
+  const { maker_limit_price: limit, maker_shares: shares } = frozen.contract.maker;
+  const reportedNumbers = (keys: string[]) => attemptSources(raw).flatMap((s) => keys.map((k) => finiteNum(s[k]) ?? finiteNum(Number(s[k] ?? NaN))))
+    .filter((n): n is number => n !== null);
+  if (reportedNumbers(["submitted_price", "limit_price", "maker_limit_price"]).some((p) => p > limit + 1e-9)) {
+    return fail("PRIMARY_MAKER_PRICE_ABOVE_FROZEN_LIMIT");
+  }
+  if (reportedNumbers(["submitted_size", "requested_quantity", "maker_shares"]).some((q) => q > shares + 1e-9)) {
+    return fail("PRIMARY_MAKER_QUANTITY_ABOVE_FROZEN_SHARES");
+  }
+  return { ok: true, queue };
 }
 
 /** Authoritative terminal proof of zero exposure for a recorded taker result. */
@@ -371,6 +538,16 @@ export async function recordResultAndAuthorizeMaker(
   now: Date,
 ): Promise<MakerAuthorizationOutcome> {
   const nowIso = now.toISOString();
+  if (isPrimaryMakerCallback(raw)) {
+    // PRIMARY maker of a frozen MAKER_FIRST row: record the released outcome on its own slot.
+    // It never authorizes MAKER_FALLBACK_1 and is never re-labelled as a TAKER attempt.
+    const checked = await validatePrimaryMakerCallback((k) => port.loadQueueRowByIdempotencyKey(k), raw);
+    if (!checked.ok) return { kind: "MAKER_CALLBACK_REJECTED", reason: checked.reason };
+    const primaryResult = readIrelandExecutionResult(raw, nowIso);
+    if (!primaryResult) return { kind: "NO_RESULT" };
+    await port.recordResult(checked.queue.id as string, "maker_first", primaryResult);
+    return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" };
+  }
   const isMaker = isMakerAttemptCallback(raw);
 
   if (isMaker) {
@@ -402,6 +579,12 @@ export async function recordResultAndAuthorizeMaker(
   if (!parentKey) return { kind: "MAKER_BLOCKED", reasons: ["MISSING_IDEMPOTENCY_KEY"] };
   const queue = await port.loadQueueRowByIdempotencyKey(parentKey);
   if (!queue || !queue.id) return { kind: "MAKER_BLOCKED", reasons: ["QUEUE_ROW_NOT_FOUND"] };
+  // A non-primary callback on a frozen MAKER_FIRST row is never a TAKER_ATTEMPT_1 result:
+  // nothing is recorded and no fallback can follow (no MAKER_FIRST -> TAKER downgrade).
+  const frozenMode = t10FrozenExecutionMode(queue.diagnostics);
+  if (frozenMode === "MAKER_FIRST" || frozenMode === "INVALID") {
+    return { kind: "MAKER_BLOCKED", reasons: ["PRIMARY_MAKER_ROW_NO_FALLBACK"] };
+  }
 
   // A recorded taker result that shows exposure (or is unresolved) is never overwritten by a
   // later callback, and never lets a later zero-proof authorize a maker.
@@ -459,7 +642,7 @@ function round8(value: number): number {
  * zero-fill maker can never become a ledger fill. Non-maker callbacks are returned untouched.
  */
 export function normalizeMakerCallbackForAccounting(raw: Record<string, unknown>): Record<string, unknown> {
-  if (!isMakerAttemptCallback(raw)) return raw;
+  if (!isMakerAttemptCallback(raw) && !isPrimaryMakerCallback(raw)) return raw;
   const result = readIrelandExecutionResult(raw, "");
   const out: Record<string, unknown> = { ...raw };
   if (!result) return out;
@@ -467,7 +650,7 @@ export function normalizeMakerCallbackForAccounting(raw: Record<string, unknown>
 
   const filled = result.filled_quantity;
   const price = result.average_fill_price;
-  const isFillClass = result.result_class === "FULL_FILL" || result.result_class === "PARTIAL_FILL";
+  const isFillClass = FILL_RESULT_CLASSES.has(result.result_class);
   if (isFillClass && filled !== null && filled > 0 && price !== null && price > 0 && result.venue_order_id) {
     out.executed_shares = filled;
     out.executed_size = filled;
