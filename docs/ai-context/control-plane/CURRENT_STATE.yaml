@@ -426,26 +426,30 @@
   "last_accepted_completion_id": "research-clone-pr318-current-evidence-v1",
   "rebalance_execution_architecture": {
     "architecture_version": "T10_REBALANCE_PRICE_DISCIPLINE_AND_EXECUTION_ARCHITECTURE_V1",
-    "status": "SHADOW_POLICY_FREEZE",
+    "status": "IMPLEMENTED_PREMVP_AWAITING_IRELAND_COMPATIBILITY",
     "MONEY_PATH_ACTIVE": "NO",
+    "activation_switch": "T10_ECONOMIC_ACTION_ACTIVATION (exactly ON activates; released state OFF)",
+    "activation_main_base_sha": "f984fd501904dea36529e5c1fa1fd576d549f6d0",
     "reference_base_sha": "8c6e9c2fe865022d846c40e3e7e910eb2ae8a4f2",
     "main_base_sha": "ef6ad01c783de306ae1b3010312a573a10dbff08",
     "price_authority_version": "T30_EXACT_BID_ANCHOR_V1",
     "document": "docs/ai-context/control-plane/T10_REBALANCE_PRICE_DISCIPLINE_AND_EXECUTION_ARCHITECTURE_V1.md",
     "source": [
       "lib/executor/exactMarketReference.ts",
-      "lib/executor/t10EconomicActionPolicy.ts"
+      "lib/executor/t10EconomicActionPolicy.ts",
+      "lib/executor/t10EconomicActivation.ts"
     ],
     "tests": [
       "tests/contur3/exactMarketReference.test.ts",
-      "tests/contur3/t10EconomicActionPolicy.test.ts"
+      "tests/contur3/t10EconomicActionPolicy.test.ts",
+      "tests/contur3/t10EconomicActivation.test.ts"
     ],
     "diagnostics": [
       "scripts/diagnostics/t10ExactMarketReferenceReplay.ts",
       "scripts/diagnostics/t10EconomicActionPolicyReplay.ts"
     ],
-    "evidence_class": "DESIGN_SHADOW_NOT_PROVEN_IN_RUNTIME",
-    "first_remaining_blocker": "T10 captures persist no ask ladder, fee evidence or tick_size; TAKER is unsimulable and MAKER needs an authoritative tick (see document section 25)",
-    "next_transition": "T10_EXACT_MARKET_MONEY_ACTIVATION_V1"
+    "evidence_class": "CODE_AND_TEST_PROVEN_NO_NATURAL_LIVE_PROOF",
+    "first_remaining_blocker": "Published Ireland Queue contract has no primary MAKER instruction (every row maps to TAKER / TAKER_ATTEMPT_1); MAKER_FIRST is refused, TAKER_FIRST is consumable but rare; $2.50 at maker limits > 0.50 is below provider min_order_size 5 (document section 30)",
+    "next_transition": "IRELAND_EXPLICIT_EXECUTION_MODE_COMPATIBILITY_V1"
   }
 }

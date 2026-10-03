@@ -1,7 +1,7 @@
 # T10_REBALANCE_PRICE_DISCIPLINE_AND_EXECUTION_ARCHITECTURE_V1
 
-**Status: DESIGN_SHADOW — MONEY_PATH_ACTIVE=NO.**
-Nothing in Queue, TAKER, MAKER, maker fallback, LIVE_GUARD, Ireland, Reservation, stake (`$2.50`) or the `0.54` cap reads the policy described here. This document freezes the design that one later, separately authorised mission (`T10_EXACT_MARKET_MONEY_ACTIVATION_V1`) may activate.
+**Status: IMPLEMENTED_PREMVP_AWAITING_IRELAND_COMPATIBILITY — MONEY_PATH_ACTIVE=NO.**
+Activation mission `T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1` (section 30) wired this policy into the real PREMVP final-rebalance decision behind the single switch `T10_ECONOMIC_ACTION_ACTIVATION` (default OFF). With the switch OFF — the released state — Queue, TAKER, MAKER, maker fallback, LIVE_GUARD, Ireland, Reservation, stake (`$2.50`) and the `0.54` cap behave exactly as before. Sections 0–29 are the frozen design; section 30 is the implementation record.
 
 Evidence class of every number below: **shadow replay on recorded data, not runtime money proof.**
 
@@ -217,6 +217,79 @@ Until activation nothing needs rollback: this change adds files only, and revert
 | main after PR #453 (merge commit) | `ef6ad01c783de306ae1b3010312a573a10dbff08` |
 | This mission's base | `ef6ad01c783de306ae1b3010312a573a10dbff08` |
 | This mission's result SHA | recorded in the PR / completion envelope (a commit cannot embed its own SHA) |
+
+## 30. Activation implementation record (`T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1`)
+
+Evidence class: code + deterministic tests + read-only provider/DB proof. **No natural Queue or venue result yet** (nothing is appended to EVIDENCE_LEDGER).
+
+### 30.1 First broken edges and repairs
+
+| Input | First broken edge (proven) | Repair |
+|---|---|---|
+| Ask ladder | none — CLOB `/book` → `parseOrderBook` → `ParsedOrderBook.asks` already in memory before Queue | reused; never persisted |
+| Tick size | provider `/book` ships `tick_size`; `parseOrderBook` dropped it; capture wrote literal `tick_size: null` (0/3,455 persisted observations had a tick) | `ParsedOrderBook.tickSize` (null when absent/invalid, never defaulted); capture now persists it |
+| Minimum order size | same `/book` payload `min_order_size`, dropped by the parser | `ParsedOrderBook.minimumOrderSize`; used only for MAKER order validity |
+| Book timestamp | `/book` `timestamp`, dropped | `ParsedOrderBook.providerTimestampMs` (frozen as scalar) |
+| Fee | no carrier existed in PREMVP | `fetchTokenFeeSchedule(tokenId)` in `lib/liquidity/polymarketClient.ts` (Gamma `GET /markets?clob_token_ids=`) |
+| Exposure | existing authority: non-terminal (`READY/CLAIMED/SENT`) Queue row per Reservation (`loadQueuedReservationIds`), DB `event_execution_queue_one_ready_per_reservation`, QUEUED Reservations leave the active set | wired as the policy's event-level `exposureExists`; no new store |
+| Latest entry | canonical `nightWindow.latestEntryIso` (T-3) | reused for `beforeLatestEntry`, the guard and the frozen `latest_entry_iso` |
+| T30 price-authority witness | the live path read only the T_MINUS_10 run, and its observation select dropped `best_bid` / `observed_at` | `readCompletedT30Universe` (same lineage checks, phase T_MINUS_30); select now carries `best_bid, observed_at` |
+
+The CLOB `/fee-rate` `base_fee` (bps an order may sign with, e.g. 1000) is **not** the economic fee and is not used.
+
+### 30.2 Fee formula (Polymarket documented taker fee, USDC, applied per fill)
+
+`fee_i = ceil_1e-5(shares_i × rate × p_i × (1 − p_i))`, `TAKER_EFFECTIVE_COST = (stake + Σ fee_i) / Σ shares_i`. Accepted schedules: `feesEnabled=false` (rate 0, provider-stated) or `feesEnabled=true` with `feeSchedule.exponent = 1` and `0 ≤ rate < 1`. Anything else (missing market, ambiguous market, missing schedule, other exponent) fails closed → no TAKER. Live read-only proof: current sports tokens return `sports_fees_v3 {rate: 0.05, exponent: 1, takerOnly: true}`.
+
+### 30.3 TAKER execution limit
+
+`L` = highest on-tick price with `L·(1 + rate·(1 − L)) ≤ P_BUY_MAX` and `L ≤ 0.54`. The policy is evaluated on the executable ladder (asks ≤ `L`) for the full `$2.50`; `L` is frozen as the Queue `max_entry_price` (Ireland `price_cap`). Any fill at ≤ `L` therefore costs ≤ `P_BUY_MAX` after fees even if the book moves, and the ZERO-only `MAKER_FALLBACK_1` (which inherits the parent `max_entry_price`) is bounded by it as well. Example: `P_BUY_MAX 0.53`, sports rate `0.05`, tick `0.01` → `L = 0.51`.
+
+### 30.4 Decision path (switch ON)
+
+`runEventRebalance` → `selectQueueRowFromT3FinalIdentity` (A/B decisions still persisted; B is the comparison arm) → `selectQueueRowFromT10EconomicAction` → `decideT10EconomicEvent` (all T10 siblings; unchanged B support band via shared `isBSupportEligible`; `exactMarketReference`; `t30ExactBidAnchor`; live exact-token book for every sibling that can still compete; fee for STRONG only; `decideEventAction`) → `reverifySelectedAction` (LIVE_GUARD for the frozen action) → at most one Queue row.
+
+LIVE_GUARD for the frozen action: same exact token re-fetched (a book for another token is rejected), book fresh, tick unchanged, full stake fillable at ≤ `L`, effective cost ≤ frozen `P_BUY_MAX`, raw VWAP ≤ 0.54, before latest entry, exposure clear. Raw spread is telemetry (`spread_telemetry`), not authority. MAKER: same token, tick unchanged, current ask, limit recomputed by the unchanged formula with the same `P_BUY_MAX`, `floor(stake/limit, 0.01 sh) ≥ min_order_size`.
+
+### 30.5 Queue contract (`diagnostics.t10_economic_action_v1`, no migration, scalars only)
+
+`execution_policy_version`, `economic_policy_version`, `execution_mode` (`TAKER_FIRST | MAKER_FIRST`), `price_authority_version` (`T30_EXACT_BID_ANCHOR_V1`), `price_authority_observation_id` (`T30_BOOK:<capture_run_id>:<token_id>:<side>`), `p_buy_max`, `reference_status`, `physical_event_id`, `condition_id`, `token_id`, `side`, `market_family`, `stake_usd`, `hard_price_cap`, `latest_entry_iso`, `execution_book_observed_at`, `execution_book_provider_timestamp_ms`, `execution_book_latency_ms`, `tick_size`, `minimum_order_size`, `spread_telemetry`, `activation_switch`; TAKER: `taker.{price_limit, authorized_raw_vwap, authorized_effective_cost, authorized_fee_usd, full_stake_depth_usd_at_limit, fee_rate, fee_exponent, fee_enabled, fee_type, fee_formula_version, fee_source, fee_observed_at}`; MAKER: `maker.{maker_limit_price, maker_shares}`. Typed columns: `condition_id, token_id, side, stake_usd, latest_entry_iso`; `diagnostics.max_entry_price = taker.price_limit`, `diagnostics.entry_price = authorized_raw_vwap`, `selection_reason = T10_ECONOMIC_ACTION_TAKER_FIRST_V1`, `diagnostics.current_b_comparison` records the B arm. No raw bids/asks are persisted.
+
+### 30.6 Ireland boundary (PREMVP-side read of the published contract; Ireland not edited)
+
+`mapQueueRowToIrelandCandidate` emits every row as `execution_mode: "TAKER"`, `attempt_id: "TAKER_ATTEMPT_1"`, `price_cap = max_entry_price`; the only maker instruction is `maker_fallback_commands` (ZERO-proof `MAKER_FALLBACK_1`). Therefore TAKER_FIRST is consumable unchanged; **a primary MAKER_FIRST is not expressible**. `IRELAND_PRIMARY_MAKER_CONTRACT_SUPPORTED = false`: a MAKER_FIRST decision is re-verified and its contract built, then refused (`MAKER_FIRST_AWAITING_IRELAND_COMPATIBILITY`) — never written, never translated into TAKER.
+
+### 30.7 Activation switch
+
+`T10_ECONOMIC_ACTION_ACTIVATION` — exactly `ON` activates; unset or any other value = released B priority + released LIVE_GUARD (test-proven: same token, `source_authority = COMPLETED_T3_AB_FINAL_IDENTITY`, `max_entry_price 0.54`, no fee/T30 reads). Released state: **OFF**. Rollback = unset the variable; no schema rollback.
+
+### 30.8 Read-only real-data proof (72h, AGGREGATE_FIRST, raw rows ≤ 57)
+
+37 reservations / 36 complete T10 runs. Support-eligible candidates: STRONG 27, WEAK 0, UNRESOLVED 6; `P_BUY_MAX` available 27. Live execution evidence for those 27 tokens today: book 404 for 22 (resolved markets), tick 5/5 and min size 5/5 where a book exists, fee 1/27 (Gamma drops closed markets) — past events cannot be replayed live, which is why the decision runs at T10 time. Live open sports tokens: book + tick 0.01 + min 5 + fee 0.05 present for 3/3 families. Policy on recorded data: safe TAKER 0, SKIP 37 with no tick (old carrier); sensitivity with tick 0.01 (now the provider-supplied value for these markets, still labelled sensitivity): MAKER_FIRST 19, SKIP 18, TAKER 0. Current B: selected 17, of which 3 UNRESOLVED; new winner differs from a safe B choice in 1; 4 reservations gain an action where B selected none. Rank-4 (`UNRESOLVED`) stays SKIP.
+
+**Finding:** with `$2.50` and provider `min_order_size = 5`, a maker limit above `0.50` is not a valid order; only 5 / 19 sensitivity MAKER winners pass (limits 0.49–0.53). The stake is unchanged here; this is an input for the Ireland/maker step.
+
+### 30.9 First remaining blocker
+
+Ireland primary-MAKER contract (`IRELAND_EXPLICIT_EXECUTION_MODE_COMPATIBILITY_V1`), together with the `min_order_size` constraint above. TAKER_FIRST is consumable today but structurally rare (0 on the replay). Activation stays OFF until then and until exact-SHA money-path review.
+
+### 30.10 Lineage
+
+| Item | SHA / ref |
+|---|---|
+| Activation mission base (main) | `f984fd501904dea36529e5c1fa1fd576d549f6d0` |
+| Policy result | `998876d0a586713e3cd5b635300ca6b29a71cae9` |
+| Branch | `claude/sharp-hamilton-wy314q` |
+| RESULT_SHA / PR | recorded in the PR / completion envelope (a commit cannot embed its own SHA) |
+
+| Role | Path |
+|---|---|
+| Activation + fee math + guard | `lib/executor/t10EconomicActivation.ts` |
+| Wiring / switch / Queue row | `lib/executor/eventExecutionQueue.ts` |
+| T30 reader, support predicate, capture tick | `lib/executor/reservationMarketBaseline.ts` |
+| Book parser carrier | `lib/liquidity/types.ts`, `lib/liquidity/orderbookMath.ts` |
+| Fee fetch | `lib/liquidity/polymarketClient.ts` |
+| Tests | `tests/contur3/t10EconomicActivation.test.ts` |
 
 ## Appendix A — shadow replay result (72h natural T10, recorded data)
 

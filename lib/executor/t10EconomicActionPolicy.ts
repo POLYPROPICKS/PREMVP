@@ -1,8 +1,9 @@
-// T10_ECONOMIC_ACTION_POLICY_FREEZE_V1 — SHADOW-ONLY economic action policy. MONEY_PATH_ACTIVE=NO.
+// T10_ECONOMIC_ACTION_POLICY_FREEZE_V1 — economic action policy (semantics frozen, unchanged).
 //
-// Pure and deterministic. Nothing in Queue, TAKER, MAKER, LIVE_GUARD, Reservation, stake or the
-// 0.54 cap reads this module. It turns one physical event's supported sibling universe into at
-// most one shadow action: TAKER_FIRST | MAKER_FIRST | SKIP.
+// Pure and deterministic. Read by the money path ONLY through t10EconomicActivation.ts, behind the
+// single switch T10_ECONOMIC_ACTION_ACTIVATION=ON (default OFF => released B priority + LIVE_GUARD).
+// It turns one physical event's supported sibling universe into at most one action:
+// TAKER_FIRST | MAKER_FIRST | SKIP.
 //
 // Three separate authorities (never conflated):
 //   CANDIDATE authority  - `supportEligible` (the unchanged B support bands, decided by the caller).
