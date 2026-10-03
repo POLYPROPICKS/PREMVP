@@ -9,7 +9,7 @@ import {
   mapQueueRowToIrelandCandidate,
   type EventExecutionQueueRow,
 } from "@/lib/executor/executorQueueTypes";
-import { readExecutionAttempts } from "@/lib/executor/makerFallbackAuthorization";
+import { selectExecutorMakerFallbackCommands } from "@/lib/executor/makerFallbackAuthorization";
 import { REBALANCE_MINUTES_BEFORE_START } from "@/lib/executor/nightWindow";
 
 // Contur3 queue-only executor endpoint — the ONLY executable source for Ireland.
@@ -81,9 +81,10 @@ export async function GET(request: NextRequest) {
       .gt("latest_entry_iso", nowIso)
       .order("latest_entry_iso", { ascending: true })
       .limit(cap);
-    const makerFallbackCommands = ((makerRows ?? []) as { diagnostics: Record<string, unknown> | null }[])
-      .map((r) => readExecutionAttempts(r.diagnostics).maker_fallback_1?.command)
-      .filter((c): c is NonNullable<typeof c> => !!c && Date.parse(c.deadline_iso) > nowMs);
+    const makerFallbackCommands = selectExecutorMakerFallbackCommands(
+      (makerRows ?? []) as { diagnostics: Record<string, unknown> | null }[],
+      nowMs,
+    );
 
     const planRunId = rows[0]?.plan_run_id ?? null;
 

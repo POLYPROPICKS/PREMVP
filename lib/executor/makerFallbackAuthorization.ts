@@ -144,7 +144,8 @@ export interface MakerFallbackCommand {
   execution_mode: "MAKER";
   execution_side: "BUY";
   status: "AUTHORIZED";
-  parent_attempt_id: typeof TAKER_ATTEMPT_1;
+  /** The row's primary attempt: TAKER_ATTEMPT_1 (TAKER row) or MAKER_FIRST (frozen T10 MAKER_FIRST row). */
+  parent_attempt_id: typeof TAKER_ATTEMPT_1 | typeof MAKER_FIRST;
   parent_queue_id: string;
   parent_idempotency_key: string;
   idempotency_key: string;
@@ -168,7 +169,7 @@ export interface MakerFallbackCommand {
 export interface ExecutionAttemptsV1 {
   taker_attempt_1?: { result?: IrelandExecutionResult };
   maker_fallback_1?: { command?: MakerFallbackCommand; result?: IrelandExecutionResult };
-  /** Primary maker of a frozen T10 MAKER_FIRST row. Result only: it can never authorize a fallback. */
+  /** Primary maker of a frozen T10 MAKER_FIRST row. Only its terminal proven ZERO may authorize MAKER_FALLBACK_1. */
   maker_first?: { result?: IrelandExecutionResult };
 }
 export type AttemptResultSlot = "taker_attempt_1" | "maker_fallback_1" | "maker_first";
@@ -188,6 +189,8 @@ export type MakerBlockReason =
   | "RESULT_MISSING"
   | "ATTEMPT_NOT_TAKER_ATTEMPT_1"
   | "MODE_NOT_TAKER"
+  | "ATTEMPT_NOT_PRIMARY_MAKER"
+  | "MODE_NOT_MAKER_FIRST"
   | "RESULT_CLASS_CANNOT_PROVE_ZERO"
   | "RESULT_NOT_TERMINAL"
   | "FILLED_QUANTITY_NOT_ZERO"
@@ -226,14 +229,24 @@ export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEli
   const reasons: MakerBlockReason[] = [];
   const deadline = makerDeadlineIso(queue);
 
+  // The parent of MAKER_FALLBACK_1 is the row's own primary attempt: TAKER_ATTEMPT_1 on a TAKER row,
+  // MAKER_FIRST on a frozen T10 MAKER_FIRST row. An unreadable frozen mode never authorizes.
+  const frozenMode = t10FrozenExecutionMode(queue.diagnostics);
+  const primaryMakerRow = frozenMode === "MAKER_FIRST";
   if (!result) {
     reasons.push("RESULT_MISSING");
   } else {
-    if (result.attempt_id !== TAKER_ATTEMPT_1) reasons.push("ATTEMPT_NOT_TAKER_ATTEMPT_1");
-    if (result.execution_mode !== "TAKER") reasons.push("MODE_NOT_TAKER");
+    if (primaryMakerRow) {
+      if (result.attempt_id !== MAKER_FIRST) reasons.push("ATTEMPT_NOT_PRIMARY_MAKER");
+      if (result.execution_mode !== "MAKER_FIRST") reasons.push("MODE_NOT_MAKER_FIRST");
+    } else {
+      if (result.attempt_id !== TAKER_ATTEMPT_1) reasons.push("ATTEMPT_NOT_TAKER_ATTEMPT_1");
+      if (result.execution_mode !== "TAKER") reasons.push("MODE_NOT_TAKER");
+    }
     if (!ZERO_PROOF_CLASSES.has(result.result_class)) reasons.push("RESULT_CLASS_CANNOT_PROVE_ZERO");
     if (result.terminal !== true) reasons.push("RESULT_NOT_TERMINAL");
-    if (result.filled_quantity !== 0) reasons.push("FILLED_QUANTITY_NOT_ZERO");
+    // Outcome-only released results may omit filled_quantity; a REPORTED quantity must be exactly 0.
+    if (result.filled_quantity !== null && result.filled_quantity !== 0) reasons.push("FILLED_QUANTITY_NOT_ZERO");
     if (result.economic_exposure_proven_zero !== true) reasons.push("ZERO_EXPOSURE_NOT_PROVEN");
   }
 
@@ -256,10 +269,7 @@ export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEli
   }
 
   if (deadline === null || nowMs >= Date.parse(deadline)) reasons.push("DEADLINE_PASSED");
-  // A frozen MAKER_FIRST row (or an unreadable T10 mode) can never authorize MAKER_FALLBACK_1:
-  // the fallback exists only after TAKER_ATTEMPT_1 of a TAKER row.
-  const frozenMode = t10FrozenExecutionMode(queue.diagnostics);
-  if (frozenMode === "MAKER_FIRST" || frozenMode === "INVALID") reasons.push("PRIMARY_MAKER_ROW_NO_FALLBACK");
+  if (frozenMode === "INVALID") reasons.push("PRIMARY_MAKER_ROW_NO_FALLBACK");
 
   return { eligible: reasons.length === 0, reasons, deadline_iso: deadline };
 }
@@ -331,7 +341,10 @@ export function deriveT10FallbackLimit(input: {
   stakeUsd: number;
 }): { ok: true; limit_price: number; quantity: number } | { ok: false; reason: T10FallbackPriceFailure } {
   const frozen = readT10FrozenContract(input.queue);
-  if (!frozen.ok || frozen.contract.execution_mode !== "TAKER_FIRST") return { ok: false, reason: "T10_CONTRACT_INVALID" };
+  // Same frozen P_BUY_MAX authority for both primary modes; a MAKER_FIRST row must carry its frozen maker.
+  if (!frozen.ok || (frozen.contract.execution_mode === "MAKER_FIRST" && !frozen.contract.maker)) {
+    return { ok: false, reason: "T10_CONTRACT_INVALID" };
+  }
   const { bestAsk, tickSize } = input.book;
   if (bestAsk === null || !(bestAsk > 0) || tickSize === null || !(tickSize > 0) || tickSize >= 1) {
     return { ok: false, reason: "T10_BOOK_INCOMPLETE" };
@@ -392,7 +405,7 @@ export function buildMakerFallbackCommand(input: {
       execution_mode: "MAKER",
       execution_side: "BUY",
       status: "AUTHORIZED",
-      parent_attempt_id: TAKER_ATTEMPT_1,
+      parent_attempt_id: t10FrozenExecutionMode(d) === "MAKER_FIRST" ? MAKER_FIRST : TAKER_ATTEMPT_1,
       parent_queue_id: queue.id as string,
       parent_idempotency_key: queue.idempotency_key as string,
       idempotency_key: makerIdempotencyKey(queue.idempotency_key as string),
@@ -515,9 +528,33 @@ export async function validatePrimaryMakerCallback(
   return { ok: true, queue };
 }
 
-/** Authoritative terminal proof of zero exposure for a recorded taker result. */
-export function isZeroProofResult(r: IrelandExecutionResult | undefined): boolean {
-  return !!r && ZERO_PROOF_CLASSES.has(r.result_class) && r.terminal === true && r.filled_quantity === 0 && r.economic_exposure_proven_zero === true;
+/**
+ * THE canonical terminal proven-ZERO predicate (released Ireland execution_result_v1 semantics).
+ * True only for a PROVEN_ZERO_* / PROVEN_REJECTED_BEFORE_SUBMISSION class that is terminal with
+ * economic_exposure_proven_zero === true (reported, or derived from a released outcome-only envelope).
+ * filled_quantity may be absent (outcome-only result: the class itself proves zero), but a reported
+ * quantity must be exactly 0. Partial / positive / UNKNOWN_* / non-terminal / unproven never qualify.
+ * Used by order-event progression, reconciliation, fallback authorization and the exposure guard.
+ */
+export function isTerminalProvenZeroResult(r: IrelandExecutionResult | null | undefined): boolean {
+  return !!r
+    && ZERO_PROOF_CLASSES.has(r.result_class)
+    && r.terminal === true
+    && r.economic_exposure_proven_zero === true
+    && (r.filled_quantity === null || r.filled_quantity === 0);
+}
+
+/** Backward-compatible name for {@link isTerminalProvenZeroResult}. */
+export const isZeroProofResult = isTerminalProvenZeroResult;
+
+/** Terminal proven ZERO read straight off a callback payload (null-safe; absence is never zero). */
+export function callbackIsTerminalProvenZero(raw: Record<string, unknown>): boolean {
+  return isTerminalProvenZeroResult(readIrelandExecutionResult(raw, ""));
+}
+
+/** The slot holding the row's primary attempt result (the parent of MAKER_FALLBACK_1). */
+export function primaryAttemptSlot(queue: { diagnostics?: Record<string, unknown> | null }): "taker_attempt_1" | "maker_first" {
+  return t10FrozenExecutionMode(queue.diagnostics) === "MAKER_FIRST" ? "maker_first" : "taker_attempt_1";
 }
 
 /**
@@ -541,12 +578,20 @@ export async function recordResultAndAuthorizeMaker(
   if (isPrimaryMakerCallback(raw)) {
     // PRIMARY maker of a frozen MAKER_FIRST row: record the released outcome on its own slot.
     // It never authorizes MAKER_FALLBACK_1 and is never re-labelled as a TAKER attempt.
+    // Only its terminal proven ZERO may authorize exactly one same-token MAKER_FALLBACK_1.
     const checked = await validatePrimaryMakerCallback((k) => port.loadQueueRowByIdempotencyKey(k), raw);
     if (!checked.ok) return { kind: "MAKER_CALLBACK_REJECTED", reason: checked.reason };
     const primaryResult = readIrelandExecutionResult(raw, nowIso);
     if (!primaryResult) return { kind: "NO_RESULT" };
+    const priorPrimary = readExecutionAttempts(checked.queue.diagnostics).maker_first?.result;
     await port.recordResult(checked.queue.id as string, "maker_first", primaryResult);
-    return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" };
+    if (!isTerminalProvenZeroResult(primaryResult)) return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" };
+    // A recorded positive fill, or a different terminal outcome, is never overridden by a later zero
+    // claim (a non-terminal / UNKNOWN prior may be resolved by the terminal proven zero).
+    if (priorPrimary && ((priorPrimary.filled_quantity ?? 0) > 0 || (priorPrimary.terminal === true && !isTerminalProvenZeroResult(priorPrimary)))) {
+      return { kind: "MAKER_BLOCKED", reasons: ["PRIOR_PRIMARY_RESULT_SHOWS_EXPOSURE"] };
+    }
+    return authorizeFallback(port, checked.queue, primaryResult, raw, now, nonEmptyStr(raw.idempotency_key) as string);
   }
   const isMaker = isMakerAttemptCallback(raw);
 
@@ -589,12 +634,29 @@ export async function recordResultAndAuthorizeMaker(
   // A recorded taker result that shows exposure (or is unresolved) is never overwritten by a
   // later callback, and never lets a later zero-proof authorize a maker.
   const prior = readExecutionAttempts(queue.diagnostics).taker_attempt_1?.result;
-  if (prior && (prior.filled_quantity !== 0 || !ZERO_PROOF_CLASSES.has(prior.result_class))) {
+  if (prior && ((prior.filled_quantity !== null && prior.filled_quantity !== 0) || !ZERO_PROOF_CLASSES.has(prior.result_class))) {
     return { kind: "MAKER_BLOCKED", reasons: ["PRIOR_TAKER_RESULT_SHOWS_EXPOSURE_OR_UNRESOLVED"] };
   }
 
   await port.recordResult(queue.id, "taker_attempt_1", result);
+  return authorizeFallback(port, queue, result, raw, now, parentKey);
+}
 
+/**
+ * Shared single-winner MAKER_FALLBACK_1 authorization for the row's primary attempt result
+ * (TAKER_ATTEMPT_1 or MAKER_FIRST). Same Queue row, same reservation / condition / token / side,
+ * same stake, frozen price authority. A replay returns the already-claimed command, never a second.
+ */
+async function authorizeFallback(
+  port: MakerFallbackPort,
+  queue: EventExecutionQueueRow,
+  result: IrelandExecutionResult,
+  raw: Record<string, unknown>,
+  now: Date,
+  parentKey: string,
+): Promise<MakerAuthorizationOutcome> {
+  const nowIso = now.toISOString();
+  if (!queue.id) return { kind: "MAKER_BLOCKED", reasons: ["QUEUE_ROW_NOT_FOUND"] };
   const existing = readExecutionAttempts(queue.diagnostics).maker_fallback_1?.command ?? null;
   if (existing) return { kind: "MAKER_ALREADY_AUTHORIZED", command: existing };
 
@@ -621,6 +683,24 @@ export async function recordResultAndAuthorizeMaker(
     return { kind: "MAKER_ALREADY_AUTHORIZED", command: readExecutionAttempts(fresh?.diagnostics).maker_fallback_1?.command ?? null };
   }
   return { kind: "MAKER_AUTHORIZED", command: built.command };
+}
+
+// ── executor-facing Queue contract ────────────────────────────────────────
+
+/**
+ * The MAKER_FALLBACK_1 commands surfaced on GET /api/executor/queue (`maker_fallback_commands`):
+ * an authorized command with no recorded fallback result, strictly before its stated deadline.
+ * The command is returned verbatim from the parent Queue row -- no second Queue row exists.
+ */
+export function selectExecutorMakerFallbackCommands(
+  rows: readonly { diagnostics: Record<string, unknown> | null }[],
+  nowMs: number,
+): MakerFallbackCommand[] {
+  return rows
+    .map((r) => readExecutionAttempts(r.diagnostics).maker_fallback_1)
+    .filter((m): m is { command: MakerFallbackCommand } => !!m?.command && !m.result)
+    .map((m) => m.command)
+    .filter((c) => Date.parse(c.deadline_iso) > nowMs);
 }
 
 // ── accounting normalization (maker callbacks) ────────────────────────────

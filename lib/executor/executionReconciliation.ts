@@ -9,6 +9,7 @@
  */
 
 import type { EconomicTelemetryV1 } from "./economicTelemetry";
+import { callbackIsTerminalProvenZero } from "./makerFallbackAuthorization";
 
 export const EXECUTION_RECONCILIATION_VERSION = "EXECUTION_RECONCILIATION_V1" as const;
 
@@ -126,6 +127,9 @@ const TERMINAL_NO_FILL_STATUSES = new Set(["unfilled", "expired"]);
  */
 function isTerminalNoFill(raw: Record<string, unknown>, prior?: ExecutionReconciliationV1): boolean {
   if (prior?.fill_status === "TERMINAL_NO_FILL") return true;
+  // Released Ireland terminal proven ZERO (e.g. PROVEN_ZERO_FILL_CANCELLED): the order finished with
+  // zero economic exposure even though the status word itself ("CANCELLED") is not a no-fill word.
+  if (callbackIsTerminalProvenZero(raw)) return true;
   const status = String(raw.order_status ?? raw.status ?? raw.state ?? "").toLowerCase();
   return TERMINAL_NO_FILL_STATUSES.has(status);
 }
