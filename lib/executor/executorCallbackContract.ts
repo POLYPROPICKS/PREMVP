@@ -24,6 +24,7 @@ import {
   FILL_RESULT_CLASSES,
   isMakerAttemptCallback,
   isPrimaryMakerCallback,
+  isZeroProofResult,
   makerAttemptIdIsValid,
   readExecutionAttempts,
   readIrelandExecutionResult,
@@ -204,6 +205,12 @@ function hasExplicitProgressionEvidence(raw: Record<string, unknown>): boolean {
   const statusField = raw.order_status ?? raw.status ?? raw.state;
   const status = typeof statusField === "string" ? statusField.toLowerCase() : "";
   if (PROGRESSION_EVIDENCE_STATUSES.has(status)) return true;
+  // Terminal lifecycle of an already-accepted order proven to carry ZERO economic exposure
+  // (released Ireland result: proven-zero class + terminal + filled_quantity === 0 +
+  // economic_exposure_proven_zero === true). Strictly the same gate the maker fallback uses to
+  // trust a zero; partial / unknown / unproven results never qualify, and a cancelled/rejected
+  // status string alone is still not evidence. Identity equality is enforced by the caller.
+  if (isZeroProofResult(readIrelandExecutionResult(raw, "") ?? undefined)) return true;
   return PROGRESSION_EVIDENCE_FIELDS.some((field) => raw[field] !== undefined && raw[field] !== null);
 }
 

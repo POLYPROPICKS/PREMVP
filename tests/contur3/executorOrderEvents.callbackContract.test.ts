@@ -23,6 +23,8 @@ import {
   type InsertOrderEventFailure,
 } from "../../lib/executor/executorCallbackContract";
 import type { EventExecutionQueueRow } from "../../lib/executor/executorQueueTypes";
+import { buildEconomicTelemetry } from "../../lib/executor/economicTelemetry";
+import { buildExecutionReconciliation } from "../../lib/executor/executionReconciliation";
 
 const root = process.cwd();
 
@@ -764,4 +766,101 @@ test("Fill-10: fee_usd is never inferred -- an explicit null fee_usd in the call
   // canonical/orchestration contract) -- this proves the orchestration layer
   // never derives or requires a fee value to accept the order event.
   assert.equal("fee_usd" in (outcome as { row?: StoredOrderEvent }).row!, false);
+});
+
+// ── TERMINAL_ZERO_CALLBACK_IDEMPOTENCY_REPAIR_V1 ────────────────────────────
+// Live proof: Ireland's original submit callback was accepted; the SAME order later
+// terminalized as PROVEN_ZERO_FILL_CANCELLED (filled_quantity=0, exposure proven zero)
+// and the lifecycle callback got 409 IDEMPOTENCY_CONFLICT -> MANUAL_INTERVENTION.
+// A proven-zero terminal result of the same order identity is a lifecycle progression.
+
+const zeroResultV1 = (over: Record<string, unknown> = {}) => ({
+  attempt_id: "TAKER_ATTEMPT_1", execution_mode: "TAKER", outcome: "PROVEN_ZERO_FILL_CANCELLED",
+  requested_quantity: 5, filled_quantity: 0, terminal: true, economic_exposure_proven_zero: true, ...over,
+});
+
+function terminalZeroCallback(extra: Record<string, unknown> = {}, result: Record<string, unknown> = {}): Record<string, unknown> {
+  // Lifecycle callback: same identity; the order-events route still policy-validates stake/size/price
+  // (so they are present, within the Queue envelope) but they differ from the original submit callback --
+  // which is what made the strict canonical comparison reject it as IDEMPOTENCY_CONFLICT.
+  return validSubmissionRaw({
+    clob_order_id: "clob-1", submitted_price: 0.5, submitted_size: 5, stake_usd: 3.1,
+    order_status: "CANCELLED", execution_result_v1: zeroResultV1(result), ...extra,
+  });
+}
+
+async function acceptedOpenPort() {
+  const port = makeFakePort([queueRowFor62x5()]);
+  const first = await handleOrderEventSubmission(port, validSubmissionRaw({ submitted_price: 0.53, submitted_size: 5, stake_usd: 3.1 }));
+  assert.equal(first.kind, "INSERTED");
+  return { port, first };
+}
+
+for (const [name, extra] of [
+  ["CANCELLED status + execution_result_v1", {}],
+  ["canceled status", { order_status: "canceled" }],
+  ["no status at all", { order_status: undefined }],
+  ["legacy ireland_execution_result envelope", { execution_result_v1: undefined, ireland_execution_result: { result_class: "PROVEN_ZERO_FILL_CANCELLED", attempt_id: "TAKER_ATTEMPT_1", execution_mode: "TAKER", filled_quantity: 0, terminal: true, economic_exposure_proven_zero: true } }],
+  ["different restated request size", { submitted_size: 4 }],
+] as const) {
+  test(`TZ-1 (${name}): ACCEPTED_OPEN -> proven-zero terminal lifecycle callback progresses the same order, no conflict, no second row`, async () => {
+    const { port, first } = await acceptedOpenPort();
+    const out = await handleOrderEventSubmission(port, terminalZeroCallback(extra));
+    assert.equal(out.kind, "PROGRESSED");
+    if (out.kind === "PROGRESSED" && first.kind === "INSERTED") {
+      assert.equal(out.row.id, first.row.id);
+      assert.equal(out.row.submitted_price, 0.53, "original request facts immutable");
+      assert.equal(out.row.submitted_size, 5);
+      assert.equal(out.queueMark.kind, "ALREADY_EXECUTED", "Queue never downgraded");
+    }
+    assert.equal(port.queueByIdemKey.get("idem-1")?.status, "EXECUTED");
+    assert.equal(port.eventsById.size, 1);
+  });
+}
+
+test("TZ-2: repeating the terminal-zero callback is idempotent (PROGRESSED or DUPLICATE, same row)", async () => {
+  const { port, first } = await acceptedOpenPort();
+  const cb = terminalZeroCallback();
+  assert.equal((await handleOrderEventSubmission(port, cb)).kind, "PROGRESSED");
+  const again = await handleOrderEventSubmission(port, cb);
+  assert.ok(again.kind === "PROGRESSED" || again.kind === "DUPLICATE", again.kind);
+  if ((again.kind === "PROGRESSED" || again.kind === "DUPLICATE") && first.kind === "INSERTED") assert.equal(again.row.id, first.row.id);
+  assert.equal(port.eventsById.size, 1);
+});
+
+for (const [name, cb] of [
+  ["partial fill result", terminalZeroCallback({}, { outcome: "PARTIAL_FILL_CANCELLED", filled_quantity: 2, economic_exposure_proven_zero: false })],
+  ["UNKNOWN result claiming zero", terminalZeroCallback({}, { outcome: "UNKNOWN_AFTER_SUBMISSION", filled_quantity: 0, terminal: null, economic_exposure_proven_zero: null })],
+  ["zero class but exposure flag false", terminalZeroCallback({}, { economic_exposure_proven_zero: false })],
+  ["zero class but non-terminal", terminalZeroCallback({}, { terminal: false })],
+  ["zero class but filled_quantity positive", terminalZeroCallback({}, { filled_quantity: 1 })],
+  ["zero class but filled_quantity missing", terminalZeroCallback({}, { filled_quantity: undefined })],
+  ["proven zero but different clob_order_id", terminalZeroCallback({ clob_order_id: "clob-OTHER" })],
+  ["proven zero but different token", terminalZeroCallback({ token_id: "token-OTHER" })],
+  ["cancelled status with no result envelope", terminalZeroCallback({ execution_result_v1: undefined })],
+] as const) {
+  test(`TZ-3 (${name}): never accepted as a zero-exposure progression -- stays fail-closed`, async () => {
+    const { port } = await acceptedOpenPort();
+    const out = await handleOrderEventSubmission(port, cb);
+    assert.notEqual(out.kind, "PROGRESSED");
+    assert.notEqual(out.kind, "INSERTED");
+    assert.equal(port.eventsById.size, 1);
+    assert.equal(port.queueByIdemKey.get("idem-1")?.status, "EXECUTED", "Queue never downgraded");
+  });
+}
+
+test("TZ-4: the progressed terminal-zero callback flows through telemetry/reconciliation with zero exposure and never throws or fabricates a fill", async () => {
+  const { port } = await acceptedOpenPort();
+  const raw = terminalZeroCallback();
+  const out = await handleOrderEventSubmission(port, raw);
+  assert.equal(out.kind, "PROGRESSED");
+  if (out.kind !== "PROGRESSED") return;
+  const queue = { ...(port.queueByIdemKey.get("idem-1") as EventExecutionQueueRow), idempotency_key: "idem-1" };
+  const ev = { ...out.row, making_amount: null, taking_amount: null, fee_usd: null };
+  const telemetry = buildEconomicTelemetry({ queue: queue as never, event: ev as never, raw });
+  const reconciliation = buildExecutionReconciliation({ queue: queue as never, event: ev as never, raw, telemetry });
+  assert.notEqual(reconciliation.fill_status, "MATCHED_CONFIRMED");
+  assert.ok(!reconciliation.executed_shares, "no executed shares");
+  assert.ok(!reconciliation.executed_notional_usd, "no executed notional");
+  assert.equal(reconciliation.actual_fill_price, null);
 });
