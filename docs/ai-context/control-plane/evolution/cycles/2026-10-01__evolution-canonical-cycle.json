@@ -1,0 +1,384 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-10-01__evolution-canonical-cycle",
+  "period_start": "2026-10-01T00:00:00Z",
+  "period_end": "2026-10-03T00:00:00Z",
+  "evidence_cutoff": "2026-10-03T00:30:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "PR#430",
+      "PR#431",
+      "PR#432",
+      "PR#433",
+      "PR#434",
+      "PR#435",
+      "PR#436",
+      "PR#438",
+      "PR#439",
+      "PR#440",
+      "PR#441",
+      "PR#442",
+      "PR#443",
+      "PR#444",
+      "PR#445",
+      "PR#446",
+      "PR#448",
+      "PR#449",
+      "PR#450",
+      "PR#451",
+      "PR#452",
+      "PR#453"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-10-01__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "ADVANCED",
+    "what_moved": [
+      {
+        "statement": "Сверка исполнения расчётов (settlement reconciliation) теперь запускается автоматически ограниченными партиями из cron event-rebalance — больше не нужен ручной список event ID в CLI, точечный таргетинг событий сохранён.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "PR#432",
+          "commit 6ac1ec7"
+        ]
+      },
+      {
+        "statement": "Безопасный переход с taker на maker (MAKER_FALLBACK_1) теперь авторизован end-to-end по доказанному нулевому исполнению taker-попытки — закрывает зависания с нулевым филлом на реальном денежном пути; Queue теперь отдаёт maker_fallback_commands.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "PR#440",
+          "tests/contur3/makerFallbackAuthorization.test.ts 24/24"
+        ]
+      },
+      {
+        "statement": "72-часовой прогон на реальных данных (24 полных прогона T10, 886 рынков-кандидатов) показал: текущий выбранный B путь дал UNRESOLVED (непригодную) референс-цену на T10 в единственном реальном случае — путь ещё не готов к денежной активации по референс-цене.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#453"
+        ]
+      },
+      {
+        "statement": "Источник Final Rebalance перенесён с T_MINUS_3 на T_MINUS_10 (модель двух вех T_MINUS_30/T_MINUS_10), окно Queue и семантика latest_entry сохранены согласованными.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "PR#448"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "Можно напрямую проверить, даст ли кандидат, отобранный среди референсов с рейтингом STRONG/WEAK (а не сегодняшний единственный B-выбор), пригодную референс-цену на T10 — тем же инструментом bounded-прогона, который уже существует (scripts/diagnostics/t10ExactMarketReferenceReplay.ts).",
+    "blockers_removed": [
+      {
+        "statement": "Три DEV/shadow admission-теста, красных на main из-за устаревшей фикстуры T_MINUS_3, починены общей последовательностью bootstrap рантайма.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "PR#450"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Сверенный PnL за период — доказательства по исполнениям, комиссиям и расчёту не представлены вместе, поэтому заявление о PnL не делается.",
+      "Что автоматический cron сверки расчётов (PR#432) реально отработал на продовых событиях после мерджа — есть только код и точечные тесты, лога реального выполнения в проде нет.",
+      "Что PROD_SHADOW будет развёрнут на реальном внешнем окружении — по состоянию PR#452 всё ещё 'не развёрнуто; нет PROD-окружения, ресурса, кошелька или credential'.",
+      "Что блокер денежной активации на T10, который показал PR#453 (UNRESOLVED на единственном реальном B-выбранном случае), уже имеет рабочее решение — сам PR говорит, что следующая миссия ещё должна поменять отбор кандидатов."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_STRENGTHENED",
+    "capabilities": [
+      {
+        "domain": "DECLARATIVE_ENVIRONMENTS",
+        "statement": "Constructor V1 получил единую bootstrap-последовательность select→compose→validate→describe (реестр контуров + отказоустойчивый селектор), используемую instrumentation, supabaseAdmin, shadow:boot-check и сигнальным пайплайном.",
+        "persisted_artifact": "lib/constructor/bootstrap.ts",
+        "use_or_validation_evidence": "65/65 тестов constructor проходят; переиспользован без изменений тремя PR в тот же день.",
+        "evidence_refs": [
+          "PR#450",
+          "PR#446",
+          "PR#452",
+          "PR#453",
+          "commit 0cb37fb"
+        ]
+      },
+      {
+        "domain": "AUTOMATION_ECONOMICS",
+        "statement": "t10ExactMarketReferenceReplay.ts доказывает паттерн bounded-прогона: сначала агрегат в SQL, затем жёсткий потолок (<=200) сырых строк, с автоматической сверкой SQL и движка на реальных продовых данных.",
+        "persisted_artifact": "scripts/diagnostics/t10ExactMarketReferenceReplay.ts",
+        "use_or_validation_evidence": "Реальный 72-часовой прогон прочитал 59 из 200 разрешённых строк (74 агрегатных, 20 детальных), 0 расхождений SQL и движка.",
+        "evidence_refs": [
+          "PR#453"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Будет ли контур PROD_SHADOW у Constructor V1 реально испытан на внешнем Postgres/Railway — пока не развёрнут.",
+      "Обобщается ли паттерн bounded-прогона за пределы этого одного скрипта — ещё не вынесен в общий helper для второго диагностического скрипта."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 1,
+      "reusable_artifacts_created": 2,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-10-01T00:00:00Z",
+    "period_end": "2026-10-03T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": 23,
+    "successful_terminal_results": 19,
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "reviewer_corrections_rejections": "UNKNOWN",
+    "orchestration_waste_iterations": 0,
+    "implemented_fixes": 0,
+    "proven_effective_fixes": 0,
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 2,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN",
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "architect_corrections": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-17-DAILY-EVOLUTION-REVIEW-ZERO-CYCLES-16D",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "CONTROL_PLANE_DEFECT": 1,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "SAME_ROOT_REPEAT": 2,
+      "NEW_INDEPENDENT": 1
+    },
+    "repeated_defect_families": 0,
+    "active_onion_chains": 0
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H21",
+      "observed_problem": "Триггер Daily Evolution Review оставался включённым на ежедневном cron 00:15 UTC всё это время, но ни одного канонического цикла не было сохранено ни за один день с 2026-09-17 по 2026-10-02 (16 календарных дней); Automation Roadmap Governor корректно и регулярно сообщал EVIDENCE_INSUFFICIENT / 0 новых циклов в эти же дни, ни разу не эскалировав сам факт разрыва.",
+      "why_it_matters": "Вся система Evolution существует, чтобы кормить Routine B и Founder; молчаливый разрыв на 16 дней означает, что ни один из потребителей не получил сигнала о том, что сам датчик перестал работать — без сегодняшнего аудита триггера и сессий это осталось бы незамеченным.",
+      "axis_a_effect": "Напрямую нет — продуктовая работа по Axis A шла полным ходом (123 коммита, около 50 смерженных PR) во время разрыва.",
+      "axis_b_effect": "Отрицательный — способность системы к непрерывному самоизмерению оказалась не такой прочной: она молча не работала больше двух недель.",
+      "proposed_automation": "Пусть Automation Roadmap Governor (который уже ежедневно считает new_validated_cycle_count) явно эскалирует находку, а не просто пишет EVIDENCE_INSUFFICIENT, если это значение было 0 два и более запуска Governor подряд.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-10-01__evolution-canonical-cycle.json",
+      "expected_value": "Сократило бы слепую зону примерно с 16 дней до 2.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий — это read-only логика эскалации поверх метрики, которую Governor уже считает.",
+      "success_metric": "Ни один будущий разрыв дольше 2 подряд запусков Governor с EVIDENCE_INSUFFICIENT не остаётся без эскалации к Founder.",
+      "rollback_or_stop_condition": "Если эскалация срабатывает на обычном однодневном дрожании расписания (ложное срабатывание) — поднять порог прежде, чем добавлять новую логику.",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "trigger trig_01RRPDZL64SaCx2MdRsTqMSt (enabled, cron 15 0 * * *)",
+        "cycles/ directory (no files 2026-09-17..2026-10-02)",
+        "PR#330",
+        "PR#445"
+      ]
+    },
+    {
+      "id": "H22",
+      "observed_problem": "В CURRENT_STATE.yaml уже есть собственная проверка evidence_freshness.max_age_days, но updated_at весь этот цикл остаётся на 2026-09-15 (сейчас устарело на 18 дней) — тот же корневой дефект, впервые записанный 2026-08-28.",
+      "why_it_matters": "CURRENT_STATE.yaml — единственный артефакт текущего операционного состояния control plane; любая рутина, читающая его (включая эту), читает состояние старше двух недель относительно 123 незалогированных коммитов.",
+      "axis_a_effect": "Косвенно — рутины, которые рассуждают на основе устаревшего CURRENT_STATE, рискуют делать неверные предположения о текущей фазе и готовности.",
+      "axis_b_effect": "Отрицательный — заявленная самопроверка (evidence_freshness) существует, но на неё никто не реагирует, то есть способность в лучшем случае PRACTICED_NOT_YET_PROVEN.",
+      "proposed_automation": "Запускать уже существующий в репозитории навык /refresh-ai-context по расписанию, привязанному к evidence_freshness.max_age_days, вместо того чтобы полагаться на случайные ручные запуски.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-10-01__evolution-canonical-cycle.json",
+      "expected_value": "Снимает дефект, повторяющийся уже третий цикл подряд, существующим в репозитории инструментом.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий — обновление документировано как ограниченная, проверяемая рутина, не изменение денежного пути.",
+      "success_metric": "updated_at в CURRENT_STATE.yaml остаётся в пределах собственного max_age_days на каждом следующем цикле Evolution.",
+      "rollback_or_stop_condition": "Если плановое обновление требует ручных решений Founder, которые нельзя автоматизировать — оставить это ручной практикой Founder, а не плановой рутиной.",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml (updated_at 2026-09-15T07:59:07Z)"
+      ]
+    },
+    {
+      "id": "H23",
+      "observed_problem": "Прогон PR#453 на реальных продовых данных показал, что единственный реальный, живой B-выбранный кандидат на пути T10 оказался UNRESOLVED — без пригодной референс-цены, из 886 проанализированных кандидатов в 4 B-семействах.",
+      "why_it_matters": "Это конкретный блокер прямо между текущей теневой работой и любым дизайном денежной активации по референс-цене на T10.",
+      "axis_a_effect": "Напрямую блокирует следующий шаг к расчёту, завязанному на референс-цену.",
+      "axis_b_effect": "Напрямую нет.",
+      "proposed_automation": "Ограниченная последующая миссия: поменять отбор кандидатов в пользу референсов с рейтингом STRONG/WEAK вместо сегодняшнего единственного B-выбора, повторно используя тот же инструмент прогона, чтобы доказать изменение до начала любого дизайна денежного пути.",
+      "persistent_artifact": "lib/executor/exactMarketReference.ts",
+      "expected_value": "UNKNOWN — зависит от того, как часто есть STRONG/WEAK альтернатива среди уже измеренных PR#453 цифр покрытия (8/24 и 10/24 резерваций).",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "Низкая — скрипт прогона (scripts/diagnostics/t10ExactMarketReferenceReplay.ts) уже существует и bounded.",
+      "risk": "Низкий, если остаётся только в тени, как и PR#453.",
+      "success_metric": "Повторный прогон того же 72-часового окна показывает пригодный (STRONG или WEAK) референс на реальных B-выбранных случаях вместо UNRESOLVED.",
+      "rollback_or_stop_condition": "Если ни одно изменение отбора не улучшает UNRESOLVED для реальных B-выбранных случаев — проблема в самой политике B-выбора, а не в движке референса; остановиться и пересмотреть рамки.",
+      "timing": "PRODUCT_FIRST",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "PR#453"
+      ]
+    },
+    {
+      "id": "H24",
+      "observed_problem": "Пробел в способности писать конфигурацию хостинг-окружения, впервые записанный 2026-09-12 (DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY), всё ещё блокирует реальное развёртывание PROD_SHADOW, хотя реестр контуров и bootstrap-последовательность Constructor V1 (этот период) уже в остальном готовы принять реальный контур PROD_SHADOW.",
+      "why_it_matters": "Вся теневая готовность этого периода (PR#446, #449, #450, #452) иначе полностью завершена и протестирована, но не может быть проверена end-to-end без этой способности.",
+      "axis_a_effect": "Косвенно — блокирует будущий путь от теневого доказательства к реальному исполнению.",
+      "axis_b_effect": "Недавно усиленная способность DECLARATIVE_ENVIRONMENTS (этот цикл) не может дойти до CAPABILITY_ADDED-with-real-use, пока этот пробел не закрыт.",
+      "proposed_automation": "Масштаб SYSTEM_LATER: расширить зарегистрированный жизненный цикл персистентности/хостинга так, чтобы зарегистрированный исполнитель мог писать конфигурацию Railway/хостинга для PROD_SHADOW по тем же отказоустойчивым правилам контура, которые Constructor V1 уже применяет внутри процесса.",
+      "persistent_artifact": "ops/railway/prod-shadow-web.toml",
+      "expected_value": "UNKNOWN",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Средний — первое реальное касание внешнего окружения для этого контура; нужен отдельный ограниченный план проверки.",
+      "success_metric": "Реальный внешний ресурс PROD_SHADOW существует, и уже существующие отказоустойчивые тесты Constructor V1 проходят на нём без изменений.",
+      "rollback_or_stop_condition": "Если способность писать конфигурацию хостинга нельзя безопасно ограничить без более широкого доступа к инфраструктуре — оставить PROD_SHADOW пассивно заявленным, не форсировать.",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "PR#446",
+        "PR#452"
+      ]
+    },
+    {
+      "id": "H25",
+      "observed_problem": "Паттерн bounded-прогона (сначала агрегат в SQL, затем капped детальная выборка с проверкой паритета), доказанный в scripts/diagnostics/t10ExactMarketReferenceReplay.ts (PR#453), существует только в этом одном скрипте, хотя та же доктрина ограниченного доказательства применима к любой продовой диагностике этого control plane.",
+      "why_it_matters": "Без вынесения в общий код каждая будущая диагностика будет заново реализовывать (или пропускать) ту же дисциплину с нуля.",
+      "axis_a_effect": "Напрямую нет.",
+      "axis_b_effect": "Доказанная способность AUTOMATION_ECONOMICS (этот цикл) остаётся одноразовой вместо того, чтобы стать переиспользуемым, обязательным паттерном.",
+      "proposed_automation": "Вынести двухэтапный паттерн (ограниченный SQL-агрегат, затем капped детальная выборка со сверкой паритета) из t10ExactMarketReferenceReplay.ts в небольшой общий helper и направить на него второй диагностический скрипт.",
+      "persistent_artifact": "scripts/diagnostics/t10ExactMarketReferenceReplay.ts",
+      "expected_value": "UNKNOWN",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "Низкая — паттерн уже доказан один раз; вынесение механическое.",
+      "risk": "Низкий.",
+      "success_metric": "Второй диагностический скрипт использует общий helper с тем же потолком сырых строк и теми же гарантиями сверки паритета.",
+      "rollback_or_stop_condition": "Если форма запросов двух скриптов разойдётся настолько, что общему helper понадобятся спецслучаи — оставить их раздельными, не форсировать плохую абстракцию.",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "PR#453"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "FP1",
+      "skill_practiced": "Считать состояние планировщика/триггера (list_triggers, get_session, list_sessions) первичным доказательством здоровья плановой рутины, а не делать вывод о здоровье только по артефактам в репозитории.",
+      "why_it_matters_now": "Именно так сегодня был найден 16-дневный разрыв в Daily Evolution Review — папка cycles/ и собственные отчёты Governor выглядели внутренне согласованными (оба сходились на '0 новых циклов'), но ни один не показывал, что причина — сама рутина-датчик ничего не производит, пока не были проверены напрямую триггер и история сессий.",
+      "how_it_applies_to_current_project": "Применять такой же аудит триггера и сессий периодически к другим плановым рутинам (Automation Roadmap Governor, Daily Roadmap Optimizer), чтобы похожий молчаливый разрыв в любой из них был пойман за дни, а не недели.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-10-01__evolution-canonical-cycle.json",
+      "ladder_level": null
+    },
+    {
+      "id": "FP2",
+      "skill_practiced": "Ограничивать разбор для наверстывания дешёвым, недавним окном вместо попытки судебно-криминалистически восстановить весь многонедельный бэклог за один проход.",
+      "why_it_matters_now": "За 16 пропущенных дней накопилось 123 коммита и примерно 50 смерженных PR; восстановление всего этого в одном цикле Evolution нарушило бы собственную политику экономии доказательств этой рутины и, скорее всего, дало бы худший, поспешный результат, чем запись разрыва как дефекта и возврат к чистому ритму в 1-2 дня сейчас.",
+      "how_it_applies_to_current_project": "Этот цикл сам демонстрирует практику: он доказательно разбирает 2026-10-01..2026-10-03 в ограниченной глубине и записывает 2026-09-17..2026-10-02 как один зафиксированный дефект, а не как 16 незапущенных циклов.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-10-01__evolution-canonical-cycle.json",
+      "ladder_level": null
+    }
+  ],
+  "founder_practice_comparison": "FP1 (рано заметить молчаливый разрыв рутины) должна идти раньше FP2 (решить, как ограничить разбор для наверстывания) — нельзя ограничить разбор для наверстывания, о необходимости которого ещё не знаешь.",
+  "founder_practice_recommended_order": [
+    "FP1",
+    "FP2"
+  ],
+  "experiments": [
+    {
+      "id": "EXP1",
+      "hypothesis": "Эскалация при подряд идущих нулевых циклах внутри Automation Roadmap Governor поймала бы 16-дневное молчание Daily Evolution Review этого периода примерно за 2 дня вместо 16.",
+      "bounded_scope": "Read-only добавление к существующей проверке допустимости Governor: когда new_validated_cycle_count было 0 два и более запуска Governor подряд — выдавать явную находку-эскалацию вместо обычной формулировки EVIDENCE_INSUFFICIENT.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-10-02__automation-roadmap-governor-result.json",
+      "promotion_condition": "Architect принимает дизайн эскалации, и следующие 2 запуска Governor демонстрируют её корректное срабатывание в реальном или синтетическом сценарии с нулевыми циклами.",
+      "stop_condition": "Если следующие несколько канонических циклов приходят нормально без нового разрыва — снизить приоритет; этот разрыв может оказаться разовым, а не повторяющимся паттерном."
+    },
+    {
+      "id": "EXP2",
+      "hypothesis": "Запуск уже существующего в репозитории навыка /refresh-ai-context по расписанию, привязанному к собственному evidence_freshness.max_age_days из CURRENT_STATE.yaml, устранит повторяющийся дефект устаревания без нового кода.",
+      "bounded_scope": "Один ограниченный, проверяемый запуск /refresh-ai-context; сравнить updated_at в CURRENT_STATE.yaml до и после, убедиться, что смысл roadmap_phase и current_value_step не меняется побочно.",
+      "persistent_artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "promotion_condition": "updated_at продвигается в пределы max_age_days от даты запуска, и существующий дефект устаревания не фиксируется заново на следующем цикле.",
+      "stop_condition": "Если обновление требует ручных решений Founder, которые навык не может охватить — оставить это ручной практикой Founder, а не плановой рутиной."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (по CURRENT_STATE.yaml; updated_at 2026-09-15, устарело относительно evidence_cutoff этого цикла — см. DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE)"
+  },
+  "next_step": "Architect/Founder: реализовать эскалацию Governor при подряд идущих нулевых циклах (H21/EXP1), чтобы будущий разрыв ловился за дни, а не недели; отдельно запустить /refresh-ai-context (EXP2), чтобы снять устаревание CURRENT_STATE.yaml. Оба изменения ограниченные, вне денежного пути. Routine A не мерджит свой PR и не выбирает следующую автоматизацию — это роль Routine B и Architect.",
+  "accepted": false
+}

@@ -1,0 +1,60 @@
+{
+    "bundle_id": "2026-10-01__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-10-01T00:00:00Z",
+    "period_end": "2026-10-03T00:00:00Z",
+    "evidence_cutoff": "2026-10-03T00:30:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "PR#430", "PR#431", "PR#432", "PR#433", "PR#434", "PR#435", "PR#436",
+        "PR#438", "PR#439", "PR#440", "PR#441", "PR#442", "PR#443", "PR#444",
+        "PR#445", "PR#446", "PR#448", "PR#449", "PR#450", "PR#451", "PR#452", "PR#453"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "founder_actions_removable": "UNKNOWN",
+        "executor_runs": 23,
+        "successful_terminal_results": 19,
+        "reruns_resumes": "UNKNOWN",
+        "recovery_iterations": "UNKNOWN",
+        "reviewer_corrections_rejections": "UNKNOWN",
+        "orchestration_waste_iterations": 0,
+        "runtime_evidence_count": 1,
+        "reusable_artifacts_created": 2,
+        "actions_per_verified_result": "UNKNOWN",
+        "time_to_verified_result": "UNKNOWN"
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 1,
+        "reusable_artifacts_created": 2,
+        "reviewer_rejection_count": "UNKNOWN",
+        "architect_corrections": "UNKNOWN"
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-17-DAILY-EVOLUTION-REVIEW-ZERO-CYCLES-16D",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        }
+    ]
+}
