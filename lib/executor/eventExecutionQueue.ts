@@ -1729,12 +1729,15 @@ type T10EconomicActivationDeps = {
  */
 export function eventExposureNotProvenZero(rows: readonly EventExecutionQueueRow[]): boolean {
   return rows.some((row) => {
-    if (row.status === "SKIPPED" || row.status === "CANCELLED") return false;
-    if (row.status === "EXPIRED" && row.selection_reason === READY_QUEUE_EXPIRY_REASON) return false;
+    // Recorded venue facts win over any later status: a positive / partial / UNKNOWN result, or an
+    // authorized fallback without a result, is exposure even on a SKIPPED / CANCELLED / EXPIRED row.
     const a = readExecutionAttempts(row.diagnostics);
     const recorded = [a.taker_attempt_1?.result, a.maker_first?.result, a.maker_fallback_1?.result].filter((r) => r !== undefined);
+    if (recorded.some((r) => !isZeroProofResult(r))) return true;
     if (a.maker_fallback_1?.command && !a.maker_fallback_1.result) return true;
-    return !(recorded.length > 0 && recorded.every((r) => isZeroProofResult(r)));
+    if (row.status === "SKIPPED" || row.status === "CANCELLED") return false;
+    if (row.status === "EXPIRED" && row.selection_reason === READY_QUEUE_EXPIRY_REASON) return false;
+    return recorded.length === 0;
   });
 }
 

@@ -304,7 +304,11 @@ export function readT10FrozenContract(
   if (c.stake_usd !== row.stake_usd || !finitePos(row.stake_usd) || row.stake_usd > QUEUE_DEFAULT_STAKE_USD) {
     return { ok: false, reason: "T10_CONTRACT_STAKE_MISMATCH" };
   }
-  if (c.latest_entry_iso !== row.latest_entry_iso) return { ok: false, reason: "T10_CONTRACT_DEADLINE_MISMATCH" };
+  // Instant equality: the timestamptz column is read back as "+00:00", the frozen value as "Z".
+  const frozenDeadline = typeof c.latest_entry_iso === "string" ? Date.parse(c.latest_entry_iso) : NaN;
+  if (!Number.isFinite(frozenDeadline) || frozenDeadline !== Date.parse(row.latest_entry_iso)) {
+    return { ok: false, reason: "T10_CONTRACT_DEADLINE_MISMATCH" };
+  }
   if (!finitePos(c.p_buy_max) || c.p_buy_max > QUEUE_MAX_ENTRY_PRICE) return { ok: false, reason: "T10_P_BUY_MAX_INVALID" };
   if (!finitePos(c.tick_size) || c.tick_size >= 1) return { ok: false, reason: "T10_TICK_SIZE_INVALID" };
   if (!finitePos(c.minimum_order_size)) return { ok: false, reason: "T10_MINIMUM_ORDER_SIZE_UNKNOWN" };

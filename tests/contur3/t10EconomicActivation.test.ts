@@ -356,7 +356,9 @@ test("MAKER_FIRST is queued as an explicit primary-maker instruction, never tran
   assert.equal(c.minimum_order_size, 5);
   assert.equal(row.stake_usd, 2.5, "stake never increased");
   assert.equal(row.diagnostics.max_entry_price, 0.5, "price cap = frozen maker limit <= P_BUY_MAX");
-  const wire = mapQueueRowToIrelandCandidate({ ...row, id: "q-maker" }, NOW);
+  // Read back from the timestamptz column ("+00:00") the frozen deadline still matches.
+  const dbRow = { ...row, id: "q-maker", latest_entry_iso: row.latest_entry_iso.replace(".000Z", "+00:00") };
+  const wire = mapQueueRowToIrelandCandidate(dbRow, NOW);
   assert.equal(wire.execution_mode, "MAKER_FIRST");
   assert.equal(wire.attempt_id, "MAKER_FIRST");
   assert.equal(wire.maker_limit_price, 0.5);
@@ -369,14 +371,14 @@ test("MAKER_FIRST is queued as an explicit primary-maker instruction, never tran
   assert.equal(wire.stake_usd, 2.5);
   assert.equal(wire.price_authority_version, "T30_EXACT_BID_ANCHOR_V1");
   assert.equal(wire.price_authority_observation_id, "T30_BOOK:T_MINUS_30-run:a-token:Yes");
-  assert.equal(wire.latest_entry_iso, "2026-07-19T18:57:00.000Z");
+  assert.equal(Date.parse(wire.latest_entry_iso), Date.parse("2026-07-19T18:57:00.000Z"));
   assert.equal(wire.idempotency_key, row.idempotency_key);
   // Malformed MAKER_FIRST data fails closed: never emitted, never a TAKER.
   for (const broken of [
     { ...c, maker: null }, { ...c, maker: { maker_limit_price: 0.505, maker_shares: 5 } },
     { ...c, maker: { maker_limit_price: 0.5, maker_shares: 4.9 } }, { ...c, minimum_order_size: null },
     { ...c, p_buy_max: 0.49 }, { ...c, execution_mode: "MAKER" }, { ...c, price_authority_observation_id: "" },
-    { ...c, token_id: "other" },
+    { ...c, token_id: "other" }, { ...c, latest_entry_iso: "2026-07-19T18:58:00.000Z" }, { ...c, latest_entry_iso: null },
   ]) {
     assert.throws(() => mapQueueRowToIrelandCandidate({ ...row, diagnostics: { ...row.diagnostics, t10_economic_action_v1: broken } }, NOW),
       QueueWireContractError);
@@ -413,6 +415,10 @@ test("event exposure: any prior Queue attempt on the physical event that is not 
     prior({ diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { taker_attempt_1: { result: { ...zero, result_class: "PARTIAL_FILL", filled_quantity: 2 } } } } }),
     prior({ diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { maker_first: { result: { ...zero, result_class: "UNKNOWN_AFTER_SUBMISSION", terminal: null, filled_quantity: null, economic_exposure_proven_zero: null } } } } }),
     prior({ diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { taker_attempt_1: { result: zero }, maker_fallback_1: { command: { attempt_id: "MAKER_FALLBACK_1" } } } } }),
+    // A later SKIPPED / CANCELLED / swept status never erases a recorded partial or UNKNOWN result.
+    prior({ status: "SKIPPED", diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { maker_first: { result: { ...zero, result_class: "PARTIAL_FILL_CANCELLED", filled_quantity: 2, economic_exposure_proven_zero: false } } } } }),
+    prior({ status: "CANCELLED", diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { taker_attempt_1: { result: { ...zero, result_class: "UNKNOWN_AFTER_SUBMISSION", terminal: null, filled_quantity: null, economic_exposure_proven_zero: null } } } } }),
+    prior({ status: "EXPIRED", selection_reason: "LATEST_ENTRY_WINDOW_PASSED", diagnostics: { physical_event_id: EVENT, execution_attempts_v1: { maker_first: { result: { ...zero, result_class: "FULL_FILL", filled_quantity: 5, economic_exposure_proven_zero: false } } } } }),
   ];
   for (const p of blocked) {
     const res = reservation();
