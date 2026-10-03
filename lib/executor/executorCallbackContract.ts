@@ -22,9 +22,9 @@
 import { readT10FrozenContract, t10FrozenExecutionMode, validateOrderEventAgainstQueueRow, type EventExecutionQueueRow, type OrderEventSubmission } from "./executorQueueTypes";
 import {
   FILL_RESULT_CLASSES,
+  callbackIsTerminalProvenZero,
   isMakerAttemptCallback,
   isPrimaryMakerCallback,
-  isZeroProofResult,
   makerAttemptIdIsValid,
   readExecutionAttempts,
   readIrelandExecutionResult,
@@ -205,12 +205,13 @@ function hasExplicitProgressionEvidence(raw: Record<string, unknown>): boolean {
   const statusField = raw.order_status ?? raw.status ?? raw.state;
   const status = typeof statusField === "string" ? statusField.toLowerCase() : "";
   if (PROGRESSION_EVIDENCE_STATUSES.has(status)) return true;
-  // Terminal lifecycle of an already-accepted order proven to carry ZERO economic exposure
-  // (released Ireland result: proven-zero class + terminal + filled_quantity === 0 +
-  // economic_exposure_proven_zero === true). Strictly the same gate the maker fallback uses to
-  // trust a zero; partial / unknown / unproven results never qualify, and a cancelled/rejected
-  // status string alone is still not evidence. Identity equality is enforced by the caller.
-  if (isZeroProofResult(readIrelandExecutionResult(raw, "") ?? undefined)) return true;
+  // Terminal lifecycle of an already-accepted order proven to carry ZERO economic exposure, per the
+  // canonical isTerminalProvenZeroResult predicate (released execution_result_v1 semantics; an
+  // outcome-only PROVEN_ZERO_* may omit filled_quantity, a reported one must be 0). Strictly the
+  // same gate the maker fallback uses to trust a zero; partial / unknown / unproven results never
+  // qualify, and a cancelled/rejected status string alone is still not evidence. Identity equality
+  // is enforced by the caller.
+  if (callbackIsTerminalProvenZero(raw)) return true;
   return PROGRESSION_EVIDENCE_FIELDS.some((field) => raw[field] !== undefined && raw[field] !== null);
 }
 
@@ -239,7 +240,11 @@ export function classifyOrderEventAgainstExisting(
   existing: OrderEventCanonicalPayload,
   raw: Record<string, unknown>,
 ): "IDENTICAL" | "PROGRESSION" | "CONFLICT" {
-  if (canonicalPayloadsEqual(incoming, existing)) return "IDENTICAL";
+  if (canonicalPayloadsEqual(incoming, existing)) {
+    // A terminal proven-ZERO lifecycle callback that restates the original request facts is still a
+    // lifecycle progression of the same order: its terminal facts must land on the existing row.
+    return incoming.clob_order_id && callbackIsTerminalProvenZero(raw) ? "PROGRESSION" : "IDENTICAL";
+  }
   if (!canonicalOrderIdentityEqual(incoming, existing)) return "CONFLICT";
   if (!incoming.clob_order_id) return "CONFLICT";
   if (!hasExplicitProgressionEvidence(raw)) return "CONFLICT";
@@ -557,7 +562,9 @@ export async function handleOrderEventSubmission(
   if (primaryMaker && frozenMode !== "MAKER_FIRST") {
     return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "PRIMARY_MAKER_NOT_FROZEN_ON_QUEUE_ROW" };
   }
-  if (!primaryMaker && frozenMode === "MAKER_FIRST") {
+  // The only other attempt a MAKER_FIRST row accepts is its authorized MAKER_FALLBACK_1 (bound to the
+  // stored command below); a TAKER callback is never accepted on it.
+  if (!primaryMaker && !makerAttempt && frozenMode === "MAKER_FIRST") {
     return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "MAKER_FIRST_ROW_REQUIRES_PRIMARY_MAKER_ATTEMPT" };
   }
   let primaryMakerShares: number | null = null;

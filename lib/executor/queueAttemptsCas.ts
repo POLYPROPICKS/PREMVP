@@ -13,6 +13,7 @@ import {
   EXECUTION_ATTEMPTS_KEY,
   isZeroProofResult,
   mergeAttemptResult,
+  primaryAttemptSlot,
   readExecutionAttempts,
   type AttemptResultSlot,
   type ExecutionAttemptsV1,
@@ -100,7 +101,8 @@ export async function claimMakerCommandCas(port: QueueCasPort, queueId: string, 
     if (a.maker_fallback_1?.command) return null;
     // Re-verify zero proof on the FRESH taker result: a contradictory fill recorded by a racing
     // callback must stop this claim even if the caller evaluated a stale snapshot.
-    if (!isZeroProofResult(a.taker_attempt_1?.result)) return null;
+    // The parent slot is the row's own primary attempt (taker_attempt_1 or maker_first).
+    if (!isZeroProofResult(a[primaryAttemptSlot(fresh)]?.result)) return null;
     return { diagnostics: fresh.diagnostics ?? {}, attempts: { ...a, maker_fallback_1: { ...(a.maker_fallback_1 ?? {}), command } } };
   });
   return res.written;

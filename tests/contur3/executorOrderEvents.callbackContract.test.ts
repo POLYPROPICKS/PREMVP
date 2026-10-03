@@ -802,6 +802,8 @@ for (const [name, extra] of [
   ["no status at all", { order_status: undefined }],
   ["legacy ireland_execution_result envelope", { execution_result_v1: undefined, ireland_execution_result: { result_class: "PROVEN_ZERO_FILL_CANCELLED", attempt_id: "TAKER_ATTEMPT_1", execution_mode: "TAKER", filled_quantity: 0, terminal: true, economic_exposure_proven_zero: true } }],
   ["different restated request size", { submitted_size: 4 }],
+  // Released outcome-only PROVEN_ZERO_* may omit filled_quantity (TERMINAL_ZERO_TO_FALLBACK_CONTRACT_V2).
+  ["outcome-only result without filled_quantity", { execution_result_v1: { attempt_id: "TAKER_ATTEMPT_1", execution_mode: "TAKER", outcome: "PROVEN_ZERO_FILL_CANCELLED" } }],
 ] as const) {
   test(`TZ-1 (${name}): ACCEPTED_OPEN -> proven-zero terminal lifecycle callback progresses the same order, no conflict, no second row`, async () => {
     const { port, first } = await acceptedOpenPort();
@@ -834,7 +836,6 @@ for (const [name, cb] of [
   ["zero class but exposure flag false", terminalZeroCallback({}, { economic_exposure_proven_zero: false })],
   ["zero class but non-terminal", terminalZeroCallback({}, { terminal: false })],
   ["zero class but filled_quantity positive", terminalZeroCallback({}, { filled_quantity: 1 })],
-  ["zero class but filled_quantity missing", terminalZeroCallback({}, { filled_quantity: undefined })],
   ["proven zero but different clob_order_id", terminalZeroCallback({ clob_order_id: "clob-OTHER" })],
   ["proven zero but different token", terminalZeroCallback({ token_id: "token-OTHER" })],
   ["cancelled status with no result envelope", terminalZeroCallback({ execution_result_v1: undefined })],

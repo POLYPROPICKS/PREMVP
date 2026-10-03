@@ -76,7 +76,7 @@ for (const [name, over] of [
   ["UNKNOWN claiming zero", { result_class: "UNKNOWN_AFTER_SUBMISSION", filled_quantity: 0 }],
   ["zero exposure null", { economic_exposure_proven_zero: null }],
   ["zero exposure false", { economic_exposure_proven_zero: false }],
-  ["filled_quantity missing", { filled_quantity: null }],
+  ["filled_quantity reported positive on a zero class", { filled_quantity: 0.5 }],
   ["nonterminal/open", { terminal: false }],
   ["terminal missing", { terminal: null }],
 ] as const) {
@@ -216,4 +216,12 @@ test("BUSINESS TRACE", async () => {
   trace.push(`BLOCKED: TAKER UNKNOWN_AFTER_SUBMISSION -> MAKER_AUTHORIZED=${u.out.kind === "MAKER_AUTHORIZED" ? "YES" : "NO"}`);
   console.log(trace.join("\n"));
   assert.equal(f.state.claims, 1, "one physical event, one maker slot");
+});
+
+// PREMVP_TERMINAL_ZERO_TO_FALLBACK_CONTRACT_V2: a proven-zero class that is terminal with explicit
+// zero-exposure proof needs no numeric filled_quantity (released outcome-only semantics).
+test("ALLOW maker: zero class + terminal + exposure proven zero, filled_quantity absent", async () => {
+  const { out, state } = await run(zero({ filled_quantity: null }));
+  assert.equal(out.kind, "MAKER_AUTHORIZED");
+  assert.equal(state.claims, 1);
 });
