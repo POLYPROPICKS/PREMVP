@@ -105,6 +105,16 @@ export interface ParsedOrderBook {
   tokenId: string;
   bids: OrderBookLevel[];
   asks: OrderBookLevel[];
+  /**
+   * Provider `tick_size` of this exact token's /book response (minimum price
+   * increment). null when the provider did not supply a valid value -- never
+   * assumed (no hardcoded 0.01 / 0.001).
+   */
+  tickSize?: number | null;
+  /** Provider `min_order_size` (shares) of this exact token's /book response; null when absent. */
+  minimumOrderSize?: number | null;
+  /** Provider `timestamp` (epoch ms) of the book snapshot; null when absent. */
+  providerTimestampMs?: number | null;
   /** Optional raw payload for diagnostics; never required downstream. */
   raw?: unknown;
 }

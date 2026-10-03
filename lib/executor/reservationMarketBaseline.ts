@@ -378,10 +378,13 @@ export type FinalT3MarketObservation = {
   provider_market_type_raw?: string | null; market_slug?: string | null;
   best_ask: number | null; ask_decimal_odds: number | null;
   orderbook_fetch_status: string | null;
+  /** Persisted on every observation; read for exact-market reference witnesses. */
+  best_bid?: number | null; observed_at?: string | null;
 };
 
 type FinalT3ReadPort = {
-  readRuns(reservationId: string): Promise<Record<string, unknown>[]>;
+  /** `phase` defaults to FINAL_REBALANCE_PHASE (T_MINUS_10). */
+  readRuns(reservationId: string, phase?: string): Promise<Record<string, unknown>[]>;
   readObservations(captureRunId: string, afterId: string): Promise<Record<string, unknown>[]>;
 };
 
@@ -390,6 +393,25 @@ export async function readCompletedFinalT3Universe(
   reservation: NightEventReservationRow,
   port: FinalT3ReadPort = createFinalT3ReadPort(),
 ): Promise<FinalT3MarketObservation[]> {
+  return readCompletedPhaseUniverse(reservation, FINAL_REBALANCE_PHASE, port);
+}
+
+/**
+ * The same complete, lineage-checked source-set read for the T_MINUS_30 phase.
+ * Used only as the T30_EXACT_BID_ANCHOR_V1 price-authority witness source.
+ */
+export async function readCompletedT30Universe(
+  reservation: NightEventReservationRow,
+  port: FinalT3ReadPort = createFinalT3ReadPort(),
+): Promise<FinalT3MarketObservation[]> {
+  return readCompletedPhaseUniverse(reservation, "T_MINUS_30", port);
+}
+
+async function readCompletedPhaseUniverse(
+  reservation: NightEventReservationRow,
+  phase: string,
+  port: FinalT3ReadPort,
+): Promise<FinalT3MarketObservation[]> {
   const id = reservation.id;
   const physicalId = reservation.physical_event_id;
   const start = reservation.event_start_iso;
@@ -397,12 +419,12 @@ export async function readCompletedFinalT3Universe(
   const providerId = lineage?.provider_event_id;
   if (!id || !physicalId || !start || !Number.isFinite(Date.parse(start)) ||
       typeof providerId !== "string" || !providerId) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
-  const runs = await port.readRuns(id);
+  const runs = phase === FINAL_REBALANCE_PHASE ? await port.readRuns(id) : await port.readRuns(id, phase);
   if (runs.length !== 1) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
   const run = runs[0];
   if (run.reservation_id !== id || run.physical_event_id !== physicalId ||
       run.provider_event_id !== providerId || Date.parse(String(run.event_start_iso)) !== Date.parse(start) ||
-      run.observation_phase !== FINAL_REBALANCE_PHASE || run.source_version !== MARKET_SOURCE_VERSION ||
+      run.observation_phase !== phase || run.source_version !== MARKET_SOURCE_VERSION ||
       run.capture_complete !== true || run.capture_status !== "COMPLETE" ||
       typeof run.id !== "string" || !run.id ||
       !Number.isSafeInteger(run.market_tokens_observed_n) || Number(run.market_tokens_observed_n) <= 0 ||
@@ -421,7 +443,7 @@ export async function readCompletedFinalT3Universe(
   if (rows.length !== run.market_tokens_observed_n || rows.some((row) =>
     row.capture_run_id !== run.id || row.reservation_id !== id || row.physical_event_id !== physicalId ||
     row.provider_event_id !== providerId || Date.parse(String(row.event_start_iso)) !== Date.parse(start) ||
-    row.observation_phase !== FINAL_REBALANCE_PHASE ||
+    row.observation_phase !== phase ||
     ![row.condition_id, row.token_id, row.side].every((value) => typeof value === "string" && value.trim() !== "")
   )) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
   return rows as FinalT3MarketObservation[];
@@ -436,11 +458,11 @@ async function defaultProcessClient(): Promise<RuntimeSupabaseClient> {
 /** Final-T3 reader bound to a client getter; default = the process-wide supabaseAdmin (unchanged). */
 export function createFinalT3ReadPort(getClient: RuntimeClientGetter = defaultProcessClient): FinalT3ReadPort {
   return {
-  async readRuns(reservationId) {
+  async readRuns(reservationId, phase = FINAL_REBALANCE_PHASE) {
     const supabaseAdmin = await getClient();
     const { data, error } = await supabaseAdmin.from("reservation_market_capture_runs")
       .select("id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,source_version,capture_complete,capture_status,market_tokens_expected_n,market_tokens_observed_n")
-      .eq("reservation_id", reservationId).eq("observation_phase", FINAL_REBALANCE_PHASE)
+      .eq("reservation_id", reservationId).eq("observation_phase", phase)
       .eq("source_version", MARKET_SOURCE_VERSION).limit(2);
     if (error) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
     return data ?? [];
@@ -448,7 +470,7 @@ export function createFinalT3ReadPort(getClient: RuntimeClientGetter = defaultPr
   async readObservations(captureRunId, afterId) {
     const supabaseAdmin = await getClient();
     const { data, error } = await supabaseAdmin.from("reservation_market_observations")
-      .select("id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,condition_id,token_id,side,observation_phase,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_ask,ask_decimal_odds,orderbook_fetch_status")
+      .select("id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,condition_id,token_id,side,observation_phase,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_ask,ask_decimal_odds,orderbook_fetch_status,best_bid,observed_at")
       .eq("capture_run_id", captureRunId).gt("id", afterId).order("id").limit(200);
     if (error) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
     return data ?? [];
@@ -593,7 +615,7 @@ export async function captureReservationMarketObservation(
       spread_abs: computeSpread(book), spread_bps: computeSpreadBps(book),
       // No canonical Reservation stake reference exists at this phase.
       bid_depth_relevant_usd: null, ask_depth_relevant_usd: null,
-      tick_size: null, minimum_order_size: null,
+      tick_size: book?.tickSize ?? null, minimum_order_size: book?.minimumOrderSize ?? null,
       orderbook_fetch_latency_ms: result?.latencyMs ?? null,
       orderbook_fetch_status: result?.ok ? "SUCCESS" : "FAILED",
       orderbook_failure_reason: result?.ok ? null : result?.errorCode ?? "UNKNOWN_FAILURE",
@@ -744,6 +766,24 @@ const B_SUPPORT = [
 export function bStrategySupportRegion(family: string): { min: number; max: number } | null {
   const region = B_SUPPORT.find((item) => item.family === family);
   return region ? { min: region.min, max: region.max } : null;
+}
+
+const hasT3Book = (row: FinalT3MarketObservation) => row.orderbook_fetch_status === "SUCCESS" &&
+  typeof row.best_ask === "number" && Number.isFinite(row.best_ask) && row.best_ask > 0 &&
+  typeof row.ask_decimal_odds === "number" && Number.isFinite(row.ask_decimal_odds) && row.ask_decimal_odds > 0;
+
+/**
+ * CANDIDATE authority: the unchanged B support band (family + type + T10 ask
+ * odds band + raw total_corners proof). Shared by the B priority selector and
+ * the T10 economic action policy so both read one boundary.
+ */
+export function isBSupportEligible(row: FinalT3MarketObservation): boolean {
+  return B_SUPPORT.some((support) => row.canonical_market_family === support.family &&
+    row.canonical_market_type === support.type && hasT3Book(row) &&
+    row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max &&
+    (support.family !== "TOTAL_CORNERS" ||
+      (row.provider_market_type_raw?.trim().toLowerCase() === "total_corners" &&
+        classifyExactEventMarket(row.provider_market_type_raw, row.market_slug).family === "TOTAL_CORNERS")));
 }
 
 export function selectReservationT3AbDecisions(

@@ -84,7 +84,20 @@ export function parseOrderBook(
   bids.sort((a, b) => b.price - a.price);
   asks.sort((a, b) => a.price - b.price);
 
-  return { tokenId, bids, asks, raw };
+  // Execution metadata the provider already ships on /book. Kept only when a
+  // positive finite value is present; anything else stays null (never invented).
+  const positive = (v: unknown): number | null => {
+    const n = toFiniteNumber(v);
+    return n !== null && n > 0 ? n : null;
+  };
+  const tick = positive(obj.tick_size);
+  return {
+    tokenId, bids, asks,
+    tickSize: tick !== null && tick < 1 ? tick : null,
+    minimumOrderSize: positive(obj.min_order_size),
+    providerTimestampMs: positive(obj.timestamp),
+    raw,
+  };
 }
 
 /** Best (highest) bid and best (lowest) ask, or null when a side is empty. */

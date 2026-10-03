@@ -14,7 +14,8 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash, randomUUID } from "crypto";
-import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, createFinalT3ReadPort, createReservationStrategyDecisionStore, persistLiveGuardTelemetry, readCompletedFinalT3Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, createFinalT3ReadPort, createReservationStrategyDecisionStore, persistLiveGuardTelemetry, readCompletedFinalT3Universe, readCompletedT30Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { decideT10EconomicEvent, isT10EconomicActivationOn, reverifySelectedAction, T10_ECONOMIC_TAKER_SELECTION_REASON } from "./t10EconomicActivation";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   physicalIdUnderStoredFormat,
@@ -59,7 +60,7 @@ import {
 } from "./executableMarketIdentity";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
-import { fetchOrderBook } from "@/lib/liquidity/polymarketClient";
+import { fetchOrderBook, fetchTokenFeeSchedule, type TokenFeeScheduleResult } from "@/lib/liquidity/polymarketClient";
 import { computeSpread, getBestBidAsk } from "@/lib/liquidity/orderbookMath";
 import type { FetchOrderBookResult } from "@/lib/liquidity/types";
 
@@ -1577,6 +1578,7 @@ async function selectQueueRowFromT3FinalIdentity(
   fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>,
   recordDecision: typeof recordReservationStrategyDecision,
   writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>,
+  economic?: T10EconomicActivationDeps,
 ): Promise<DueReservationSelection> {
   let decisions: ReturnType<typeof selectReservationT3AbDecisions>;
   try {
@@ -1585,6 +1587,12 @@ async function selectQueueRowFromT3FinalIdentity(
     await recordDecision(decisions.b);
   } catch {
     return { outcome: "SKIPPED", reason: "T3_AB_DECISION_OR_PERSISTENCE_FAILED", queueRow: null };
+  }
+  // Activation ON: the T10 economic action policy is the money-selection authority; B priority is
+  // recorded above as the comparison arm only. Activation OFF: released path below, unchanged.
+  if (economic) {
+    return selectQueueRowFromT10EconomicAction(reservation, universe, decisions.b, rebalanceRunId, nowMs,
+      fetchExactTokenOrderbook, economic, writeGuardTelemetry);
   }
   const live = decisions.b;
   if (!live.selectedIdentity) return { outcome: "SKIPPED", reason: `T3_B_SKIP:${live.decisionReason}`, queueRow: null };
@@ -1672,6 +1680,118 @@ async function selectQueueRowFromT3FinalIdentity(
     },
   };
   return { outcome: "QUEUED", reason: row.selection_reason ?? "T3_AB_FINAL_IDENTITY_GUARDED_V1", queueRow: row };
+}
+
+/** Present only when T10_ECONOMIC_ACTION_ACTIVATION=ON. */
+type T10EconomicActivationDeps = {
+  readT30Universe: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
+  fetchTokenFeeSchedule: (tokenId: string) => Promise<TokenFeeScheduleResult>;
+  /** Existing exposure authority: a non-terminal Queue row already exists for this Reservation. */
+  exposureExists: boolean;
+};
+
+/**
+ * T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1 -- activation ON path.
+ * All supported T10 siblings compete under the frozen economic policy; exactly one action or SKIP.
+ * The selected action is re-verified against a fresh exact-token book (LIVE_GUARD for the frozen
+ * action; raw spread is telemetry, not authority) and frozen onto ONE immutable Queue row.
+ */
+async function selectQueueRowFromT10EconomicAction(
+  reservation: NightEventReservationRow,
+  universe: readonly FinalT3MarketObservation[],
+  bComparison: { selectedIdentity: { conditionId: string; tokenId: string; side: string } | null; decisionReason: string; captureRunId: string; strategyVersion: string },
+  rebalanceRunId: string,
+  nowMs: number,
+  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>,
+  economic: T10EconomicActivationDeps,
+  writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>,
+): Promise<DueReservationSelection> {
+  const physicalEventId = reservation.physical_event_id;
+  const eventStartIso = reservation.event_start_iso;
+  if (!physicalEventId || !eventStartIso || !Number.isFinite(Date.parse(eventStartIso)) ||
+      universe.some((row) => row.physical_event_id !== physicalEventId || Date.parse(row.event_start_iso) !== Date.parse(eventStartIso))) {
+    return { outcome: "SKIPPED", reason: "T10_ECON_EVENT_LINEAGE_MISMATCH", queueRow: null };
+  }
+  // The Reservation-level planning authorization still applies (it never names the money market here).
+  const policy = reservation.diagnostics?.planning_policy_verdict as { allowed?: boolean } | undefined;
+  if (policy && policy.allowed !== true) return { outcome: "SKIPPED", reason: "PLANNING_MARKET_POLICY_NOT_ALLOWED", queueRow: null };
+  let t30: FinalT3MarketObservation[] | null = null;
+  try { t30 = await economic.readT30Universe(reservation); } catch { t30 = null; }
+  const event = await decideT10EconomicEvent({
+    physicalEventId, eventStartIso, t10Universe: universe, t30Universe: t30, nowMs,
+    exposureExists: economic.exposureExists,
+    deps: { fetchExactTokenOrderbook, fetchTokenFeeSchedule: economic.fetchTokenFeeSchedule },
+  });
+  const guard = await reverifySelectedAction({ event, nowMs, exposureExists: economic.exposureExists, fetchExactTokenOrderbook });
+  const sel = event.decision.selected;
+  if (sel && reservation.id && writeGuardTelemetry) {
+    const ev = guard.evidence;
+    const cap = guard.contract?.taker?.price_limit ?? guard.contract?.maker?.maker_limit_price ?? QUEUE_MAX_ENTRY_PRICE;
+    try {
+      await writeGuardTelemetry(reservation, {
+        attemptId: randomUUID(), observedAt: ev?.observedAtIso ?? new Date(nowMs).toISOString(),
+        conditionId: sel.candidateIdentity.conditionId, tokenId: sel.candidateIdentity.tokenId, side: sel.candidateIdentity.side,
+        marketSlug: universe.find((r) => r.token_id === sel.candidateIdentity.tokenId && r.side === sel.candidateIdentity.side)?.market_slug ?? null,
+        referenceEntryPrice: sel.priceAuthority.pBuyMax ?? 0, executionPriceCap: cap, requestedStakeUsd: EXECUTABLE_STAKE_USD,
+        pass: guard.ok, rejectionReason: guard.ok ? null : guard.reason,
+        fetchStatus: ev?.ok ? "SUCCESS" : "FETCH_FAILED", fetchFailureReason: ev?.ok ? null : ev?.errorCode ?? null,
+        fetchLatencyMs: ev?.latencyMs ?? null, bestBid: ev?.bestBid ?? null, bestAsk: ev?.bestAsk ?? null, spread: ev?.spread ?? null,
+        capEligibleAskDepthUsd: guard.contract?.taker?.full_stake_depth_usd_at_limit ?? ev?.capDepthUsd ?? null,
+        fullStakeExecutableVwap: guard.contract?.taker?.authorized_raw_vwap ?? null,
+      });
+    } catch { console.error("[live-guard-telemetry] persistence failed"); }
+  }
+  if (!guard.ok) return { outcome: "SKIPPED", reason: guard.reason, queueRow: null };
+  const contract = guard.contract;
+  // Only TAKER_FIRST can reach here while IRELAND_PRIMARY_MAKER_CONTRACT_SUPPORTED is false.
+  if (contract.execution_mode !== "TAKER_FIRST" || !contract.taker) {
+    return { outcome: "SKIPPED", reason: "T10_ECON_UNSUPPORTED_EXECUTION_MODE", queueRow: null };
+  }
+  const observation = universe.find((r) => r.condition_id === contract.condition_id && r.token_id === contract.token_id && r.side === contract.side);
+  if (!observation) return { outcome: "SKIPPED", reason: "T10_ECON_SELECTED_IDENTITY_NOT_IN_UNIVERSE", queueRow: null };
+  const identity = { condition_id: contract.condition_id, token_id: contract.token_id, side: contract.side };
+  const { orderKey, idempotencyKey } = queueIdentityKeys(reservation, identity);
+  const startMs = Date.parse(eventStartIso);
+  const finalIdentity = Object.freeze({
+    physical_event_id: physicalEventId, event_start: eventStartIso, capture_run_id: observation.capture_run_id,
+    ...identity, canonical_market_family: observation.canonical_market_family,
+    canonical_market_type: observation.canonical_market_type,
+    strategy_variant: contract.execution_policy_version, decision_timestamp: new Date(nowMs).toISOString(),
+    selection_reason: event.decision.reason,
+  });
+  const row: EventExecutionQueueRow = {
+    reservation_id: reservation.id ?? null, plan_run_id: reservation.plan_run_id, rebalance_run_id: rebalanceRunId,
+    match_family_key: reservation.match_family_key, event_title: reservation.event_title, event_slug: reservation.event_slug,
+    sport: reservation.sport, league: reservation.league, game_start_iso: eventStartIso,
+    ...identity, market_slug: observation.market_slug ?? null, market_title: observation.market_slug ?? null,
+    market_family: observation.canonical_market_family, score: null, coverage: null,
+    tier: reservation.event_tier ?? EXECUTABLE_TIER, stake_usd: EXECUTABLE_STAKE_USD,
+    preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: contract.latest_entry_iso,
+    selection_rank: reservation.reservation_rank ?? 1, selection_reason: T10_ECONOMIC_TAKER_SELECTION_REASON,
+    status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
+    diagnostics: {
+      physical_event_id: physicalEventId, event_start_iso: eventStartIso,
+      final_identity: finalIdentity, live_strategy: contract.execution_policy_version,
+      shadow_strategy: "B_FOUR_MARKET_PRIORITY_V1",
+      current_b_comparison: { selected_identity: bComparison.selectedIdentity, decision_reason: bComparison.decisionReason },
+      planning_final_identity_evidence: reservation.diagnostics?.planning_final_identity_evidence ?? null,
+      source_lineage: reservation.diagnostics?.source_lineage ?? null,
+      model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
+      // Ireland price authority: the fee-inclusive TAKER limit, always <= P_BUY_MAX <= 0.54.
+      max_entry_price: contract.taker.price_limit, entry_price: contract.taker.authorized_raw_vwap,
+      stake_guard_usd: EXECUTABLE_STAKE_USD, max_stake_usd: QUEUE_MAX_STAKE_USD,
+      source_authority: "T10_ECONOMIC_ACTION_POLICY",
+      current_executable_price: contract.taker.authorized_raw_vwap,
+      current_executable_depth_usd: contract.taker.full_stake_depth_usd_at_limit,
+      current_spread: contract.spread_telemetry,
+      orderbook_refresh_at: contract.execution_book_observed_at,
+      orderbook_refresh_latency_ms: contract.execution_book_latency_ms,
+      t10_economic_action_v1: contract,
+      mechanical_guard_trace: ["T3_AB_PERSISTED", "T10_ECONOMIC_POLICY_SELECTED", "EXACT_TOKEN_REFETCHED",
+        "TICK_UNCHANGED", "FULL_STAKE_AT_LIMIT", "EFFECTIVE_COST_LE_P_BUY_MAX", "HARD_CAP_OK", "DEADLINE_OK", "EXPOSURE_CLEAR"],
+    },
+  };
+  return { outcome: "QUEUED", reason: T10_ECONOMIC_TAKER_SELECTION_REASON, queueRow: row };
 }
 
 /**
@@ -2012,6 +2132,10 @@ export async function runEventRebalance(
     readFinalT3Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
     recordStrategyDecision?: typeof recordReservationStrategyDecision;
     onFinalIdentityAttempt?: () => void;
+    /** Rollback switch override; omitted => T10_ECONOMIC_ACTION_ACTIVATION env ("ON" only). */
+    t10EconomicActivation?: boolean;
+    readT30Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
+    fetchTokenFeeSchedule?: (tokenId: string) => Promise<TokenFeeScheduleResult>;
   } = {}
 ): Promise<RebalanceRunResult> {
   const { deps, runtimeClient, readFinalT3Universe, persistTelemetry, recordStrategyDecision } = bindRuntimeDefaults(rawDeps);
@@ -2037,6 +2161,11 @@ export async function runEventRebalance(
       ? (reservation: NightEventReservationRow) => repo.loadFinalIdentitySourceRows!(reservation)
       : null);
   const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? ((tokenId: string) => fetchOrderBook(tokenId));
+  const t10EconomicActivation = deps.t10EconomicActivation ?? isT10EconomicActivationOn();
+  const readT30Universe = deps.readT30Universe ?? (runtimeClient
+    ? (reservation: NightEventReservationRow) => readCompletedT30Universe(reservation, createFinalT3ReadPort(runtimeClient))
+    : readCompletedT30Universe);
+  const readFeeSchedule = deps.fetchTokenFeeSchedule ?? ((tokenId: string) => fetchTokenFeeSchedule(tokenId));
 
   // Due reservations: active status + start within the rebalance window.
   const all = await repo.loadActiveReservations();
@@ -2227,6 +2356,10 @@ export async function runEventRebalance(
             reservation, finalSiblingUniverse, rebalanceRunId, nowMs, fetchExactTokenOrderbook,
             recordStrategyDecision,
             deps.writeGuardTelemetry ?? (!deps.repo ? persistTelemetry : undefined),
+            t10EconomicActivation ? {
+              readT30Universe, fetchTokenFeeSchedule: readFeeSchedule,
+              exposureExists: Boolean(reservation.id && alreadyQueued.has(reservation.id)),
+            } : undefined,
           )
         : manifestResolution?.kind === "SUPPORTED"
         ? await selectQueueRowFromReservationCandidateManifest(
