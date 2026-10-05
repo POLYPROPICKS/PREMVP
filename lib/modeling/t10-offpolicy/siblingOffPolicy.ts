@@ -101,6 +101,11 @@ export type ExecutabilityState =
 
 export type ExecutabilityClass = { state: ExecutabilityState; source: ExecutabilitySource; conclusive: boolean };
 
+const TELEMETRY_STATES: ReadonlySet<string> = new Set([
+  "EXECUTABLE", "NOT_EXECUTABLE_MIN_ORDER_SIZE", "NOT_EXECUTABLE_DEPTH_AT_CAP",
+  "UNKNOWN_BOOK_UNAVAILABLE", "UNKNOWN_MIN_ORDER_SIZE", "UNKNOWN_TELEMETRY_COMPUTE_FAILED",
+]);
+
 /**
  * Telemetry rows carry the authoritative state. Older rows only persisted the top of book, so the verdicts that are
  * CONCLUSIVE from it are the blocked ones (best ask above the cap leaves no ask <= cap; a fill's VWAP is >= the best
@@ -109,6 +114,8 @@ export type ExecutabilityClass = { state: ExecutabilityState; source: Executabil
  */
 export function classifyExecutability(row: SiblingObservationRow, stakeUsd = QUEUE_DEFAULT_STAKE_USD, cap = QUEUE_MAX_ENTRY_PRICE): ExecutabilityClass {
   if (row.executable_telemetry_version === T10_EXECUTABLE_TELEMETRY_VERSION && typeof row.executable_full_stake_state === "string") {
+    // An unrecognized state string is never a verdict: it is a non-conclusive compute failure.
+    if (!TELEMETRY_STATES.has(row.executable_full_stake_state)) return { state: "UNKNOWN_TELEMETRY_COMPUTE_FAILED", source: "TELEMETRY_V1", conclusive: false };
     return { state: row.executable_full_stake_state as ExecutabilityState, source: "TELEMETRY_V1", conclusive: !row.executable_full_stake_state.startsWith("UNKNOWN") };
   }
   const proxy = (state: ExecutabilityState, conclusive: boolean): ExecutabilityClass => ({ state, source: "PERSISTED_BOOK_PROXY", conclusive });
@@ -172,12 +179,22 @@ export function buildOffPolicyDataset(
   stakeUsd = QUEUE_DEFAULT_STAKE_USD,
   cap = QUEUE_MAX_ENTRY_PRICE,
 ): OffPolicyDatasetRow[] {
-  return rows.filter(isSupportedSibling).map((row) => {
+  const supported = rows.filter(isSupportedSibling);
+  // One provider market (condition_id) settles once. If the captured universe attributes it to more than one physical
+  // event, its exposure cannot be assigned to ONE physical event: IDENTITY_NOT_PROVEN, excluded from results and counted.
+  const eventsByCondition = new Map<string, Set<string>>();
+  for (const r of supported) (eventsByCondition.get(r.condition_id) ?? eventsByCondition.set(r.condition_id, new Set()).get(r.condition_id)!).add(r.physical_event_id);
+  return supported.map((row) => {
     const exec = classifyExecutability(row, stakeUsd, cap);
-    const settlement = settlementByKey.get(keyOf(row)) ?? { state: "SOURCE_UNAVAILABLE" as const, reason: "NOT_RESOLVED_BY_RUN", winningTokenId: null };
+    const multiEvent = (eventsByCondition.get(row.condition_id)?.size ?? 0) > 1;
+    const settlement: SiblingSettlement = multiEvent
+      ? { state: "IDENTITY_NOT_PROVEN", reason: "CONDITION_ATTRIBUTED_TO_MULTIPLE_PHYSICAL_EVENTS", winningTokenId: null }
+      : settlementByKey.get(keyOf(row)) ?? { state: "SOURCE_UNAVAILABLE", reason: "NOT_RESOLVED_BY_RUN", winningTokenId: null };
     const vwapOk = exec.source === "TELEMETRY_V1" && exec.state === "EXECUTABLE" && num(row.full_stake_executable_vwap) && row.full_stake_executable_vwap > 0 && row.full_stake_executable_vwap < 1;
     const bookPrice = row.orderbook_fetch_status === "SUCCESS" && num(row.best_ask) && row.best_ask > 0 && row.best_ask < 1 ? row.best_ask : null;
-    const price = vwapOk ? (row.full_stake_executable_vwap as number) : bookPrice;
+    // A telemetry row that claims EXECUTABLE without a valid VWAP is unpriced (excluded), never silently re-priced at the ask.
+    const telemetryExecutableWithoutVwap = exec.source === "TELEMETRY_V1" && exec.state === "EXECUTABLE" && !vwapOk;
+    const price = vwapOk ? (row.full_stake_executable_vwap as number) : telemetryExecutableWithoutVwap ? null : bookPrice;
     const feeKnown = row.taker_fee_state === "KNOWN" && num(row.taker_fee_usd);
     let gross: number | null = null;
     if (price !== null) {
@@ -276,14 +293,14 @@ export function evaluateView(dataset: readonly OffPolicyDatasetRow[], view: Eval
   const last = dates[dates.length - 1] ?? null;
   const days = daysBetween(first, last);
   const population = settledPriced.filter((r) => viewIncludes(view, r));
-  const byKey = new Map(population.map((r) => [`${r.physical_event_id}|${r.condition_id}|${r.token_id}`, r]));
+  const byKey = new Map(population.map((r) => [`${r.physical_event_id}|${r.condition_id}|${r.token_id}|${r.decision_at}`, r]));
   const input = population.map(toEngineInput);
 
   return models.map((model) => {
     const result: ModelResult = runModel(model, input);
     // The frozen membership predicate itself (price band / sport family); the outcome never enters it.
     const predicate = (e: ResearchEngineInputEvent) => getFrozenModel(model).predicate(evaluateEvent(e));
-    const selectedRows = result.selectedBets.map((b: SelectedBet) => byKey.get(`${b.physicalEventKey}|${b.ref}|${b.candidateRef}`) as OffPolicyDatasetRow);
+    const selectedRows = result.selectedBets.map((b: SelectedBet) => byKey.get(`${b.physicalEventKey}|${b.ref}|${b.candidateRef}|${b.decisionTimestamp}`) as OffPolicyDatasetRow);
     const sportMix: Record<string, number> = {};
     const execMix: Record<string, number> = {};
     for (const r of selectedRows) {

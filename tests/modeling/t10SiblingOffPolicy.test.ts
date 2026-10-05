@@ -56,6 +56,11 @@ test("executability: a telemetry row's own state is authoritative", () => {
   assert.equal(u.conclusive, false);
 });
 
+test("executability: an unrecognized telemetry state string is a non-conclusive failure, never a verdict", () => {
+  const c = classifyExecutability(row({ executable_telemetry_version: T10_EXECUTABLE_TELEMETRY_VERSION, executable_full_stake_state: "SOMETHING_NEW" }));
+  assert.deepEqual(c, { state: "UNKNOWN_TELEMETRY_COMPUTE_FAILED", source: "TELEMETRY_V1", conclusive: false });
+});
+
 const win = (): SiblingSettlement => ({ state: "SETTLED_WIN", reason: "PROVIDER_RESOLVED", winningTokenId: "t1" });
 const loss = (): SiblingSettlement => ({ state: "SETTLED_LOSS", reason: "PROVIDER_RESOLVED", winningTokenId: "t2" });
 const unresolved = (): SiblingSettlement => ({ state: "UNRESOLVED", reason: "MARKET_OPEN", winningTokenId: null });
@@ -95,6 +100,24 @@ test("dataset: telemetry-proven rows price at the VWAP and carry a known fee; a 
   const [missing] = buildOffPolicyDataset([row()], new Map());
   assert.equal(missing.settlement_state, "SOURCE_UNAVAILABLE");
   assert.equal(missing.offpolicy_gross_pnl_usd, null);
+});
+
+test("identity: one provider market attributed to two physical events is IDENTITY_NOT_PROVEN for BOTH (never two exposures); a telemetry EXECUTABLE row without a valid VWAP is unpriced", () => {
+  const rows = [
+    row({ physical_event_id: "evA", condition_id: "shared", token_id: "s1", best_ask: 0.5 }),
+    row({ physical_event_id: "evB", condition_id: "shared", token_id: "s1", best_ask: 0.5, event_start_iso: "2026-10-05T12:00:00.000Z", observed_at: "2026-10-05T11:50:00.000Z" }),
+    row({ physical_event_id: "evA", condition_id: "own", token_id: "o1", best_ask: 0.5 }),
+    row({ physical_event_id: "evA", condition_id: "tv", token_id: "v1", best_ask: 0.5, executable_telemetry_version: T10_EXECUTABLE_TELEMETRY_VERSION, executable_full_stake_state: "EXECUTABLE", full_stake_executable_vwap: null }),
+  ];
+  const ds = buildOffPolicyDataset(rows, new Map<string, SiblingSettlement>([["shared|s1", win()], ["own|o1", win()], ["tv|v1", win()]]));
+  assert.deepEqual(ds.slice(0, 2).map((d) => [d.settlement_state, d.settlement_reason]), Array(2).fill(["IDENTITY_NOT_PROVEN", "CONDITION_ATTRIBUTED_TO_MULTIPLE_PHYSICAL_EVENTS"]));
+  assert.ok(ds.slice(0, 2).every((d) => d.offpolicy_gross_pnl_usd === null));
+  assert.equal(ds[2].settlement_state, "SETTLED_WIN", "an unshared market is untouched");
+  assert.equal(ds[3].offpolicy_entry_price, null, "EXECUTABLE without a valid VWAP is not re-priced at the ask");
+  assert.equal(ds[3].offpolicy_gross_pnl_usd, null);
+  const [rawC0] = evaluateView(ds, "RAW");
+  assert.equal(rawC0.selected_physical_events_n, 1, "only the unshared sibling is evaluated; the shared market is not double counted");
+  assert.equal(summarizeCoverage(ds).settlement_state_counts.IDENTITY_NOT_PROVEN, 2);
 });
 
 // Two events. ev1: a soccer ML at 0.55 (WIN, above the 0.54 cap) and a cheaper soccer spread at 0.50 (LOSS).

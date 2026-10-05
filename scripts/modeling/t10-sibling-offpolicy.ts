@@ -123,7 +123,9 @@ export async function runSiblingOffPolicy(input: {
     notes: [
       "Frozen engine unchanged: one selected bet per physical event, chronologically first qualifying candidate; ties on the same T10 capture resolve to the LOWEST entry price.",
       "RAW = every supported sibling priced at its T10 best ask, ignoring the 0.54 cap / min order size / depth. It is NOT an executable return.",
-      "EXECUTABLE_UPPER_BOUND = RAW minus siblings conclusively blocked at T10 (best ask above the 0.54 cap; min order size unmet at the best ask). Pre-telemetry rows never persisted the ask ladder, so depth/VWAP/fee are unknown there: this is an upper bound.",
+      "EXECUTABLE_UPPER_BOUND = siblings proven executable by telemetry, plus siblings whose executability is unknown ONLY for lack of persisted evidence (ask ladder depth, or minimum order size). Conclusively blocked siblings (best ask above the 0.54 cap; min order size unmet at the best ask) and telemetry failures (book unavailable / compute failed) are excluded. Pre-telemetry rows never persisted the ask ladder, so depth/VWAP/fee are unknown there: this is an upper bound.",
+      "A provider market (condition_id) attributed to more than one physical event is IDENTITY_NOT_PROVEN and excluded from results (counted); one market never counts as two exposures.",
+      "Selection runs over settled, priced siblings only: an unresolved lower-priced sibling cannot be chosen, so the unresolved counts are siblings (not events) and may shift which sibling a model would have picked.",
       "EXECUTABLE_PROVEN = only siblings whose T10_EXECUTABLE_SIBLING_TELEMETRY_V1 state is EXECUTABLE (zero before the telemetry release).",
       "Unresolved / void / identity-unproven / source-unavailable siblings are excluded from results and counted; none is converted to a loss.",
       "PnL is gross (fee-excluded); fee is KNOWN only on telemetry rows.",
