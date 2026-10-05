@@ -1854,6 +1854,8 @@ async function selectQueueRowFromT10EconomicAction(
       orderbook_refresh_at: contract.execution_book_observed_at,
       orderbook_refresh_latency_ms: contract.execution_book_latency_ms,
       t10_economic_action_v1: contract,
+      // Per-action support-band audit: TAKER from the executable current ask, MAKER from maker_limit.
+      t10_support_audit_v1: sel?.support ?? null,
       mechanical_guard_trace: taker
         ? ["T3_AB_PERSISTED", "T10_ECONOMIC_POLICY_SELECTED", "EXACT_TOKEN_REFETCHED", "TICK_UNCHANGED",
           "FULL_STAKE_AT_LIMIT", "EFFECTIVE_COST_LE_P_BUY_MAX", "HARD_CAP_OK", "MIN_ORDER_SIZE_OK", "DEADLINE_OK", "EXPOSURE_CLEAR"]

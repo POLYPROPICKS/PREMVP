@@ -59,9 +59,10 @@ import {
   type StakeAuthorization,
 } from "./executorQueueTypes";
 import { latestEntryIso } from "./nightWindow";
-import { isBSupportEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
+import { bStrategySupportRegion, isBSupportEligible, isBSupportFamilyEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
 import {
   decideEventAction,
+  evaluateMakerSupportPrice,
   PRICE_AUTHORITY_VERSION,
   t30ExactBidAnchor,
   T10_ECONOMIC_ACTION_POLICY_VERSION,
@@ -274,10 +275,13 @@ export async function decideT10EconomicEvent(input: {
     const evidence = [referenceEvidence(row, "T10_BOOK"), ...(t30Evidence ? [t30Evidence] : [])];
     const reference = evaluateExactMarketReference(identity, evidence);
     const priceAuthority = t30ExactBidAnchor(identity, t30Evidence, cap);
-    const supportEligible = isBSupportEligible(row);
-    const competes = supportEligible && reference.status !== "UNRESOLVED" && priceAuthority.available &&
+    // Family/type admission is price-agnostic: a candidate whose CURRENT ASK sits outside the band may still
+    // be a safe MAKER (the band is proven per action, on the price actually transacted).
+    const supportFamilyEligible = isBSupportFamilyEligible(row);
+    const takerSupportEligible = isBSupportEligible(row);
+    const competes = supportFamilyEligible && reference.status !== "UNRESOLVED" && priceAuthority.available &&
       beforeLatestEntry && !input.exposureExists;
-    return { row, identity, t30Evidence, reference, priceAuthority, supportEligible, competes };
+    return { row, identity, t30Evidence, reference, priceAuthority, supportFamilyEligible, takerSupportEligible, competes };
   });
 
   const executions = new Map<string, CandidateExecution>();
@@ -318,7 +322,8 @@ export async function decideT10EconomicEvent(input: {
     });
     return {
       identity: b.identity, family: b.row.canonical_market_family ?? "",
-      supportEligible: b.supportEligible, reference: b.reference, t30Evidence: b.t30Evidence,
+      supportFamilyEligible: b.supportFamilyEligible, takerSupportEligible: b.takerSupportEligible,
+      supportBand: bStrategySupportRegion(b.row.canonical_market_family ?? ""), reference: b.reference, t30Evidence: b.t30Evidence,
       t10: ev ? {
         bestBid: ev.bestBid, bestAsk: ev.bestAsk, bookFresh: ev.ok, observedAtMs: Date.parse(ev.observedAtIso),
         askLevels, feeUsdForFullStake, tickSize: ev.tickSize, askDepthUsd: ev.capDepthUsd,
@@ -491,6 +496,9 @@ export async function reverifySelectedAction(input: {
   }
   const makerLimit = makerLimitPrice(pBuyMax, ev.bestAsk, ev.tickSize, cap);
   if (makerLimit === null) return fail("T10_ECON_GUARD_MAKER_LIMIT_INVALID", null, ev);
+  // MAKER support is re-proven on the refreshed limit (never the ask): <= P_BUY_MAX, <= 0.54, inside the band.
+  const makerSupport = evaluateMakerSupportPrice(makerLimit, pBuyMax, cap, bStrategySupportRegion(sel.candidateIdentity.family));
+  if (!makerSupport.ok) return fail(`T10_ECON_GUARD_${makerSupport.reason}: limit=${makerLimit}`, null, ev);
   const requiredShares = ceilShares(minOrder);
   const requiredNotional = r6(requiredShares * makerLimit);
   let authorized = stake;

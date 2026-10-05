@@ -6,7 +6,10 @@
 // TAKER_FIRST | MAKER_FIRST | SKIP.
 //
 // Three separate authorities (never conflated):
-//   CANDIDATE authority  - `supportEligible` (the unchanged B support bands, decided by the caller).
+//   CANDIDATE authority  - FAMILY/TYPE admission (`supportFamilyEligible`, price-agnostic) plus an
+//                          ACTION-SPECIFIC support price proof against the canonical family band:
+//                          TAKER = current executable ask (initial) and the executed VWAP (final);
+//                          MAKER = the maker limit PREMVP would actually bid (never the current ask).
 //   PRICE authority      - T30_EXACT_BID_ANCHOR_V1: how much PREMVP may pay.
 //   EXECUTION authority  - TAKER needs full-stake ask-ladder evidence + fee evidence; MAKER needs a tick.
 //
@@ -35,11 +38,17 @@ export const PRICE_AUTHORITY_VERSION = "T30_EXACT_BID_ANCHOR_V1" as const;
 export type ShadowAction = "TAKER_FIRST" | "MAKER_FIRST" | "SKIP";
 export type AskLevel = { price: number; sizeShares: number };
 
+export type SupportBand = { min: number; max: number };
+
 export type PolicyCandidateInput = {
   identity: ExactMarketIdentity;
   family: string;
-  /** CANDIDATE authority: inside the unchanged B support band for the family. */
-  supportEligible: boolean;
+  /** CANDIDATE authority (price-agnostic): family/type/book proof only. Gates both TAKER and MAKER. */
+  supportFamilyEligible: boolean;
+  /** Canonical support band of the family (one authority: bStrategySupportRegion). null => unsupported family. */
+  supportBand: SupportBand | null;
+  /** TAKER initial support evidence: the current executable ask lies inside the band (caller-decided). */
+  takerSupportEligible: boolean;
   /** Result of evaluateExactMarketReference for this exact token. */
   reference: ExactMarketReference;
   /** Identity-exact T30 book observation of this token; anything else yields no price authority. */
@@ -65,6 +74,15 @@ export type PolicyCandidateInput = {
   exposureExists: boolean;
 };
 
+export type SupportAudit = {
+  /** The price the band was proven against for this action (null when not reached). */
+  SUPPORT_PRICE: number | null;
+  /** 1 / SUPPORT_PRICE. */
+  SUPPORT_DECIMAL_ODDS: number | null;
+  /** Band verdict for this action's price. */
+  SUPPORT_PRICE_IN_BAND: boolean | null;
+};
+
 export type PolicyEvaluation = {
   policyVersion: typeof T10_ECONOMIC_ACTION_POLICY_VERSION;
   candidateIdentity: ExactMarketIdentity & { family: string };
@@ -77,6 +95,13 @@ export type PolicyEvaluation = {
     available: boolean;
     pBuyMax: number | null;
     reason: string;
+  };
+  /** Auditable support evidence, separated per action. Scalars only. */
+  support: {
+    SUPPORT_BAND_MIN: number | null;
+    SUPPORT_BAND_MAX: number | null;
+    taker: SupportAudit & { TAKER_SUPPORT_PRICE_SOURCE: "EXECUTABLE_CURRENT_ASK" };
+    maker: SupportAudit & { MAKER_SUPPORT_PRICE_SOURCE: "MAKER_LIMIT" };
   };
   taker: {
     eligible: boolean;
@@ -138,6 +163,23 @@ export function t30ExactBidAnchor(identity: ExactMarketIdentity, evidence: Refer
     pBuyMax: r6(Math.min(evidence.bestBid, hardCap)), reason: "T30_EXACT_BID_ANCHOR" };
 }
 
+const oddsOf = (price: number | null): number | null => (num(price) && price > 0 ? r6(1 / price) : null);
+export const priceInBand = (price: number | null, band: SupportBand | null): boolean =>
+  band !== null && num(price) && price > 0 && 1 / price >= band.min - EPS && 1 / price <= band.max + EPS;
+
+/**
+ * MAKER price proof: the limit PREMVP would bid must itself be authorised (<= P_BUY_MAX, <= hard cap) and its
+ * decimal odds must lie inside the canonical family band. Fails closed; never reads the current ask.
+ */
+export function evaluateMakerSupportPrice(limit: number, pBuyMax: number, cap: number, band: SupportBand | null):
+  { ok: boolean; reason: string | null } {
+  if (!num(limit) || !(limit > 0)) return { ok: false, reason: "MAKER_LIMIT_NOT_POSITIVE" };
+  if (!num(pBuyMax) || limit > pBuyMax + EPS) return { ok: false, reason: "MAKER_ABOVE_P_BUY_MAX" };
+  if (!num(cap) || limit > cap + EPS) return { ok: false, reason: "MAKER_ABOVE_PRICE_CAP" };
+  if (!priceInBand(limit, band)) return { ok: false, reason: "MAKER_SUPPORT_PRICE_OUTSIDE_BAND" };
+  return { ok: true, reason: null };
+}
+
 export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEvaluation {
   const stake = input.stakeUsd ?? QUEUE_DEFAULT_STAKE_USD;
   const cap = input.hardCap ?? QUEUE_MAX_ENTRY_PRICE;
@@ -152,9 +194,16 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
     priceAdvantageVsAnchor: null, rejectReason: null };
   const maker: PolicyEvaluation["maker"] = { eligible: false, limitPrice: null, ticksToAsk: null, cushionVsAnchor: null,
     meaningfulBidGuard: num(t10.meaningfulBestBid) ? "PASSED" : "NOT_PROVEN", rejectReason: null };
+  const band = input.supportBand;
+  const support: PolicyEvaluation["support"] = {
+    SUPPORT_BAND_MIN: band?.min ?? null, SUPPORT_BAND_MAX: band?.max ?? null,
+    taker: { TAKER_SUPPORT_PRICE_SOURCE: "EXECUTABLE_CURRENT_ASK", SUPPORT_PRICE: num(ask) ? ask : null,
+      SUPPORT_DECIMAL_ODDS: oddsOf(num(ask) ? ask : null), SUPPORT_PRICE_IN_BAND: null },
+    maker: { MAKER_SUPPORT_PRICE_SOURCE: "MAKER_LIMIT", SUPPORT_PRICE: null, SUPPORT_DECIMAL_ODDS: null, SUPPORT_PRICE_IN_BAND: null },
+  };
 
   const gate = status === "UNRESOLVED" ? "REFERENCE_UNRESOLVED"
-    : !input.supportEligible ? "NOT_SUPPORT_ELIGIBLE"
+    : !input.supportFamilyEligible ? "NOT_SUPPORT_ELIGIBLE"
     : !priceAuthority.available ? "PRICE_AUTHORITY_UNAVAILABLE"
     : input.exposureExists ? "EXPOSURE_EXISTS"
     : !input.beforeLatestEntry ? "AFTER_LATEST_ENTRY"
@@ -164,14 +213,21 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
     taker.rejectReason = maker.rejectReason = gate;
   } else {
     // ---- TAKER: STRONG only; full-stake ladder + fee evidence required, else recorded as missing. ----
-    if (status !== "STRONG") taker.rejectReason = "TAKER_REQUIRES_STRONG";
+    support.taker.SUPPORT_PRICE_IN_BAND = input.takerSupportEligible && priceInBand(ask, band);
+    if (!support.taker.SUPPORT_PRICE_IN_BAND) taker.rejectReason = "TAKER_SUPPORT_PRICE_OUTSIDE_BAND";
+    else if (status !== "STRONG") taker.rejectReason = "TAKER_REQUIRES_STRONG";
     else if (!t10.askLevels || t10.askLevels.length === 0) taker.rejectReason = "TAKER_EXECUTION_EVIDENCE_MISSING";
     else {
       const walk = walkAskLevels(t10.askLevels, stake, cap);
       taker.depthUsd = walk.depthUsd;
       if (!walk.filled || walk.rawVwap === null) taker.rejectReason = "TAKER_FULL_STAKE_DEPTH_INSUFFICIENT";
       else if (walk.rawVwap > cap + EPS) taker.rejectReason = "TAKER_ABOVE_PRICE_CAP";
-      else {
+      else if (!priceInBand(walk.rawVwap, band)) {
+        // Final re-proof: the price actually paid must itself lie inside the family band.
+        support.taker.SUPPORT_PRICE = walk.rawVwap; support.taker.SUPPORT_DECIMAL_ODDS = oddsOf(walk.rawVwap);
+        support.taker.SUPPORT_PRICE_IN_BAND = false;
+        taker.rejectReason = "TAKER_SUPPORT_PRICE_OUTSIDE_BAND";
+      } else {
         taker.rawVwap = walk.rawVwap;
         if (taker.feeEvidence === "MISSING") taker.rejectReason = "TAKER_FEE_EVIDENCE_MISSING";
         else {
@@ -189,9 +245,16 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
     else {
       const raw = Math.min(pBuyMax as number, (ask as number) - tick, cap);
       const limit = r6(Math.floor(raw / tick + EPS) * tick);
+      let proof: { ok: boolean; reason: string | null } = { ok: true, reason: null };
+      if (limit > 0 && limit < (ask as number) - EPS) {
+        // MAKER support is proven on the price PREMVP would bid, never on the current ask.
+        support.maker.SUPPORT_PRICE = limit; support.maker.SUPPORT_DECIMAL_ODDS = oddsOf(limit);
+        proof = evaluateMakerSupportPrice(limit, pBuyMax as number, cap, band);
+        support.maker.SUPPORT_PRICE_IN_BAND = proof.reason === "MAKER_SUPPORT_PRICE_OUTSIDE_BAND" ? false : proof.ok ? true : null;
+      }
       if (!(limit > 0)) maker.rejectReason = "MAKER_LIMIT_NOT_POSITIVE";
       else if (!(limit < (ask as number) - EPS)) maker.rejectReason = "MAKER_LIMIT_NOT_BELOW_ASK";
-      else if (limit > cap + EPS) maker.rejectReason = "MAKER_ABOVE_PRICE_CAP";
+      else if (!proof.ok) maker.rejectReason = proof.reason;
       else if (num(t10.meaningfulBestBid) && limit < t10.meaningfulBestBid - EPS) maker.rejectReason = "MAKER_BELOW_MEANINGFUL_BID";
       else {
         maker.eligible = true;
@@ -208,7 +271,7 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
   return {
     policyVersion: T10_ECONOMIC_ACTION_POLICY_VERSION,
     candidateIdentity: { ...input.identity, family: input.family },
-    referenceStatus: status, priceAuthority, taker, maker, shadowAction, reason,
+    referenceStatus: status, priceAuthority, support, taker, maker, shadowAction, reason,
   };
 }
 
