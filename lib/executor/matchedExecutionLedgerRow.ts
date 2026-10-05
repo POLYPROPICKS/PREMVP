@@ -10,6 +10,61 @@ import type { ExecutionReconciliationV1 } from "./executionReconciliation";
 function str(v: unknown): string | null { return typeof v === "string" && v.length > 0 ? v : null; }
 function num(v: unknown): number | null { return typeof v === "number" && isFinite(v) ? v : null; }
 
+export interface LedgerFillEconomics {
+  fill_price: number | null;
+  executed_stake: number | null;
+  fee_paid_real: number | null;
+}
+
+/**
+ * Authoritative ledger fill economics for a MATCHED_CONFIRMED reconciliation (a partial fill is a
+ * MATCHED_CONFIRMED with its own executed notional). Fee is only ever a venue-REPORTED fee; an
+ * unreported/unknown fee stays NULL and is never converted to zero.
+ */
+export function reconciliationLedgerEconomics(reconciliation: ExecutionReconciliationV1): LedgerFillEconomics {
+  if (reconciliation.fill_status !== "MATCHED_CONFIRMED") return { fill_price: null, executed_stake: null, fee_paid_real: null };
+  const notional = num(reconciliation.executed_notional_usd);
+  const price = num(reconciliation.actual_fill_price);
+  return {
+    fill_price: price != null && price > 0 ? price : null,
+    executed_stake: notional != null && notional > 0 ? notional : null,
+    fee_paid_real: reconciliation.fee_status === "REPORTED" ? num(reconciliation.fee_usd) : null,
+  };
+}
+
+export type LedgerFillRepairPlan =
+  | { kind: "NOOP" }
+  | { kind: "UPDATE"; patch: Partial<LedgerFillEconomics> }
+  | { kind: "CONFLICT"; fields: string[] };
+
+// Ledger numerics may be stored at reduced scale; beyond these bounds a difference is a real disagreement.
+const LEDGER_FACT_TOLERANCE: Record<"executed_stake" | "fill_price" | "fee_paid_real", number> = {
+  executed_stake: 0.005, fee_paid_real: 0.005, fill_price: 0.001,
+};
+
+/**
+ * Plans an idempotent repair of existing ledger fill facts from the authoritative reconciliation:
+ * NULL + known fact -> populate; equal -> no-op; non-null conflicting -> CONFLICT (never overwritten).
+ */
+export function planLedgerFillRepair(
+  ledger: Record<string, unknown>,
+  reconciliation: ExecutionReconciliationV1,
+): LedgerFillRepairPlan {
+  const authority = reconciliationLedgerEconomics(reconciliation);
+  const patch: Partial<LedgerFillEconomics> = {};
+  const conflicts: string[] = [];
+  for (const key of ["executed_stake", "fill_price", "fee_paid_real"] as const) {
+    const known = authority[key];
+    if (known == null) continue;
+    const current = ledger[key];
+    if (current == null) { patch[key] = known; continue; }
+    const existing = Number(current);
+    if (!isFinite(existing) || Math.abs(existing - known) > LEDGER_FACT_TOLERANCE[key]) conflicts.push(key);
+  }
+  if (conflicts.length > 0) return { kind: "CONFLICT", fields: conflicts };
+  return Object.keys(patch).length > 0 ? { kind: "UPDATE", patch } : { kind: "NOOP" };
+}
+
 export function buildMatchedExecutionLedgerRow(
   order: Record<string, unknown>,
   source: EventExecutionQueueRow,
@@ -22,9 +77,11 @@ export function buildMatchedExecutionLedgerRow(
     ? order.candidate_snapshot_json as Record<string, unknown> : {};
   const raw = order.raw_event_json && typeof order.raw_event_json === "object"
     ? order.raw_event_json as Record<string, unknown> : {};
+  // Raw callback / telemetry is audit evidence only. Economic facts come from the canonical
+  // ExecutionReconciliationV1: never requested/planned stake, submitted price or queue ceiling.
   const fill = raw.economic_telemetry_v1 && typeof raw.economic_telemetry_v1 === "object"
     ? raw.economic_telemetry_v1 as Record<string, unknown> : raw;
-  const actualFee = fill.fee_source === "CLOB_TRADES" ? num(fill.fee_usd) : null;
+  const economics = reconciliationLedgerEconomics(reconciliation);
   return {
     id: reconciliation.order_event_id,
     policy_version: str(lineage.policy_version),
@@ -44,10 +101,10 @@ export function buildMatchedExecutionLedgerRow(
     game_start_iso: source.game_start_iso,
     signal_entry_price: num(candidate.entry_price) ?? num(diagnostics.entry_price),
     limit_price: num(order.submitted_price),
-    fill_price: num(fill.average_fill_price) ?? num(fill.actual_fill_price) ?? num(fill.filled_price),
+    fill_price: economics.fill_price,
     planned_stake: source.stake_usd,
-    executed_stake: num(fill.executed_notional_usd),
-    fee_paid_real: actualFee,
+    executed_stake: economics.executed_stake,
+    fee_paid_real: economics.fee_paid_real,
     real_slippage_cost: null,
     bet_status: "FILLED",
     exchange_order_id: reconciliation.clob_order_id,
