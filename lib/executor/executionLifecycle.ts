@@ -7,6 +7,7 @@ import {
   type ExecutionReconciliationV1,
 } from "./executionReconciliation";
 import { readEconomicTelemetry } from "./economicTelemetry";
+import { planLedgerFillRepair } from "./matchedExecutionLedgerRow";
 
 export interface ExecutionLifecycleReconciliationOptions {
   writeMode: boolean;
@@ -31,6 +32,8 @@ export interface ExecutionLifecycleEventRow {
 export interface ExecutionLifecycleDbPort {
   loadEvents(options: { eventIds?: string[]; limit: number }): Promise<ExecutionLifecycleEventRow[]>;
   persistEvent(input: { id: string; idempotency_key: string; clob_order_id: string; executor_meta: Record<string, unknown> }): Promise<void>;
+  /** Repairs NULL ledger fill economics from a MATCHED_CONFIRMED reconciliation; CONFLICT = fail closed. */
+  mirrorLedgerFill?(eventId: string, reconciliation: ExecutionReconciliationV1): Promise<"UPDATED" | "NOOP" | "MISSING" | "CONFLICT">;
   mirrorLedgerSettlement?(eventId: string, reconciliation: ExecutionReconciliationV1): Promise<void>;
 }
 
@@ -66,11 +69,20 @@ export async function reconcileExecutionLifecycleWithPort(
   const eventRows = await port.loadEvents({ eventIds: options.eventIds, limit });
   const summary: ExecutionLifecycleReconciliationSummary = { loaded: eventRows.length, eligible: 0, updated: 0, unresolved: 0, conflicts: 0, would_update: 0 };
   const resolver = options.resolver ?? defaultResolver;
+  // Ledger mirror: fill facts first (settlement ROI reads the ledger's executed stake), never needing
+  // market resolution. A conflicting non-null ledger money fact fails closed: no further ledger write.
+  const mirrorLedger = async (eventId: string, reconciliation: ExecutionReconciliationV1, settle: boolean): Promise<void> => {
+    if (!options.writeMode) return;
+    if (reconciliation.fill_status === "MATCHED_CONFIRMED") {
+      if ((await port.mirrorLedgerFill?.(eventId, reconciliation)) === "CONFLICT") { summary.conflicts++; return; }
+    }
+    if (settle) await port.mirrorLedgerSettlement?.(eventId, reconciliation);
+  };
   for (const row of eventRows) {
     const prior = readExecutionReconciliation(row.executor_meta);
     if (!prior) continue;
     if (prior.settlement_status === "SETTLED_RECONCILED") {
-      if (options.writeMode) await port.mirrorLedgerSettlement?.(row.id, prior);
+      await mirrorLedger(row.id, prior, true);
       continue;
     }
     summary.eligible++;
@@ -100,8 +112,7 @@ export async function reconcileExecutionLifecycleWithPort(
       });
     }
     if (JSON.stringify(next) === JSON.stringify(prior)) {
-      if (options.writeMode && (next.result_status === "WON" || next.result_status === "LOST"))
-        await port.mirrorLedgerSettlement?.(row.id, next);
+      await mirrorLedger(row.id, next, next.result_status === "WON" || next.result_status === "LOST");
       continue;
     }
     if (!options.writeMode) { summary.would_update++; continue; }
@@ -111,8 +122,7 @@ export async function reconcileExecutionLifecycleWithPort(
       clob_order_id: prior.clob_order_id,
       executor_meta: mergeExecutionReconciliationMeta(row.executor_meta, next),
     });
-    if (next.result_status === "WON" || next.result_status === "LOST")
-      await port.mirrorLedgerSettlement?.(row.id, next);
+    await mirrorLedger(row.id, next, next.result_status === "WON" || next.result_status === "LOST");
     summary.updated++;
   }
   return summary;
@@ -163,6 +173,22 @@ function createSupabaseExecutionLifecyclePort(supabase: any): ExecutionLifecycle
       const { data, error } = await supabase.from("executor_order_events").update({ executor_meta: input.executor_meta }).eq("id", input.id).eq("idempotency_key", input.idempotency_key).eq("clob_order_id", input.clob_order_id).select("id").single();
       if (error || !data) throw new Error("EXECUTION_RECONCILIATION_UPDATE_FAILED");
     },
+    async mirrorLedgerFill(eventId, reconciliation) {
+      const { data: ledger, error: readError } = await supabase.from("bet_execution_ledger")
+        .select("id,executed_stake,fill_price,fee_paid_real").eq("id", eventId).maybeSingle();
+      if (readError) throw new Error(`LEDGER_FILL_READ_FAILED: ${readError.message}`);
+      // Never create a ledger row here; the callback path owns materialization.
+      if (!ledger) return "MISSING";
+      const plan = planLedgerFillRepair(ledger as Record<string, unknown>, reconciliation);
+      if (plan.kind !== "UPDATE") return plan.kind;
+      // Guard each populated column with IS NULL so a concurrent writer is never overwritten.
+      let query = supabase.from("bet_execution_ledger").update(plan.patch).eq("id", eventId);
+      for (const key of Object.keys(plan.patch)) query = query.is(key, null);
+      const { data: written, error: writeError } = await query.select("id");
+      if (writeError) throw new Error(`LEDGER_FILL_WRITE_FAILED: ${writeError.message}`);
+      // Zero rows = a concurrent writer filled a guarded column first; the next pass re-plans against it.
+      return Array.isArray(written) && written.length > 0 ? "UPDATED" : "NOOP";
+    },
     async mirrorLedgerSettlement(eventId, reconciliation) {
       if ((reconciliation.result_status !== "WON" && reconciliation.result_status !== "LOST") ||
           !reconciliation.resolved_at || reconciliation.gross_pnl_usd == null) return;
@@ -174,8 +200,9 @@ function createSupabaseExecutionLifecyclePort(supabase: any): ExecutionLifecycle
       if (!ledger) return;
       const feeReported = reconciliation.fee_status === "REPORTED" && reconciliation.fee_usd != null;
       const realPnl = feeReported ? reconciliation.net_pnl_usd : null;
-      const executedStake = Number(ledger.executed_stake);
-      const roi = realPnl != null && ledger.executed_stake != null && Number.isFinite(executedStake) && executedStake > 0
+      // Ledger stake wins; reconciliation notional is the authority when the fill mirror has not run.
+      const executedStake = Number(ledger.executed_stake ?? reconciliation.executed_notional_usd);
+      const roi = realPnl != null && Number.isFinite(executedStake) && executedStake > 0
         ? realPnl / executedStake * 100 : null;
       const rawOrder = ledger.raw_order && typeof ledger.raw_order === "object" && !Array.isArray(ledger.raw_order)
         ? ledger.raw_order as Record<string, unknown> : {};
@@ -183,7 +210,8 @@ function createSupabaseExecutionLifecyclePort(supabase: any): ExecutionLifecycle
         bet_status: reconciliation.result_status,
         settled_at: reconciliation.resolved_at,
         gross_pnl: reconciliation.gross_pnl_usd,
-        fee_paid_real: feeReported ? reconciliation.fee_usd : null,
+        // An unreported fee never writes (or nulls) fee_paid_real: a known fact is never regressed.
+        ...(feeReported ? { fee_paid_real: reconciliation.fee_usd } : {}),
         real_pnl: realPnl,
         real_roi_on_stake: roi,
         result_side: null,

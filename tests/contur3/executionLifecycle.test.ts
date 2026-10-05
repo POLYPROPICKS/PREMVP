@@ -9,7 +9,10 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { planLedgerFillRepair } from "../../lib/executor/matchedExecutionLedgerRow";
+import type { ExecutionReconciliationV1 } from "../../lib/executor/executionReconciliation";
 import {
+  reconcileExecutionLifecycle,
   reconcileExecutionLifecycleWithPort,
   lifecycleCandidateWindow,
   type ExecutionLifecycleDbPort,
@@ -267,4 +270,187 @@ test("dry-run reports a would-update without writes", async () => {
   const dryRun = await reconcileExecutionLifecycleWithPort(port, { writeMode: false, eventIds: [eventId], resolver });
   assert.equal(dryRun.would_update, 1);
   assert.equal(port.eventWrites, 0);
+});
+
+// ── Financial closure: lifecycle repairs / mirrors ledger economics (in-memory ledger port) ──
+
+type LedgerRow = Record<string, unknown>;
+
+/** In-memory ledger keyed by order-event id (the ledger PK); mirrors the Supabase port's plan/guard semantics. */
+function makeLedgerPort(metaByEvent: Record<string, Record<string, unknown>>, ledger: Record<string, LedgerRow>) {
+  const base = makePort(metaByEvent);
+  const port = Object.assign(base, {
+    fillWrites: 0,
+    async mirrorLedgerFill(id: string, rec: ExecutionReconciliationV1) {
+      const row = ledger[id];
+      if (!row) return "MISSING" as const;
+      const plan = planLedgerFillRepair(row, rec);
+      if (plan.kind === "UPDATE") { Object.assign(row, plan.patch); port.fillWrites++; return "UPDATED" as const; }
+      return plan.kind;
+    },
+    async mirrorLedgerSettlement(id: string, rec: ExecutionReconciliationV1) {
+      const row = ledger[id];
+      if (!row || (rec.result_status !== "WON" && rec.result_status !== "LOST") || !rec.resolved_at || rec.gross_pnl_usd == null) return;
+      const feeReported = rec.fee_status === "REPORTED" && rec.fee_usd != null;
+      const realPnl = feeReported ? rec.net_pnl_usd : null;
+      const stake = Number(row.executed_stake ?? rec.executed_notional_usd);
+      Object.assign(row, {
+        bet_status: rec.result_status, settled_at: rec.resolved_at, gross_pnl: rec.gross_pnl_usd,
+        ...(feeReported ? { fee_paid_real: rec.fee_usd } : {}),
+        real_pnl: realPnl, real_roi_on_stake: realPnl != null && stake > 0 ? realPnl / stake * 100 : null,
+      });
+    },
+  });
+  return port;
+}
+
+const emptyFillLedger = () => ({ id: eventId, bet_status: "FILLED", executed_stake: null, fill_price: null, fee_paid_real: null, settled_at: null, gross_pnl: null, real_pnl: null, real_roi_on_stake: null });
+const unresolved = async () => ({ resolverState: "active_unresolved" as const, candidateWinningOutcome: null, candidateWinningTokenId: null });
+const yesWins = async () => ({ resolverState: "resolved_candidate" as const, candidateWinningOutcome: "Yes", candidateWinningTokenId: "token-yes" });
+
+test("lifecycle repairs an existing FILLED ledger row's fill economics before market resolution", async () => {
+  const ledger = { [eventId]: emptyFillLedger() };
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation() } }, ledger);
+  const summary = await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: unresolved });
+  assert.equal(summary.unresolved, 1);
+  assert.equal(ledger[eventId].executed_stake, 2.3625);
+  assert.equal(ledger[eventId].fill_price, 0.35);
+  assert.equal(ledger[eventId].fee_paid_real, null, "unreported fee stays NULL, never zero");
+  assert.equal(ledger[eventId].bet_status, "FILLED");
+  assert.equal(ledger[eventId].settled_at, null, "no settlement without market resolution");
+});
+
+test("lifecycle repair is idempotent and creates no duplicate ledger rows", async () => {
+  const ledger = { [eventId]: emptyFillLedger() };
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation() } }, ledger);
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: unresolved });
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: unresolved });
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: yesWins });
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: yesWins });
+  assert.equal(port.fillWrites, 1, "fill facts are written exactly once");
+  assert.deepEqual(Object.keys(ledger), [eventId]);
+  assert.equal(ledger[eventId].executed_stake, 2.3625, "stake is never double-counted");
+});
+
+test("WON/LOST with unreported fee: gross PnL + settled_at known, real_pnl and fee stay NULL", async () => {
+  const ledger = { [eventId]: emptyFillLedger() };
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation() } }, ledger);
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: yesWins });
+  assert.equal(ledger[eventId].bet_status, "WON");
+  assert.ok(ledger[eventId].settled_at);
+  assert.equal(ledger[eventId].gross_pnl, 4.3875);
+  assert.equal(ledger[eventId].real_pnl, null);
+  assert.equal(ledger[eventId].real_roi_on_stake, null);
+  assert.equal(ledger[eventId].fee_paid_real, null);
+  assert.equal(ledger[eventId].executed_stake, 2.3625);
+});
+
+test("WON with reported fee: fee, net PnL and ROI populate correctly", async () => {
+  const ledger = { [eventId]: emptyFillLedger() };
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation({ fee_status: "REPORTED", fee_usd: 0.01 }) } }, ledger);
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: yesWins });
+  assert.equal(ledger[eventId].fee_paid_real, 0.01);
+  assert.equal(ledger[eventId].real_pnl, 4.3775);
+  assert.equal(ledger[eventId].real_roi_on_stake, 4.3775 / 2.3625 * 100);
+});
+
+test("settlement pass never regresses a known fee to NULL when the fee is not reported", async () => {
+  const ledger = { [eventId]: { ...emptyFillLedger(), executed_stake: 2.3625, fill_price: 0.35, fee_paid_real: 0.01 } };
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation() } }, ledger);
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: yesWins });
+  assert.equal(ledger[eventId].fee_paid_real, 0.01);
+});
+
+test("partial fill: lifecycle repairs ledger with actual executed notional, not requested stake", async () => {
+  const ledger = { [eventId]: emptyFillLedger() };
+  const partial = confirmedFillReconciliation({ executed_shares: 2, actual_fill_price: 0.49, executed_notional_usd: 0.98 });
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: partial } }, ledger);
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: unresolved });
+  assert.equal(ledger[eventId].executed_stake, 0.98);
+  assert.equal(ledger[eventId].fill_price, 0.49);
+});
+
+test("conflicting non-null ledger economic fact fails closed: counted conflict, no overwrite, no settlement mirror", async () => {
+  const ledger = { [eventId]: { ...emptyFillLedger(), executed_stake: 2.5 } };
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation() } }, ledger);
+  const summary = await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver: yesWins });
+  assert.equal(summary.conflicts, 1);
+  assert.equal(ledger[eventId].executed_stake, 2.5, "conflicting stake is never overwritten");
+  assert.equal(ledger[eventId].fill_price, null);
+  assert.equal(ledger[eventId].gross_pnl, null, "ledger settlement is not mirrored over conflicting money facts");
+});
+
+test("dry-run never writes the ledger", async () => {
+  const ledger = { [eventId]: emptyFillLedger() };
+  const port = makeLedgerPort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation() } }, ledger);
+  await reconcileExecutionLifecycleWithPort(port, { writeMode: false, eventIds: [eventId], resolver: yesWins });
+  assert.equal(ledger[eventId].executed_stake, null);
+  assert.equal(port.fillWrites, 0);
+});
+
+test("Supabase-backed lifecycle port repairs the ledger via a NULL-guarded update on the order-event PK", async () => {
+  const meta = { reconciliation_v1: confirmedFillReconciliation() };
+  const ledgerRow: LedgerRow = { id: eventId, executed_stake: null, fill_price: null, fee_paid_real: null, raw_order: {} };
+  const updates: { patch: Record<string, unknown>; nullGuards: string[]; id: unknown }[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase: any = {
+    from(table: string) {
+      if (table === "executor_order_events") {
+        const q: Record<string, unknown> = {};
+        for (const m of ["select", "not", "in"]) q[m] = () => q;
+        q.limit = async () => ({ data: [{ id: eventId, executor_meta: meta }], error: null });
+        return q;
+      }
+      assert.equal(table, "bet_execution_ledger");
+      return {
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { ...ledgerRow }, error: null }) }) }),
+        update(patch: Record<string, unknown>) {
+          const call = { patch, nullGuards: [] as string[], id: null as unknown };
+          const chain: Record<string, unknown> = {
+            eq: (_c: string, v: unknown) => { call.id = v; return chain; },
+            is: (c: string, v: unknown) => { assert.equal(v, null); call.nullGuards.push(c); return chain; },
+            select: async () => { updates.push(call); Object.assign(ledgerRow, patch); return { data: [{ id: call.id }], error: null }; },
+          };
+          return chain;
+        },
+      };
+    },
+  };
+  // Hermetic: the default provider resolver is stubbed at the network edge (market stays unresolved).
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify([{ active: true, closed: false }]), { status: 200 })) as typeof fetch;
+  let summary;
+  try { summary = await reconcileExecutionLifecycle(supabase, { writeMode: true, eventIds: [eventId] }); }
+  finally { globalThis.fetch = realFetch; }
+  assert.equal(summary.conflicts, 0);
+  assert.equal(updates.length >= 1, true);
+  const fill = updates[0];
+  assert.equal(fill.id, eventId);
+  assert.deepEqual(fill.patch, { executed_stake: 2.3625, fill_price: 0.35 });
+  assert.deepEqual(fill.nullGuards.sort(), ["executed_stake", "fill_price"]);
+});
+
+test("Supabase-backed fill repair that matches zero rows (concurrent writer) is not reported as an update", async () => {
+  const meta = { reconciliation_v1: confirmedFillReconciliation() };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const supabase: any = {
+    from(table: string) {
+      if (table === "executor_order_events") {
+        const q: Record<string, unknown> = {};
+        for (const m of ["select", "not", "in"]) q[m] = () => q;
+        q.limit = async () => ({ data: [{ id: eventId, executor_meta: meta }], error: null });
+        return q;
+      }
+      return {
+        select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: eventId, executed_stake: null, fill_price: null, fee_paid_real: null }, error: null }) }) }),
+        update: () => { const c: Record<string, unknown> = {}; c.eq = () => c; c.is = () => c; c.select = async () => ({ data: [], error: null }); return c; },
+      };
+    },
+  };
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async () => new Response(JSON.stringify([{ active: true, closed: false }]), { status: 200 })) as typeof fetch;
+  try {
+    const summary = await reconcileExecutionLifecycle(supabase, { writeMode: true, eventIds: [eventId] });
+    assert.equal(summary.conflicts, 0);
+  } finally { globalThis.fetch = realFetch; }
 });
