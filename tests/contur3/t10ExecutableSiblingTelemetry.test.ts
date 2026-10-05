@@ -5,9 +5,12 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   T10_EXECUTABLE_TELEMETRY_KEYS,
+  T10_EXECUTABLE_TELEMETRY_NEW_COLUMNS,
   T10_EXECUTABLE_TELEMETRY_VERSION,
   captureReservationMarketObservation,
   executableTelemetryFailureColumns,
+  isMissingTelemetryColumnError,
+  withoutNewTelemetryColumns,
   selectReservationT3AbDecisions,
   strategyRowsForMarketObservations,
   type FinalT3MarketObservation,
@@ -38,7 +41,7 @@ const book = (tokenId: string, asks: Array<[number, number]>, extra: { minimumOr
   ok: true, tokenId, latencyMs: 1,
   book: { tokenId, bids: [{ price: 0.4, size: 100 }], asks: asks.map(([price, size]) => ({ price, size })), ...extra },
 });
-const build = (result: FetchOrderBookResult | null, fee: TokenFeeScheduleResult | null, t30: readonly FinalT3MarketObservation[] | null = []) =>
+const build = (result: FetchOrderBookResult | null | undefined, fee: TokenFeeScheduleResult | null, t30: readonly FinalT3MarketObservation[] | null = []) =>
   buildExecutableSiblingColumns({ physicalEventId: "p", token: identity("t"), result, fee, t30Universe: t30 });
 
 // ── A. ordinary $2.50 stake, hard-cap walk, honest-unknown semantics ───────────────────────────────
@@ -175,7 +178,9 @@ test("fee schedule is fetched once per MARKET and reused for the sibling token o
   assert.deepEqual(calls.sort(), ["a1", "b1", "b2"], "ca reused for a2; cb answered with a foreign conditionId, so b2 is fetched itself");
   assert.equal(out.size, 4);
   assert.equal(out.get("a2")?.tokenId, "a2");
-  assert.equal(out.get("a2")?.ok && out.get("a2")?.conditionId, "ca");
+  const a2 = out.get("a2");
+  assert.ok(a2?.ok);
+  assert.equal(a2.conditionId, "ca");
 });
 
 test("a failed market lookup is carried to its sibling with the same typed reason, not retried; a throwing fetcher never rejects", async () => {
@@ -413,6 +418,133 @@ test("strategy rows stay NOT_EVALUATED; S1 simply mirrors the measured ask depth
   const s1 = snap.strategies.filter((s) => s.strategy_variant === "S1_TAKER_HOLD");
   const home = snap.rows.find((r) => r.token_id === "t-ml-home");
   assert.equal(s1.find((s) => s.market_observation_id === home?.id)?.executable_depth_usd, 50);
+});
+
+test("HARD DEADLINE: a hung fee API and a hung T30 read cannot stall the capture; every sibling is typed UNKNOWN", async () => {
+  const started = Date.now();
+  const snap = await captureT10({
+    telemetryDeadlineMs: { fee: 40, t30: 40 },
+    fetchFeeSchedule: () => new Promise(() => {}),
+    readT30Universe: () => new Promise(() => {}),
+  });
+  assert.ok(Date.now() - started < 3_000, "capture returned on the deadline, not on the hung dependency");
+  assert.equal(snap.run.capture_status, "COMPLETE");
+  assert.equal(snap.rows.length, 8);
+  for (const row of snap.rows) {
+    assert.equal(row.taker_fee_state, "UNKNOWN");
+    assert.equal(row.taker_fee_reason, "FEE_LEG_UNAVAILABLE");
+    assert.equal(row.p_buy_max_state, "T30_SOURCE_UNAVAILABLE");
+    assert.equal(row.executable_telemetry_version, T10_EXECUTABLE_TELEMETRY_VERSION);
+  }
+  assert.ok(snap.rows.some((r) => r.executable_full_stake === true), "book-derived evidence is unaffected by the dead legs");
+});
+
+// ── D2. schema-not-migrated safety net (telemetry must never take the live T10 source down) ─────────
+
+test("isMissingTelemetryColumnError matches ONLY a missing-column error that names a NEW telemetry column", () => {
+  const msg = (column: string) => `Could not find the '${column}' column of 'reservation_market_observations' in the schema cache`;
+  assert.equal(isMissingTelemetryColumnError({ code: "PGRST204", message: msg("executable_telemetry_version") }), true);
+  assert.equal(isMissingTelemetryColumnError({ code: "42703", message: 'column "taker_fee_usd" of relation "reservation_market_observations" does not exist' }), true);
+  assert.equal(isMissingTelemetryColumnError({ code: "PGRST204", message: msg("best_bid") }), false, "a missing PRE-EXISTING column is a real defect, not a migration gap");
+  assert.equal(isMissingTelemetryColumnError({ code: "PGRST204", message: msg("requested_stake_usd") }), false, "reused columns already exist");
+  assert.equal(isMissingTelemetryColumnError({ code: "23505", message: "executable_telemetry_version duplicate" }), false);
+  assert.equal(isMissingTelemetryColumnError({ code: "PGRST204" }), false);
+  assert.equal(isMissingTelemetryColumnError(null), false);
+  assert.equal(T10_EXECUTABLE_TELEMETRY_NEW_COLUMNS.length, 14);
+  const stripped = withoutNewTelemetryColumns({ id: "x", best_bid: 0.4, requested_stake_usd: 2.5, executable_full_stake: true, p_buy_max: 0.5 });
+  assert.deepEqual(stripped, { id: "x", best_bid: 0.4, requested_stake_usd: 2.5 });
+});
+
+type WriteLog = { table: string; rows: Row[]; accepted: boolean };
+function fakeWriterClient(opts: { failWith?: { code: string; message: string } }) {
+  const writes: WriteLog[] = [];
+  let finalized = 0;
+  const chain = (data: Row[]) => {
+    const c: Record<string, unknown> = {};
+    for (const m of ["eq", "gt", "order"]) c[m] = () => c;
+    c.limit = () => Promise.resolve({ data, error: null });
+    return c;
+  };
+  const client = {
+    from(table: string) {
+      return {
+        upsert(rows: Row | Row[]) {
+          const list = Array.isArray(rows) ? rows : [rows];
+          const hasNew = list.some((r) => "executable_telemetry_version" in r);
+          const reject = table === "reservation_market_observations" && hasNew && opts.failWith;
+          writes.push({ table, rows: list, accepted: !reject });
+          return Promise.resolve({ error: reject ? opts.failWith : null });
+        },
+        select() {
+          return chain(writes.filter((w) => w.table === "reservation_market_observations" && w.accepted).flatMap((w) => w.rows));
+        },
+        update() {
+          const c: Record<string, unknown> = {};
+          c.eq = () => c;
+          c.then = (resolve: (v: unknown) => unknown) => { finalized++; return resolve({ error: null }); };
+          return c;
+        },
+      };
+    },
+  };
+  return { client, writes, finalized: () => finalized };
+}
+
+async function captureThroughDefaultWriter(fake: ReturnType<typeof fakeWriterClient>) {
+  const logged: string[] = [];
+  const original = console.error;
+  console.error = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
+  try {
+    await captureReservationMarketObservation(fixtureReservation(), "T_MINUS_10", {
+      observedAt: new Date(Date.parse(FIXTURE_START_ISO) - 10 * 60_000).toISOString(),
+      alreadyCaptured: async () => false,
+      readExactEvent: async () => ownEventMarkets(), readGameEvents: async () => siblingEventMarkets(),
+      fetchBooks: async (ids) => ids.map((id) => T10_BOOKS[id]),
+      fetchFeeSchedule: async (t) => feeFail(t, "FEE_TEST_OFFLINE"), readT30Universe: async () => [],
+      getClient: (async () => fake.client) as never,
+    });
+  } finally { console.error = original; }
+  return logged;
+}
+
+test("DEPLOY-ORDER SAFETY: an un-migrated schema still writes every sibling row (without the 14 new columns) and finalizes the run", async () => {
+  const fake = fakeWriterClient({ failWith: { code: "PGRST204", message: "Could not find the 'executable_telemetry_version' column of 'reservation_market_observations' in the schema cache" } });
+  const logged = await captureThroughDefaultWriter(fake);
+  const attempts = fake.writes.filter((w) => w.table === "reservation_market_observations");
+  assert.deepEqual(attempts.map((a) => a.accepted), [false, true], "first attempt rejected by the old schema, second (stripped) accepted");
+  assert.equal(attempts[1].rows.length, 8, "no sibling is dropped");
+  for (const row of attempts[1].rows) {
+    for (const column of T10_EXECUTABLE_TELEMETRY_NEW_COLUMNS) assert.equal(column in row, false, `${column} stripped`);
+    assert.equal(row.requested_stake_usd, 2.5, "pre-existing reused columns are kept");
+    assert.ok(row.best_ask !== undefined && row.condition_id && row.token_id, "the live T10 universe columns are intact");
+  }
+  assert.equal(fake.finalized(), 1, "the run is finalized, so the live T10 source stays readable");
+  assert.ok(fake.writes.some((w) => w.table === "reservation_strategy_observations"), "strategy rows still written");
+  assert.ok(logged.some((line) => line.includes("T10_TELEMETRY_COLUMNS_UNAVAILABLE")), "the gap is loud, never silent");
+  const gap = summarizeExecutableSiblingTelemetry(attempts[1].rows as never, 8);
+  assert.equal(gap.telemetry_rows_n, 0);
+  assert.equal(gap.coverage_complete, false, "the gap is measurable in the denominator proof");
+});
+
+test("a migrated schema writes the telemetry columns in ONE attempt and logs nothing", async () => {
+  const fake = fakeWriterClient({});
+  const logged = await captureThroughDefaultWriter(fake);
+  const attempts = fake.writes.filter((w) => w.table === "reservation_market_observations");
+  assert.deepEqual(attempts.map((a) => a.accepted), [true]);
+  assert.ok(attempts[0].rows.every((r) => r.executable_telemetry_version === T10_EXECUTABLE_TELEMETRY_VERSION));
+  assert.deepEqual(logged, []);
+});
+
+test("any OTHER observation write error still fails the capture (the safety net is not a catch-all)", async () => {
+  for (const failWith of [
+    { code: "PGRST204", message: "Could not find the 'best_bid' column of 'reservation_market_observations' in the schema cache" },
+    { code: "23505", message: "duplicate key value violates unique constraint" },
+  ]) {
+    const fake = fakeWriterClient({ failWith });
+    await assert.rejects(captureThroughDefaultWriter(fake), /BASELINE_OBSERVATION_WRITE_FAILED/);
+    assert.equal(fake.writes.filter((w) => w.table === "reservation_market_observations").length, 1, "no stripped retry for a non-migration error");
+    assert.equal(fake.finalized(), 0);
+  }
 });
 
 // ── E. schema / durability companions ──────────────────────────────────────────────────────────
