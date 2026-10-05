@@ -73,3 +73,24 @@ test("24h purge deletes only exact clone-confirmed old IDs and preserves recent 
     assert.equal(rows[table].some((row) => row.id.endsWith(":recent")), true);
   }
 });
+
+test("CLONE_PARITY_REPAIR_V1: capture projection carries discovery_audit_v1 and clone schema adds it", async () => {
+  const spec = SPECS.find((entry) => entry.table === "reservation_market_capture_runs");
+  assert.match(spec?.projection ?? "", /(^|,)discovery_audit_v1(,|$)/);
+  const { readFileSync } = await import("node:fs");
+  const sql = readFileSync("ops/research-clone/reservation-telemetry-schema.sql", "utf8");
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS discovery_audit_v1 jsonb/);
+});
+
+test("CLONE_PARITY_REPAIR_V1: purge never confirms an audited row whose clone audit is NULL", async () => {
+  const { auditParityConfirmedIds } = await import("../../scripts/research-clone-daily-sync");
+  const confirmed = auditParityConfirmedIds(
+    [
+      { id: "a", discovery_audit_v1: { x: 1 } },
+      { id: "b", discovery_audit_v1: null },
+      { id: "c", discovery_audit_v1: null },
+    ],
+    new Set(["a", "b"]),
+  );
+  assert.deepEqual(confirmed, ["a", "c"]);
+});

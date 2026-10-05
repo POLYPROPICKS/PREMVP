@@ -40,7 +40,7 @@ const TELEMETRY_PAGE_SIZE = 200;
 const TELEMETRY_MAX_PAGES = 8;
 const TELEMETRY_BOOTSTRAP_SINCE = "2026-09-30T00:00:00.000Z";
 const TELEMETRY_PURGE_FLOOR = "1970-01-01T00:00:00.000Z";
-const CAPTURE_RUN_PROJECTION = "id,reservation_id,plan_run_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,source_version,source_observed_at,markets_discovered_n,market_tokens_expected_n,market_tokens_observed_n,orderbooks_success_n,orderbooks_failed_n,capture_complete,capture_status,failure_reason,created_at";
+const CAPTURE_RUN_PROJECTION = "id,reservation_id,plan_run_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,source_version,source_observed_at,markets_discovered_n,market_tokens_expected_n,market_tokens_observed_n,orderbooks_success_n,orderbooks_failed_n,capture_complete,capture_status,failure_reason,created_at,discovery_audit_v1";
 const MARKET_OBSERVATION_PROJECTION = "id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,condition_id,token_id,side,outcome,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,live_policy_eligibility,live_policy_rejection_reason,best_bid,best_ask,mid_price,bid_decimal_odds,ask_decimal_odds,spread_abs,spread_bps,bid_depth_relevant_usd,ask_depth_relevant_usd,reference_entry_price,execution_price_cap,requested_stake_usd,full_stake_executable_vwap,tick_size,minimum_order_size,orderbook_fetch_latency_ms,orderbook_fetch_status,orderbook_failure_reason,source_version,created_at";
 const STRATEGY_OBSERVATION_PROJECTION = "id,market_observation_id,capture_run_id,reservation_id,physical_event_id,condition_id,token_id,side,observation_phase,evaluated_at,minutes_to_start,strategy_variant,strategy_version,evaluation_state,eligible,rejection_reason,available_best_ask,available_decimal_odds,spread_abs,executable_depth_usd,maker_target_price,maker_target_decimal_odds,maker_target_state,target_policy_version,target_touched,maker_band_min_price,maker_band_max_price,maker_band_min_odds,maker_band_max_odds,maker_band_state,maker_band_version,acceptable_band_observed,created_at";
 const RESERVATION_PARENT_PROJECTION = [
@@ -80,6 +80,14 @@ const RECENT_RECONCILIATION_MS = 72 * 60 * 60 * 1000;
 // days rather than the 72h window used for the faster-settling tables.
 const LEDGER_RECONCILIATION_MS = 30 * 24 * 60 * 60 * 1000;
 const SYNC_VERSION = "research-clone-daily-sync-v1";
+// CLONE_PARITY_REPAIR_V1: bet_execution_ledger was added to SPECS after the
+// clone already existed, so its clone table is empty with no checkpoint. Without
+// an explicit start authority the nightly run threw
+// RESEARCH_CLONE_INITIAL_WATERMARK_REQUIRED_bet_execution_ledger and aborted every
+// later table. This finite floor predates the ledger table; it is a tiny table.
+const LEDGER_BOOTSTRAP_SINCE = "2026-01-01T00:00:00.000Z";
+// Bounded one-shot repair of capture rows copied before discovery_audit_v1 was projected.
+const DISCOVERY_AUDIT_REPAIR_LIMIT = 200;
 
 // This worker mirrors the source schema row-for-row. The application has no
 // generated Supabase Database type, so keep the database boundary explicitly
@@ -122,6 +130,8 @@ export type TableSpec = {
   optional?: boolean;
   projection?: string;
   telemetry?: boolean;
+  /** Finite start authority used only when the clone table is empty and has no checkpoint. */
+  bootstrapSince?: string;
 };
 
 type TableEvidence = {
@@ -177,6 +187,7 @@ export const SPECS: readonly TableSpec[] = [
     table: "bet_execution_ledger",
     fields: ["created_at", "id"],
     appendOnly: false,
+    bootstrapSince: LEDGER_BOOTSTRAP_SINCE,
     reconciliationStart: (targetBefore, now) => {
       const recent = new Date(now.getTime() - LEDGER_RECONCILIATION_MS).toISOString();
       return targetBefore.created_at > recent ? recent : targetBefore.created_at;
@@ -705,7 +716,7 @@ async function syncTable(
     beforeUpsertTargetRows: beforeQueueChildWrite,
     upsertTargetRows: (rows) => applyRows(target, spec, rows),
     writeCheckpoint: (watermark) => writeCheckpoint(target, spec, checkpointSource(spec), watermark),
-  }, spec.telemetry ? (bootstrapSince ?? TELEMETRY_BOOTSTRAP_SINCE) : bootstrapSince);
+  }, bootstrapSince ?? spec.bootstrapSince ?? (spec.telemetry ? TELEMETRY_BOOTSTRAP_SINCE : null));
   const reconciliation = await reconcileRecent(target, source, spec, append.targetBefore, beforeQueueChildWrite);
   return {
     SOURCE_MAX_WATERMARK: append.sourceMaxWatermark,
@@ -717,6 +728,58 @@ async function syncTable(
     APPEND_PENDING: append.pending,
     RECONCILIATION_PENDING: reconciliation.pending,
   };
+}
+
+/**
+ * CLONE_PARITY_REPAIR_V1: capture rows copied before discovery_audit_v1 was
+ * projected have a NULL clone audit. Copy the audit for at most
+ * DISCOVERY_AUDIT_REPAIR_LIMIT production rows whose clone row exists with a
+ * NULL audit. Clone-only writes; production is read-only here.
+ */
+export async function repairDiscoveryAudit(target: Client, source: Client): Promise<{ SOURCE_AUDITED_N: number; REPAIRED_N: number }> {
+  const { data, error } = await source
+    .from("reservation_market_capture_runs")
+    .select("id,discovery_audit_v1")
+    .not("discovery_audit_v1", "is", null)
+    .order("observed_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(DISCOVERY_AUDIT_REPAIR_LIMIT);
+  if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_discovery_audit_v1:${safeError(error)}`);
+  const rows = (data ?? []) as Array<{ id: string; discovery_audit_v1: unknown }>;
+  if (!rows.length) return { SOURCE_AUDITED_N: 0, REPAIRED_N: 0 };
+  const clone = await target
+    .from("reservation_market_capture_runs")
+    .select("id")
+    .in("id", rows.map((row) => row.id))
+    .is("discovery_audit_v1", null);
+  if (clone.error) throw new Error(`RESEARCH_CLONE_TARGET_READ_discovery_audit_v1:${safeError(clone.error)}`);
+  const missing = new Set(((clone.data ?? []) as Array<{ id: string }>).map((row) => row.id));
+  let repaired = 0;
+  for (const row of rows) {
+    if (!missing.has(row.id)) continue;
+    const { error: writeError } = await target
+      .from("reservation_market_capture_runs")
+      .update({ discovery_audit_v1: row.discovery_audit_v1 })
+      .eq("id", row.id)
+      .is("discovery_audit_v1", null);
+    if (writeError) throw new Error(`RESEARCH_CLONE_TARGET_WRITE_discovery_audit_v1:${safeError(writeError)}`);
+    repaired += 1;
+  }
+  return { SOURCE_AUDITED_N: rows.length, REPAIRED_N: repaired };
+}
+
+/**
+ * Purge confirmation for capture runs also requires discovery-audit parity:
+ * a production row with a non-null audit is confirmed only when the clone
+ * row carries a non-null audit too, so the audit can never be purged unseen.
+ */
+export function auditParityConfirmedIds(
+  cloneRows: ReadonlyArray<{ id: string; discovery_audit_v1: unknown }>,
+  sourceAuditedIds: ReadonlySet<string>,
+): string[] {
+  return cloneRows
+    .filter((row) => !sourceAuditedIds.has(row.id) || (row.discovery_audit_v1 !== null && row.discovery_audit_v1 !== undefined))
+    .map((row) => row.id);
 }
 
 function telemetryTimeField(table: TelemetryTable): string {
@@ -751,6 +814,14 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number) {
     },
     async exactCloneIds(table, ids) {
       if (!ids.length) return [];
+      if (table === "reservation_market_capture_runs") {
+        const clone = await target.from(table).select("id,discovery_audit_v1").in("id", [...ids]);
+        if (clone.error) throw new Error(`TELEMETRY_PURGE_CLONE_CONFIRM_${table}:${safeError(clone.error)}`);
+        const audited = await source.from(table).select("id").in("id", [...ids]).not("discovery_audit_v1", "is", null);
+        if (audited.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(audited.error)}`);
+        const auditedIds = new Set(((audited.data ?? []) as Array<{ id: string }>).map((row) => row.id));
+        return auditParityConfirmedIds((clone.data ?? []) as Array<{ id: string; discovery_audit_v1: unknown }>, auditedIds);
+      }
       const { data, error } = await target.from(table).select("id").in("id", [...ids]);
       if (error) throw new Error(`TELEMETRY_PURGE_CLONE_CONFIRM_${table}:${safeError(error)}`);
       return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
@@ -1003,9 +1074,10 @@ export async function main(): Promise<void> {
         const spec = SPECS.find((entry) => entry.table === table)!;
         tables[table] = await syncTable(target, source, spec, TELEMETRY_BOOTSTRAP_SINCE);
       }
+      const discoveryAudit = await repairDiscoveryAudit(target, source);
       const purge = await purgeTelemetry(target, source, Date.now());
       const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING);
-      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, PURGE: purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
+      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
       return;
     }
 
@@ -1068,6 +1140,7 @@ export async function main(): Promise<void> {
     diagnostics.SCHEMA_PENDING_TABLES = schemaPendingTables;
     const researchEvidence = await syncResearchEvidencePage(target, source, bootstrapSince);
     const telemetrySchemasReady = TELEMETRY_PURGE_ORDER.every((table) => !schemaPendingTables.includes(table));
+    const discoveryAudit = telemetrySchemasReady ? await repairDiscoveryAudit(target, source) : null;
     const telemetryPurge = telemetrySchemasReady ? await purgeTelemetry(target, source, Date.now()) : null;
     const pendingTables: string[] = (Object.keys(tables) as TableName[]).filter(
       (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
@@ -1077,6 +1150,7 @@ export async function main(): Promise<void> {
       JSON.stringify({
         TABLES: tables,
         RESEARCH_EVIDENCE_PAGE: researchEvidence,
+        DISCOVERY_AUDIT_REPAIR: discoveryAudit,
         TELEMETRY_PURGE: telemetryPurge,
         PENDING_TABLES: pendingTables,
         RESUME_PENDING: pendingTables.length > 0,

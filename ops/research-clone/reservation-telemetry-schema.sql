@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS public.reservation_market_capture_runs (
 CREATE INDEX IF NOT EXISTS reservation_market_capture_runs_watermark_idx
   ON public.reservation_market_capture_runs (observed_at, id);
 ALTER TABLE public.reservation_market_capture_runs ENABLE ROW LEVEL SECURITY;
+-- CLONE_PARITY_REPAIR_V1: same meaning as production; nullable JSONB.
+ALTER TABLE public.reservation_market_capture_runs
+  ADD COLUMN IF NOT EXISTS discovery_audit_v1 jsonb;
 REVOKE ALL ON public.reservation_market_capture_runs FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.reservation_market_capture_runs TO service_role;
 

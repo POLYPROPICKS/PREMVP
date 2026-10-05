@@ -332,3 +332,30 @@ test("queue parent repair deduplicates ids and bounds clone and source reads to 
   assert.ok([...cloneReadSizes, ...sourceReadSizes].every((size) => size <= 200));
   assert.equal(parentWriteSizes.reduce((total, size) => total + size, 0), 205);
 });
+
+test("CLONE_PARITY_REPAIR_V1: empty ledger clone bootstraps from its finite floor, is idempotent, stays mutable", async () => {
+  const { SPECS } = await import("../../scripts/research-clone-daily-sync");
+  const { runAppendSync } = await import("../../lib/research-clone/dailySync");
+  const spec = SPECS.find((entry) => entry.table === "bet_execution_ledger")!;
+  assert.equal(spec.appendOnly, false);
+  assert.ok(spec.reconciliationStart);
+  assert.ok(spec.bootstrapSince && Number.isFinite(Date.parse(spec.bootstrapSince)));
+  const source = [1, 2, 3, 4, 5].map((n) => ({ id: `0000000${n}-0000-4000-8000-000000000000`, created_at: `2026-10-0${n}T00:00:00.000Z` }));
+  const target = new Map<string, unknown>();
+  let checkpoint: Record<string, string> | null = null;
+  const sync = () => runAppendSync(spec.fields, 10, {
+    async sourceMaxWatermark() { const r = source[source.length - 1]; return { created_at: r.created_at, id: r.id }; },
+    async targetMaxWatermark() { return null; },
+    async readCheckpoint() { return checkpoint; },
+    async fetchSourcePage(after) {
+      assert.ok(after, "cursor must not be null for an empty clone");
+      return source.filter((r) => r.created_at > after.created_at || (r.created_at === after.created_at && r.id > after.id));
+    },
+    async upsertTargetRows(rows) { const n = rows.filter((r) => !target.has(r.id)).length; for (const r of rows) target.set(r.id, r); return { newRows: n, updatedRows: 0, duplicateN: 0 }; },
+    async writeCheckpoint(value) { checkpoint = value; },
+  }, spec.bootstrapSince ?? null);
+  assert.equal((await sync()).newRows, 5);
+  assert.deepEqual(checkpoint, { created_at: source[4].created_at, id: source[4].id });
+  assert.equal((await sync()).newRows, 0);
+  assert.equal(target.size, 5);
+});
