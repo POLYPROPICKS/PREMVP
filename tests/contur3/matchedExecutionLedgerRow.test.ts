@@ -5,8 +5,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildMatchedExecutionLedgerRow,
+  ledgerValuesEqual,
   planLedgerFillRepair,
   reconciliationLedgerEconomics,
+  toLedgerUnits,
 } from "../../lib/executor/matchedExecutionLedgerRow";
 import type { ExecutionReconciliationV1 } from "../../lib/executor/executionReconciliation";
 import type { EventExecutionQueueRow } from "../../lib/executor/executorQueueTypes";
@@ -82,4 +84,54 @@ test("repair plan: conflicting non-null ledger fact fails closed, never overwrit
 test("repair plan: unreported fee keeps a null fee null and a known ledger fee untouched", () => {
   assert.deepEqual(planLedgerFillRepair({ executed_stake: 2.3625, fill_price: 0.35, fee_paid_real: null }, rec()), { kind: "NOOP" });
   assert.deepEqual(planLedgerFillRepair({ executed_stake: 2.3625, fill_price: 0.35, fee_paid_real: 0.01 }, rec()), { kind: "NOOP" });
+});
+
+// ── numeric(18,6) persisted-scale comparison (no broad money / price tolerance) ──
+
+const NULLS = { executed_stake: null, fill_price: null, fee_paid_real: null };
+const withFee = (fee: number) => rec({ fee_status: "REPORTED", fee_usd: fee });
+
+test("persisted-scale normalization: numeric(18,6) rounding, half away from zero, binary noise absorbed", () => {
+  assert.equal(toLedgerUnits(2.3625), 2362500);
+  assert.equal(toLedgerUnits(2.3625004), 2362500);
+  assert.equal(toLedgerUnits(2.3625005), 2362501);
+  assert.equal(toLedgerUnits(1.0000005), 1000001, "binary noise cannot flip a half-unit boundary");
+  assert.equal(toLedgerUnits(0.1 + 0.2), toLedgerUnits(0.3));
+  assert.equal(ledgerValuesEqual(2.3625, 2.3625004), true);
+  assert.equal(ledgerValuesEqual(2.3625, 2.362501), false);
+});
+
+test("repair plan: values equal after 6-decimal persistence normalization -> NOOP (stake, price, fee)", () => {
+  // The ledger holds numeric(18,6); the authoritative value may carry more digits than were stored.
+  const r = rec({ executed_notional_usd: 2.36250049, actual_fill_price: 0.3500004, fee_status: "REPORTED", fee_usd: 0.0100004 });
+  assert.deepEqual(planLedgerFillRepair({ executed_stake: "2.362500", fill_price: "0.350000", fee_paid_real: "0.010000" }, r), { kind: "NOOP" });
+  assert.deepEqual(planLedgerFillRepair({ executed_stake: 2.3625, fill_price: 0.35, fee_paid_real: 0.01 }, r), { kind: "NOOP" });
+  // Rounds up at the boundary exactly like Postgres: stored 2.362501 == authoritative 2.3625005.
+  assert.deepEqual(planLedgerFillRepair({ executed_stake: 2.362501, fill_price: 0.35, fee_paid_real: null }, rec({ executed_notional_usd: 2.3625005 })), { kind: "NOOP" });
+});
+
+test("repair plan: a difference of one persisted unit or more is a CONFLICT -- never silently accepted", () => {
+  const unit = 1e-6;
+  for (const [field, base, auth] of [
+    ["executed_stake", 2.3625, rec()], ["fill_price", 0.35, rec()], ["fee_paid_real", 0.01, withFee(0.01)],
+  ] as const) {
+    for (const delta of [unit, 2 * unit, 10 * unit]) {
+      const row = { ...NULLS, executed_stake: 2.3625, fill_price: 0.35, fee_paid_real: field === "fee_paid_real" ? 0.01 : null, [field]: base + delta };
+      assert.deepEqual(planLedgerFillRepair(row, auth), { kind: "CONFLICT", fields: [field] }, `${field} +${delta}`);
+      const below = { ...row, [field]: base - delta };
+      assert.deepEqual(planLedgerFillRepair(below, auth), { kind: "CONFLICT", fields: [field] }, `${field} -${delta}`);
+    }
+  }
+});
+
+test("repair plan: economically meaningful small differences the old tolerances hid are now conflicts", () => {
+  // Old tolerances: stake / fee 0.005, price 0.001.
+  assert.deepEqual(planLedgerFillRepair({ ...NULLS, executed_stake: 2.3665 }, rec()), { kind: "CONFLICT", fields: ["executed_stake"] }, "+$0.004 stake");
+  assert.deepEqual(planLedgerFillRepair({ ...NULLS, executed_stake: 2.3625, fill_price: 0.3505 }, rec()), { kind: "CONFLICT", fields: ["fill_price"] }, "+0.0005 price");
+  assert.deepEqual(planLedgerFillRepair({ ...NULLS, executed_stake: 2.3625, fill_price: 0.35, fee_paid_real: 0.014 }, withFee(0.01)), { kind: "CONFLICT", fields: ["fee_paid_real"] }, "+$0.004 fee");
+});
+
+test("repair plan: non-finite stored values conflict; NULL stored values are populated, not compared", () => {
+  assert.deepEqual(planLedgerFillRepair({ ...NULLS, executed_stake: "not-a-number" }, rec()), { kind: "CONFLICT", fields: ["executed_stake"] });
+  assert.deepEqual(planLedgerFillRepair(NULLS, rec()), { kind: "UPDATE", patch: { executed_stake: 2.3625, fill_price: 0.35 } });
 });

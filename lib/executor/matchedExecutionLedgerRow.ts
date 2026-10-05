@@ -37,10 +37,22 @@ export type LedgerFillRepairPlan =
   | { kind: "UPDATE"; patch: Partial<LedgerFillEconomics> }
   | { kind: "CONFLICT"; fields: string[] };
 
-// Ledger numerics may be stored at reduced scale; beyond these bounds a difference is a real disagreement.
-const LEDGER_FACT_TOLERANCE: Record<"executed_stake" | "fill_price" | "fee_paid_real", number> = {
-  executed_stake: 0.005, fee_paid_real: 0.005, fill_price: 0.001,
-};
+// bet_execution_ledger.executed_stake / fill_price / fee_paid_real are numeric(18,6). A stored value is
+// therefore the authoritative value rounded to 6 decimals: both sides are normalized to that persisted
+// scale (integer micro-units) and compared exactly. There is no money/price tolerance beyond the
+// storage precision -- any difference of one persisted unit or more is a real disagreement.
+export const LEDGER_NUMERIC_SCALE = 6 as const;
+const LEDGER_UNIT = 10 ** LEDGER_NUMERIC_SCALE;
+
+/** The value as numeric(18,6) would persist it, in integer micro-units (half away from zero, like Postgres). */
+export function toLedgerUnits(value: number): number {
+  // +1e-6 unit (1e-12 USD) only absorbs binary representation noise (e.g. 1.0000005 -> 1000000.4999999999).
+  return Math.sign(value) * Math.round(Math.abs(value) * LEDGER_UNIT + 1e-6);
+}
+
+export function ledgerValuesEqual(existing: number, authoritative: number): boolean {
+  return toLedgerUnits(existing) === toLedgerUnits(authoritative);
+}
 
 /**
  * Plans an idempotent repair of existing ledger fill facts from the authoritative reconciliation:
@@ -59,7 +71,7 @@ export function planLedgerFillRepair(
     const current = ledger[key];
     if (current == null) { patch[key] = known; continue; }
     const existing = Number(current);
-    if (!isFinite(existing) || Math.abs(existing - known) > LEDGER_FACT_TOLERANCE[key]) conflicts.push(key);
+    if (!isFinite(existing) || !ledgerValuesEqual(existing, known)) conflicts.push(key);
   }
   if (conflicts.length > 0) return { kind: "CONFLICT", fields: conflicts };
   return Object.keys(patch).length > 0 ? { kind: "UPDATE", patch } : { kind: "NOOP" };
