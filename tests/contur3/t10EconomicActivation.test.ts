@@ -1,4 +1,5 @@
-// T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1 — focused deterministic tests.
+// T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1 / T30_MONEY_GATE_REMOVAL_V1 — focused deterministic tests.
+// Live action is decided from the CURRENT T10 book only; T30 is research telemetry and never gates, prices or ranks.
 import test from "node:test";
 import assert from "node:assert/strict";
 import { parseOrderBook } from "../../lib/liquidity/orderbookMath";
@@ -14,6 +15,7 @@ import {
   walkTakerFill,
 } from "../../lib/executor/t10EconomicActivation";
 import { runEventRebalance, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
+import { evaluateMakerPlacement } from "../../lib/executor/t10EconomicActionPolicy";
 import {
   mapQueueRowToIrelandCandidate,
   primaryMakerSubmissionOpen,
@@ -28,6 +30,7 @@ import {
   readExecutionAttempts,
   recordResultAndAuthorizeMaker,
   selectExecutorMakerFallbackCommands,
+  deriveT10FallbackLimit,
   type MakerFallbackPort,
 } from "../../lib/executor/makerFallbackAuthorization";
 import {
@@ -63,9 +66,10 @@ const universes = (rows: Row[]) => ({
   t30: rows.filter((r) => r.t30).map((r) => obs(r, "T_MINUS_30")),
 });
 
-// A: SPREADS (B family priority #1): STRONG, P_BUY_MAX 0.50, live ask 0.52 -> maker only.
+// A: SPREADS (B family priority #1): current bid 0.50 / ask 0.52. With deep ask depth (LIVE) it is a safe TAKER;
+// with only $0.52 of ask depth at <= the taker limit (LIVE_A_MAKER) the full stake cannot be taken -> MAKER_FIRST at the bid.
 const A: Row = { cond: "a-spread", token: "a-token", family: "SPREADS", type: "SPREAD", t10: [0.50, 0.52], t30: [0.50, 0.52] };
-// B: TOTALS (B family priority #4): STRONG, P_BUY_MAX 0.53, live ask 0.50 -> safe taker.
+// B: TOTALS (B family priority #4): current ask 0.50 with $5 depth -> safe taker (T30 irrelevant).
 const B: Row = { cond: "b-total", token: "b-token", family: "TOTALS", type: "TOTAL", t10: [0.52, 0.53], t30: [0.53, 0.54] };
 
 type Lv = [number, number];
@@ -79,6 +83,10 @@ const LIVE: Record<string, FetchOrderBookResult> = {
   // Wide raw spread (0.05): telemetry only.
   "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]]),
 };
+// A with thin ask depth: no full-stake taker fill at <= the taker limit, maker limit = current best bid 0.50.
+const A_THIN_ASKS: Lv[] = [[0.52, 1], [0.60, 100]];
+const aBook = (min: number | null = 5, tick: number | null = 0.01) => bookOf("a-token", [[0.50, 100]], A_THIN_ASKS, tick, min);
+const LIVE_A_MAKER: Record<string, FetchOrderBookResult> = { ...LIVE, "a-token": aBook() };
 const fee = (tokenId: string, rate = 0.05): TokenFeeScheduleResult => ({
   ok: true, tokenId, conditionId: null, feesEnabled: true, takerRate: rate, exponent: 1, feeType: "sports_fees_v3",
   formulaVersion: "POLYMARKET_TAKER_FEE_C_RATE_P_1MP_V1", source: "GAMMA_MARKETS_BY_CLOB_TOKEN_ID",
@@ -183,48 +191,69 @@ test("6: full $2.50 VWAP walks the ladder, not bestAsk; fee = C*rate*p*(1-p) per
 });
 
 test("7: insufficient ladder depth at the fee-inclusive limit => no TAKER", async () => {
-  const thin = bookOf("b-token", [[0.45, 100]], [[0.50, 2], [0.52, 100]]); // only $1 at <= L(0.51)
+  const thin = bookOf("b-token", [[0.45, 100]], [[0.50, 2], [0.53, 100]]); // only $1 at <= L(0.52)
   const { event } = await decide([B], { d: deps({ "b-token": thin }) });
   assert.equal(event.decision.evaluations[0].taker.rejectReason, "TAKER_FULL_STAKE_DEPTH_INSUFFICIENT");
   assert.notEqual(event.decision.action, "TAKER_FIRST");
 });
 
-test("8-9: TAKER limit L bounds fee-inclusive cost by P_BUY_MAX; cost <= P_BUY_MAX is eligible", async () => {
-  assert.equal(takerPriceLimit(0.53, 0.05, 0.01, 0.54), 0.51);   // 0.52*(1+0.05*0.48)=0.5325 > 0.53
+test("8-9: TAKER limit L bounds the fee-inclusive cost by the HARD CAP (no T30 anchor); cost <= cap is eligible", async () => {
+  assert.equal(takerPriceLimit(0.54, 0.05, 0.01, 0.54), 0.52);   // 0.53*(1+0.05*0.47)=0.5425 > 0.54; 0.52 -> 0.5325
+  assert.equal(takerPriceLimit(0.53, 0.05, 0.01, 0.54), 0.51);   // pure-function cases unchanged
   assert.equal(takerPriceLimit(0.50, 0.05, 0.01, 0.54), 0.48);
   assert.equal(takerPriceLimit(0.53, 0, 0.01, 0.54), 0.53);
-  for (const L of [0.51, 0.48]) assert.ok(L * (1 + 0.05 * (1 - L)) <= (L === 0.51 ? 0.53 : 0.50));
-  // cost above P_BUY_MAX: ask only at 0.52 for B (P_BUY_MAX 0.53, L 0.51) -> no taker
-  const { event: worse } = await decide([B], { d: deps({ "b-token": bookOf("b-token", [[0.51, 100]], [[0.52, 100]]) }) });
+  assert.ok(0.52 * (1 + 0.05 * (1 - 0.52)) <= 0.54);
+  // ask only at 0.53: above L(0.52) -> fee-inclusive cost 0.5425 > 0.54 -> no taker
+  const { event: worse } = await decide([B], { d: deps({ "b-token": bookOf("b-token", [[0.51, 100]], [[0.53, 100]]) }) });
   assert.notEqual(worse.decision.action, "TAKER_FIRST");
+  // ask at 0.52: fee-inclusive 0.5325 <= 0.54 -> eligible (the old T30 anchor P_BUY_MAX 0.53 would have refused it)
+  const { event: edge } = await decide([B], { d: deps({ "b-token": bookOf("b-token", [[0.51, 100]], [[0.52, 100]]) }) });
+  assert.equal(edge.decision.action, "TAKER_FIRST");
+  assert.ok(edge.decision.selected!.taker.effectiveCost! <= 0.54);
   const { event } = await decide([B]);
   const sel = event.decision.selected!;
   assert.equal(event.decision.action, "TAKER_FIRST");
   assert.equal(sel.taker.effectiveCost, 0.5125); // (2.5 + 5*0.05*0.25) / 5
+  assert.equal(sel.priceAuthority.pBuyMax, 0.54, "TAKER price ceiling = hard cap");
   assert.ok(sel.taker.effectiveCost! <= sel.priceAuthority.pBuyMax!);
 });
 
-test("10: WEAK reference can never TAKER (maker only)", async () => {
-  // T10 witness rejected by source-quality spread -> only the T30 witness -> WEAK.
-  const weak: Row = { ...B, t10: [0.40, 0.53] };
-  // Live ask 0.52 => maker limit 0.51 (inside the TOTALS band); an ask of 0.50 would give 0.49 (odds 2.04, outside).
-  const { event } = await decide([weak], { d: deps({ "b-token": bookOf("b-token", [[0.45, 100]], [[0.52, 10], [0.60, 100]]) }) });
+test("10: the reference grade (WEAK / UNRESOLVED) is telemetry only and never blocks a TAKER", async () => {
+  // Capture-time T10 spread is wide (source-quality fail) and there is no T30 at all -> reference UNRESOLVED.
+  const weak: Row = { ...B, t10: [0.40, 0.53], t30: null };
+  const { event } = await decide([weak]);
   const ev = event.decision.evaluations[0];
-  assert.equal(ev.referenceStatus, "WEAK");
-  assert.equal(ev.taker.rejectReason, "TAKER_REQUIRES_STRONG");
-  assert.equal(event.decision.action, "MAKER_FIRST");
+  assert.equal(ev.referenceStatus, "UNRESOLVED");
+  assert.equal(ev.taker.eligible, true, "the live ladder + fee decide, not the reference grade");
+  assert.equal(event.decision.action, "TAKER_FIRST");
 });
 
-test("11-12: MAKER uses provider tick + P_BUY_MAX; never bestBid + tick", async () => {
+test("11-12: MAKER = floor_to_tick(min(current best bid, ask - tick, cap)); never bid + tick, never ask - tick across a wide spread", async () => {
   assert.equal(makerLimitPrice(0.53, 0.56, 0.001, 0.54), 0.53);
   assert.equal(makerLimitPrice(0.53, 0.531, 0.001, 0.54), 0.53);
-  assert.equal(makerLimitPrice(0.53, 0.53, 0.01, 0.54), 0.52);
-  assert.equal(makerLimitPrice(0.53, 0.53, 0.001, 0.54), 0.529);
-  assert.equal(makerLimitPrice(0.50, 0.50, 0.01, 0.54), 0.49);
-  const lowBid = bookOf("a-token", [[0.30, 100]], [[0.52, 100]], 0.001);
+  assert.equal(makerLimitPrice(0.52, 0.53, 0.01, 0.54), 0.52);
+  assert.equal(makerLimitPrice(0.53, 0.53, 0.01, 0.54), 0.52, "pure formula: still strictly below the ask (parity with the callback side)");
+  assert.equal(makerLimitPrice(0.49, 0.50, 0.01, 0.54), 0.49);
+  // The money path uses the full placement rule: a locked / crossed current book fails closed.
+  assert.equal(evaluateMakerPlacement(0.53, 0.53, 0.01, 0.54).limit, null);
+  assert.equal(evaluateMakerPlacement(0.55, 0.53, 0.01, 0.54).reason, "MAKER_BOOK_CROSSED");
+  assert.equal(evaluateMakerPlacement(null, 0.53, 0.01, 0.54).reason, "MAKER_BEST_BID_MISSING");
+  assert.equal(evaluateMakerPlacement(0.52, 0.53, null, 0.54).reason, "TICK_UNKNOWN");
+  assert.equal(makerLimitPrice(0.58, 0.60, 0.01, 0.54), 0.54, "hard cap binds");
+  assert.equal(makerLimitPrice(0.30, 0.52, 0.001, 0.54), 0.3, "a wide spread is NOT jumped to ask - tick (0.519)");
+  // Live: bid 0.30 / ask 0.52 -> limit 0.30, outside the SPREADS band -> SKIP (no full-stake taker depth either).
+  const lowBid = bookOf("a-token", [[0.30, 100]], A_THIN_ASKS, 0.001);
   const { event } = await decide([A], { d: deps({ "a-token": lowBid }) });
-  assert.equal(event.decision.action, "MAKER_FIRST");
-  assert.equal(event.decision.selected!.maker.limitPrice, 0.5, "min(P_BUY_MAX 0.50, ask-tick 0.519) — not bid 0.30 + tick");
+  assert.equal(event.decision.action, "SKIP");
+  const ev = event.decision.evaluations[0];
+  assert.equal(ev.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(ev.support.maker.SUPPORT_PRICE, 0.3);
+  // Bid 0.51 / ask 0.52 / tick 0.001 -> 0.51: neither ask - tick (0.519) nor bid + tick (0.511).
+  const tight = bookOf("a-token", [[0.51, 100]], A_THIN_ASKS, 0.001);
+  const { event: e2 } = await decide([A], { d: deps({ "a-token": tight }) });
+  assert.equal(e2.decision.action, "MAKER_FIRST");
+  assert.equal(e2.decision.selected!.maker.limitPrice, 0.51);
+  assert.equal(e2.decision.selected!.priceAuthority.pBuyMax, 0.51, "MAKER price ceiling = the current-book limit");
 });
 
 test("13: a wide raw spread alone no longer kills a safe economic TAKER", async () => {
@@ -236,7 +265,7 @@ test("13: a wide raw spread alone no longer kills a safe economic TAKER", async 
 });
 
 test("14: re-fetch worse than frozen economics => no Queue", async () => {
-  const moving = (n: number) => n === 1 ? LIVE["b-token"] : bookOf("b-token", [[0.45, 100]], [[0.52, 100]]);
+  const moving = (n: number) => n === 1 ? LIVE["b-token"] : bookOf("b-token", [[0.45, 100]], [[0.53, 100]]);
   const d = deps({ ...LIVE, "b-token": moving });
   const { event } = await decide([B], { d });
   assert.equal(event.decision.action, "TAKER_FIRST");
@@ -281,13 +310,23 @@ test("17-18: event exposure and latest entry block every sibling", async () => {
   }
 });
 
-test("22: real rank-4 evidence remains SKIP", async () => {
+test("22: real rank-4 evidence: the bid-less Under (0.02/0.51) is never a MAKER; capture-grade UNRESOLVED no longer vetoes, a TAKER needs real ask depth + fee", async () => {
   const under: Row = { cond: "r4", token: "under", side: "Under", family: "TOTALS", type: "TOTAL", t10: [0.02, 0.51], t30: [0.02, 0.52] };
   const over: Row = { cond: "r4", token: "over", side: "Over", family: "TOTALS", type: "TOTAL", t10: [0.49, 0.98], t30: [0.48, 0.98] };
-  const { event } = await decide([under, over], { d: deps({
-    under: bookOf("under", [[0.02, 100]], [[0.51, 100]]), over: bookOf("over", [[0.49, 100]], [[0.98, 100]]) }) });
-  assert.equal(event.decision.action, "SKIP");
-  assert.equal(event.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "under")!.referenceStatus, "UNRESOLVED");
+  const thin = { under: bookOf("under", [[0.02, 100]], [[0.51, 1], [0.70, 100]]), over: bookOf("over", [[0.49, 100]], [[0.98, 100]]) };
+  const { event: noDepth } = await decide([under, over], { d: deps(thin) });
+  assert.equal(noDepth.decision.action, "SKIP", "no full-stake depth for the taker; the bid-less maker is outside the band");
+  const ev = noDepth.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "under")!;
+  assert.equal(ev.referenceStatus, "UNRESOLVED", "telemetry only");
+  assert.equal(ev.maker.eligible, false);
+  assert.equal(ev.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(ev.support.maker.SUPPORT_PRICE, 0.02, "the empty bid is never jumped to ask - tick");
+  const deep = { under: bookOf("under", [[0.02, 100]], [[0.51, 100]]), over: thin.over };
+  const { event } = await decide([under, over], { d: deps(deep) });
+  assert.equal(event.decision.action, "TAKER_FIRST", "ask 0.51 is in band, full stake + fee proven on the current ladder");
+  assert.equal(event.decision.selected!.candidateIdentity.tokenId, "under");
+  assert.ok(event.decision.selected!.taker.effectiveCost! <= 0.54);
+  assert.equal(event.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "over")!.taker.rejectReason, "TAKER_SUPPORT_PRICE_OUTSIDE_BAND");
 });
 
 // ── real decision path (runEventRebalance) ──────────────────────────────────
@@ -320,13 +359,14 @@ function repoOf(reservations: NightEventReservationRow[], prior: EventExecutionQ
     async markReservationQueued(id) { const r = reservations.find((x) => x.id === id); if (r) r.status = "QUEUED"; },
   };
 }
-async function run(on: boolean | undefined, rows: Row[] = [A, B], books = LIVE, o: { repo?: ReturnType<typeof repoOf>; res?: NightEventReservationRow } = {}) {
+async function run(on: boolean | undefined, rows: Row[] = [A, B], books = LIVE, o: { repo?: ReturnType<typeof repoOf>; res?: NightEventReservationRow;
+  readT30?: () => Promise<FinalT3MarketObservation[]> } = {}) {
   const res = o.res ?? reservation();
   const repo = o.repo ?? repoOf([res]);
   const u = universes(rows);
   const d = deps(books);
   const result = await runEventRebalance(NOW, { write: true }, {
-    repo, readFinalT3Universe: async () => u.t10, readT30Universe: async () => u.t30,
+    repo, readFinalT3Universe: async () => u.t10, readT30Universe: o.readT30 ?? (async () => u.t30),
     recordStrategyDecision: async () => ({ total: 2, selected: 1, written: 2 }),
     fetchExactTokenOrderbook: d.fetchExactTokenOrderbook, fetchTokenFeeSchedule: d.fetchTokenFeeSchedule,
     writeGuardTelemetry: async () => {},
@@ -344,22 +384,23 @@ test("19-20: activation ON -> exactly one immutable Queue row freezing mode, tok
   assert.equal(row.selection_reason, "T10_ECONOMIC_ACTION_TAKER_FIRST_V1");
   const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
   assert.equal(c.execution_mode, "TAKER_FIRST");
-  assert.equal(c.price_authority_version, "T30_EXACT_BID_ANCHOR_V1");
-  assert.equal(c.price_authority_observation_id, "T30_BOOK:T_MINUS_30-run:b-token:Yes");
-  assert.equal(c.p_buy_max, 0.53);
+  assert.equal(c.price_authority_version, "T10_CURRENT_BOOK_EXECUTION_AUTHORITY_V1");
+  assert.equal(c.price_authority_observation_id, "T10_CURRENT_BOOK:b-total:b-token:Yes:2026-07-19T18:46:30.000Z", "current execution book lineage, never a T30 key");
+  assert.deepEqual(c.t30_telemetry_v1, { observation_key: "T30_BOOK:T_MINUS_30-run:b-token:Yes", LIVE_AUTHORITY: false }, "T30 survives as telemetry only");
+  assert.equal(c.p_buy_max, 0.54, "TAKER ceiling = hard cap");
   assert.equal(c.token_id, "b-token");
   assert.equal(c.stake_usd, 2.5);
   assert.equal(c.latest_entry_iso, "2026-07-19T18:57:00.000Z");
-  assert.equal(c.taker.price_limit, 0.51);
+  assert.equal(c.taker.price_limit, 0.52);
   assert.equal(c.taker.authorized_raw_vwap, 0.5);
   assert.equal(c.taker.authorized_effective_cost, 0.5125);
   assert.equal(c.taker.fee_rate, 0.05);
   assert.equal(c.tick_size, 0.01);
-  assert.equal(row.diagnostics.max_entry_price, 0.51, "Ireland price cap = fee-inclusive limit <= P_BUY_MAX");
+  assert.equal(row.diagnostics.max_entry_price, 0.52, "Ireland price cap = fee-inclusive limit <= hard cap");
   assert.ok(!JSON.stringify(row.diagnostics).includes("\"asks\""), "no raw ladder persisted");
   const wire = mapQueueRowToIrelandCandidate(row, NOW);
   assert.equal(wire.execution_mode, "TAKER");
-  assert.equal(wire.max_entry_price, 0.51);
+  assert.equal(wire.max_entry_price, 0.52);
   // Re-run: same reservation can never produce a second row.
   res.status = "REBALANCE_PENDING";
   const again = await run(true, [A, B], LIVE, { repo, res });
@@ -368,7 +409,7 @@ test("19-20: activation ON -> exactly one immutable Queue row freezing mode, tok
 });
 
 test("MAKER_FIRST is queued as an explicit primary-maker instruction, never translated into TAKER", async () => {
-  const { result, repo } = await run(true, [A]);
+  const { result, repo } = await run(true, [A], LIVE_A_MAKER);
   assert.equal(result.queued_count, 1);
   const row = repo.queueRows[0];
   assert.equal(row.selection_reason, "T10_ECONOMIC_ACTION_MAKER_FIRST_V1");
@@ -378,7 +419,7 @@ test("MAKER_FIRST is queued as an explicit primary-maker instruction, never tran
   assert.deepEqual(c.maker, { maker_limit_price: 0.5, maker_shares: 5 });
   assert.equal(c.minimum_order_size, 5);
   assert.equal(row.stake_usd, 2.5, "stake never increased");
-  assert.equal(row.diagnostics.max_entry_price, 0.5, "price cap = frozen maker limit <= P_BUY_MAX");
+  assert.equal(row.diagnostics.max_entry_price, 0.5, "price cap = frozen current-book maker limit (the best bid)");
   // Read back from the timestamptz column ("+00:00") the frozen deadline still matches.
   const dbRow = { ...row, id: "q-maker", latest_entry_iso: row.latest_entry_iso.replace(".000Z", "+00:00") };
   const wire = mapQueueRowToIrelandCandidate(dbRow, NOW);
@@ -392,8 +433,8 @@ test("MAKER_FIRST is queued as an explicit primary-maker instruction, never tran
   assert.equal(wire.p_buy_max, 0.5);
   assert.equal(wire.price_cap, 0.5);
   assert.equal(wire.stake_usd, 2.5);
-  assert.equal(wire.price_authority_version, "T30_EXACT_BID_ANCHOR_V1");
-  assert.equal(wire.price_authority_observation_id, "T30_BOOK:T_MINUS_30-run:a-token:Yes");
+  assert.equal(wire.price_authority_version, "T10_CURRENT_BOOK_EXECUTION_AUTHORITY_V1");
+  assert.equal(wire.price_authority_observation_id, "T10_CURRENT_BOOK:a-spread:a-token:Yes:2026-07-19T18:46:30.000Z");
   assert.equal(Date.parse(wire.latest_entry_iso), Date.parse("2026-07-19T18:57:00.000Z"));
   assert.equal(wire.idempotency_key, row.idempotency_key);
   // Malformed MAKER_FIRST data fails closed: never emitted, never a TAKER.
@@ -410,12 +451,12 @@ test("MAKER_FIRST is queued as an explicit primary-maker instruction, never tran
 
 test("minimum order: unknown fails closed; headroom above $4.00 or short depth for the minimum SKIPs (TAKER_FIRST and MAKER_FIRST)", async () => {
   const cases: Array<[Row[], Record<string, FetchOrderBookResult>, RegExp]> = [
-    [[A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, null) }, /T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN/],
+    [[A], { ...LIVE, "a-token": aBook(null) }, /T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN/],
     // 9 shares x 0.50 = $4.50 > $4.00 ceiling.
-    [[A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, 9) }, /T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE/],
+    [[A], { ...LIVE, "a-token": aBook(9) }, /T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE/],
     [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, null) }, /T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN/],
     [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, 9) }, /T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE/],
-    // Insufficient taker depth after resize: $2.50 fills, but only 5.5 shares <= limit exist for a minimum of 6.
+    // Insufficient taker depth after resize: $2.50 fills, but only 5.5 shares <= limit (0.52) exist for a minimum of 6.
     [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 5.5], [0.60, 100]], 0.01, 6) }, /T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE:.*depth_short_for_minimum/],
   ];
   for (const [rows, books, reason] of cases) {
@@ -488,9 +529,9 @@ test("21: activation OFF (default and explicit) preserves released B priority + 
 
 // ── LIVE_EXECUTION_FINAL_ACTIVATION_V1: adaptive minimum-order headroom + MAKER_FIRST timing ──
 
-// M: STRONG, P_BUY_MAX 0.53, live ask 0.54 -> maker limit 0.53; taker limit 0.51 has no depth -> MAKER_FIRST.
-const M: Row = { cond: "m-ml", token: "m-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.52, 0.54], t30: [0.53, 0.54] };
-const mBook = (min: number | null = 5) => ({ ...LIVE, "m-token": bookOf("m-token", [[0.52, 100]], [[0.54, 100]], 0.01, min) });
+// M: current bid 0.53 / ask 0.54 -> maker limit 0.53 (the best bid); taker limit 0.52 has no depth -> MAKER_FIRST.
+const M: Row = { cond: "m-ml", token: "m-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.53, 0.54], t30: [0.53, 0.54] };
+const mBook = (min: number | null = 5) => ({ ...LIVE, "m-token": bookOf("m-token", [[0.53, 100]], [[0.54, 100]], 0.01, min) });
 const LATEST_ENTRY = "2026-07-19T18:57:00.000Z";
 const CANCEL_BY = "2026-07-19T18:47:20.000Z";                // latest_entry - 580 s = kickoff - 12m40s
 
@@ -600,7 +641,7 @@ test("FULL PATH: Reservation -> T30 -> T10 -> $2.50 fails ONLY minimum size -> $
 });
 
 test("normal $2.50 regression: required stake <= $2.50 stays exactly $2.50 with no adjustment (MAKER and TAKER)", async () => {
-  const maker = await run(true, [A]);
+  const maker = await run(true, [A], LIVE_A_MAKER);
   const m = maker.repo.queueRows[0];
   assert.equal(m.stake_usd, 2.5);
   assert.equal(m.diagnostics.stake_adjustment_reason, null);
@@ -616,7 +657,7 @@ test("normal $2.50 regression: required stake <= $2.50 stays exactly $2.50 with 
 
 test("headroom between $2.50 and $4.00 authorizes the EXACT minimum sufficient stake (MAKER and TAKER re-walk)", async () => {
   for (const [min, stake] of [[6, 3], [5.5, 2.75], [7.99, 4]] as const) {
-    const { repo } = await run(true, [A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, min) });
+    const { repo } = await run(true, [A], { ...LIVE, "a-token": aBook(min) });
     const row = repo.queueRows[0];
     assert.equal(row.stake_usd, stake, `min ${min}`);
     assert.equal((row.diagnostics.t10_economic_action_v1 as any).maker.maker_shares >= min, true);
@@ -687,13 +728,13 @@ test("strict contract: a stake above $2.50 requires valid minimum-order headroom
 
 test("timing: a T10 at/after primary_maker_cancel_by fails closed (reserve never weakened); after latest_entry nothing executes", async () => {
   for (const now of [Date.parse(CANCEL_BY), Date.parse("2026-07-19T18:50:00.000Z")]) {
-    const { event, d } = await decide([A], { now });
+    const { event, d } = await decide([A], { now, d: deps(LIVE_A_MAKER) });
     const g = await reverifySelectedAction({ event, nowMs: now, exposureExists: false, fetchExactTokenOrderbook: d.fetchExactTokenOrderbook });
     assert.equal(g.ok, false);
     assert.match(!g.ok ? g.reason : "", /T10_ECON_GUARD_AFTER_PRIMARY_MAKER_CANCEL_BY/);
   }
   const late = Date.parse("2026-07-19T18:57:00.000Z");
-  const { event, d } = await decide([A], { now: late });
+  const { event, d } = await decide([A], { now: late, d: deps(LIVE_A_MAKER) });
   const g = await reverifySelectedAction({ event, nowMs: late, exposureExists: false, fetchExactTokenOrderbook: d.fetchExactTokenOrderbook });
   assert.equal(g.ok, false);
 });
@@ -760,7 +801,7 @@ const drcBook = (min: number | null = 5) => ({ ...LIVE, "drc-token": bookOf("drc
 test("LIVE BUG (DR Congo): ask 0.57 outside the old band => MAKER_FIRST limit 0.54; TAKER never pays 0.57", async () => {
   const { event } = await decide([DRC], { d: deps(drcBook()) });
   const ev = event.decision.evaluations[0];
-  assert.equal(ev.priceAuthority.pBuyMax, 0.54, "P_BUY_MAX = min(T30 bid 0.56, cap 0.54)");
+  assert.equal(ev.priceAuthority.pBuyMax, 0.54, "MAKER ceiling = floor_to_tick(min(best bid 0.56, ask - tick 0.56, cap 0.54))");
   assert.equal(ev.taker.eligible, false);
   assert.equal(ev.taker.rawVwap, null, "no taker fill at 0.57 or anywhere above P_BUY_MAX / 0.54");
   assert.equal(ev.maker.eligible, true);
@@ -784,9 +825,9 @@ test("LIVE BUG (DR Congo): ask 0.57 outside the old band => MAKER_FIRST limit 0.
 });
 
 test("maker support is judged on maker_limit: limit odds outside the band => rejected even when the ask is inside", async () => {
-  // Ask 0.50 (odds 2.00, inside) but the limit floor(min(P_BUY_MAX 0.50, 0.49)) = 0.49 (odds 2.04, outside).
+  // Ask 0.50 (odds 2.00, inside) but the limit floor(min(best bid 0.49, 0.49)) = 0.49 (odds 2.04, outside). Thin ask depth: no taker.
   const row: Row = { cond: "ml-edge", token: "edge-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.49, 0.50], t30: [0.50, 0.51] };
-  const book = { "edge-token": bookOf("edge-token", [[0.49, 100]], [[0.50, 100]], 0.01, 5) };
+  const book = { "edge-token": bookOf("edge-token", [[0.49, 100]], [[0.50, 1], [0.60, 100]], 0.01, 5) };
   const { event } = await decide([row], { d: deps(book) });
   const ev = event.decision.evaluations[0];
   assert.equal(ev.maker.eligible, false);
@@ -855,4 +896,204 @@ test("FULL PATH (MONEYLINE band + maker authority): Reservation -> T30 -> T10 as
   assert.equal(cmds[0].attempt_id, "MAKER_FALLBACK_1");
   assert.equal(cmds[0].limit_price <= 0.54, true);
   assert.equal(cmds[0].deadline_iso, LATEST_ENTRY);
+});
+
+// ── T30_MONEY_GATE_REMOVAL_V1: T30 is research telemetry, never a live gate / price / rank ───────────
+
+const strip = (c: Record<string, any>) => { const { t30_telemetry_v1: _t, reference_status: _r, ...rest } = c; return rest; };
+const contractOf = (row: EventExecutionQueueRow) => row.diagnostics.t10_economic_action_v1 as Record<string, any>;
+
+test("T30 REMOVED (TAKER): missing / empty / unusable / unreadable T30 never blocks a safe TAKER and never changes the frozen contract", async () => {
+  const variants: Array<[string, Row[], (() => Promise<FinalT3MarketObservation[]>) | undefined]> = [
+    ["with usable T30", [B], undefined],
+    ["no T30 row", [{ ...B, t30: null }], undefined],
+    ["wide T30 (spread 0.50)", [{ ...B, t30: [0.10, 0.60] }], undefined],
+    ["wildly different T30", [{ ...B, t30: [0.20, 0.22] }], undefined],
+    ["T30 universe empty", [B], async () => []],
+    ["T30 universe unreadable", [B], async () => { throw new Error("t30 unreadable"); }],
+  ];
+  let baseline: Record<string, unknown> | null = null;
+  for (const [name, rows, readT30] of variants) {
+    const { result, repo } = await run(true, rows, LIVE, readT30 ? { readT30 } : {});
+    assert.equal(result.queued_count, 1, name);
+    const row = repo.queueRows[0];
+    const c = contractOf(row);
+    assert.equal(c.execution_mode, "TAKER_FIRST", name);
+    assert.equal(c.price_authority_version, "T10_CURRENT_BOOK_EXECUTION_AUTHORITY_V1", name);
+    assert.match(c.price_authority_observation_id, /^T10_CURRENT_BOOK:/, name);
+    assert.equal(c.t30_telemetry_v1.LIVE_AUTHORITY, false, name);
+    assert.ok(readT10FrozenContract(row).ok, name);
+    const frozen = { ...strip(c), max_entry_price: row.diagnostics.max_entry_price, stake: row.stake_usd, sel: row.selection_reason };
+    baseline = baseline ?? frozen;
+    assert.deepEqual(frozen, baseline, `${name}: changing only T30 must not change the live contract`);
+  }
+  // Telemetry survives exactly when a T30 observation existed.
+  const withT30 = contractOf((await run(true, [B])).repo.queueRows[0]);
+  const withoutT30 = contractOf((await run(true, [{ ...B, t30: null }])).repo.queueRows[0]);
+  assert.equal(withT30.t30_telemetry_v1.observation_key, "T30_BOOK:T_MINUS_30-run:b-token:Yes");
+  assert.equal(withoutT30.t30_telemetry_v1.observation_key, null);
+});
+
+test("T30 REMOVED (MAKER): missing / empty / unusable / unreadable T30 never blocks a safe MAKER and never changes the frozen contract", async () => {
+  const variants: Array<[string, Row[], (() => Promise<FinalT3MarketObservation[]>) | undefined]> = [
+    ["with usable T30", [A], undefined],
+    ["no T30 row", [{ ...A, t30: null }], undefined],
+    ["wide T30 (spread 0.50)", [{ ...A, t30: [0.10, 0.60] }], undefined],
+    ["T30 bid far BELOW the current bid", [{ ...A, t30: [0.05, 0.07] }], undefined],
+    ["T30 universe empty", [A], async () => []],
+    ["T30 universe unreadable", [A], async () => { throw new Error("t30 unreadable"); }],
+  ];
+  let baseline: Record<string, unknown> | null = null;
+  for (const [name, rows, readT30] of variants) {
+    const { result, repo } = await run(true, rows, LIVE_A_MAKER, readT30 ? { readT30 } : {});
+    assert.equal(result.queued_count, 1, name);
+    const row = repo.queueRows[0];
+    const c = contractOf(row);
+    assert.equal(c.execution_mode, "MAKER_FIRST", name);
+    assert.deepEqual(c.maker, { maker_limit_price: 0.5, maker_shares: 5 }, `${name}: limit = current best bid`);
+    assert.equal(c.p_buy_max, 0.5, name);
+    assert.ok(readT10FrozenContract(row).ok, name);
+    const frozen = { ...strip(c), max_entry_price: row.diagnostics.max_entry_price, stake: row.stake_usd };
+    baseline = baseline ?? frozen;
+    assert.deepEqual(frozen, baseline, `${name}: changing only T30 must not change the live contract`);
+  }
+});
+
+test("EXAMPLE A (Sri Lanka - Mauritius pattern): TOTALS bid 0.54 / ask 0.69 / tick 0.01, no usable T30 -> MAKER_FIRST 0.54 through Queue and Ireland wire", async () => {
+  const SL: Row = { cond: "sl-total", token: "sl-token", family: "TOTALS", type: "TOTAL", t10: [0.54, 0.69], t30: null };
+  const books = { ...LIVE, "sl-token": bookOf("sl-token", [[0.54, 100]], [[0.69, 100]], 0.01, 5) };
+  const { result, repo, d } = await run(true, [SL], books);
+  assert.equal(result.queued_count, 1);
+  const row = { ...repo.queueRows[0], id: "q-sl" };
+  const c = contractOf(row);
+  assert.equal(c.execution_mode, "MAKER_FIRST");
+  assert.equal(c.maker.maker_limit_price, 0.54);
+  assert.equal(c.p_buy_max, 0.54);
+  assert.equal(c.hard_price_cap, 0.54);
+  assert.equal(c.stake_usd, 2.7, "venue-minimum headroom only: 5 shares x 0.54");
+  assert.equal(c.t30_telemetry_v1.observation_key, null);
+  const audit = row.diagnostics.t10_support_audit_v1 as Record<string, any>;
+  assert.equal(audit.maker.SUPPORT_PRICE, 0.54);
+  assert.ok(Math.abs(audit.maker.SUPPORT_DECIMAL_ODDS - 1.851852) < 1e-5, "decimal odds ~1.85185 inside TOTALS 1.85..2.00");
+  assert.equal(audit.maker.SUPPORT_PRICE_IN_BAND, true);
+  assert.equal(audit.taker.SUPPORT_PRICE_IN_BAND, false, "ask 0.69 is never bought");
+  assert.deepEqual(d.calls.slice(0, 1), ["sl-token"], "exact token only");
+  const wire = mapQueueRowToIrelandCandidate({ ...row, status: "READY", latest_entry_iso: "2026-07-19T18:57:00+00:00" }, NOW);
+  assert.equal(wire.execution_mode, "MAKER_FIRST");
+  assert.equal(wire.maker_limit_price, 0.54);
+  assert.equal(wire.price_cap, 0.54);
+});
+
+test("EXAMPLE B: SPREADS bid 0.05 / ask 0.50 / tick 0.01 -> maker limit 0.05 is far outside the band -> SKIP, nothing queued", async () => {
+  const SB: Row = { cond: "sb-spread", token: "sb-token", family: "SPREADS", type: "SPREAD", t10: [0.05, 0.50], t30: null };
+  const books = { ...LIVE, "sb-token": bookOf("sb-token", [[0.05, 100]], [[0.50, 1], [0.60, 100]], 0.01, 5) };
+  const { event } = await decide([SB], { d: deps(books) });
+  const ev = event.decision.evaluations[0];
+  assert.equal(ev.maker.eligible, false);
+  assert.equal(ev.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(ev.support.maker.SUPPORT_PRICE, 0.05, "never jumped to ask - tick");
+  assert.equal(event.decision.action, "SKIP");
+  const { result, repo } = await run(true, [SB], books);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes.map((o) => o.reason).join(","), /T10_ECON_SKIP/);
+});
+
+test("TAKER fee evidence is fetched for a T30-less candidate and is still mandatory; ask outside the band needs no fee", async () => {
+  const seen: string[] = [];
+  const d = deps(LIVE, (t) => { seen.push(t); return fee(t); });
+  const { event } = await decide([{ ...B, t30: null }], { d });
+  assert.deepEqual(seen, ["b-token"], "fee fetch no longer depends on a STRONG reference grade");
+  assert.equal(event.decision.action, "TAKER_FIRST");
+  const none = await decide([{ ...B, t30: null }], { d: deps(LIVE, (t) => ({ ok: false, tokenId: t, errorCode: "FEE_HTTP_500", latencyMs: 1 })) });
+  assert.equal(none.event.decision.evaluations[0].taker.rejectReason, "TAKER_FEE_EVIDENCE_MISSING");
+  assert.notEqual(none.event.decision.action, "TAKER_FIRST");
+  const outside: string[] = [];
+  const SL: Row = { cond: "sl-total", token: "sl-token", family: "TOTALS", type: "TOTAL", t10: [0.54, 0.69], t30: null };
+  await decide([SL], { d: deps({ ...LIVE, "sl-token": bookOf("sl-token", [[0.54, 100]], [[0.69, 100]]) }, (t) => { outside.push(t); return fee(t); }) });
+  assert.deepEqual(outside, []);
+});
+
+test("re-verification: maker limit is re-derived from the REFRESHED best bid but can never exceed the frozen current-book ceiling", async () => {
+  const { event } = await decide([A], { d: deps(LIVE_A_MAKER) });
+  assert.equal(event.decision.action, "MAKER_FIRST");
+  assert.equal(event.decision.selected!.priceAuthority.pBuyMax, 0.5);
+  const guard = (book: FetchOrderBookResult) =>
+    reverifySelectedAction({ event, nowMs: NOW, exposureExists: false, fetchExactTokenOrderbook: deps({ "a-token": book }).fetchExactTokenOrderbook });
+  // Bid rose to 0.52 / ask 0.55: limit stays at the frozen ceiling 0.50 (never raised after selection).
+  const rose = await guard(bookOf("a-token", [[0.52, 100]], [[0.55, 100]]));
+  assert.ok(rose.ok);
+  if (rose.ok) {
+    assert.equal(rose.contract.maker!.maker_limit_price, 0.5);
+    assert.equal(rose.contract.p_buy_max, 0.5);
+    assert.match(rose.contract.price_authority_observation_id, /^T10_CURRENT_BOOK:a-spread:a-token:Yes:/);
+    assert.equal(rose.contract.t30_telemetry_v1.LIVE_AUTHORITY, false);
+  }
+  // Bid fell to 0.48 (odds 2.08): the refreshed limit leaves the band -> fail closed.
+  const fell = await guard(bookOf("a-token", [[0.48, 100]], [[0.52, 100]]));
+  assert.equal(fell.ok, false);
+  if (!fell.ok) assert.match(fell.reason, /MAKER_SUPPORT_PRICE_OUTSIDE_BAND/);
+  // Bid disappeared: the current best bid is the placement authority -> fail closed.
+  const noBid = await guard(bookOf("a-token", [], [[0.52, 100]]));
+  assert.equal(!noBid.ok && noBid.reason, "T10_ECON_GUARD_MAKER_BEST_BID_MISSING");
+  // Crossed refreshed book -> no valid passive limit -> fail closed.
+  const crossed = await guard(bookOf("a-token", [[0.52, 100]], [[0.52, 100]]));
+  assert.equal(!crossed.ok && crossed.reason, "T10_ECON_GUARD_MAKER_LIMIT_INVALID");
+});
+
+test("TAKER_FIRST still outranks MAKER_FIRST through the real path; one physical event => one Queue row", async () => {
+  // A has a safe maker (limit 0.50), B has a safe taker: the taker wins and exactly one row exists.
+  const { result, repo } = await run(true, [A, B], LIVE_A_MAKER);
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  assert.equal(repo.queueRows[0].token_id, "b-token");
+  assert.equal(contractOf(repo.queueRows[0]).execution_mode, "TAKER_FIRST");
+  // Two safe takers (A and B on deep books): still ONE row, the lower fee-inclusive cost wins, never family priority.
+  const two = await run(true, [A, B], LIVE);
+  assert.equal(two.repo.queueRows.length, 1);
+  assert.equal(two.repo.queueRows[0].token_id, "b-token");
+});
+
+test("MONEYLINE band behaviour unchanged through the live path: 1.70..2.00 admits ask 0.57 as a MAKER candidate; support bands untouched", async () => {
+  assert.deepEqual(bStrategySupportRegion("MONEYLINE"), { min: 1.7, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("SPREADS"), { min: 1.85, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("TOTALS"), { min: 1.85, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("TOTAL_CORNERS"), { min: 2.25, max: 2.5 });
+  const { event } = await decide([{ ...DRC, t30: null }], { d: deps(drcBook()) });
+  assert.equal(event.decision.action, "MAKER_FIRST");
+  assert.equal(event.decision.selected!.maker.limitPrice, 0.54);
+  // Ask 0.60 (odds 1.667) is outside 1.70..2.00 for the taker; the maker (bid 0.58 -> limit 0.54) is judged on its own price.
+  const wide = await decide([{ ...DRC, t10: [0.58, 0.60], t30: null }], { d: deps({ ...LIVE, "drc-token": bookOf("drc-token", [[0.58, 100]], [[0.60, 100]], 0.01, 5) }) });
+  assert.equal(wide.event.decision.evaluations[0].taker.rejectReason, "TAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(wide.event.decision.action, "MAKER_FIRST");
+});
+
+test("a TAKER on a token whose capture-time reference grade is UNRESOLVED is queued and accepted by the strict Queue / Ireland readers (grade is telemetry)", async () => {
+  // Wide capture-time T10 spread and no T30 at all -> reference UNRESOLVED; the live ladder + fee decide.
+  const unresolved: Row = { ...B, t10: [0.40, 0.53], t30: null };
+  const { result, repo } = await run(true, [unresolved]);
+  assert.equal(result.queued_count, 1);
+  const row = { ...repo.queueRows[0], id: "q-unresolved" };
+  const c = contractOf(row);
+  assert.equal(c.reference_status, "UNRESOLVED");
+  assert.equal(c.execution_mode, "TAKER_FIRST");
+  assert.equal(c.t30_telemetry_v1.observation_key, null);
+  assert.ok(readT10FrozenContract(row).ok, "reference_status is never read by the frozen-contract reader");
+  const wire = mapQueueRowToIrelandCandidate({ ...row, status: "READY" }, NOW);
+  assert.equal(wire.execution_mode, "TAKER");
+  assert.equal(wire.max_entry_price, 0.52);
+});
+
+test("MAKER_FALLBACK_1 after a TAKER_FIRST parent is bounded by the parent price cap (taker limit) and the hard cap, never by T30", async () => {
+  const { repo } = await run(true, [B]);
+  const row = { ...repo.queueRows[0], id: "q-taker-parent", status: "EXECUTED" as const };
+  assert.equal(contractOf(row).p_buy_max, 0.54);
+  const parentCap = row.diagnostics.max_entry_price as number;
+  assert.equal(parentCap, 0.52);
+  const derive = (bestAsk: number) => deriveT10FallbackLimit({ queue: row, book: { bestAsk, tickSize: 0.01, minimumOrderSize: 5 }, priceCap: parentCap, stakeUsd: row.stake_usd });
+  const tight = derive(0.51);
+  assert.ok(tight.ok);
+  if (tight.ok) assert.equal(tight.limit_price, 0.5, "ask - tick binds");
+  // A far-away ask cannot lift the fallback above the parent cap 0.52 (4.80 shares < the 5-share minimum -> fail closed).
+  const far = derive(0.7);
+  assert.deepEqual(far, { ok: false, reason: "BELOW_MINIMUM_ORDER_SIZE" });
 });
