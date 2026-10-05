@@ -18,7 +18,7 @@ const ROOT = path.resolve(__dirname, "../..");
 test("plan: baseline first, every non-excluded migration present, current-main migrations included", () => {
   const plan = buildPlan().map((f: { name: string }) => f.name);
   assert.equal(plan[0], "shadow/000_prehistory_baseline.sql");
-  assert.ok(plan.includes("migrations/20261002090000_reservation_capture_run_discovery_audit_v1.sql"));
+  assert.ok(plan.includes("migrations/20261002083150_reservation_capture_run_discovery_audit_v1.sql"));
   const excl = Object.keys(JSON.parse(readFileSync(path.join(ROOT, "supabase/shadow/exclusions.json"), "utf8")).exclusions);
   const all = readdirSync(path.join(ROOT, "supabase/migrations")).filter((f) => f.endsWith(".sql"));
   assert.equal(plan.length, 1 + all.length - excl.length);

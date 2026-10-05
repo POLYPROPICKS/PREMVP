@@ -10,10 +10,10 @@
     "20260704_track_record_window_refresh_rpc.sql": "track-record display product",
     "20260830085522_create_strategic_jul15_aug27_identity_snapshot.sql": "historical research snapshot",
     "20260830090340_lock_strategic_jul15_aug27_identity_snapshot.sql": "historical research snapshot",
-    "20260919080000_research_evidence_page_v2.sql": "research evidence page read RPC (product UI)",
-    "20260919100000_research_evidence_page_v3.sql": "research evidence page read RPC (product UI)",
-    "20260923090003_research_evidence_page_v4.sql": "research evidence page read RPC (product UI)",
-    "20260929120000_bet_execution_ledger_nullable_model_name.sql": "execution ledger exists only after a filled order; money movement is disabled on the shadow",
-    "20260929130000_live_feedback_daily_view.sql": "view over the execution ledger; money movement is disabled on the shadow"
+    "20260919072721_research_evidence_page_v2.sql": "research evidence page read RPC (product UI)",
+    "20260919080115_research_evidence_page_v3.sql": "research evidence page read RPC (product UI)",
+    "20260923104047_research_evidence_page_v4.sql": "research evidence page read RPC (product UI)",
+    "20260929181623_bet_execution_ledger_nullable_model_name.sql": "execution ledger exists only after a filled order; money movement is disabled on the shadow",
+    "20260929190845_live_feedback_daily_view.sql": "view over the execution ledger; money movement is disabled on the shadow"
   }
 }

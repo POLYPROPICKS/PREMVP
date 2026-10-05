@@ -221,7 +221,7 @@ test("identity and physical-event denominators stay separate, never pooled", () 
 // ------------------------------------------------------- migration contract
 
 test("prepared migration is additive, read-only and service-role-only", () => {
-  const sql = readFileSync(repoRoot + "supabase/migrations/20260919080000_research_evidence_page_v2.sql", "utf8");
+  const sql = readFileSync(repoRoot + "supabase/migrations/20260919072721_research_evidence_page_v2.sql", "utf8");
 
   assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_primary_evidence_outbox_observed/);
   const executableSql = sql.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
@@ -270,7 +270,7 @@ test("prepared migration is additive, read-only and service-role-only", () => {
 
 // ------------------------------------------- current-attribute projection
 
-const SQL = readFileSync(repoRoot + "supabase/migrations/20260919080000_research_evidence_page_v2.sql", "utf8");
+const SQL = readFileSync(repoRoot + "supabase/migrations/20260919072721_research_evidence_page_v2.sql", "utf8");
 const SCRIPT = readFileSync(repoRoot + "scripts/research-clone-daily-sync.ts", "utf8");
 const CLONE_SCHEMA = readFileSync(repoRoot + "ops/research-clone/research-evidence-page-schema.sql", "utf8");
 
@@ -386,9 +386,9 @@ test("main() honours EMERGENCY_QUIESCE_SCOPES=research-clone-sync before touchin
 test("release contract: v2 migration path/version, index names, no duplicate clone index", () => {
   const migDir = repoRoot + "supabase/migrations/";
   const files = readdirSync(migDir);
-  assert.ok(files.includes("20260919080000_research_evidence_page_v2.sql"));
+  assert.ok(files.includes("20260919072721_research_evidence_page_v2.sql"));
   assert.equal(files.includes("20260916140000_research_evidence_page.sql"), false, "old out-of-order migration removed");
-  assert.ok("20260919080000" > "20260918162403", "version is strictly after live migration head");
+  assert.ok("20260919072721" > "20260918162403", "version is strictly after live migration head");
   assert.match(CLONE_SCHEMA, /create index if not exists research_evidence_page_rows_window_idx/);
   assert.equal(CLONE_SCHEMA.includes("idx_research_evidence_page_rows_window"), false);
 });
@@ -406,9 +406,9 @@ import {
 } from "../../lib/research-clone/researchEvidenceExport";
 import { resolveRepairArgs, syncResearchEvidencePage } from "../../scripts/research-clone-daily-sync";
 
-const SQL_V3 = readFileSync(repoRoot + "supabase/migrations/20260919100000_research_evidence_page_v3.sql", "utf8");
+const SQL_V3 = readFileSync(repoRoot + "supabase/migrations/20260919080115_research_evidence_page_v3.sql", "utf8");
 const EXEC_V3 = SQL_V3.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
-const SQL_V4 = readFileSync(repoRoot + "supabase/migrations/20260923090003_research_evidence_page_v4.sql", "utf8");
+const SQL_V4 = readFileSync(repoRoot + "supabase/migrations/20260923104047_research_evidence_page_v4.sql", "utf8");
 const EXEC_V4 = SQL_V4.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
 
 test("v3 migration: new function, item cursor, 500-row bound, v1/v2 untouched, no new index", () => {
