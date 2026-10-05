@@ -7,7 +7,10 @@ import {
   QUEUE_EXECUTION_MODE,
   QUEUE_SOURCE,
   mapQueueRowToIrelandCandidate,
+  primaryMakerSubmissionOpen,
+  QueueWireContractError,
   type EventExecutionQueueRow,
+  type IrelandQueueCandidate,
 } from "@/lib/executor/executorQueueTypes";
 import { selectExecutorMakerFallbackCommands } from "@/lib/executor/makerFallbackAuthorization";
 import { REBALANCE_MINUTES_BEFORE_START } from "@/lib/executor/nightWindow";
@@ -66,7 +69,25 @@ export async function GET(request: NextRequest) {
 
     const rows = (data ?? []) as EventExecutionQueueRow[];
     const contourId = getActiveContour().profile.contourId;
-    let candidates = rows.map((r) => ({ ...mapQueueRowToIrelandCandidate(r, nowMs), contour_id: contourId }));
+    // Fail closed PER ROW: a malformed frozen MAKER_FIRST contract is never emitted (and never a TAKER),
+    // and a MAKER_FIRST primary at/after its primary_maker_cancel_by_iso is never handed to Ireland.
+    const wireRejected: { queue_id: string | null; reason: string }[] = [];
+    let candidates: (IrelandQueueCandidate & { contour_id: string })[] = [];
+    for (const r of rows) {
+      let c: IrelandQueueCandidate;
+      try {
+        c = mapQueueRowToIrelandCandidate(r, nowMs);
+      } catch (e) {
+        if (!(e instanceof QueueWireContractError)) throw e;
+        wireRejected.push({ queue_id: e.queueId, reason: e.reason });
+        continue;
+      }
+      if (!primaryMakerSubmissionOpen(c, nowMs)) {
+        wireRejected.push({ queue_id: c.queue_row_id, reason: "PRIMARY_MAKER_AFTER_CANCEL_BY" });
+        continue;
+      }
+      candidates.push({ ...c, contour_id: contourId });
+    }
     if (!includeUpcoming) {
       candidates = candidates.filter((c) => c.entry_state === "IN_WINDOW");
     }
@@ -139,6 +160,7 @@ export async function GET(request: NextRequest) {
           : null,
         diagnostics: {
           ready_rows_total: rows.length,
+          wire_rejected: wireRejected,
           in_window_count: candidates.filter((c) => c.entry_state === "IN_WINDOW").length,
           pending_window_count: candidates.filter((c) => c.entry_state === "PENDING_WINDOW").length,
         },

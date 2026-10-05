@@ -18,6 +18,7 @@ import {
   PRIMARY_MAKER_ATTEMPT_ID,
   QUEUE_MAX_ENTRY_PRICE,
   extractMaxStakeUsd,
+  floorShares,
   readT10FrozenContract,
   t10FrozenExecutionMode,
   type EventExecutionQueueRow,
@@ -357,7 +358,8 @@ export function deriveT10FallbackLimit(input: {
     return { ok: false, reason: "MINIMUM_ORDER_SIZE_UNKNOWN" };
   }
   const minimum = Math.max(frozen.contract.minimum_order_size, liveMin ?? 0);
-  const quantity = Math.floor((input.stakeUsd / limit) * 100) / 100;
+  // The parent's frozen authorized stake (incl. any venue-minimum headroom) is inherited, never raised.
+  const quantity = floorShares(input.stakeUsd / limit);
   if (quantity + 1e-9 < minimum) return { ok: false, reason: "BELOW_MINIMUM_ORDER_SIZE" };
   return { ok: true, limit_price: limit, quantity };
 }
@@ -394,7 +396,7 @@ export function buildMakerFallbackCommand(input: {
     price = legacy;
     quantity = Math.floor((stake / price.limit_price) * 100) / 100;
   }
-  if (!(quantity > 0) || quantity * price.limit_price > Math.min(stake, maxStake) + 1e-9) {
+  if (!(quantity > 0) || quantity * price.limit_price > Math.min(stake, maxStake) + 1e-6) {
     return { ok: false, reason: "STAKE_UNREPRESENTABLE" };
   }
   const lineage = d.model_lineage_v1 && typeof d.model_lineage_v1 === "object" ? (d.model_lineage_v1 as Record<string, unknown>) : {};
@@ -683,6 +685,16 @@ async function authorizeFallback(
     return { kind: "MAKER_ALREADY_AUTHORIZED", command: readExecutionAttempts(fresh?.diagnostics).maker_fallback_1?.command ?? null };
   }
   return { kind: "MAKER_AUTHORIZED", command: built.command };
+}
+
+/**
+ * Outcomes after which a terminal proven-ZERO callback must NOT be acknowledged: the fallback was
+ * neither published nor deterministically refused (infrastructure error, book unavailable).
+ * Deterministic policy blocks (deadline, below minimum, exposure, lost CAS race, ...) are final.
+ */
+const RETRYABLE_FALLBACK_BLOCKS: ReadonlySet<string> = new Set(["AUTHORIZATION_ERROR", "BOOK_UNAVAILABLE"]);
+export function fallbackPublicationRetryable(outcome: MakerAuthorizationOutcome): boolean {
+  return outcome.kind === "MAKER_BLOCKED" && outcome.reasons.some((r) => RETRYABLE_FALLBACK_BLOCKS.has(r));
 }
 
 // ── executor-facing Queue contract ────────────────────────────────────────

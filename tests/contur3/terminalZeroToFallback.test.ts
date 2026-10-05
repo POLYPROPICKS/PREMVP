@@ -27,7 +27,7 @@ import { handleOrderEventSubmission, type OrderEventDbPort, type StoredOrderEven
 import { buildEconomicTelemetry } from "../../lib/executor/economicTelemetry";
 import { buildExecutionReconciliation } from "../../lib/executor/executionReconciliation";
 import { eventExposureNotProvenZero } from "../../lib/executor/eventExecutionQueue";
-import { QUEUE_MAX_ENTRY_PRICE, type EventExecutionQueueRow } from "../../lib/executor/executorQueueTypes";
+import { QUEUE_MAX_ENTRY_PRICE, primaryMakerTiming, type EventExecutionQueueRow } from "../../lib/executor/executorQueueTypes";
 
 const NOW = new Date("2026-10-03T19:56:20.000Z");
 const IDEM = "idem_mf_1";
@@ -42,7 +42,9 @@ function frozenMakerFirst(over: Record<string, unknown> = {}) {
     p_buy_max: 0.5, reference_status: "STRONG", physical_event_id: EVENT, condition_id: "cond1", token_id: "tok1", side: "YES",
     market_family: "TOTALS", stake_usd: 2.5, hard_price_cap: 0.54, latest_entry_iso: LATEST,
     tick_size: 0.01, minimum_order_size: 5, spread_telemetry: 0.02, activation_switch: "T10_ECONOMIC_ACTION_ACTIVATION",
-    taker: null, maker: { maker_limit_price: 0.5, maker_shares: 5 }, ...over,
+    taker: null, maker: { maker_limit_price: 0.5, maker_shares: 5 },
+    ...primaryMakerTiming((over.latest_entry_iso as string | undefined) ?? LATEST),
+    ...over,
   };
 }
 

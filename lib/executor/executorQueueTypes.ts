@@ -56,6 +56,49 @@ export const QUEUE_SCHEMA_VERSION = "executor-queue-v1" as const;
 export const QUEUE_EXECUTION_MODE = "NIGHT_LIVE_EXECUTION" as const;
 export const QUEUE_SOURCE = "event_execution_queue" as const;
 
+// LIVE_EXECUTION_FINAL_ACTIVATION_V1 -- released Ireland MAKER_FIRST timing contract.
+// fallback_deadline = latest_entry (never later); the primary maker must be cancelled by
+// fallback_deadline - IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS so the single MAKER_FALLBACK_1 keeps
+// Ireland's full reserve. A primary that cannot start before cancel_by fails closed.
+export const IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS = 580 as const;
+
+export type PrimaryMakerTiming = {
+  primary_maker_cancel_by_iso: string;
+  fallback_deadline_iso: string;
+  required_min_remaining_seconds: number;
+};
+
+/** Pure derivation from the unchanged latest_entry_iso. Null when unparseable (fails closed). */
+export function primaryMakerTiming(latestEntryIso: string): PrimaryMakerTiming | null {
+  const deadline = Date.parse(latestEntryIso);
+  if (!Number.isFinite(deadline)) return null;
+  return {
+    primary_maker_cancel_by_iso: new Date(deadline - IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS * 1000).toISOString(),
+    fallback_deadline_iso: new Date(deadline).toISOString(),
+    required_min_remaining_seconds: IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS,
+  };
+}
+
+// LIVE_EXECUTION_FINAL_ACTIVATION_V1 -- adaptive minimum-order headroom. Every evaluation starts at
+// QUEUE_DEFAULT_STAKE_USD. ONLY when the venue minimum order size is the sole blocker may the stake be
+// raised to the SMALLEST cent amount that satisfies it, never above QUEUE_MAX_STAKE_USD.
+export const STAKE_ADJUSTMENT_REASON_MIN_ORDER = "VENUE_MINIMUM_ORDER_SIZE" as const;
+
+export type StakeAuthorization = {
+  base_stake_usd: number;
+  authorized_stake_usd: number;
+  max_stake_usd: number;
+  stake_adjustment_reason: typeof STAKE_ADJUSTMENT_REASON_MIN_ORDER | null;
+  minimum_order_size: number;
+  required_minimum_notional_usd: number | null;
+};
+
+/** Venue quantity precision (shares, 0.01). Floor/ceil are float-safe at the boundary. */
+export const floorShares = (v: number) => Math.floor(v * 100 + 1e-6) / 100;
+export const ceilShares = (v: number) => Math.ceil(v * 100 - 1e-6) / 100;
+/** Smallest cent stake covering a USD notional. */
+export const ceilCentUsd = (v: number) => Math.ceil(Math.round(v * 1e6) / 1e4 - 1e-6) / 100;
+
 export type QueueMoneyEnvelopeViolation =
   | "QUEUE_STAKE_ABOVE_ENVELOPE"
   | "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING";
@@ -250,6 +293,22 @@ export interface IrelandQueueCandidate {
   price_authority_observation_id?: string;
   execution_policy_version?: string;
   economic_policy_version?: string;
+  /** Released Ireland timing contract: primary must be cancelled by this instant. */
+  primary_maker_cancel_by_iso?: string;
+  /** = latest_entry_iso; MAKER_FALLBACK_1 never runs past it. */
+  fallback_deadline_iso?: string;
+  /** >= IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS (580). */
+  required_min_remaining_seconds?: number;
+}
+
+/**
+ * A MAKER_FIRST primary may be handed to Ireland only strictly before its primary_maker_cancel_by_iso.
+ * Non-MAKER_FIRST candidates are unaffected. A MAKER_FIRST candidate without timing never qualifies.
+ */
+export function primaryMakerSubmissionOpen(c: Pick<IrelandQueueCandidate, "execution_mode" | "primary_maker_cancel_by_iso">, nowMs: number): boolean {
+  if (c.execution_mode !== "MAKER_FIRST") return true;
+  const cancelBy = typeof c.primary_maker_cancel_by_iso === "string" ? Date.parse(c.primary_maker_cancel_by_iso) : NaN;
+  return Number.isFinite(cancelBy) && nowMs < cancelBy;
 }
 
 // ── T10 frozen execution contract (diagnostics.t10_economic_action_v1) ──────
@@ -281,6 +340,8 @@ export type T10FrozenContractScalars = {
   execution_policy_version: string;
   economic_policy_version: string;
   maker: { maker_limit_price: number; maker_shares: number } | null;
+  /** MAKER_FIRST only: the released Ireland primary-maker timing contract. */
+  timing: PrimaryMakerTiming | null;
 };
 
 const finitePos = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
@@ -301,8 +362,28 @@ export function readT10FrozenContract(
   if (c.condition_id !== row.condition_id || c.token_id !== row.token_id || c.side !== row.side) {
     return { ok: false, reason: "T10_CONTRACT_IDENTITY_MISMATCH" };
   }
-  if (c.stake_usd !== row.stake_usd || !finitePos(row.stake_usd) || row.stake_usd > QUEUE_DEFAULT_STAKE_USD) {
+  if (c.stake_usd !== row.stake_usd || !finitePos(row.stake_usd) || row.stake_usd > QUEUE_MAX_STAKE_USD) {
     return { ok: false, reason: "T10_CONTRACT_STAKE_MISMATCH" };
+  }
+  // A stake above the ordinary $2.50 is valid ONLY with venue-minimum headroom evidence (never silent).
+  const sa = c.stake_authorization as Record<string, unknown> | null | undefined;
+  if (sa !== undefined && sa !== null && sa.authorized_stake_usd !== row.stake_usd) {
+    return { ok: false, reason: "T10_CONTRACT_STAKE_MISMATCH" };
+  }
+  const adjusted = row.stake_usd > QUEUE_DEFAULT_STAKE_USD + 1e-9;
+  if (!adjusted && sa && sa.stake_adjustment_reason !== null && sa.stake_adjustment_reason !== undefined) {
+    return { ok: false, reason: "T10_CONTRACT_STAKE_HEADROOM_EVIDENCE_INVALID" };
+  }
+  if (adjusted) {
+    const required = sa?.required_minimum_notional_usd;
+    if (!sa || sa.stake_adjustment_reason !== STAKE_ADJUSTMENT_REASON_MIN_ORDER ||
+        sa.base_stake_usd !== QUEUE_DEFAULT_STAKE_USD || sa.max_stake_usd !== QUEUE_MAX_STAKE_USD ||
+        row.diagnostics.max_stake_usd !== QUEUE_MAX_STAKE_USD ||
+        !finitePos(sa.minimum_order_size) || sa.minimum_order_size !== c.minimum_order_size ||
+        !finitePos(required) || !(required > QUEUE_DEFAULT_STAKE_USD + 1e-9) ||
+        Math.abs(ceilCentUsd(required) - row.stake_usd) > 1e-9) {
+      return { ok: false, reason: "T10_CONTRACT_STAKE_HEADROOM_EVIDENCE_INVALID" };
+    }
   }
   // Instant equality: the timestamptz column is read back as "+00:00", the frozen value as "Z".
   const frozenDeadline = typeof c.latest_entry_iso === "string" ? Date.parse(c.latest_entry_iso) : NaN;
@@ -319,6 +400,7 @@ export function readT10FrozenContract(
     return { ok: false, reason: "T10_POLICY_VERSION_MISSING" };
   }
   let maker: T10FrozenContractScalars["maker"] = null;
+  let timing: PrimaryMakerTiming | null = null;
   if (mode === "MAKER_FIRST") {
     const m = c.maker as Record<string, unknown> | null | undefined;
     const limit = m?.maker_limit_price;
@@ -327,17 +409,39 @@ export function readT10FrozenContract(
     if (!finitePos(limit) || limit > c.p_buy_max + 1e-9 || limit > QUEUE_MAX_ENTRY_PRICE || !onTick(limit, c.tick_size)) {
       return { ok: false, reason: "T10_MAKER_LIMIT_INVALID" };
     }
-    if (!finitePos(shares) || shares * limit > row.stake_usd + 1e-9) return { ok: false, reason: "T10_MAKER_SHARES_INVALID" };
+    if (!finitePos(shares) || shares * limit > row.stake_usd + 1e-6) return { ok: false, reason: "T10_MAKER_SHARES_INVALID" };
     if (shares + 1e-9 < c.minimum_order_size) return { ok: false, reason: "T10_MAKER_BELOW_MINIMUM_ORDER_SIZE" };
     if (row.diagnostics.max_entry_price !== limit) return { ok: false, reason: "T10_MAKER_PRICE_CAP_MISMATCH" };
+    if (adjusted) {
+      // Headroom is legitimate only if $2.50 could NOT reach the minimum at this exact limit, and the
+      // evidence is exactly the minimum quantity at this limit.
+      const required = (c.stake_authorization as Record<string, number>).required_minimum_notional_usd;
+      if (floorShares(QUEUE_DEFAULT_STAKE_USD / limit) + 1e-9 >= c.minimum_order_size ||
+          Math.abs(required - ceilShares(c.minimum_order_size) * limit) > 1e-6) {
+        return { ok: false, reason: "T10_CONTRACT_STAKE_HEADROOM_EVIDENCE_INVALID" };
+      }
+    }
     maker = { maker_limit_price: limit, maker_shares: shares };
+    const expected = primaryMakerTiming(row.latest_entry_iso);
+    const required = c.required_min_remaining_seconds;
+    const fallbackMs = typeof c.fallback_deadline_iso === "string" ? Date.parse(c.fallback_deadline_iso) : NaN;
+    const cancelMs = typeof c.primary_maker_cancel_by_iso === "string" ? Date.parse(c.primary_maker_cancel_by_iso) : NaN;
+    if (!expected || typeof required !== "number" || !Number.isInteger(required) || required < IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS ||
+        fallbackMs !== Date.parse(expected.fallback_deadline_iso) || cancelMs !== fallbackMs - required * 1000) {
+      return { ok: false, reason: "T10_MAKER_TIMING_CONTRACT_INVALID" };
+    }
+    timing = {
+      primary_maker_cancel_by_iso: new Date(cancelMs).toISOString(),
+      fallback_deadline_iso: new Date(fallbackMs).toISOString(),
+      required_min_remaining_seconds: required,
+    };
   }
   return {
     ok: true,
     contract: {
       execution_mode: mode, p_buy_max: c.p_buy_max, tick_size: c.tick_size, minimum_order_size: c.minimum_order_size,
       price_authority_version: c.price_authority_version, price_authority_observation_id: c.price_authority_observation_id,
-      execution_policy_version: c.execution_policy_version, economic_policy_version: c.economic_policy_version, maker,
+      execution_policy_version: c.execution_policy_version, economic_policy_version: c.economic_policy_version, maker, timing,
     },
   };
 }
@@ -418,7 +522,7 @@ export function mapQueueRowToIrelandCandidate(
   if (frozenMode === "INVALID") throw new QueueWireContractError("T10_EXECUTION_MODE_INVALID", row.id ?? null);
   if (frozenMode === "MAKER_FIRST") {
     const frozen = readT10FrozenContract(row);
-    if (!frozen.ok || !frozen.contract.maker) {
+    if (!frozen.ok || !frozen.contract.maker || !frozen.contract.timing) {
       throw new QueueWireContractError(frozen.ok ? "T10_MAKER_CONTRACT_MISSING" : frozen.reason, row.id ?? null);
     }
     const c = frozen.contract;
@@ -437,6 +541,9 @@ export function mapQueueRowToIrelandCandidate(
       economic_policy_version: c.economic_policy_version,
       max_entry_price: c.maker!.maker_limit_price,
       price_cap: c.maker!.maker_limit_price,
+      primary_maker_cancel_by_iso: c.timing!.primary_maker_cancel_by_iso,
+      fallback_deadline_iso: c.timing!.fallback_deadline_iso,
+      required_min_remaining_seconds: c.timing!.required_min_remaining_seconds,
     };
   }
   return {

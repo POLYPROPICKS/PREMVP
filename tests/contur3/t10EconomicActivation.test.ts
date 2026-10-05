@@ -14,13 +14,29 @@ import {
   walkTakerFill,
 } from "../../lib/executor/t10EconomicActivation";
 import { runEventRebalance, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
-import { mapQueueRowToIrelandCandidate, QueueWireContractError, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import {
+  mapQueueRowToIrelandCandidate,
+  primaryMakerSubmissionOpen,
+  QueueWireContractError,
+  readT10FrozenContract,
+  validateOrderEventAgainstQueueRow,
+  type EventExecutionQueueRow,
+  type NightEventReservationRow,
+} from "../../lib/executor/executorQueueTypes";
+import {
+  fallbackPublicationRetryable,
+  readExecutionAttempts,
+  recordResultAndAuthorizeMaker,
+  selectExecutorMakerFallbackCommands,
+  type MakerFallbackPort,
+} from "../../lib/executor/makerFallbackAuthorization";
 import type { FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
 
 const KICKOFF = "2026-07-19T19:00:00.000Z";
-const NOW = Date.parse("2026-07-19T18:52:00.000Z");          // T-8, latest entry T-3
+// T-13.5: the production T10 decision lead (13.4-14.7 min), before primary_maker_cancel_by (T-12:40).
+const NOW = Date.parse("2026-07-19T18:46:30.000Z");          // latest entry T-3
 const AFTER_LATEST = Date.parse("2026-07-19T18:58:00.000Z");
-const T10_AT = "2026-07-19T18:48:00.000Z";
+const T10_AT = "2026-07-19T18:46:00.000Z";
 const T30_AT = "2026-07-19T18:35:00.000Z";
 const EVENT = "provider:polymarket:event-1:2026-07-19";
 const RES_ID = "res-econ";
@@ -385,12 +401,15 @@ test("MAKER_FIRST is queued as an explicit primary-maker instruction, never tran
   }
 });
 
-test("minimum order: unknown or below-minimum fails closed for TAKER_FIRST and MAKER_FIRST; stake never inflated", async () => {
+test("minimum order: unknown fails closed; headroom above $4.00 or short depth for the minimum SKIPs (TAKER_FIRST and MAKER_FIRST)", async () => {
   const cases: Array<[Row[], Record<string, FetchOrderBookResult>, RegExp]> = [
     [[A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, null) }, /T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN/],
-    [[A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, 6) }, /T10_ECON_GUARD_MAKER_BELOW_MIN_ORDER_SIZE/],
+    // 9 shares x 0.50 = $4.50 > $4.00 ceiling.
+    [[A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, 9) }, /T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE/],
     [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, null) }, /T10_ECON_GUARD_MIN_ORDER_SIZE_UNKNOWN/],
-    [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, 6) }, /T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE/],
+    [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, 9) }, /T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE/],
+    // Insufficient taker depth after resize: $2.50 fills, but only 5.5 shares <= limit exist for a minimum of 6.
+    [[B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 5.5], [0.60, 100]], 0.01, 6) }, /T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE:.*depth_short_for_minimum/],
   ];
   for (const [rows, books, reason] of cases) {
     const { result, repo } = await run(true, rows, books);
@@ -458,4 +477,241 @@ test("21: activation OFF (default and explicit) preserves released B priority + 
   // OFF: released raw spread gate still rejects B alone (spread 0.05).
   const { repo } = await run(false, [B]);
   assert.equal(repo.queueRows.length, 0);
+});
+
+// ── LIVE_EXECUTION_FINAL_ACTIVATION_V1: adaptive minimum-order headroom + MAKER_FIRST timing ──
+
+// M: STRONG, P_BUY_MAX 0.53, live ask 0.54 -> maker limit 0.53; taker limit 0.51 has no depth -> MAKER_FIRST.
+const M: Row = { cond: "m-ml", token: "m-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.52, 0.54], t30: [0.53, 0.54] };
+const mBook = (min: number | null = 5) => ({ ...LIVE, "m-token": bookOf("m-token", [[0.52, 100]], [[0.54, 100]], 0.01, min) });
+const LATEST_ENTRY = "2026-07-19T18:57:00.000Z";
+const CANCEL_BY = "2026-07-19T18:47:20.000Z";                // latest_entry - 580 s = kickoff - 12m40s
+
+const WIRE_FALLBACK_COMMAND_KEYS = [
+  "attempt_id", "authorized_at_iso", "condition_id", "deadline_iso", "execution_mode", "execution_side", "idempotency_key",
+  "limit_price", "market_family", "max_stake_usd", "parent_attempt_id", "parent_idempotency_key", "parent_queue_id",
+  "physical_event_id", "price_cap", "quantity", "reservation_id", "side", "stake_usd", "status", "strategy_variant",
+  "strategy_version", "token_id",
+].sort();
+
+function fallbackWorld(row: EventExecutionQueueRow, book = { bestBid: 0.52, bestAsk: 0.54, tickSize: 0.01 }) {
+  const st = { row, claims: 0 };
+  const port: MakerFallbackPort = {
+    async loadQueueRowByIdempotencyKey(k) { return k === st.row.idempotency_key ? structuredClone(st.row) : null; },
+    async fetchBook() { return book; },
+    async recordResult(_id, slot, result) {
+      const a = readExecutionAttempts(st.row.diagnostics);
+      st.row = { ...st.row, diagnostics: { ...st.row.diagnostics, execution_attempts_v1: { ...a, [slot]: { ...(a[slot] ?? {}), result } } } };
+    },
+    async claimMakerFallback(_id, command) {
+      const a = readExecutionAttempts(st.row.diagnostics);
+      if (a.maker_fallback_1?.command) return false;
+      st.claims++;
+      st.row = { ...st.row, diagnostics: { ...st.row.diagnostics, execution_attempts_v1: { ...a, maker_fallback_1: { command } } } };
+      return true;
+    },
+  };
+  return { st, port };
+}
+const primaryCallback = (row: EventExecutionQueueRow, outcome: string, extra: Record<string, unknown> = {}) => ({
+  idempotency_key: row.idempotency_key, condition_id: row.condition_id, token_id: row.token_id, side: row.side,
+  attempt_id: "MAKER_FIRST", execution_mode: "MAKER_FIRST", submitted_price: 0.53, submitted_size: 5,
+  execution_result_v1: { attempt_id: "MAKER_FIRST", execution_mode: "MAKER_FIRST", outcome, venue_order_id: "v-1", ...extra },
+});
+
+test("FULL PATH: Reservation -> T30 -> T10 -> $2.50 fails ONLY minimum size -> $2.65 -> Queue -> MAKER_FIRST timing -> terminal ZERO -> one fallback on the wire", async () => {
+  // $2.50 / 0.53 = 4.71 shares < minimum 5: the only blocker.
+  const { result, repo, res } = await run(true, [M], mBook(5));
+  assert.equal(result.queued_count, 1);
+  assert.equal(res.status, "QUEUED");
+  const row = { ...repo.queueRows[0], id: "q-adaptive", status: "EXECUTED" as const };
+  const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
+  // T10 execution contract.
+  assert.equal(c.execution_mode, "MAKER_FIRST");
+  assert.equal(c.p_buy_max, 0.53);
+  assert.deepEqual(c.maker, { maker_limit_price: 0.53, maker_shares: 5 });
+  assert.equal(c.stake_usd, 2.65);
+  assert.deepEqual(c.stake_authorization, { base_stake_usd: 2.5, authorized_stake_usd: 2.65, max_stake_usd: 4,
+    stake_adjustment_reason: "VENUE_MINIMUM_ORDER_SIZE", minimum_order_size: 5, required_minimum_notional_usd: 2.65 });
+  assert.equal(c.fallback_deadline_iso, LATEST_ENTRY);
+  assert.equal(c.primary_maker_cancel_by_iso, CANCEL_BY);
+  assert.equal(c.required_min_remaining_seconds, 580);
+  // Queue row (frozen authorized stake + auditable diagnostics).
+  assert.equal(row.stake_usd, 2.65, "smallest sufficient stake, NOT $4.00 and NOT SKIP");
+  assert.equal(row.latest_entry_iso, LATEST_ENTRY, "latest_entry unchanged");
+  for (const [k, v] of Object.entries({ base_stake_usd: 2.5, authorized_stake_usd: 2.65, max_stake_usd: 4,
+    stake_adjustment_reason: "VENUE_MINIMUM_ORDER_SIZE", minimum_order_size: 5, required_minimum_notional_usd: 2.65, max_entry_price: 0.53 })) {
+    assert.equal(row.diagnostics[k], v, k);
+  }
+  assert.ok((row.diagnostics.mechanical_guard_trace as string[]).includes("MIN_ORDER_HEADROOM_STAKE_APPLIED"));
+  assert.ok(readT10FrozenContract(row).ok);
+  // Ireland-facing MAKER_FIRST candidate (timestamptz read-back form).
+  const wire = mapQueueRowToIrelandCandidate({ ...row, status: "READY", latest_entry_iso: "2026-07-19T18:57:00+00:00" }, NOW);
+  assert.equal(wire.execution_mode, "MAKER_FIRST");
+  assert.equal(wire.stake_usd, 2.65);
+  assert.equal(wire.max_stake_usd, 4);
+  assert.equal(wire.maker_limit_price, 0.53);
+  assert.equal(wire.maker_shares, 5);
+  assert.equal(wire.requested_quantity, 5);
+  assert.equal(wire.price_cap, 0.53);
+  assert.equal(wire.primary_maker_cancel_by_iso, CANCEL_BY);
+  assert.equal(wire.fallback_deadline_iso, LATEST_ENTRY);
+  assert.equal(wire.required_min_remaining_seconds, 580);
+  assert.ok(wire.required_min_remaining_seconds! >= 580);
+  assert.equal(primaryMakerSubmissionOpen(wire, NOW), true);
+  assert.equal(primaryMakerSubmissionOpen(wire, Date.parse(CANCEL_BY)), false, "no primary at/after cancel_by");
+  // Callback/accounting authority accepts exactly the frozen notional; never more.
+  const sub = { queue_id: row.id, reservation_id: row.reservation_id, idempotency_key: row.idempotency_key, token_id: row.token_id,
+    condition_id: row.condition_id, side: row.side, market_slug: null, stake_usd: 2.65, submitted_size: 5, submitted_price: 0.53 };
+  assert.deepEqual(validateOrderEventAgainstQueueRow(sub, row), { ok: true });
+  assert.equal(validateOrderEventAgainstQueueRow({ ...sub, submitted_price: 0.54 }, row).ok, false);
+
+  // Terminal proven ZERO -> result recorded -> zero exposure re-verified -> exactly one MAKER_FALLBACK_1.
+  const w = fallbackWorld(row);
+  const callbackNow = new Date(Date.parse(CANCEL_BY) + 5_000);
+  const auth = await recordResultAndAuthorizeMaker(w.port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), callbackNow);
+  assert.equal(auth.kind, "MAKER_AUTHORIZED");
+  assert.equal(fallbackPublicationRetryable(auth), false, "published -> callback may be acknowledged");
+  const dup = await recordResultAndAuthorizeMaker(w.port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), callbackNow);
+  assert.equal(dup.kind, "MAKER_ALREADY_AUTHORIZED");
+  assert.equal(w.st.claims, 1, "duplicate terminal ZERO -> one fallback only");
+  // Visible through maker_fallback_commands with the exact released wire shape.
+  const cmds = selectExecutorMakerFallbackCommands([w.st.row], callbackNow.getTime());
+  assert.equal(cmds.length, 1);
+  const cmd = cmds[0];
+  assert.deepEqual(Object.keys(cmd).sort(), WIRE_FALLBACK_COMMAND_KEYS);
+  assert.equal(cmd.attempt_id, "MAKER_FALLBACK_1");
+  assert.equal(cmd.parent_attempt_id, "MAKER_FIRST");
+  assert.deepEqual([cmd.condition_id, cmd.token_id, cmd.side, cmd.physical_event_id], [row.condition_id, row.token_id, row.side, EVENT]);
+  assert.equal(cmd.stake_usd, 2.65, "inherits the parent authorized stake, never more");
+  assert.equal(cmd.max_stake_usd, 4);
+  assert.equal(cmd.limit_price, 0.53);
+  assert.equal(cmd.quantity, 5);
+  assert.ok(cmd.quantity * cmd.limit_price <= cmd.stake_usd + 1e-6);
+  assert.equal(cmd.deadline_iso, LATEST_ENTRY, "fallback never beyond latest_entry");
+  assert.equal(selectExecutorMakerFallbackCommands([w.st.row], Date.parse(LATEST_ENTRY)).length, 0);
+});
+
+test("normal $2.50 regression: required stake <= $2.50 stays exactly $2.50 with no adjustment (MAKER and TAKER)", async () => {
+  const maker = await run(true, [A]);
+  const m = maker.repo.queueRows[0];
+  assert.equal(m.stake_usd, 2.5);
+  assert.equal(m.diagnostics.stake_adjustment_reason, null);
+  assert.equal(m.diagnostics.authorized_stake_usd, 2.5);
+  assert.equal((m.diagnostics.t10_economic_action_v1 as any).stake_authorization.required_minimum_notional_usd, 2.5);
+  assert.ok(!(m.diagnostics.mechanical_guard_trace as string[]).includes("MIN_ORDER_HEADROOM_STAKE_APPLIED"));
+  const taker = await run(true, [A, B]);
+  const t = taker.repo.queueRows[0];
+  assert.equal(t.selection_reason, "T10_ECONOMIC_ACTION_TAKER_FIRST_V1");
+  assert.equal(t.stake_usd, 2.5);
+  assert.equal(t.diagnostics.stake_adjustment_reason, null);
+});
+
+test("headroom between $2.50 and $4.00 authorizes the EXACT minimum sufficient stake (MAKER and TAKER re-walk)", async () => {
+  for (const [min, stake] of [[6, 3], [5.5, 2.75], [7.99, 4]] as const) {
+    const { repo } = await run(true, [A], { ...LIVE, "a-token": bookOf("a-token", [[0.50, 100]], [[0.52, 100]], 0.01, min) });
+    const row = repo.queueRows[0];
+    assert.equal(row.stake_usd, stake, `min ${min}`);
+    assert.equal((row.diagnostics.t10_economic_action_v1 as any).maker.maker_shares >= min, true);
+    assert.ok(readT10FrozenContract(row).ok);
+  }
+  // TAKER: $2.50 fills 5 shares at 0.50 < minimum 6 -> the ACTUAL $3.00 is re-walked on the book.
+  const { repo } = await run(true, [B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, 6) });
+  const row = repo.queueRows[0];
+  const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
+  assert.equal(c.execution_mode, "TAKER_FIRST");
+  assert.equal(row.stake_usd, 3);
+  assert.equal(c.taker.authorized_raw_vwap, 0.5);
+  assert.ok(c.taker.authorized_effective_cost <= c.p_buy_max, "fee-inclusive cost <= P_BUY_MAX at the increased stake");
+  assert.ok(c.taker.price_limit <= c.p_buy_max && c.taker.price_limit <= 0.54);
+  assert.equal(c.stake_authorization.stake_adjustment_reason, "VENUE_MINIMUM_ORDER_SIZE");
+  assert.equal(c.stake_authorization.required_minimum_notional_usd, 3);
+  assert.ok(readT10FrozenContract(row).ok);
+  assert.equal(mapQueueRowToIrelandCandidate({ ...row, id: "q" }, NOW).execution_mode, "TAKER");
+});
+
+test("headroom never relaxes economics: P_BUY_MAX, the 0.54 cap and depth are proven before and after resize", async () => {
+  // TAKER selected on a deep book, but at re-verification $2.50 is blocked by DEPTH (not minimum): never resized.
+  const thinAtGuard = (n: number) => bookOf("b-token", [[0.45, 100]], n === 1 ? [[0.50, 10], [0.60, 100]] : [[0.50, 2], [0.60, 100]], 0.01, 6);
+  const { result, repo } = await run(true, [B], { ...LIVE, "b-token": thinAtGuard } as never);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes.map((o) => o.reason).join(","), /T10_ECON_GUARD_FULL_STAKE_UNAVAILABLE/);
+  // Price authority above P_BUY_MAX / 0.54 is rejected by the strict reader even with headroom evidence.
+  const { repo: r2 } = await run(true, [M], mBook(5));
+  const row = r2.queueRows[0];
+  const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
+  for (const broken of [{ ...c, p_buy_max: 0.55 }, { ...c, maker: { maker_limit_price: 0.54, maker_shares: 5 } }]) {
+    assert.equal(readT10FrozenContract({ ...row, diagnostics: { ...row.diagnostics, t10_economic_action_v1: broken } }).ok, false);
+  }
+});
+
+test("strict contract: a stake above $2.50 requires valid minimum-order headroom evidence and stays <= $4.00", async () => {
+  const { repo } = await run(true, [M], mBook(5));
+  const row = repo.queueRows[0];
+  const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
+  const sa = c.stake_authorization;
+  const variant = (stake: number, contract: Record<string, unknown>, diag: Record<string, unknown> = {}) =>
+    readT10FrozenContract({ ...row, stake_usd: stake, diagnostics: { ...row.diagnostics, ...diag, t10_economic_action_v1: { ...contract, stake_usd: stake } } });
+  assert.equal(variant(2.65, c).ok, true);
+  // Silent promotion: $4.00 / $2.65 without evidence.
+  assert.equal(variant(4, { ...c, stake_authorization: undefined }).ok, false);
+  assert.equal(variant(2.65, { ...c, stake_authorization: null }).ok, false);
+  // Above the minimum sufficient stake.
+  assert.equal(variant(2.7, { ...c, stake_authorization: { ...sa, authorized_stake_usd: 2.7 } }).ok, false);
+  // Wrong reason / ceiling / minimum / required notional.
+  assert.equal(variant(2.65, { ...c, stake_authorization: { ...sa, stake_adjustment_reason: "DEPTH" } }).ok, false);
+  assert.equal(variant(2.65, { ...c, stake_authorization: { ...sa, max_stake_usd: 5 } }).ok, false);
+  assert.equal(variant(2.65, c, { max_stake_usd: 2.65 }).ok, false);
+  assert.equal(variant(2.65, { ...c, stake_authorization: { ...sa, minimum_order_size: 4 } }).ok, false);
+  assert.equal(variant(2.65, { ...c, stake_authorization: { ...sa, required_minimum_notional_usd: 2.4 } }).ok, false);
+  // Headroom where $2.50 already met the minimum (limit 0.50 -> 5 shares) is invalid.
+  assert.equal(variant(2.65, { ...c, maker: { maker_limit_price: 0.5, maker_shares: 5 } }, { max_entry_price: 0.5 }).ok, false);
+  // Above the hard ceiling.
+  assert.equal(variant(4.01, { ...c, stake_authorization: { ...sa, authorized_stake_usd: 4.01, required_minimum_notional_usd: 4.01 } }).ok, false);
+  // A $2.50 row may not carry an adjustment reason.
+  assert.equal(variant(2.5, { ...c, stake_authorization: { ...sa, authorized_stake_usd: 2.5 } }).ok, false);
+  // Missing / inconsistent MAKER_FIRST timing never reaches the wire.
+  for (const t of [{ primary_maker_cancel_by_iso: undefined }, { required_min_remaining_seconds: 579 },
+    { fallback_deadline_iso: "2026-07-19T18:58:00.000Z" }, { primary_maker_cancel_by_iso: "2026-07-19T18:48:00.000Z" }]) {
+    assert.throws(() => mapQueueRowToIrelandCandidate({ ...row, id: "q", diagnostics: { ...row.diagnostics, t10_economic_action_v1: { ...c, ...t } } }, NOW),
+      QueueWireContractError);
+  }
+});
+
+test("timing: a T10 at/after primary_maker_cancel_by fails closed (reserve never weakened); after latest_entry nothing executes", async () => {
+  for (const now of [Date.parse(CANCEL_BY), Date.parse("2026-07-19T18:50:00.000Z")]) {
+    const { event, d } = await decide([A], { now });
+    const g = await reverifySelectedAction({ event, nowMs: now, exposureExists: false, fetchExactTokenOrderbook: d.fetchExactTokenOrderbook });
+    assert.equal(g.ok, false);
+    assert.match(!g.ok ? g.reason : "", /T10_ECON_GUARD_AFTER_PRIMARY_MAKER_CANCEL_BY/);
+  }
+  const late = Date.parse("2026-07-19T18:57:00.000Z");
+  const { event, d } = await decide([A], { now: late });
+  const g = await reverifySelectedAction({ event, nowMs: late, exposureExists: false, fetchExactTokenOrderbook: d.fetchExactTokenOrderbook });
+  assert.equal(g.ok, false);
+});
+
+test("fallback blocking on the adaptive row: partial / positive / UNKNOWN never authorize; deterministic blocks are acknowledged", async () => {
+  const { repo } = await run(true, [M], mBook(5));
+  const row = { ...repo.queueRows[0], id: "q-adaptive", status: "EXECUTED" as const };
+  const at = new Date(Date.parse(CANCEL_BY) + 5_000);
+  for (const [outcome, extra] of [["PARTIAL_FILL_CANCELLED", { filled_quantity: 2, average_fill_price: 0.53 }], ["FULL_FILL", { filled_quantity: 5, average_fill_price: 0.53 }],
+    ["UNKNOWN_AFTER_SUBMISSION", {}], ["PARTIAL_FILL", { filled_quantity: 1 }]] as const) {
+    const w = fallbackWorld(row);
+    const auth = await recordResultAndAuthorizeMaker(w.port, primaryCallback(row, outcome, extra), at);
+    assert.notEqual(auth.kind, "MAKER_AUTHORIZED", outcome);
+    assert.equal(w.st.claims, 0, outcome);
+    assert.equal(selectExecutorMakerFallbackCommands([w.st.row], at.getTime()).length, 0);
+  }
+  // Transient publication failure is retryable (never acknowledged); a deterministic block is final.
+  const noBook = fallbackWorld(row);
+  noBook.port.fetchBook = async () => null;
+  const blocked = await recordResultAndAuthorizeMaker(noBook.port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), at);
+  assert.deepEqual(blocked, { kind: "MAKER_BLOCKED", reasons: ["BOOK_UNAVAILABLE"] });
+  assert.equal(fallbackPublicationRetryable(blocked), true);
+  assert.equal(fallbackPublicationRetryable({ kind: "MAKER_BLOCKED", reasons: ["AUTHORIZATION_ERROR"] }), true);
+  assert.equal(fallbackPublicationRetryable({ kind: "MAKER_BLOCKED", reasons: ["DEADLINE_PASSED"] }), false);
+  const lateZero = await recordResultAndAuthorizeMaker(fallbackWorld(row).port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), new Date(LATEST_ENTRY));
+  assert.equal(lateZero.kind, "MAKER_BLOCKED");
+  assert.equal(fallbackPublicationRetryable(lateZero), false);
 });

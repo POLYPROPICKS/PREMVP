@@ -1789,7 +1789,7 @@ async function selectQueueRowFromT10EconomicAction(
         attemptId: randomUUID(), observedAt: ev?.observedAtIso ?? new Date(nowMs).toISOString(),
         conditionId: sel.candidateIdentity.conditionId, tokenId: sel.candidateIdentity.tokenId, side: sel.candidateIdentity.side,
         marketSlug: universe.find((r) => r.token_id === sel.candidateIdentity.tokenId && r.side === sel.candidateIdentity.side)?.market_slug ?? null,
-        referenceEntryPrice: sel.priceAuthority.pBuyMax ?? 0, executionPriceCap: cap, requestedStakeUsd: EXECUTABLE_STAKE_USD,
+        referenceEntryPrice: sel.priceAuthority.pBuyMax ?? 0, executionPriceCap: cap, requestedStakeUsd: guard.contract?.stake_usd ?? EXECUTABLE_STAKE_USD,
         pass: guard.ok, rejectionReason: guard.ok ? null : guard.reason,
         fetchStatus: ev?.ok ? "SUCCESS" : "FETCH_FAILED", fetchFailureReason: ev?.ok ? null : ev?.errorCode ?? null,
         fetchLatencyMs: ev?.latencyMs ?? null, bestBid: ev?.bestBid ?? null, bestAsk: ev?.bestAsk ?? null, spread: ev?.spread ?? null,
@@ -1827,7 +1827,8 @@ async function selectQueueRowFromT10EconomicAction(
     sport: reservation.sport, league: reservation.league, game_start_iso: eventStartIso,
     ...identity, market_slug: observation.market_slug ?? null, market_title: observation.market_slug ?? null,
     market_family: observation.canonical_market_family, score: null, coverage: null,
-    tier: reservation.event_tier ?? EXECUTABLE_TIER, stake_usd: EXECUTABLE_STAKE_USD,
+    // The frozen authorized stake: $2.50, or the exact venue-minimum headroom stake (<= $4.00).
+    tier: reservation.event_tier ?? EXECUTABLE_TIER, stake_usd: contract.stake_usd,
     preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: contract.latest_entry_iso,
     selection_rank: reservation.reservation_rank ?? 1, selection_reason: selectionReason,
     status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
@@ -1840,7 +1841,12 @@ async function selectQueueRowFromT10EconomicAction(
       source_lineage: reservation.diagnostics?.source_lineage ?? null,
       model_lineage_v1: reservation.diagnostics?.model_lineage_v1 ?? null,
       max_entry_price: priceAuthority, entry_price: taker ? taker.authorized_raw_vwap : priceAuthority,
-      stake_guard_usd: EXECUTABLE_STAKE_USD, max_stake_usd: QUEUE_MAX_STAKE_USD,
+      stake_guard_usd: contract.stake_usd, max_stake_usd: QUEUE_MAX_STAKE_USD,
+      base_stake_usd: contract.stake_authorization.base_stake_usd,
+      authorized_stake_usd: contract.stake_authorization.authorized_stake_usd,
+      stake_adjustment_reason: contract.stake_authorization.stake_adjustment_reason,
+      minimum_order_size: contract.stake_authorization.minimum_order_size,
+      required_minimum_notional_usd: contract.stake_authorization.required_minimum_notional_usd,
       source_authority: "T10_ECONOMIC_ACTION_POLICY",
       current_executable_price: taker ? taker.authorized_raw_vwap : priceAuthority,
       current_executable_depth_usd: taker ? taker.full_stake_depth_usd_at_limit : null,
@@ -1852,9 +1858,12 @@ async function selectQueueRowFromT10EconomicAction(
         ? ["T3_AB_PERSISTED", "T10_ECONOMIC_POLICY_SELECTED", "EXACT_TOKEN_REFETCHED", "TICK_UNCHANGED",
           "FULL_STAKE_AT_LIMIT", "EFFECTIVE_COST_LE_P_BUY_MAX", "HARD_CAP_OK", "MIN_ORDER_SIZE_OK", "DEADLINE_OK", "EXPOSURE_CLEAR"]
         : ["T3_AB_PERSISTED", "T10_ECONOMIC_POLICY_SELECTED", "EXACT_TOKEN_REFETCHED", "TICK_UNCHANGED",
-          "MAKER_LIMIT_LE_P_BUY_MAX", "HARD_CAP_OK", "MIN_ORDER_SIZE_OK", "DEADLINE_OK", "EXPOSURE_CLEAR"],
+          "MAKER_LIMIT_LE_P_BUY_MAX", "HARD_CAP_OK", "MIN_ORDER_SIZE_OK", "DEADLINE_OK", "BEFORE_PRIMARY_MAKER_CANCEL_BY", "EXPOSURE_CLEAR"],
     },
   };
+  if (contract.stake_authorization.stake_adjustment_reason !== null) {
+    (row.diagnostics.mechanical_guard_trace as string[]).push("MIN_ORDER_HEADROOM_STAKE_APPLIED");
+  }
   // The persisted row must satisfy the same strict frozen-contract reader the Queue wire uses.
   const frozen = readT10FrozenContract(row);
   if (!frozen.ok) return { outcome: "SKIPPED", reason: `T10_ECON_FROZEN_CONTRACT_INVALID:${frozen.reason}`, queueRow: null };
