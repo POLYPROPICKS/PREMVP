@@ -30,7 +30,13 @@ import {
   selectExecutorMakerFallbackCommands,
   type MakerFallbackPort,
 } from "../../lib/executor/makerFallbackAuthorization";
-import type { FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
+import {
+  bStrategySupportRegion,
+  isBSupportEligible,
+  isBSupportFamilyEligible,
+  isBSupportPriceInBand,
+  type FinalT3MarketObservation,
+} from "../../lib/executor/reservationMarketBaseline";
 
 const KICKOFF = "2026-07-19T19:00:00.000Z";
 // T-13.5: the production T10 decision lead (13.4-14.7 min), before primary_maker_cancel_by (T-12:40).
@@ -201,7 +207,8 @@ test("8-9: TAKER limit L bounds fee-inclusive cost by P_BUY_MAX; cost <= P_BUY_M
 test("10: WEAK reference can never TAKER (maker only)", async () => {
   // T10 witness rejected by source-quality spread -> only the T30 witness -> WEAK.
   const weak: Row = { ...B, t10: [0.40, 0.53] };
-  const { event } = await decide([weak]);
+  // Live ask 0.52 => maker limit 0.51 (inside the TOTALS band); an ask of 0.50 would give 0.49 (odds 2.04, outside).
+  const { event } = await decide([weak], { d: deps({ "b-token": bookOf("b-token", [[0.45, 100]], [[0.52, 10], [0.60, 100]]) }) });
   const ev = event.decision.evaluations[0];
   assert.equal(ev.referenceStatus, "WEAK");
   assert.equal(ev.taker.rejectReason, "TAKER_REQUIRES_STRONG");
@@ -714,4 +721,138 @@ test("fallback blocking on the adaptive row: partial / positive / UNKNOWN never 
   const lateZero = await recordResultAndAuthorizeMaker(fallbackWorld(row).port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), new Date(LATEST_ENTRY));
   assert.equal(lateZero.kind, "MAKER_BLOCKED");
   assert.equal(fallbackPublicationRetryable(lateZero), false);
+});
+
+
+// ── MONEYLINE_SUPPORT_AND_MAKER_PRICE_AUTHORITY_FIX_V1 ──────────────────────────────────────────────
+const askRow = (family: string, type: string, ask: number, odds = 1 / ask) =>
+  ({ ...obs({ cond: "x", token: "x", family, type, t10: [ask - 0.01, ask], t30: null }, "T_MINUS_10"), ask_decimal_odds: odds });
+
+test("ML band: MONEYLINE 1.70..2.00 boundaries at the current-ask seam; other families unchanged", () => {
+  const ml = (odds: number) => isBSupportEligible(askRow("MONEYLINE", "MONEYLINE", 1 / odds, odds));
+  assert.equal(ml(1.69), false, "1.69 is outside the new band");
+  assert.equal(ml(1.70), true, "1.70 boundary accepted");
+  assert.equal(ml(1.754), true, "the live DR Congo ask 0.57 is now inside the candidate band");
+  assert.equal(ml(2.00), true, "2.00 boundary accepted");
+  assert.equal(ml(2.01), false, "above 2.00 rejected");
+  const other = (family: string, type: string, odds: number) => isBSupportEligible(askRow(family, type, 1 / odds, odds));
+  assert.equal(other("TOTALS", "TOTAL", 1.84), false);
+  assert.equal(other("TOTALS", "TOTAL", 1.85), true);
+  assert.equal(other("SPREADS", "SPREAD", 1.75), false, "SPREADS band is NOT widened");
+  assert.equal(other("SPREADS", "SPREAD", 1.85), true);
+  assert.deepEqual(bStrategySupportRegion("MONEYLINE"), { min: 1.7, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("SPREADS"), { min: 1.85, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("TOTALS"), { min: 1.85, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("TOTAL_CORNERS"), { min: 2.25, max: 2.5 });
+  // Family admission is price-agnostic.
+  assert.equal(isBSupportFamilyEligible(askRow("MONEYLINE", "MONEYLINE", 0.3)), true);
+  assert.equal(isBSupportFamilyEligible(askRow("MONEYLINE", "TOTAL", 0.55)), false);
+  assert.equal(isBSupportPriceInBand("MONEYLINE", 0.54), true);
+  assert.equal(isBSupportPriceInBand("TOTALS", 0.54), true);
+  assert.equal(isBSupportPriceInBand("MONEYLINE", 1 / 1.7), true);
+  assert.equal(isBSupportPriceInBand("MONEYLINE", 0.6), false);
+});
+
+// DR Congo natural production case: T30 0.56/0.57, T10 0.56/0.57, tick 0.01, minimum_order_size 5.
+const DRC: Row = { cond: "drc-ml", token: "drc-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.56, 0.57], t30: [0.56, 0.57] };
+const drcBook = (min: number | null = 5) => ({ ...LIVE, "drc-token": bookOf("drc-token", [[0.56, 100]], [[0.57, 100]], 0.01, min) });
+
+test("LIVE BUG (DR Congo): ask 0.57 outside the old band => MAKER_FIRST limit 0.54; TAKER never pays 0.57", async () => {
+  const { event } = await decide([DRC], { d: deps(drcBook()) });
+  const ev = event.decision.evaluations[0];
+  assert.equal(ev.priceAuthority.pBuyMax, 0.54, "P_BUY_MAX = min(T30 bid 0.56, cap 0.54)");
+  assert.equal(ev.taker.eligible, false);
+  assert.equal(ev.taker.rawVwap, null, "no taker fill at 0.57 or anywhere above P_BUY_MAX / 0.54");
+  assert.equal(ev.maker.eligible, true);
+  assert.equal(ev.maker.limitPrice, 0.54);
+  assert.equal(event.decision.action, "MAKER_FIRST");
+  assert.equal(ev.support.maker.MAKER_SUPPORT_PRICE_SOURCE, "MAKER_LIMIT");
+  assert.equal(ev.support.maker.SUPPORT_PRICE, 0.54);
+  assert.equal(ev.support.taker.TAKER_SUPPORT_PRICE_SOURCE, "EXECUTABLE_CURRENT_ASK");
+  assert.equal(ev.support.taker.SUPPORT_PRICE, 0.57);
+  assert.equal([ev.support.SUPPORT_BAND_MIN, ev.support.SUPPORT_BAND_MAX].join(".."), "1.7..2");
+  // Re-verification keeps every price authority.
+  const guard = await reverifySelectedAction({ event, nowMs: NOW, exposureExists: false, fetchExactTokenOrderbook: deps(drcBook()).fetchExactTokenOrderbook });
+  assert.equal(guard.ok, true);
+  if (guard.ok) {
+    assert.equal(guard.contract.execution_mode, "MAKER_FIRST");
+    assert.equal(guard.contract.maker!.maker_limit_price, 0.54);
+    assert.ok(guard.contract.maker!.maker_limit_price <= guard.contract.p_buy_max);
+    assert.ok(guard.contract.maker!.maker_limit_price <= guard.contract.hard_price_cap);
+    assert.equal(guard.contract.taker, null);
+  }
+});
+
+test("maker support is judged on maker_limit: limit odds outside the band => rejected even when the ask is inside", async () => {
+  // Ask 0.50 (odds 2.00, inside) but the limit floor(min(P_BUY_MAX 0.50, 0.49)) = 0.49 (odds 2.04, outside).
+  const row: Row = { cond: "ml-edge", token: "edge-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.49, 0.50], t30: [0.50, 0.51] };
+  const book = { "edge-token": bookOf("edge-token", [[0.49, 100]], [[0.50, 100]], 0.01, 5) };
+  const { event } = await decide([row], { d: deps(book) });
+  const ev = event.decision.evaluations[0];
+  assert.equal(ev.maker.eligible, false);
+  assert.equal(ev.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(event.decision.action, "SKIP");
+});
+
+test("re-verification fails closed when the refreshed maker limit leaves the support band (ask drops)", async () => {
+  const { event } = await decide([DRC], { d: deps(drcBook()) });
+  const dropped = { "drc-token": bookOf("drc-token", [[0.48, 100]], [[0.50, 100]], 0.01, 5) };   // limit 0.49 => odds 2.04
+  const guard = await reverifySelectedAction({ event, nowMs: NOW, exposureExists: false, fetchExactTokenOrderbook: deps(dropped).fetchExactTokenOrderbook });
+  assert.equal(guard.ok, false);
+  if (!guard.ok) assert.match(guard.reason, /MAKER_SUPPORT_PRICE_OUTSIDE_BAND/);
+});
+
+test("FULL PATH (MONEYLINE band + maker authority): Reservation -> T30 -> T10 ask 0.57 -> MAKER_FIRST 0.54 -> Queue -> Ireland wire -> terminal ZERO -> one fallback", async () => {
+  const { result, repo, res } = await run(true, [DRC], drcBook());
+  assert.equal(result.queued_count, 1);
+  assert.equal(res.status, "QUEUED");
+  const row = { ...repo.queueRows[0], id: "q-drc", status: "EXECUTED" as const };
+  assert.equal(row.market_family, "MONEYLINE");
+  const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
+  assert.equal(c.execution_mode, "MAKER_FIRST");
+  assert.equal(c.p_buy_max, 0.54);
+  assert.equal(c.hard_price_cap, 0.54);
+  assert.deepEqual(c.maker, { maker_limit_price: 0.54, maker_shares: 5 });
+  assert.equal(c.taker, null);
+  // PR #462 adaptive headroom preserved: $2.50 buys 4.63 < 5 shares => smallest cent stake $2.70 (<= $4.00).
+  assert.equal(c.stake_usd, 2.7);
+  assert.equal(c.stake_authorization.base_stake_usd, 2.5);
+  assert.equal(c.stake_authorization.max_stake_usd, 4);
+  // Timing contract preserved.
+  assert.equal(c.fallback_deadline_iso, LATEST_ENTRY);
+  assert.equal(c.primary_maker_cancel_by_iso, CANCEL_BY);
+  assert.equal(c.required_min_remaining_seconds, 580);
+  // Auditable per-action support evidence.
+  const audit = row.diagnostics.t10_support_audit_v1 as Record<string, any>;
+  assert.equal(audit.maker.MAKER_SUPPORT_PRICE_SOURCE, "MAKER_LIMIT");
+  assert.equal(audit.maker.SUPPORT_PRICE, 0.54);
+  assert.ok(Math.abs(audit.maker.SUPPORT_DECIMAL_ODDS - 1.851852) < 1e-5);
+  assert.equal(audit.taker.TAKER_SUPPORT_PRICE_SOURCE, "EXECUTABLE_CURRENT_ASK");
+  assert.equal(audit.taker.SUPPORT_PRICE, 0.57);
+  assert.equal(audit.SUPPORT_BAND_MIN, 1.7);
+  assert.equal(audit.SUPPORT_BAND_MAX, 2);
+  assert.ok(readT10FrozenContract(row).ok);
+  // Ireland wire.
+  const wire = mapQueueRowToIrelandCandidate({ ...row, status: "READY", latest_entry_iso: "2026-07-19T18:57:00+00:00" }, NOW);
+  assert.equal(wire.execution_mode, "MAKER_FIRST");
+  assert.equal(wire.maker_limit_price, 0.54);
+  assert.equal(wire.price_cap, 0.54);
+  assert.equal(wire.maker_shares, 5);
+  assert.equal(wire.required_min_remaining_seconds, 580);
+  assert.equal(primaryMakerSubmissionOpen(wire, NOW), true);
+  // Terminal ZERO -> exactly one MAKER_FALLBACK_1.
+  const w = fallbackWorld(row);
+  const callbackNow = new Date(Date.parse(CANCEL_BY) + 5_000);
+  const cb = { ...primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), submitted_price: 0.54 };
+  const auth = await recordResultAndAuthorizeMaker(w.port, cb, callbackNow);
+  assert.equal(auth.kind, "MAKER_AUTHORIZED");
+  assert.equal(fallbackPublicationRetryable(auth), false);
+  const dup = await recordResultAndAuthorizeMaker(w.port, cb, callbackNow);
+  assert.equal(dup.kind, "MAKER_ALREADY_AUTHORIZED");
+  assert.equal(w.st.claims, 1);
+  const cmds = selectExecutorMakerFallbackCommands([w.st.row], callbackNow.getTime());
+  assert.equal(cmds.length, 1);
+  assert.equal(cmds[0].attempt_id, "MAKER_FALLBACK_1");
+  assert.equal(cmds[0].limit_price <= 0.54, true);
+  assert.equal(cmds[0].deadline_iso, LATEST_ENTRY);
 });

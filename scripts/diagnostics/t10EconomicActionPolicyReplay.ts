@@ -264,7 +264,9 @@ LIMIT ${detailLimit}`);
     if (d.cmp_present) evidence.push({ ...evidenceFor("T10_BOOK", d, d.cmp_bid, d.cmp_ask, null), source: "BINARY_COMPLEMENT",
       observationKey: `cmp:${d.id}`, identity: { ...identity, tokenId: `${d.token_id}:complement`, side: d.cmp_side ?? "" } });
     const input: PolicyCandidateInput = {
-      identity, family: d.family, supportEligible: d.b_region,
+      identity, family: d.family,
+      // Replay mirrors the SQL ask-band gate (shadow parity); live activation proves MAKER support on maker_limit.
+      supportFamilyEligible: d.b_region, takerSupportEligible: d.b_region, supportBand: bStrategySupportRegion(d.family),
       reference: evaluateExactMarketReference(identity, evidence), t30Evidence,
       t10: { bestBid: d.best_bid, bestAsk: d.best_ask, bookFresh: d.t10_fresh, observedAtMs: 0, tickSize: d.tick },
       stakeUsd: QUEUE_DEFAULT_STAKE_USD, hardCap: QUEUE_MAX_ENTRY_PRICE,

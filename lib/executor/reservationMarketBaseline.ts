@@ -759,7 +759,9 @@ const AB_VERSION = "P1B1_T3_AB_V1";
 const B_SUPPORT = [
   { family: "SPREADS", type: "SPREAD", min: 1.85, max: 2.00 },
   { family: "TOTAL_CORNERS", type: "TOTAL_CORNERS", min: 2.25, max: 2.50 },
-  { family: "MONEYLINE", type: "MONEYLINE", min: 1.85, max: 2.00 },
+  // MONEYLINE_SUPPORT_AND_MAKER_PRICE_AUTHORITY_FIX_V1: Founder-authorized 1.85 -> 1.70 (MONEYLINE only).
+  // This is the ONE canonical MONEYLINE band; it widens candidate admission, never what PREMVP may pay.
+  { family: "MONEYLINE", type: "MONEYLINE", min: 1.70, max: 2.00 },
   { family: "TOTALS", type: "TOTAL", min: 1.85, max: 2.00 },
 ] as const;
 
@@ -773,17 +775,34 @@ const hasT3Book = (row: FinalT3MarketObservation) => row.orderbook_fetch_status 
   typeof row.ask_decimal_odds === "number" && Number.isFinite(row.ask_decimal_odds) && row.ask_decimal_odds > 0;
 
 /**
- * CANDIDATE authority: the unchanged B support band (family + type + T10 ask
- * odds band + raw total_corners proof). Shared by the B priority selector and
- * the T10 economic action policy so both read one boundary.
+ * FAMILY/TYPE admission (price-agnostic): family + type + usable T3 book + raw total_corners proof.
+ * The price band is NOT part of this predicate: TAKER and MAKER each prove the band against the price
+ * they would actually transact at (see isBSupportPriceInBand and the T10 economic action policy).
  */
-export function isBSupportEligible(row: FinalT3MarketObservation): boolean {
+export function isBSupportFamilyEligible(row: FinalT3MarketObservation): boolean {
   return B_SUPPORT.some((support) => row.canonical_market_family === support.family &&
     row.canonical_market_type === support.type && hasT3Book(row) &&
-    row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max &&
     (support.family !== "TOTAL_CORNERS" ||
       (row.provider_market_type_raw?.trim().toLowerCase() === "total_corners" &&
         classifyExactEventMarket(row.provider_market_type_raw, row.market_slug).family === "TOTAL_CORNERS")));
+}
+
+/** True when `price` (a probability price in (0,1]) maps to decimal odds inside the family's canonical band. */
+export function isBSupportPriceInBand(family: string, price: number | null | undefined): boolean {
+  const region = bStrategySupportRegion(family);
+  if (!region || typeof price !== "number" || !Number.isFinite(price) || !(price > 0)) return false;
+  const odds = 1 / price;
+  return odds >= region.min - 1e-9 && odds <= region.max + 1e-9;
+}
+
+/**
+ * CANDIDATE authority at the CURRENT ASK (initial TAKER support evidence): family admission plus the T10
+ * ask odds inside the canonical band. Shared by the B priority selector and the T10 economic action policy.
+ */
+export function isBSupportEligible(row: FinalT3MarketObservation): boolean {
+  return isBSupportFamilyEligible(row) && B_SUPPORT.some((support) =>
+    row.canonical_market_family === support.family && row.canonical_market_type === support.type &&
+    row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max);
 }
 
 export function selectReservationT3AbDecisions(

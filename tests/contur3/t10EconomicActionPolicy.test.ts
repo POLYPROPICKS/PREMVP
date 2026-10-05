@@ -6,8 +6,10 @@ import {
   evaluateT10EconomicAction,
   PRICE_AUTHORITY_VERSION,
   walkAskLevels,
+  evaluateMakerSupportPrice,
   type PolicyCandidateInput,
 } from "../../lib/executor/t10EconomicActionPolicy";
+import { bStrategySupportRegion } from "../../lib/executor/reservationMarketBaseline";
 import {
   evaluateExactMarketReference,
   type ExactMarketIdentity,
@@ -41,7 +43,8 @@ function cand(o: Opts = {}): PolicyCandidateInput {
   const evidence: ReferenceEvidence[] = [book("T10_BOOK", identity, b10, a10)];
   if (t30) evidence.push(book("T30_BOOK", identity, t30[0], t30[1]));
   return {
-    identity, family: o.family ?? "TOTALS", supportEligible: o.support ?? true,
+    identity, family: o.family ?? "TOTALS", supportFamilyEligible: o.support ?? true, takerSupportEligible: o.support ?? true,
+    supportBand: bStrategySupportRegion(o.family ?? "TOTALS"),
     reference: evaluateExactMarketReference(identity, evidence),
     t30Evidence: o.t30Override !== undefined ? o.t30Override : t30 ? book("T30_BOOK", identity, t30[0], t30[1]) : null,
     t10: { bestBid: b10, bestAsk: a10, bookFresh: true, observedAtMs: o.observedAtMs ?? Date.parse(T10_AT),
@@ -144,10 +147,14 @@ test("10: Maker uses P_BUY_MAX, not bestBid + tick", () => {
 });
 
 test("11: maker limit never crosses the ask", () => {
-  const r = evaluateT10EconomicAction(cand({ t10: [0.49, 0.5], t30: [0.5, 0.52], tick: 0.01 }));
-  assert.equal(r.maker.limitPrice, 0.49);
-  assert.ok((r.maker.limitPrice as number) < 0.5);
+  const r = evaluateT10EconomicAction(cand({ t10: [0.49, 0.51], t30: [0.5, 0.52], tick: 0.01 }));
+  assert.equal(r.maker.limitPrice, 0.5);
+  assert.ok((r.maker.limitPrice as number) < 0.51);
   assert.equal(r.maker.ticksToAsk, 1);
+  // ask 0.50 => limit 0.49 (odds 2.04) is outside the 1.85..2.00 band: maker support is proven on the limit.
+  const outside = evaluateT10EconomicAction(cand({ t10: [0.49, 0.5], t30: [0.5, 0.52], tick: 0.01 }));
+  assert.equal(outside.maker.eligible, false);
+  assert.equal(outside.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
   const noRoom = evaluateT10EconomicAction(cand({ t10: [0.005, 0.01], t30: [0.5, 0.52], tick: 0.01 }));
   assert.equal(noRoom.maker.eligible, false);
 });
@@ -177,13 +184,13 @@ test("13b: unknown tick -> no Maker, never an invented tick", () => {
 });
 
 test("14: deterministic multi-sibling ranking, order independent", () => {
-  const a = cand({ token: "tok-a", cond: "0xa", t10: [0.49, 0.5], t30: [0.5, 0.52] });
+  const a = cand({ token: "tok-a", cond: "0xa", t10: [0.5, 0.52], t30: [0.52, 0.53] });
   const b = cand({ token: "tok-b", cond: "0xb", t10: [0.47, 0.51], t30: [0.5, 0.52] });
   const c = cand({ token: "tok-c", cond: "0xc", t10: [0.47, 0.51], t30: [0.5, 0.52] });
   const forward = decideEventAction([a, b, c]);
   const reverse = decideEventAction([c, b, a]);
   assert.equal(forward.selected?.candidateIdentity.tokenId, reverse.selected?.candidateIdentity.tokenId);
-  // a: limit 0.49 cushion 0.01 ticks 1; b/c: limit 0.50 cushion 0 ticks 1 -> a has the larger cushion.
+  // a: limit 0.51 cushion 0.01 ticks 1; b/c: limit 0.50 cushion 0 ticks 1 -> a has the larger cushion.
   assert.equal(forward.selected?.candidateIdentity.tokenId, "tok-a");
   // b vs c tie on every criterion -> identity order.
   assert.equal(decideEventAction([c, b]).selected?.candidateIdentity.tokenId, "tok-b");
@@ -191,15 +198,15 @@ test("14: deterministic multi-sibling ranking, order independent", () => {
 
 test("15: family priority cannot override a better economic action", () => {
   const spreads = cand({ token: "tok-s", cond: "0xs", family: "SPREADS", t10: [0.45, 0.53], t30: [0.5, 0.52] });
-  const totals = cand({ token: "tok-t", cond: "0xt", family: "TOTALS", t10: [0.495, 0.5], t30: [0.5, 0.52] });
+  const totals = cand({ token: "tok-t", cond: "0xt", family: "TOTALS", t10: [0.51, 0.52], t30: [0.52, 0.53] });
   const d = decideEventAction([spreads, totals]);
-  // TOTALS has the larger cushion (limit 0.49 vs 0.50); SPREADS is higher in the old priority.
+  // TOTALS has the larger cushion (limit 0.51 vs 0.50); SPREADS is higher in the old priority.
   assert.equal(d.selected?.candidateIdentity.family, "TOTALS");
 });
 
 test("15b: SAFE_TAKER beats any Maker, and the best Maker alternative is retained", () => {
   const taker = cand({ token: "tok-t", cond: "0xt", t30: [0.52, 0.54], t10: [0.5, 0.52], extra: { askLevels: ladder(0.5), feeUsdForFullStake: 0 } });
-  const maker = cand({ token: "tok-m", cond: "0xm", t10: [0.49, 0.5], t30: [0.5, 0.52] });
+  const maker = cand({ token: "tok-m", cond: "0xm", t10: [0.49, 0.51], t30: [0.5, 0.52] });
   const d = decideEventAction([maker, taker]);
   assert.equal(d.action, "TAKER_FIRST");
   assert.equal(d.selected?.candidateIdentity.tokenId, "tok-t");
@@ -218,7 +225,7 @@ test("16: exactly one final action per physical event; mixed events are refused"
 test("16b: exposure or after latest-entry -> SKIP", () => {
   assert.equal(evaluateT10EconomicAction({ ...cand(), exposureExists: true }).shadowAction, "SKIP");
   assert.equal(evaluateT10EconomicAction({ ...cand(), beforeLatestEntry: false }).shadowAction, "SKIP");
-  assert.equal(evaluateT10EconomicAction({ ...cand(), supportEligible: false }).reason, "NOT_SUPPORT_ELIGIBLE");
+  assert.equal(evaluateT10EconomicAction({ ...cand(), supportFamilyEligible: false }).reason, "NOT_SUPPORT_ELIGIBLE");
 });
 
 test("17: real rank-4 evidence (Under 0.02/0.51, T30 0.02/0.52, Over mirror 0.49/0.98) is not a bet", () => {
@@ -229,7 +236,8 @@ test("17: real rank-4 evidence (Under 0.02/0.51, T30 0.02/0.52, Over mirror 0.49
   const mirror: ReferenceEvidence = { ...book("T10_BOOK", over, 0.49, 0.98), source: "BINARY_COMPLEMENT" };
   const reference = evaluateExactMarketReference(under, [t10, t30, mirror]);
   const input: PolicyCandidateInput = {
-    identity: under, family: "TOTALS", supportEligible: true, reference, t30Evidence: t30,
+    identity: under, family: "TOTALS", supportFamilyEligible: true, takerSupportEligible: true,
+    supportBand: bStrategySupportRegion("TOTALS"), reference, t30Evidence: t30,
     t10: { bestBid: 0.02, bestAsk: 0.51, bookFresh: true, observedAtMs: Date.parse(T10_AT), tickSize: 0.01,
       askLevels: ladder(0.51), feeUsdForFullStake: 0 },
     beforeLatestEntry: true, exposureExists: false,
@@ -270,10 +278,94 @@ test("4b: only an identity-exact T30_BOOK anchors; a T10 book or wrong-phase wit
 });
 
 test("14b: cushion key is isolated when both siblings are STRONG-equal in status (WEAK vs WEAK)", () => {
-  const w = (token: string, cond: string, t10: [number, number]) => cand({ token, cond, t10, t30: [0.5, 0.52] });
-  const a = w("tok-a", "0xa", [0.45, 0.5]);   // WEAK (wide T10 spread), limit 0.49, cushion 0.01
-  const b = w("tok-b", "0xb", [0.45, 0.53]);  // WEAK, limit 0.50, cushion 0
+  const w = (token: string, cond: string, t10: [number, number], t30: [number, number]) => cand({ token, cond, t10, t30 });
+  const a = w("tok-a", "0xa", [0.45, 0.52], [0.52, 0.53]);   // WEAK (wide T10 spread), limit 0.51, cushion 0.01
+  const b = w("tok-b", "0xb", [0.45, 0.53], [0.5, 0.52]);    // WEAK, limit 0.50, cushion 0
   assert.equal(a.reference.status, "WEAK");
   assert.equal(b.reference.status, "WEAK");
   assert.equal(decideEventAction([b, a]).selected?.candidateIdentity.tokenId, "tok-a");
+});
+
+
+// ── MONEYLINE_SUPPORT_AND_MAKER_PRICE_AUTHORITY_FIX_V1 ─────────────────────────────────────────────
+// ML(): MONEYLINE candidate whose CURRENT ASK may sit outside the support band (ask odds are decided by the caller).
+const ml = (o: Opts & { takerSupport?: boolean } = {}): PolicyCandidateInput =>
+  ({ ...cand({ family: "MONEYLINE", ...o }), takerSupportEligible: o.takerSupport ?? true });
+
+test("ML-1: canonical MONEYLINE band is 1.70..2.00; SPREADS/TOTALS/TOTAL_CORNERS unchanged", () => {
+  assert.deepEqual(bStrategySupportRegion("MONEYLINE"), { min: 1.7, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("SPREADS"), { min: 1.85, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("TOTALS"), { min: 1.85, max: 2 });
+  assert.deepEqual(bStrategySupportRegion("TOTAL_CORNERS"), { min: 2.25, max: 2.5 });
+});
+
+test("ML-2: maker support boundaries: odds 1.70 and 2.00 accepted; 1.69 and >2.00 rejected", () => {
+  const band = bStrategySupportRegion("MONEYLINE");
+  assert.equal(evaluateMakerSupportPrice(0.5, 0.54, 0.54, band).ok, true, "odds 2.00 boundary");
+  assert.equal(evaluateMakerSupportPrice(1 / 1.7, 1, 1, band).ok, true, "odds 1.70 boundary");
+  const below = evaluateMakerSupportPrice(1 / 1.69, 1, 1, band);
+  assert.deepEqual(below, { ok: false, reason: "MAKER_SUPPORT_PRICE_OUTSIDE_BAND" });
+  const above = evaluateMakerSupportPrice(0.49, 0.54, 0.54, band);
+  assert.deepEqual(above, { ok: false, reason: "MAKER_SUPPORT_PRICE_OUTSIDE_BAND" });
+  assert.equal(evaluateMakerSupportPrice(0.5, 0.54, 0.54, null).ok, false, "unsupported family fails closed");
+});
+
+test("ML-3: maker limit above P_BUY_MAX or above 0.54 fails closed", () => {
+  const band = bStrategySupportRegion("MONEYLINE");
+  assert.deepEqual(evaluateMakerSupportPrice(0.55, 0.54, 0.6, band), { ok: false, reason: "MAKER_ABOVE_P_BUY_MAX" });
+  assert.deepEqual(evaluateMakerSupportPrice(0.55, 0.60, 0.54, band), { ok: false, reason: "MAKER_ABOVE_PRICE_CAP" });
+  assert.equal(evaluateMakerSupportPrice(0.54, 0.54, 0.54, band).ok, true);
+});
+
+test("ML-4 LIVE BUG: ask 0.57, P_BUY_MAX 0.54, tick 0.01, cap 0.54 -> TAKER rejected, MAKER posts 0.54 in band", () => {
+  // T30 bid 0.56 => P_BUY_MAX = min(0.56, 0.54) = 0.54. Current ask odds 1/0.57 = 1.754 (inside 1.70, outside old 1.85).
+  const r = evaluateT10EconomicAction(ml({ t10: [0.56, 0.57], t30: [0.56, 0.57],
+    extra: { askLevels: ladder(0.57), feeUsdForFullStake: 0.01 } }));
+  assert.equal(r.priceAuthority.pBuyMax, 0.54);
+  assert.equal(r.taker.eligible, false, "never buy 0.57");
+  assert.equal(r.maker.eligible, true);
+  assert.equal(r.maker.limitPrice, 0.54);
+  assert.equal(r.shadowAction, "MAKER_FIRST");
+  assert.equal(r.support.maker.MAKER_SUPPORT_PRICE_SOURCE, "MAKER_LIMIT");
+  assert.equal(r.support.maker.SUPPORT_PRICE, 0.54);
+  assert.ok(Math.abs(r.support.maker.SUPPORT_DECIMAL_ODDS! - 1.851852) < 1e-5);
+  assert.equal(r.support.maker.SUPPORT_PRICE_IN_BAND, true);
+  assert.equal(r.support.taker.TAKER_SUPPORT_PRICE_SOURCE, "EXECUTABLE_CURRENT_ASK");
+  assert.equal(r.support.taker.SUPPORT_PRICE, 0.57);
+  assert.equal(r.support.SUPPORT_BAND_MIN, 1.7);
+  assert.equal(r.support.SUPPORT_BAND_MAX, 2);
+});
+
+test("ML-5: ask outside the band for taker but maker limit inside -> MAKER evaluated (old gate rejected both)", () => {
+  // Ask 0.40 (odds 2.5, outside) with a low anchor: taker support fails, maker limit 0.39 odds 2.56 also outside -> rejected.
+  const r = evaluateT10EconomicAction(ml({ takerSupport: false, t10: [0.35, 0.40], t30: [0.5, 0.52] }));
+  assert.equal(r.taker.rejectReason, "TAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(r.maker.eligible, false);
+  assert.equal(r.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(r.support.maker.SUPPORT_PRICE_IN_BAND, false);
+  // Same ask 0.57 but the anchor drives the limit under 0.50 (odds > 2.00) -> maker rejected.
+  const low = evaluateT10EconomicAction(ml({ takerSupport: false, t10: [0.48, 0.57], t30: [0.48, 0.50] }));
+  assert.equal(low.priceAuthority.pBuyMax, 0.48);
+  assert.equal(low.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(low.shadowAction, "SKIP");
+});
+
+test("ML-6: maker support is NOT judged from the current ask (ask odds 1.754, limit odds 1.852)", () => {
+  const withAskBand = evaluateT10EconomicAction(ml({ takerSupport: false, t10: [0.56, 0.57], t30: [0.56, 0.57] }));
+  assert.equal(withAskBand.maker.eligible, true);
+  assert.equal(withAskBand.taker.rejectReason, "TAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+});
+
+test("ML-7: unsupported family still SKIPs for both actions", () => {
+  const r = evaluateT10EconomicAction({ ...ml(), supportFamilyEligible: false });
+  assert.equal(r.reason, "NOT_SUPPORT_ELIGIBLE");
+  assert.equal(r.maker.eligible, false);
+  assert.equal(r.taker.eligible, false);
+});
+
+test("ML-8: TAKER final re-proof: executed VWAP odds must lie inside the band", () => {
+  // Ask band flag true from caller, but the executed price (0.45 => odds 2.22) is outside 1.70..2.00.
+  const r = evaluateT10EconomicAction(ml({ t10: [0.44, 0.45], t30: [0.5, 0.52],
+    extra: { askLevels: ladder(0.45), feeUsdForFullStake: 0 } }));
+  assert.equal(r.taker.eligible, false);
 });
