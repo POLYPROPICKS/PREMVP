@@ -1,0 +1,665 @@
+{
+  "version": "T10_SIBLING_OFFPOLICY_V1",
+  "generated_at": "2026-10-05T19:24:44.424Z",
+  "source_channel": "research-clone via Supabase Management API read-only SQL (interim channel: no clone service-role credentials in this environment)",
+  "range": {
+    "start": "2026-09-30",
+    "end": "2026-10-05"
+  },
+  "stake_usd": 2.5,
+  "hard_cap": 0.54,
+  "coverage": {
+    "supported_siblings_n": 6342,
+    "supported_physical_events_n": 145,
+    "supported_siblings_by_family": {
+      "MONEYLINE": 870,
+      "TOTALS": 2592,
+      "SPREADS": 2880
+    },
+    "priced_siblings_n": 5544,
+    "settlement_state_counts": {
+      "SETTLED_LOSS": 3039,
+      "SETTLED_WIN": 3039,
+      "IDENTITY_NOT_PROVEN": 88,
+      "UNRESOLVED": 176
+    },
+    "settled_siblings_n": 6078,
+    "unresolved_siblings_n": 176,
+    "common_physical_events_n": 139,
+    "executability_state_counts": {
+      "UNKNOWN_MIN_ORDER_SIZE": 885,
+      "NOT_EXECUTABLE_DEPTH_AT_CAP": 2587,
+      "UNKNOWN_BOOK_UNAVAILABLE": 798,
+      "UNKNOWN_DEPTH_NOT_PERSISTED": 2004,
+      "NOT_EXECUTABLE_MIN_ORDER_SIZE": 68
+    },
+    "executability_source_counts": {
+      "PERSISTED_BOOK_PROXY": 6342
+    },
+    "telemetry_rows_n": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 6342,
+    "date_range": {
+      "first_event_date": "2026-10-01",
+      "last_event_date": "2026-10-05"
+    }
+  },
+  "settlement_lookups": {
+    "conditions_n": 3149,
+    "source_unavailable_conditions_n": 0
+  },
+  "evaluations": {
+    "RAW": [
+      {
+        "model": "C0",
+        "view": "RAW",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 129,
+        "wins": 55,
+        "losses": 74,
+        "unresolved_qualifying_siblings_n": 20,
+        "pnl_u": -27.53,
+        "roi_pct": -21.3401,
+        "max_drawdown_u": -27.65,
+        "pnl_usd_gross_at_ordinary_stake": -68.82,
+        "events_per_day": 25.8,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 129
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 129,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "NOT_EXECUTABLE_DEPTH_AT_CAP": 54,
+          "NOT_EXECUTABLE_MIN_ORDER_SIZE": 32,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 232,
+          "wins": 113,
+          "losses": 119,
+          "pnl_u": -25.11,
+          "roi_pct": -10.8251
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 76,
+            "wins": 38,
+            "losses": 38,
+            "pnl_u": -6.49,
+            "roi_pct": -8.535
+          },
+          "SPREADS": {
+            "n": 39,
+            "wins": 16,
+            "losses": 23,
+            "pnl_u": -10.63,
+            "roi_pct": -27.2534
+          },
+          "TOTALS": {
+            "n": 117,
+            "wins": 59,
+            "losses": 58,
+            "pnl_u": -8,
+            "roi_pct": -6.8366
+          }
+        }
+      },
+      {
+        "model": "C1",
+        "view": "RAW",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 129,
+        "wins": 55,
+        "losses": 74,
+        "unresolved_qualifying_siblings_n": 20,
+        "pnl_u": -27.53,
+        "roi_pct": -21.3401,
+        "max_drawdown_u": -27.65,
+        "pnl_usd_gross_at_ordinary_stake": -68.82,
+        "events_per_day": 25.8,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 129
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 129,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "NOT_EXECUTABLE_DEPTH_AT_CAP": 54,
+          "NOT_EXECUTABLE_MIN_ORDER_SIZE": 32,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 232,
+          "wins": 113,
+          "losses": 119,
+          "pnl_u": -25.11,
+          "roi_pct": -10.8251
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 76,
+            "wins": 38,
+            "losses": 38,
+            "pnl_u": -6.49,
+            "roi_pct": -8.535
+          },
+          "SPREADS": {
+            "n": 39,
+            "wins": 16,
+            "losses": 23,
+            "pnl_u": -10.63,
+            "roi_pct": -27.2534
+          },
+          "TOTALS": {
+            "n": 117,
+            "wins": 59,
+            "losses": 58,
+            "pnl_u": -8,
+            "roi_pct": -6.8366
+          }
+        }
+      },
+      {
+        "model": "C4",
+        "view": "RAW",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 129,
+        "wins": 55,
+        "losses": 74,
+        "unresolved_qualifying_siblings_n": 20,
+        "pnl_u": -27.53,
+        "roi_pct": -21.3401,
+        "max_drawdown_u": -27.65,
+        "pnl_usd_gross_at_ordinary_stake": -68.82,
+        "events_per_day": 25.8,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 129
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 129,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "NOT_EXECUTABLE_DEPTH_AT_CAP": 54,
+          "NOT_EXECUTABLE_MIN_ORDER_SIZE": 32,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 232,
+          "wins": 113,
+          "losses": 119,
+          "pnl_u": -25.11,
+          "roi_pct": -10.8251
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 76,
+            "wins": 38,
+            "losses": 38,
+            "pnl_u": -6.49,
+            "roi_pct": -8.535
+          },
+          "SPREADS": {
+            "n": 39,
+            "wins": 16,
+            "losses": 23,
+            "pnl_u": -10.63,
+            "roi_pct": -27.2534
+          },
+          "TOTALS": {
+            "n": 117,
+            "wins": 59,
+            "losses": 58,
+            "pnl_u": -8,
+            "roi_pct": -6.8366
+          }
+        }
+      },
+      {
+        "model": "C5",
+        "view": "RAW",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 129,
+        "wins": 55,
+        "losses": 74,
+        "unresolved_qualifying_siblings_n": 20,
+        "pnl_u": -27.53,
+        "roi_pct": -21.3401,
+        "max_drawdown_u": -27.65,
+        "pnl_usd_gross_at_ordinary_stake": -68.82,
+        "events_per_day": 25.8,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 129
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 129,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "NOT_EXECUTABLE_DEPTH_AT_CAP": 54,
+          "NOT_EXECUTABLE_MIN_ORDER_SIZE": 32,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 232,
+          "wins": 113,
+          "losses": 119,
+          "pnl_u": -25.11,
+          "roi_pct": -10.8251
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 76,
+            "wins": 38,
+            "losses": 38,
+            "pnl_u": -6.49,
+            "roi_pct": -8.535
+          },
+          "SPREADS": {
+            "n": 39,
+            "wins": 16,
+            "losses": 23,
+            "pnl_u": -10.63,
+            "roi_pct": -27.2534
+          },
+          "TOTALS": {
+            "n": 117,
+            "wins": 59,
+            "losses": 58,
+            "pnl_u": -8,
+            "roi_pct": -6.8366
+          }
+        }
+      }
+    ],
+    "EXECUTABLE_UPPER_BOUND": [
+      {
+        "model": "C0",
+        "view": "EXECUTABLE_UPPER_BOUND",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 43,
+        "wins": 14,
+        "losses": 29,
+        "unresolved_qualifying_siblings_n": 5,
+        "pnl_u": -15.57,
+        "roi_pct": -36.2102,
+        "max_drawdown_u": -15.57,
+        "pnl_usd_gross_at_ordinary_stake": -38.93,
+        "events_per_day": 8.6,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 43
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 43,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 58,
+          "wins": 21,
+          "losses": 37,
+          "pnl_u": -16.99,
+          "roi_pct": -29.2955
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 14,
+            "wins": 6,
+            "losses": 8,
+            "pnl_u": -2.3,
+            "roi_pct": -16.4632
+          },
+          "SPREADS": {
+            "n": 8,
+            "wins": 1,
+            "losses": 7,
+            "pnl_u": -6.08,
+            "roi_pct": -75.9615
+          },
+          "TOTALS": {
+            "n": 36,
+            "wins": 14,
+            "losses": 22,
+            "pnl_u": -8.61,
+            "roi_pct": -23.9156
+          }
+        }
+      },
+      {
+        "model": "C1",
+        "view": "EXECUTABLE_UPPER_BOUND",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 43,
+        "wins": 14,
+        "losses": 29,
+        "unresolved_qualifying_siblings_n": 5,
+        "pnl_u": -15.57,
+        "roi_pct": -36.2102,
+        "max_drawdown_u": -15.57,
+        "pnl_usd_gross_at_ordinary_stake": -38.93,
+        "events_per_day": 8.6,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 43
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 43,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 58,
+          "wins": 21,
+          "losses": 37,
+          "pnl_u": -16.99,
+          "roi_pct": -29.2955
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 14,
+            "wins": 6,
+            "losses": 8,
+            "pnl_u": -2.3,
+            "roi_pct": -16.4632
+          },
+          "SPREADS": {
+            "n": 8,
+            "wins": 1,
+            "losses": 7,
+            "pnl_u": -6.08,
+            "roi_pct": -75.9615
+          },
+          "TOTALS": {
+            "n": 36,
+            "wins": 14,
+            "losses": 22,
+            "pnl_u": -8.61,
+            "roi_pct": -23.9156
+          }
+        }
+      },
+      {
+        "model": "C4",
+        "view": "EXECUTABLE_UPPER_BOUND",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 43,
+        "wins": 14,
+        "losses": 29,
+        "unresolved_qualifying_siblings_n": 5,
+        "pnl_u": -15.57,
+        "roi_pct": -36.2102,
+        "max_drawdown_u": -15.57,
+        "pnl_usd_gross_at_ordinary_stake": -38.93,
+        "events_per_day": 8.6,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 43
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 43,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 58,
+          "wins": 21,
+          "losses": 37,
+          "pnl_u": -16.99,
+          "roi_pct": -29.2955
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 14,
+            "wins": 6,
+            "losses": 8,
+            "pnl_u": -2.3,
+            "roi_pct": -16.4632
+          },
+          "SPREADS": {
+            "n": 8,
+            "wins": 1,
+            "losses": 7,
+            "pnl_u": -6.08,
+            "roi_pct": -75.9615
+          },
+          "TOTALS": {
+            "n": 36,
+            "wins": 14,
+            "losses": 22,
+            "pnl_u": -8.61,
+            "roi_pct": -23.9156
+          }
+        }
+      },
+      {
+        "model": "C5",
+        "view": "EXECUTABLE_UPPER_BOUND",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 43,
+        "wins": 14,
+        "losses": 29,
+        "unresolved_qualifying_siblings_n": 5,
+        "pnl_u": -15.57,
+        "roi_pct": -36.2102,
+        "max_drawdown_u": -15.57,
+        "pnl_usd_gross_at_ordinary_stake": -38.93,
+        "events_per_day": 8.6,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {
+          "soccer": 43
+        },
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 43,
+        "selected_executability": {
+          "UNKNOWN_MIN_ORDER_SIZE": 25,
+          "UNKNOWN_DEPTH_NOT_PERSISTED": 18
+        },
+        "uncollapsed_qualifying_siblings": {
+          "n": 58,
+          "wins": 21,
+          "losses": 37,
+          "pnl_u": -16.99,
+          "roi_pct": -29.2955
+        },
+        "uncollapsed_by_family": {
+          "MONEYLINE": {
+            "n": 14,
+            "wins": 6,
+            "losses": 8,
+            "pnl_u": -2.3,
+            "roi_pct": -16.4632
+          },
+          "SPREADS": {
+            "n": 8,
+            "wins": 1,
+            "losses": 7,
+            "pnl_u": -6.08,
+            "roi_pct": -75.9615
+          },
+          "TOTALS": {
+            "n": 36,
+            "wins": 14,
+            "losses": 22,
+            "pnl_u": -8.61,
+            "roi_pct": -23.9156
+          }
+        }
+      }
+    ],
+    "EXECUTABLE_PROVEN": [
+      {
+        "model": "C0",
+        "view": "EXECUTABLE_PROVEN",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 0,
+        "wins": 0,
+        "losses": 0,
+        "unresolved_qualifying_siblings_n": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "pnl_usd_gross_at_ordinary_stake": 0,
+        "events_per_day": 0,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {},
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 0,
+        "selected_executability": {},
+        "uncollapsed_qualifying_siblings": {
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pnl_u": 0,
+          "roi_pct": 0
+        },
+        "uncollapsed_by_family": {}
+      },
+      {
+        "model": "C1",
+        "view": "EXECUTABLE_PROVEN",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 0,
+        "wins": 0,
+        "losses": 0,
+        "unresolved_qualifying_siblings_n": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "pnl_usd_gross_at_ordinary_stake": 0,
+        "events_per_day": 0,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {},
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 0,
+        "selected_executability": {},
+        "uncollapsed_qualifying_siblings": {
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pnl_u": 0,
+          "roi_pct": 0
+        },
+        "uncollapsed_by_family": {}
+      },
+      {
+        "model": "C4",
+        "view": "EXECUTABLE_PROVEN",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 0,
+        "wins": 0,
+        "losses": 0,
+        "unresolved_qualifying_siblings_n": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "pnl_usd_gross_at_ordinary_stake": 0,
+        "events_per_day": 0,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {},
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 0,
+        "selected_executability": {},
+        "uncollapsed_qualifying_siblings": {
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pnl_u": 0,
+          "roi_pct": 0
+        },
+        "uncollapsed_by_family": {}
+      },
+      {
+        "model": "C5",
+        "view": "EXECUTABLE_PROVEN",
+        "common_processed_physical_events_n": 139,
+        "selected_physical_events_n": 0,
+        "wins": 0,
+        "losses": 0,
+        "unresolved_qualifying_siblings_n": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "pnl_usd_gross_at_ordinary_stake": 0,
+        "events_per_day": 0,
+        "date_coverage": {
+          "first_event_date": "2026-10-01",
+          "last_event_date": "2026-10-05",
+          "days_n": 5
+        },
+        "sport_mix": {},
+        "selected_fee_known_n": 0,
+        "selected_fee_unknown_n": 0,
+        "selected_executability": {},
+        "uncollapsed_qualifying_siblings": {
+          "n": 0,
+          "wins": 0,
+          "losses": 0,
+          "pnl_u": 0,
+          "roi_pct": 0
+        },
+        "uncollapsed_by_family": {}
+      }
+    ]
+  },
+  "notes": [
+    "Frozen engine unchanged: one selected bet per physical event, chronologically first qualifying candidate; ties on the same T10 capture resolve to the LOWEST entry price.",
+    "RAW = every supported sibling priced at its T10 best ask, ignoring the 0.54 cap / min order size / depth. It is NOT an executable return.",
+    "EXECUTABLE_UPPER_BOUND = siblings proven executable by telemetry, plus siblings whose executability is unknown ONLY for lack of persisted evidence (ask ladder depth, or minimum order size). Conclusively blocked siblings (best ask above the 0.54 cap; min order size unmet at the best ask) and telemetry failures (book unavailable / compute failed) are excluded. Pre-telemetry rows never persisted the ask ladder, so depth/VWAP/fee are unknown there: this is an upper bound.",
+    "A provider market (condition_id) attributed to more than one physical event is IDENTITY_NOT_PROVEN and excluded from results (counted); one market never counts as two exposures.",
+    "Selection runs over settled, priced siblings only: an unresolved lower-priced sibling cannot be chosen, so the unresolved counts are siblings (not events) and may shift which sibling a model would have picked.",
+    "EXECUTABLE_PROVEN = only siblings whose T10_EXECUTABLE_SIBLING_TELEMETRY_V1 state is EXECUTABLE (zero before the telemetry release).",
+    "Unresolved / void / identity-unproven / source-unavailable siblings are excluded from results and counted; none is converted to a loss.",
+    "PnL is gross (fee-excluded); fee is KNOWN only on telemetry rows."
+  ]
+}

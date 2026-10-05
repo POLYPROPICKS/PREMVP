@@ -101,6 +101,8 @@ export async function captureFixture(
     readExactEvent: async () => opts.own ?? ownEventMarkets(),
     readGameEvents: async () => opts.discovered ?? siblingEventMarkets(),
     fetchBooks: fixtureBooks(),
+    // T10 executable-sibling telemetry fee read: offline by default, never the real Gamma API.
+    fetchFeeSchedule: async (tokenId) => ({ ok: false as const, tokenId, errorCode: "FEE_FIXTURE_OFFLINE", latencyMs: 0 }),
     write: async (run, rows) => { captured = { run, rows }; },
   });
   if (!captured) throw new Error("fixture capture wrote nothing");

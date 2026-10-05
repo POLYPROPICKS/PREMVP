@@ -1,7 +1,7 @@
 import type { RuntimeSupabaseClient } from "../constructor/bootstrap";
 import { createHash } from "node:crypto";
 import type { NightEventReservationRow } from "./executorQueueTypes";
-import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
+import { fetchOrderBooksConcurrent, type TokenFeeScheduleResult } from "../liquidity/polymarketClient";
 import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from "../liquidity/orderbookMath";
 import { GAMMA_GAME_EVENTS_LIMIT, fetchPolymarketEventById, fetchPolymarketEventsByGameId } from "../feed/polymarketClient";
 import type { PolymarketRawEvent } from "../feed/types";
@@ -15,6 +15,64 @@ export type ReservationMarketPhase = typeof PHASE | "T_MINUS_30" | "T_MINUS_10" 
 
 /** Single authority for the live Final Rebalance source phase (T_MINUS_3 is historical-only). */
 export const FINAL_REBALANCE_PHASE = "T_MINUS_10" as const;
+
+/**
+ * T10_EXECUTABLE_SIBLING_TELEMETRY_V1: every key every T_MINUS_10 observation row carries, so one bulk
+ * upsert is homogeneous. Evidence only: nothing in selection, Queue, stake or Ireland reads it, and no T30-derived value is part of it.
+ * The computation lives in t10ExecutableSiblingTelemetry.ts (loaded lazily: import-cyclic with this file).
+ */
+export const T10_EXECUTABLE_TELEMETRY_VERSION = "T10_EXECUTABLE_SIBLING_TELEMETRY_V1" as const;
+export const T10_EXECUTABLE_TELEMETRY_KEYS = [
+  "executable_telemetry_version", "requested_stake_usd", "execution_price_cap", "ask_depth_relevant_usd",
+  "full_stake_executable_vwap", "full_stake_shares", "full_stake_worst_ask_price", "executable_full_stake",
+  "executable_full_stake_state", "taker_fee_state", "taker_fee_reason", "taker_fee_rate", "taker_fee_usd",
+  "taker_effective_cost_per_share", "taker_fee_formula_version",
+] as const;
+
+/** Typed, honest failure row: the sibling still gets its telemetry row, with UNKNOWN and a reason. Never invents a number. */
+export function executableTelemetryFailureColumns(reason: string): Record<string, unknown> {
+  return {
+    ...Object.fromEntries(T10_EXECUTABLE_TELEMETRY_KEYS.map((key) => [key, null])),
+    executable_telemetry_version: T10_EXECUTABLE_TELEMETRY_VERSION,
+    executable_full_stake_state: "UNKNOWN_TELEMETRY_COMPUTE_FAILED",
+    taker_fee_state: "UNKNOWN", taker_fee_reason: reason,
+  };
+}
+
+/** Columns ADDED by migration 20261005090000 (the other keys above pre-exist from the LIVE_GUARD telemetry migration). */
+const T10_REUSED_EXISTING_COLUMNS: readonly string[] = ["requested_stake_usd", "execution_price_cap", "ask_depth_relevant_usd", "full_stake_executable_vwap"];
+export const T10_EXECUTABLE_TELEMETRY_NEW_COLUMNS: readonly string[] =
+  T10_EXECUTABLE_TELEMETRY_KEYS.filter((key) => !T10_REUSED_EXISTING_COLUMNS.includes(key));
+
+/**
+ * True only for PostgREST PGRST204 / Postgres 42703 whose message names one of the NEW telemetry columns, i.e. the
+ * production schema is not migrated yet. Any other write error is NOT a missing-telemetry-schema signal.
+ */
+export function isMissingTelemetryColumnError(error: unknown): boolean {
+  const e = error as { code?: unknown; message?: unknown } | null | undefined;
+  if (!e || (e.code !== "PGRST204" && e.code !== "42703")) return false;
+  const message = typeof e.message === "string" ? e.message : "";
+  return T10_EXECUTABLE_TELEMETRY_NEW_COLUMNS.some((column) => message.includes(column));
+}
+
+export function withoutNewTelemetryColumns(row: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(row).filter(([key]) => !T10_EXECUTABLE_TELEMETRY_NEW_COLUMNS.includes(key)));
+}
+
+/**
+ * Hard wall-clock ceiling for the telemetry-only fee leg that runs inside the live rebalance tick. The fee fetcher is
+ * already bounded internally (5s budget, +250ms floor); this is the outer deadline. On expiry the leg resolves null and
+ * every sibling gets a typed UNKNOWN fee state. Never rejects.
+ */
+export const T10_TELEMETRY_FEE_DEADLINE_MS = 5_500;
+async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([work, new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); })]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export function classifyReservationMarketPhase(eventStartIso: string, nowMs: number): Exclude<ReservationMarketPhase, typeof PHASE> | null {
   const minutes = (Date.parse(eventStartIso) - nowMs) / 60_000;
@@ -525,6 +583,10 @@ export async function captureReservationMarketObservation(
     observedAt?: string;
     alreadyCaptured?: (reservationId: string, phase: ReservationMarketPhase, sourceVersion: string) => Promise<boolean>;
     getClient?: RuntimeClientGetter;
+    /** T10 executable-sibling telemetry only (evidence): token-specific taker fee schedule, default = Gamma. */
+    fetchFeeSchedule?: (tokenId: string, opts: { timeoutMs: number }) => Promise<TokenFeeScheduleResult>;
+    /** Test seam: hard deadline of the telemetry-only fee leg (default 5.5s). */
+    telemetryDeadlineMs?: { fee?: number };
   } = {},
 ): Promise<void> {
   if (phase === PHASE) return captureReservationMarketBaseline(reservation, deps);
@@ -593,7 +655,33 @@ export async function captureReservationMarketObservation(
     failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
   }
   const { tokens, expected, missingIdentity } = inventoryTokens(markets);
-  const books = await (deps.fetchBooks ?? fetchOrderBooksConcurrent)(tokens.map((t) => t.tokenId), 5);
+  // T10_EXECUTABLE_SIBLING_TELEMETRY_V1 (evidence only, T_MINUS_10 only). The fee schedules are fetched in
+  // parallel with the books, bounded, and can never reject; a missing/failed schedule is typed UNKNOWN.
+  const telemetry = phase === FINAL_REBALANCE_PHASE && tokens.length > 0
+    ? await import("./t10ExecutableSiblingTelemetry").catch((error: unknown) => {
+      console.error("[reservation-market-baseline] T10_TELEMETRY_MODULE_UNAVAILABLE", error instanceof Error ? error.message : "unknown");
+      return null;
+    }) : null;
+  // Books and fee schedules run concurrently, the telemetry leg under a hard deadline, so telemetry adds ~no wall
+  // time to the capture and can never hang it.
+  const [books, feeByToken] = await Promise.all([
+    (deps.fetchBooks ?? fetchOrderBooksConcurrent)(tokens.map((t) => t.tokenId), 5),
+    telemetry
+      ? withDeadline(Promise.resolve().then(() => telemetry.fetchFeeSchedulesBounded(tokens, { fetchFee: deps.fetchFeeSchedule })).catch(() => null),
+        deps.telemetryDeadlineMs?.fee ?? T10_TELEMETRY_FEE_DEADLINE_MS)
+      : Promise.resolve(null),
+  ]);
+  const executableColumns = phase !== FINAL_REBALANCE_PHASE ? null : tokens.map((token, i) => {
+    if (!telemetry) return executableTelemetryFailureColumns("TELEMETRY_MODULE_UNAVAILABLE");
+    try {
+      return telemetry.buildExecutableSiblingColumns({
+        token, result: books[i],
+        fee: feeByToken === null
+          ? { ok: false as const, tokenId: token.tokenId, errorCode: "FEE_LEG_UNAVAILABLE", latencyMs: 0 }
+          : feeByToken.get(token.tokenId) ?? null,
+      });
+    } catch { return executableTelemetryFailureColumns("TELEMETRY_COMPUTE_FAILED"); }
+  });
   const minutesToStart = (Date.parse(start ?? "") - Date.parse(observedAt)) / 60000;
   const observations = tokens.map((token, i) => {
     const result = books[i];
@@ -620,6 +708,7 @@ export async function captureReservationMarketObservation(
       orderbook_fetch_status: result?.ok ? "SUCCESS" : "FAILED",
       orderbook_failure_reason: result?.ok ? null : result?.errorCode ?? "UNKNOWN_FAILURE",
       source_version: MARKET_SOURCE_VERSION,
+      ...(executableColumns?.[i] ?? {}),
     };
   });
   const failed = observations.filter((row) => row.orderbook_fetch_status === "FAILED").length;
@@ -713,9 +802,21 @@ async function defaultWriter(run: Record<string, unknown>, observations: Record<
     { onConflict: "reservation_id,observation_phase,source_version", ignoreDuplicates: true },
   );
   if (runError) throw new Error("BASELINE_RUN_WRITE_FAILED");
+  // Telemetry must never be able to take the live T10 source down. If the production schema does not yet carry the
+  // NEW executable-sibling columns (code shipped before migration 20261005090000, or a runtime-scoped DB that is not
+  // migrated), write the observation rows WITHOUT them instead of failing the whole capture. The gap is loud (log) and
+  // measurable (rows have executable_telemetry_version NULL, so coverage_complete=false). Any other error still throws.
+  let telemetryColumnsMissing = false;
   for (let i = 0; i < observations.length; i += 200) {
-    const { error } = await supabaseAdmin.from("reservation_market_observations")
-      .upsert(observations.slice(i, i + 200), { onConflict: "capture_run_id,condition_id,token_id,side", ignoreDuplicates: true });
+    const chunk = observations.slice(i, i + 200);
+    const upsertRows = (rows: Record<string, unknown>[]) => supabaseAdmin.from("reservation_market_observations")
+      .upsert(rows, { onConflict: "capture_run_id,condition_id,token_id,side", ignoreDuplicates: true });
+    let { error } = await upsertRows(telemetryColumnsMissing ? chunk.map(withoutNewTelemetryColumns) : chunk);
+    if (error && !telemetryColumnsMissing && isMissingTelemetryColumnError(error)) {
+      telemetryColumnsMissing = true;
+      console.error("[reservation-market-baseline] T10_TELEMETRY_COLUMNS_UNAVAILABLE: observation rows written without executable-sibling telemetry columns (migration 20261005090000 not applied on this database)");
+      ({ error } = await upsertRows(chunk.map(withoutNewTelemetryColumns)));
+    }
     if (error) throw new Error("BASELINE_OBSERVATION_WRITE_FAILED");
   }
   // Re-read persisted scalar rows so a retry repairs strategy rows for any

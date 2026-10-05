@@ -3,7 +3,7 @@
 --
 -- Narrow research projection of production primary_evidence_outbox, written by
 -- scripts/research-clone-daily-sync.ts from the bounded production RPC
--- public.research_evidence_page_v2 (supabase/migrations/20260919080000_research_evidence_page_v2.sql).
+-- public.research_evidence_page_v2 (supabase/migrations/20260919072721_research_evidence_page_v2.sql).
 -- One row per evidence item; raw evidence_rows JSON is never stored here.
 --
 -- Idempotent: creates the table when absent and upgrades an existing table

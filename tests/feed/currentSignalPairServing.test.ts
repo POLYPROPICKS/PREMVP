@@ -19,7 +19,7 @@ const liquidityGateMigration = readFileSync(
   "utf8",
 );
 const preEventScoreShadowMigration = readFileSync(
-  "supabase/migrations/20260919170000_current_signal_pair_serving_pre_event_score_shadow.sql",
+  "supabase/migrations/20260919145425_current_signal_pair_serving_pre_event_score_shadow.sql",
   "utf8",
 );
 
