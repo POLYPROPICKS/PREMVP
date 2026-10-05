@@ -225,6 +225,12 @@ test('transaction-control guard is a faithful lexer: constructs that hide a COMM
     'SET LOCAL': "SET LOCAL lock_timeout = '0'; select 1;",
     'SET LOCAL standard_conforming_strings': 'SET LOCAL standard_conforming_strings = off; select 1;',
     'set_config()': "SELECT set_config('lock_timeout', '0', true);",
+    'quoted set_config call (N2)': 'SELECT "set_config"(\'lock_timeout\', \'0\', true);',
+    'set_config inside a DO dollar body (N2)': "DO $$ BEGIN PERFORM set_config('lock_timeout', '0', true); END $$;",
+    'set_config inside a DO string body (N2)': "DO 'BEGIN PERFORM set_config(''lock_timeout'', ''0'', true); END';",
+    'set_config only in a comment (blanket refusal, documented over-block)': '/* set_config */ select 1;',
+    'unicode-escaped identifier could spell set_config (N2)': `SELECT U&"set\\005fconfig"('a', 'b', true);`,
+    'unicode-escape string': "SELECT U&'abc';",
   };
   for (const [label, sql] of Object.entries(hidden)) {
     assert.throws(() => assertNoTransactionControl(sql), /HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN/, label);
@@ -232,13 +238,39 @@ test('transaction-control guard is a faithful lexer: constructs that hide a COMM
   const harmless = {
     'target-like file': TARGET_SQL,
     'COMMIT only as text in a string': "COMMENT ON COLUMN t.c IS 'commit; rollback; begin;';",
-    'the word set inside a comment/string': "COMMENT ON COLUMN t.c IS 'set_config( and SET x'; -- set_config('a','b',true)\nselect 1;",
+    'the word SET inside a comment/string': "COMMENT ON COLUMN t.c IS 'SET x'; -- SET y\nselect 1;",
     'long tag whose body is bait': `SELECT $${'L'.repeat(100)}$ '; COMMIT; --$${'L'.repeat(100)}$;`,
     'BEGIN/END inside a DO body': 'DO $x$ BEGIN PERFORM 1; END $x$; select 1;',
     'whole nested comment': '/* outer /* inner */ COMMIT; */ select 1;',
     'quoted identifier': 'SELECT 1 AS "commit;"; select 2;',
   };
   for (const [label, sql] of Object.entries(harmless)) assert.equal(assertNoTransactionControl(sql), true, label);
+});
+
+test('N1: a string continued across a newline (scan.l quotecontinue) is refused, never mis-lexed', () => {
+  const continued = {
+    'reviewer input: E-string continuation hides a COMMIT': "SELECT E'x'\n'\\''; COMMIT; -- '\nSELECT 1;\n",
+    'standard continuation': "SELECT 'a'\n'b';",
+    'CR continuation': "SELECT E'a'\r'\\'';\rCOMMIT;\r-- '\r",
+    'CRLF continuation': "SELECT 'a'\r\n'b';",
+    'continuation through a -- comment line': "SELECT 'a' -- c\n'b';",
+    'continuation through blank lines and tabs': "SELECT 'a'\t\n\n  \f '\\'';",
+    'bit string continuation': "SELECT B'1'\n'0';",
+    'hex string continuation': "SELECT X'1'\n'0';",
+    'national continuation': "SELECT N'a'\n'b';",
+  };
+  for (const [label, sql] of Object.entries(continued)) {
+    assert.throws(() => assertNoTransactionControl(sql), (e) => e.code === 'HTTPS_SQL_STRING_CONTINUATION_UNSUPPORTED', label);
+  }
+  const fine = {
+    'string then newline then statement end': "SELECT 'a'\n;",
+    'string then comment line then semicolon': "COMMENT ON TABLE t IS 'a'\n-- c\n;",
+    'strings separated by an operator on the next line': "SELECT 'a'\n|| 'b';",
+    'doubled quote is not a continuation': "SELECT 'it''s'\n;",
+    'block comment between segments is not a continuation': "SELECT 'a'\n/* c */ || 'b';",
+    'same-line adjacency is a syntax error for Postgres, not a continuation': "SELECT 'a' || 'b';",
+  };
+  for (const [label, sql] of Object.entries(fine)) assert.equal(assertNoTransactionControl(sql), true, label);
 });
 
 test('lexer fails closed on anything unterminated (nothing would execute on the server either)', () => {

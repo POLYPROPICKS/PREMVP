@@ -33,6 +33,11 @@
  *    exactly one new entry under a different version (the server stamps its own timestamp) and returned no error
  *    is that single entry re-versioned, fail-closed, so the ledger matches the repository file.
  *
+ * Known limits (by design): a rolled-back dry-run cannot undo NON-transactional side effects (sequence advances,
+ * side-effecting extension calls such as HTTP from SQL); the HTTPS path is for additive structural SQL, which the
+ * reviewed target files are. The lexer refuses (never models) string continuation across a newline, every SET,
+ * set_config anywhere in the text, and U&-escape constructs; those over-blocks are intentional for an emergency path.
+ *
  * Manual recovery (state is always reported in the failure detail): if apply fails after the DDL ran
  * (HTTPS_APPLY_LEDGER_UNEXPECTED / TARGET_ONLY_APPLY_NOT_RECORDED), re-run the dry-run; the migrations are
  * additive/idempotent, so the DDL is not re-applied destructively, and the ledger entry is reconciled through the
@@ -203,6 +208,19 @@ export function lexSql(sql) {
         } else j += 1;
       }
       if (!closed) unterminated('string');
+      // PostgreSQL continues a string across a newline into the next quoted segment (scan.l quotecontinue) and the
+      // continuation stays in the FIRST segment's escape mode (an E'' string keeps backslash escapes). That mode-carry
+      // is deliberately not modelled: a pinned file using it is refused (fail closed), never guessed at.
+      let k = j;
+      let crossedNewline = false;
+      for (;;) {
+        const ch = s[k];
+        if (ch === '\n' || ch === '\r') { crossedNewline = true; k += 1; }
+        else if (ch === ' ' || ch === '\t' || ch === '\f' || ch === '\v') k += 1;
+        else if (ch === '-' && s[k + 1] === '-') { while (k < n && s[k] !== '\n' && s[k] !== '\r') k += 1; }
+        else break;
+      }
+      if (crossedNewline && s[k] === "'") throw new HttpsTransportError('HTTPS_SQL_STRING_CONTINUATION_UNSUPPORTED');
       i = j;
       code += "''";
     } else if (c === '"') {
@@ -236,15 +254,19 @@ export function lexSql(sql) {
 // Whole-word statement starts only (COMMENT is not COMMIT). EVERY SET is refused (even SET LOCAL: a file must not
 // change lock/statement timeouts or string-lexing GUCs); the wrapper's own SET LOCAL lines never pass through this guard.
 const TRANSACTION_CONTROL = /^(?:(?:begin|start|commit|end|rollback|abort|savepoint|release|prepare|reset|set)\b|\\)/i;
-const GUC_FUNCTION = /\bset_config\s*\(/i;
+// A pinned file must not touch GUCs by ANY route: set_config is refused on the RAW text (comments, strings, function and DO
+// bodies included, so no scanner subtlety can hide it); U&'..' / U&\"..\" unicode-escape constructs, which could spell it, are refused too.
+const GUC_FUNCTION = /set_config/i;
+const UNICODE_ESCAPE = /\bu&\s*(?:""|'')/i;
 
 /**
  * The dry-run's ROLLBACK (and the apply's COMMIT) only mean something if the SQL cannot end/replace the
  * transaction itself. Fail closed on any transaction-control statement, judged on the LEXED code.
  */
 export function assertNoTransactionControl(sql) {
+  if (GUC_FUNCTION.test(String(sql))) throw new HttpsTransportError('HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN');
   for (const statement of lexSql(sql).statements) {
-    if (TRANSACTION_CONTROL.test(statement) || GUC_FUNCTION.test(statement)) throw new HttpsTransportError('HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN');
+    if (TRANSACTION_CONTROL.test(statement) || UNICODE_ESCAPE.test(statement)) throw new HttpsTransportError('HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN');
   }
   return true;
 }
