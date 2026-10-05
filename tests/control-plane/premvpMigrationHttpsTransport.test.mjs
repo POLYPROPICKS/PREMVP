@@ -436,3 +436,14 @@ test('CLONE SQL is an ALLOW-LIST of idempotent structural statements: DML, DROP,
   assert.deepEqual(ok.statement_kinds, { create_table_if_not_exists: 1, add_column_if_not_exists: 1, revoke: 1, grant_to_service_role: 1, create_index_if_not_exists: 1, enable_row_level_security: 1 });
   assert.throws(() => assertCloneSqlSafe('-- only a comment\n'), /CLONE_SQL_EMPTY/);
 });
+
+test('F1: the lexer assumptions (standard_conforming_strings=on, UTF8) are PROVEN on the writer endpoint/role, else fail closed before target SQL', async () => {
+  for (const options of [{ standardConformingStrings: 'off' }, { serverEncoding: 'LATIN1' }, { standardConformingStrings: null }]) {
+    const api = fakeApi(options);
+    await assert.rejects(run(api), (e) => e.code === 'HTTPS_SQL_LEXING_ASSUMPTIONS_NOT_PROVEN', JSON.stringify(options));
+    assert.equal(api.log.some((l) => (l.query ?? '').includes('ADD COLUMN')), false, 'target SQL never sent');
+  }
+  assert.equal((await run(fakeApi({ serverEncoding: 'utf8' }))).mode, 'dry_run', 'encoding compare is case-insensitive');
+  assert.match(SQL_TRANSACTION_PROBE, /current_setting\('standard_conforming_strings'\)/);
+  assert.match(SQL_TRANSACTION_PROBE, /current_setting\('server_encoding'\)/);
+});

@@ -26,7 +26,7 @@ const md5 = (s) => crypto.createHash('md5').update(s).digest('hex');
 /** In-memory fake of the Management API surface the transport uses. */
 export function fakeApi({ ledger = ['20260930070000'], schema = ['public.reservation_market_observations.id'], transactional = true,
   nativeVersion = 'exact', nativeFailsAfterApply = false, tableLedgerDiffers = false, secretEchoOn401 = true,
-  sessionSplit = false, noCompletionMarker = false, nativeSkipsDdl = false } = {}) {
+  sessionSplit = false, noCompletionMarker = false, nativeSkipsDdl = false, standardConformingStrings = 'on', serverEncoding = 'UTF8' } = {}) {
   const state = { ledger: ledger.map((version) => ({ version, name: 'x' })), schema: new Set(schema) };
   const log = [];
   const effects = (sql) => [...sql.matchAll(/ADD COLUMN IF NOT EXISTS (\w+)/g)].map((m) => `public.reservation_market_observations.${m[1]}`);
@@ -52,7 +52,7 @@ export function fakeApi({ ledger = ['20260930070000'], schema = ['public.reserva
     }
     if (init.method === 'POST' && path === '/query') {
       if (body.read_only !== false) return json(400, { message: 'writable queries must say read_only:false' });
-      if (body.query === SQL_TRANSACTION_PROBE) return sessionSplit ? json(400, { message: 'PREMVP_PROBE_SESSION_SPLIT' }) : json(200, [{ rolled_back: transactional }]);
+      if (body.query === SQL_TRANSACTION_PROBE) return sessionSplit ? json(400, { message: 'PREMVP_PROBE_SESSION_SPLIT' }) : json(200, [{ rolled_back: transactional, standard_conforming_strings: standardConformingStrings, server_encoding: serverEncoding }]);
       if (body.query.startsWith('BEGIN;\nSET LOCAL lock_timeout') && body.query.includes('ROLLBACK;\nSELECT')) {
         if (!transactional) for (const e of effects(body.query)) state.schema.add(e);
         return json(201, noCompletionMarker ? [] : [{ premvp_marker: 'PREMVP_DRYRUN_COMPLETE' }]);

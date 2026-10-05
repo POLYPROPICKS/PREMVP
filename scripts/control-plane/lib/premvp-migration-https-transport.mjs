@@ -318,12 +318,15 @@ export const SQL_LEDGER_VERSIONS = 'select version from supabase_migrations.sche
  * Transaction-semantics probe. A TEMP table can leave no persistent object whatever the endpoint does. The DO
  * block is the positive control: the table MUST be visible after CREATE and before ROLLBACK, which proves BEGIN,
  * CREATE and the check ran on ONE session; a request that is split across connections raises and fails closed.
- * Only then does `rolled_back` (gone after ROLLBACK) prove explicit-transaction semantics are honoured.
+ * Only then does `rolled_back` (gone after ROLLBACK) prove explicit-transaction semantics are honoured. The same
+ * request, on the same endpoint and ROLE that runs the dry-run, also reads the two settings the SQL lexer ASSUMES
+ * (standard_conforming_strings=on, server_encoding=UTF8); anything else fails closed.
  */
 export const SQL_TRANSACTION_PROBE =
   "BEGIN; CREATE TEMPORARY TABLE premvp_txn_probe(x int); " +
   "DO $premvp$ BEGIN IF to_regclass('pg_temp.premvp_txn_probe') IS NULL THEN RAISE EXCEPTION 'PREMVP_PROBE_SESSION_SPLIT'; END IF; END $premvp$; " +
-  "ROLLBACK; SELECT to_regclass('pg_temp.premvp_txn_probe') IS NULL AS rolled_back;";
+  "ROLLBACK; SELECT to_regclass('pg_temp.premvp_txn_probe') IS NULL AS rolled_back, " +
+  "current_setting('standard_conforming_strings') AS standard_conforming_strings, current_setting('server_encoding') AS server_encoding;";
 
 /** md5 over everything a migration can persist in the user schemas; changes iff DDL persisted. */
 export const SQL_SCHEMA_FINGERPRINT = `
@@ -463,6 +466,11 @@ export function createHttpsMigrationTransport({ token, projectRef, allowlist, fe
       catch (error) { throw new HttpsTransportError('HTTPS_TRANSACTIONAL_DRY_RUN_NOT_PROVEN', `probe failed: ${error?.code ?? 'error'}`); }
       const flags = rows.filter((r) => r && typeof r === 'object' && 'rolled_back' in r).map((r) => r.rolled_back);
       if (flags.length === 0 || !flags.every((f) => f === true)) throw new HttpsTransportError('HTTPS_TRANSACTIONAL_DRY_RUN_NOT_PROVEN', 'explicit transaction not preserved');
+      const settings = rows.find((r) => r && typeof r === 'object' && 'rolled_back' in r);
+      if (settings?.standard_conforming_strings !== 'on' || String(settings?.server_encoding).toUpperCase() !== 'UTF8') {
+        throw new HttpsTransportError('HTTPS_SQL_LEXING_ASSUMPTIONS_NOT_PROVEN',
+          `standard_conforming_strings=${String(settings?.standard_conforming_strings).slice(0, 12)} server_encoding=${String(settings?.server_encoding).slice(0, 12)}`);
+      }
       return true;
     },
 
