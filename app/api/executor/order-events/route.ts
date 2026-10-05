@@ -31,6 +31,8 @@ import {
 } from "@/lib/executor/executionReconciliation";
 import {
   recordResultAndAuthorizeMaker,
+  callbackIsTerminalProvenZero,
+  fallbackPublicationRetryable,
   isMakerAttemptCallback,
   normalizeMakerCallbackForAccounting,
   IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED,
@@ -592,6 +594,16 @@ export async function POST(request: NextRequest) {
     console.error("[executor/order-events] Maker fallback authorization failed:", error instanceof Error ? error.message : "unknown");
     if (makerAttempt) return NextResponse.json({ success: false, error: "MAKER_RESULT_PERSISTENCE_FAILED" }, { status: 500 });
     makerFallback = { kind: "MAKER_BLOCKED", reasons: ["AUTHORIZATION_ERROR"] };
+  }
+  // Terminal proven ZERO: the single MAKER_FALLBACK_1 must be durably published (visible through
+  // maker_fallback_commands) BEFORE this callback is acknowledged. A transient publication failure is
+  // never acknowledged as success -- Ireland retries; the CAS claim keeps it single-winner.
+  if (callbackIsTerminalProvenZero(raw) && fallbackPublicationRetryable(makerFallback)) {
+    return NextResponse.json(
+      { success: false, error: "MAKER_FALLBACK_PUBLICATION_PENDING", retryable: true,
+        reasons: makerFallback.kind === "MAKER_BLOCKED" ? makerFallback.reasons : [] },
+      { status: 503 },
+    );
   }
   if (makerFallback.kind === "MAKER_CALLBACK_REJECTED") {
     return NextResponse.json(

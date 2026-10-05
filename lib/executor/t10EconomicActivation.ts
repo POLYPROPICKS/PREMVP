@@ -34,14 +34,30 @@
 // maker_shares, tick_size, minimum_order_size, p_buy_max, price-authority lineage); a malformed one is
 // never emitted and never translated into a TAKER (mapQueueRowToIrelandCandidate).
 //
-// Minimum order: the provider min_order_size of the exact token must be known for BOTH modes and the
-// $2.50 stake must reach it at the frozen price; unknown or below-minimum fails closed. The stake is
-// never increased and the quantity never inflated.
+// Minimum order: the provider min_order_size of the exact token must be known for BOTH modes; unknown
+// fails closed. LIVE_EXECUTION_FINAL_ACTIVATION_V1 adaptive headroom: every evaluation starts at $2.50.
+// ONLY when the venue minimum quantity is the SOLE blocker at $2.50 is the stake raised to the smallest
+// cent amount that satisfies it (<= QUEUE_MAX_STAKE_USD $4.00, else SKIP). TAKER re-walks the ACTUAL
+// increased stake against the actual book and re-proves full depth, fee-inclusive cost <= P_BUY_MAX and
+// raw price <= 0.54. P_BUY_MAX, the 0.54 cap and the limit formulas are never changed.
+//
+// MAKER_FIRST timing (released Ireland contract): fallback_deadline = latest_entry (unchanged),
+// primary_maker_cancel_by = fallback_deadline - 580s. A MAKER_FIRST at/after cancel_by fails closed.
 import { getBestBidAsk, computeSpread } from "@/lib/liquidity/orderbookMath";
 import type { FetchOrderBookResult } from "@/lib/liquidity/types";
 import type { TokenFeeScheduleResult } from "@/lib/liquidity/polymarketClient";
 import { evaluateExactMarketReference, type ExactMarketIdentity, type ReferenceEvidence } from "./exactMarketReference";
-import { QUEUE_DEFAULT_STAKE_USD, QUEUE_MAX_ENTRY_PRICE } from "./executorQueueTypes";
+import {
+  QUEUE_DEFAULT_STAKE_USD,
+  QUEUE_MAX_ENTRY_PRICE,
+  QUEUE_MAX_STAKE_USD,
+  STAKE_ADJUSTMENT_REASON_MIN_ORDER,
+  ceilCentUsd,
+  ceilShares,
+  floorShares,
+  primaryMakerTiming,
+  type StakeAuthorization,
+} from "./executorQueueTypes";
 import { latestEntryIso } from "./nightWindow";
 import { isBSupportEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
 import {
@@ -117,6 +133,21 @@ export function walkTakerFill(levels: readonly AskLevel[], stakeUsd: number, lim
   return filled
     ? { filled, shares, rawVwap: r6(stakeUsd / shares), feeUsd: r6(fee), effectiveCost: r6((stakeUsd + fee) / shares), depthUsd }
     : { filled, shares, rawVwap: null, feeUsd: null, effectiveCost: null, depthUsd };
+}
+
+/** USD notional to acquire `shares` from asks priced <= limit (ascending). Null when depth is short. */
+export function askNotionalForShares(levels: readonly AskLevel[], shares: number, limit: number): number | null {
+  const usable = levels.filter((l) => num(l.price) && num(l.sizeShares) && l.price > 0 && l.sizeShares > 0 && l.price <= limit + EPS)
+    .sort((a, b) => a.price - b.price);
+  let remaining = shares;
+  let notional = 0;
+  for (const l of usable) {
+    const take = Math.min(remaining, l.sizeShares);
+    notional += take * l.price;
+    remaining -= take;
+    if (remaining <= EPS) return r6(notional);
+  }
+  return null;
 }
 
 /** Policy MAKER formula, recomputed mechanically at re-verification with the SAME frozen P_BUY_MAX. */
@@ -320,6 +351,8 @@ export type FrozenExecutionContract = {
   side: string;
   market_family: string;
   stake_usd: number;
+  /** Auditable stake authority: base $2.50, actual authorized stake, $4.00 ceiling, adjustment reason. */
+  stake_authorization: StakeAuthorization;
   hard_price_cap: number;
   latest_entry_iso: string;
   execution_book_observed_at: string;
@@ -343,6 +376,10 @@ export type FrozenExecutionContract = {
     fee_observed_at: string;
   };
   maker: null | { maker_limit_price: number; maker_shares: number };
+  /** MAKER_FIRST only (released Ireland timing contract). */
+  primary_maker_cancel_by_iso?: string;
+  fallback_deadline_iso?: string;
+  required_min_remaining_seconds?: number;
   activation_switch: typeof T10_ECONOMIC_ACTIVATION_ENV;
 };
 
@@ -394,7 +431,7 @@ export async function reverifySelectedAction(input: {
     p_buy_max: pBuyMax, reference_status: sel.referenceStatus,
     physical_event_id: sel.candidateIdentity.physicalEventId, condition_id: sel.candidateIdentity.conditionId,
     token_id: sel.candidateIdentity.tokenId, side: sel.candidateIdentity.side, market_family: sel.candidateIdentity.family,
-    stake_usd: stake, hard_price_cap: cap, latest_entry_iso: input.event.latestEntryIso,
+    hard_price_cap: cap, latest_entry_iso: input.event.latestEntryIso,
     execution_book_observed_at: ev.observedAtIso, execution_book_provider_timestamp_ms: ev.providerTimestampMs,
     execution_book_latency_ms: ev.latencyMs, tick_size: ev.tickSize, minimum_order_size: minOrder,
     spread_telemetry: ev.spread, activation_switch: T10_ECONOMIC_ACTIVATION_ENV,
@@ -405,16 +442,39 @@ export async function reverifySelectedAction(input: {
     const limit = exec.takerLimit;
     if (!fee?.ok || !num(limit)) return fail("T10_ECON_FROZEN_TAKER_EVIDENCE_INCOMPLETE", null, ev);
     if (limit > cap + EPS || limit > pBuyMax + EPS) return fail("T10_ECON_GUARD_TAKER_LIMIT_ABOVE_AUTHORITY", null, ev);
-    const walk = walkTakerFill(ev.asks, stake, limit, fee.takerRate);
+    // Every economic condition is first proven at the ordinary $2.50 stake.
+    let walk = walkTakerFill(ev.asks, stake, limit, fee.takerRate);
     if (!walk.filled || walk.rawVwap === null || walk.effectiveCost === null || walk.feeUsd === null) {
       return fail(`T10_ECON_GUARD_FULL_STAKE_UNAVAILABLE: depth_usd_at_limit=${walk.depthUsd} limit=${limit}`, null, ev);
     }
     if (walk.effectiveCost > pBuyMax + EPS) return fail(`T10_ECON_GUARD_EFFECTIVE_COST_ABOVE_P_BUY_MAX: cost=${walk.effectiveCost} p_buy_max=${pBuyMax}`, null, ev);
     if (walk.rawVwap > cap + EPS) return fail("T10_ECON_GUARD_ABOVE_HARD_CAP", null, ev);
+    let authorized = stake;
+    let requiredNotional: number | null = null;
     if (walk.shares + EPS < minOrder) {
-      return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder}`, null, ev);
+      // Minimum quantity is the ONLY blocker: smallest cent stake buying the minimum at <= limit.
+      requiredNotional = askNotionalForShares(ev.asks, ceilShares(minOrder), limit);
+      if (requiredNotional === null) {
+        return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder} depth_short_for_minimum`, null, ev);
+      }
+      authorized = Math.max(stake, ceilCentUsd(requiredNotional));
+      if (authorized > QUEUE_MAX_STAKE_USD + EPS) {
+        return fail(`T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE: required_usd=${authorized} max=${QUEUE_MAX_STAKE_USD}`, null, ev);
+      }
+      // Re-evaluate the ACTUAL increased stake against the actual book.
+      walk = walkTakerFill(ev.asks, authorized, limit, fee.takerRate);
+      if (!walk.filled || walk.rawVwap === null || walk.effectiveCost === null || walk.feeUsd === null) {
+        return fail(`T10_ECON_GUARD_HEADROOM_FULL_STAKE_UNAVAILABLE: stake=${authorized} depth_usd_at_limit=${walk.depthUsd}`, null, ev);
+      }
+      if (walk.effectiveCost > pBuyMax + EPS) return fail(`T10_ECON_GUARD_HEADROOM_EFFECTIVE_COST_ABOVE_P_BUY_MAX: cost=${walk.effectiveCost}`, null, ev);
+      if (walk.rawVwap > cap + EPS) return fail("T10_ECON_GUARD_HEADROOM_ABOVE_HARD_CAP", null, ev);
+      if (walk.shares + EPS < minOrder) {
+        return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder}`, null, ev);
+      }
     }
-    return { ok: true, evidence: ev, contract: { ...common, execution_mode: "TAKER_FIRST", maker: null, taker: {
+    const stakeAuthorization = stakeAuthorizationOf(stake, authorized, minOrder, requiredNotional);
+    return { ok: true, evidence: ev, contract: { ...common, stake_usd: authorized, stake_authorization: stakeAuthorization,
+      execution_mode: "TAKER_FIRST", maker: null, taker: {
       price_limit: limit, authorized_raw_vwap: walk.rawVwap, authorized_effective_cost: walk.effectiveCost,
       authorized_fee_usd: walk.feeUsd, full_stake_depth_usd_at_limit: walk.depthUsd,
       fee_rate: fee.takerRate, fee_exponent: fee.exponent, fee_enabled: fee.feesEnabled, fee_type: fee.feeType,
@@ -423,13 +483,40 @@ export async function reverifySelectedAction(input: {
   }
 
   // MAKER_FIRST: recompute only the mechanical on-tick limit with the SAME frozen P_BUY_MAX.
+  const timing = primaryMakerTiming(input.event.latestEntryIso);
+  if (!timing) return fail("T10_ECON_GUARD_MAKER_TIMING_INVALID", null, ev);
+  // The released Ireland reserve is never weakened: a late T10 after cancel_by fails closed.
+  if (!(input.nowMs < Date.parse(timing.primary_maker_cancel_by_iso))) {
+    return fail(`T10_ECON_GUARD_AFTER_PRIMARY_MAKER_CANCEL_BY: cancel_by=${timing.primary_maker_cancel_by_iso}`, null, ev);
+  }
   const makerLimit = makerLimitPrice(pBuyMax, ev.bestAsk, ev.tickSize, cap);
   if (makerLimit === null) return fail("T10_ECON_GUARD_MAKER_LIMIT_INVALID", null, ev);
-  const shares = Math.floor((stake / makerLimit) * 100) / 100;
+  const requiredShares = ceilShares(minOrder);
+  const requiredNotional = r6(requiredShares * makerLimit);
+  let authorized = stake;
+  let shares = floorShares(stake / makerLimit);
+  if (shares + EPS < minOrder) {
+    // Minimum quantity is the only blocker (limit/P_BUY_MAX/cap are already proven): smallest cent stake.
+    authorized = Math.max(stake, ceilCentUsd(requiredNotional));
+    if (authorized > QUEUE_MAX_STAKE_USD + EPS) {
+      return fail(`T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE: required_usd=${authorized} max=${QUEUE_MAX_STAKE_USD}`, null, ev);
+    }
+    shares = floorShares(authorized / makerLimit);
+  }
   if (!(shares > 0) || shares + EPS < minOrder) {
     return fail(`T10_ECON_GUARD_MAKER_BELOW_MIN_ORDER_SIZE: shares=${shares} min=${minOrder}`, null, ev);
   }
-  const contract: FrozenExecutionContract = { ...common, execution_mode: "MAKER_FIRST", taker: null,
-    maker: { maker_limit_price: makerLimit, maker_shares: shares } };
+  const contract: FrozenExecutionContract = { ...common, stake_usd: authorized,
+    stake_authorization: stakeAuthorizationOf(stake, authorized, minOrder, requiredNotional),
+    execution_mode: "MAKER_FIRST", taker: null,
+    maker: { maker_limit_price: makerLimit, maker_shares: shares }, ...timing };
   return { ok: true, contract, evidence: ev };
+}
+
+function stakeAuthorizationOf(base: number, authorized: number, minOrder: number, requiredNotional: number | null): StakeAuthorization {
+  return {
+    base_stake_usd: base, authorized_stake_usd: authorized, max_stake_usd: QUEUE_MAX_STAKE_USD,
+    stake_adjustment_reason: authorized > base + EPS ? STAKE_ADJUSTMENT_REASON_MIN_ORDER : null,
+    minimum_order_size: minOrder, required_minimum_notional_usd: requiredNotional,
+  };
 }

@@ -30,6 +30,8 @@ function contract(mode: "TAKER_FIRST" | "MAKER_FIRST", over: Record<string, unkn
     tick_size: 0.01, minimum_order_size: 5, spread_telemetry: 0.02, activation_switch: "T10_ECONOMIC_ACTION_ACTIVATION",
     taker: mode === "TAKER_FIRST" ? { price_limit: 0.49 } : null,
     maker: mode === "MAKER_FIRST" ? { maker_limit_price: 0.5, maker_shares: 5 } : null,
+    ...(mode === "MAKER_FIRST" ? { primary_maker_cancel_by_iso: "2026-10-01T18:40:20.000Z",
+      fallback_deadline_iso: "2026-10-01T18:50:00.000Z", required_min_remaining_seconds: 580 } : {}),
     ...over,
   };
 }
