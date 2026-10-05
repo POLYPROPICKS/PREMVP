@@ -1,18 +1,26 @@
-// T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1
+// T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1 / T30_MONEY_GATE_REMOVAL_V1
 //
-// Wires the frozen T10 economic action policy (t10EconomicActionPolicy.ts, semantics unchanged)
-// into the PREMVP final-rebalance decision, behind ONE rollback switch:
+// Wires the T10 economic action policy (t10EconomicActionPolicy.ts) into the PREMVP final-rebalance
+// decision, behind ONE rollback switch:
 //
 //   T10_ECONOMIC_ACTION_ACTIVATION=ON  -> this module decides the event's single action.
 //   anything else (default)            -> released B priority + LIVE_GUARD, byte-for-byte unchanged.
 //
-// Authoritative execution evidence (all read-only, exact token, fetched at decision time):
+// T30 is research telemetry ONLY. It never authorizes, vetoes, prices or ranks a live action:
+//   T30_LIVE_ELIGIBILITY_GATE=NO   T30_LIVE_PRICE_AUTHORITY=NO   T30_LIVE_RANKING_AUTHORITY=NO
+// The T30 universe is still read and its observation key is still frozen as lineage telemetry.
+//
+// Authoritative CURRENT execution evidence (all read-only, exact token, fetched at decision time):
 //   ask ladder / best bid / best ask  CLOB GET /book            (fetchOrderBook -> ParsedOrderBook.asks)
 //   tick size / minimum order size    same /book payload        (tick_size / min_order_size, no hardcoded tick)
 //   taker fee schedule                Gamma GET /markets?clob_token_ids=  (fetchTokenFeeSchedule)
 //   exposure                          existing Queue authority  (non-terminal Queue row for the Reservation)
 //   latest entry                      nightWindow.latestEntryIso (canonical, unchanged)
-//   P_BUY_MAX                         T30_EXACT_BID_ANCHOR_V1 over the persisted, complete T_MINUS_30 capture
+//
+// Frozen price ceiling (`p_buy_max` / price_authority_version T10_CURRENT_BOOK_EXECUTION_AUTHORITY_V1):
+//   TAKER_FIRST = the hard cap (0.54): fee-inclusive cost per share must stay <= the cap.
+//   MAKER_FIRST = the current-book maker limit (never raised after selection).
+//   price_authority_observation_id = the CURRENT execution book observation (never a T30 key).
 //
 // TAKER economic cost (Polymarket documented taker fee, USDC, per fill):
 //   fee_i          = ceil_1e-5( shares_i * rate * p_i * (1 - p_i) )
@@ -20,13 +28,14 @@
 //   per-share bound at fill price p: p * (1 + rate * (1 - p))  -- strictly increasing on (0, 1).
 //
 // TAKER execution limit (frozen as the Queue max_entry_price, the only price Ireland may pay):
-//   L = the highest on-tick price with L * (1 + rate * (1 - L)) <= P_BUY_MAX and L <= 0.54.
-//   Every share filled at <= L therefore costs <= P_BUY_MAX after fees, even if the book moves
+//   L = the highest on-tick price with L * (1 + rate * (1 - L)) <= 0.54 (the hard cap) and L <= 0.54.
+//   Every share filled at <= L therefore costs <= the hard cap after fees, even if the book moves
 //   between this decision and the venue. The full $2.50 stake must be fillable from levels <= L.
 //   The policy is evaluated on exactly that executable ladder (asks <= L).
 //
-// MAKER limit (unchanged policy formula): floor_to_tick(min(P_BUY_MAX, current_ask - tick, 0.54)).
-//   Never bestBid + tick. No fill probability anywhere.
+// MAKER limit (CURRENT book only): floor_to_tick(min(current best bid, current best ask - tick, 0.54)).
+//   The current best bid is the placement authority; an empty/wide spread is never jumped with
+//   `ask - tick` alone. Support is proven on the limit itself. No fill probability anywhere.
 //
 // Ireland boundary: TAKER_FIRST is emitted as execution_mode "TAKER" / TAKER_ATTEMPT_1 with
 // price_cap = the fee-inclusive limit. A frozen MAKER_FIRST row is emitted explicitly through the
@@ -38,8 +47,8 @@
 // fails closed. LIVE_EXECUTION_FINAL_ACTIVATION_V1 adaptive headroom: every evaluation starts at $2.50.
 // ONLY when the venue minimum quantity is the SOLE blocker at $2.50 is the stake raised to the smallest
 // cent amount that satisfies it (<= QUEUE_MAX_STAKE_USD $4.00, else SKIP). TAKER re-walks the ACTUAL
-// increased stake against the actual book and re-proves full depth, fee-inclusive cost <= P_BUY_MAX and
-// raw price <= 0.54. P_BUY_MAX, the 0.54 cap and the limit formulas are never changed.
+// increased stake against the actual book and re-proves full depth, fee-inclusive cost <= the hard cap
+// and raw price <= 0.54. The 0.54 cap and the limit formulas are never changed.
 //
 // MAKER_FIRST timing (released Ireland contract): fallback_deadline = latest_entry (unchanged),
 // primary_maker_cancel_by = fallback_deadline - 580s. A MAKER_FIRST at/after cancel_by fails closed.
@@ -59,12 +68,13 @@ import {
   type StakeAuthorization,
 } from "./executorQueueTypes";
 import { latestEntryIso } from "./nightWindow";
-import { bStrategySupportRegion, isBSupportEligible, isBSupportFamilyEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
+import { bStrategySupportRegion, isBSupportFamilyEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
 import {
   decideEventAction,
+  evaluateMakerPlacement,
   evaluateMakerSupportPrice,
+  priceInBand,
   PRICE_AUTHORITY_VERSION,
-  t30ExactBidAnchor,
   T10_ECONOMIC_ACTION_POLICY_VERSION,
   type AskLevel,
   type EventDecision,
@@ -151,10 +161,15 @@ export function askNotionalForShares(levels: readonly AskLevel[], shares: number
   return null;
 }
 
-/** Policy MAKER formula, recomputed mechanically at re-verification with the SAME frozen P_BUY_MAX. */
-export function makerLimitPrice(pBuyMax: number, ask: number, tick: number, cap: number): number | null {
-  if (![pBuyMax, ask, tick, cap].every(num) || !(tick > 0) || tick >= 1) return null;
-  const limit = r6(Math.floor(Math.min(pBuyMax, ask - tick, cap) / tick + EPS) * tick);
+/**
+ * The pure on-tick MAKER formula floor_to_tick(min(upperBound, ask - tick, cap)), strictly below the ask.
+ * Kept identical to the callback-side makerFallbackAuthorization.t10MakerLimitPrice (parity-tested). For the
+ * CURRENT-book authority `upperBound` is the current best bid; the full placement rule (best bid present,
+ * book not crossed, tick valid) is evaluateMakerPlacement in the policy, which the money path uses.
+ */
+export function makerLimitPrice(upperBound: number, ask: number, tick: number, cap: number): number | null {
+  if (![upperBound, ask, tick, cap].every(num) || !(tick > 0) || tick >= 1) return null;
+  const limit = r6(Math.floor(Math.min(upperBound, ask - tick, cap) / tick + EPS) * tick);
   return limit > 0 && limit < ask - EPS && limit <= cap + EPS ? limit : null;
 }
 
@@ -210,6 +225,7 @@ export type CandidateExecution = {
   evidence: ExecutionEvidence | null;
   fee: TokenFeeScheduleResult | null;
   takerLimit: number | null;
+  /** T30 research telemetry only (lineage); never read by a decision or by the re-verification guard. */
   t30ObservationKey: string | null;
 };
 
@@ -218,6 +234,7 @@ export type T10EconomicEventDecision = {
   latestEntryIso: string;
   beforeLatestEntry: boolean;
   exposureExists: boolean;
+  /** T30 research telemetry only. */
   t30SourceAvailable: boolean;
   executions: Map<string, CandidateExecution>;
 };
@@ -252,6 +269,7 @@ export async function decideT10EconomicEvent(input: {
   physicalEventId: string;
   eventStartIso: string;
   t10Universe: readonly FinalT3MarketObservation[];
+  /** T30 research telemetry only: absent, empty or unusable T30 never blocks, prices or ranks a live action. */
   t30Universe: readonly FinalT3MarketObservation[] | null;
   nowMs: number;
   exposureExists: boolean;
@@ -270,18 +288,16 @@ export async function decideT10EconomicEvent(input: {
   }
   const base = input.t10Universe.map((row) => {
     const identity: ExactMarketIdentity = { physicalEventId: input.physicalEventId, conditionId: row.condition_id, tokenId: row.token_id, side: row.side };
+    // T30 + reference grade are TELEMETRY ONLY: recorded for research, never part of `competes` or any decision.
     const t30Rows = t30ByKey.get(key(identity)) ?? [];
     const t30Evidence = t30Rows.length === 1 ? referenceEvidence(t30Rows[0], "T30_BOOK") : null;
     const evidence = [referenceEvidence(row, "T10_BOOK"), ...(t30Evidence ? [t30Evidence] : [])];
     const reference = evaluateExactMarketReference(identity, evidence);
-    const priceAuthority = t30ExactBidAnchor(identity, t30Evidence, cap);
     // Family/type admission is price-agnostic: a candidate whose CURRENT ASK sits outside the band may still
     // be a safe MAKER (the band is proven per action, on the price actually transacted).
     const supportFamilyEligible = isBSupportFamilyEligible(row);
-    const takerSupportEligible = isBSupportEligible(row);
-    const competes = supportFamilyEligible && reference.status !== "UNRESOLVED" && priceAuthority.available &&
-      beforeLatestEntry && !input.exposureExists;
-    return { row, identity, t30Evidence, reference, priceAuthority, supportFamilyEligible, takerSupportEligible, competes };
+    const competes = supportFamilyEligible && beforeLatestEntry && !input.exposureExists;
+    return { row, identity, t30Evidence, reference, supportFamilyEligible, competes };
   });
 
   const executions = new Map<string, CandidateExecution>();
@@ -290,8 +306,11 @@ export async function decideT10EconomicEvent(input: {
     let book: FetchOrderBookResult | null = null;
     try { book = await input.deps.fetchExactTokenOrderbook(b.identity.tokenId); } catch { book = null; }
     const evidence = executionEvidenceFromBook(b.identity.tokenId, book, new Date().toISOString());
+    // TAKER needs authoritative CURRENT fee evidence. Only a candidate whose current ask can be a TAKER (inside
+    // the family band) needs it; the fetch no longer depends on any T30 / reference grade.
+    const band = bStrategySupportRegion(b.row.canonical_market_family ?? "");
     let fee: TokenFeeScheduleResult | null = null;
-    if (b.reference.status === "STRONG") {
+    if (evidence.ok && priceInBand(evidence.bestAsk, band)) {
       try { fee = await input.deps.fetchTokenFeeSchedule(b.identity.tokenId); }
       catch { fee = { ok: false, tokenId: b.identity.tokenId, errorCode: "FEE_FETCH_THREW", latencyMs: 0 }; }
     }
@@ -303,9 +322,9 @@ export async function decideT10EconomicEvent(input: {
     const f = byKey.get(key(b.identity));
     const ev = f?.evidence ?? null;
     const fee = f?.fee ?? null;
-    const pBuyMax = b.priceAuthority.pBuyMax;
-    const takerLimit = fee?.ok && ev?.ok && num(ev.tickSize) && num(pBuyMax)
-      ? takerPriceLimit(pBuyMax, fee.takerRate, ev.tickSize, cap) : null;
+    // TAKER price authority = the hard cap: fee-inclusive cost per share <= cap. No T30 anchor.
+    const takerLimit = fee?.ok && ev?.ok && num(ev.tickSize)
+      ? takerPriceLimit(cap, fee.takerRate, ev.tickSize, cap) : null;
     let askLevels: AskLevel[] | null = null;
     let feeUsdForFullStake: number | null = null;
     if (ev?.ok) {
@@ -320,10 +339,12 @@ export async function decideT10EconomicEvent(input: {
       identity: b.identity, family: b.row.canonical_market_family ?? "", marketSlug: b.row.market_slug ?? null,
       evidence: ev, fee, takerLimit, t30ObservationKey: b.t30Evidence?.observationKey ?? null,
     });
+    const supportBand = bStrategySupportRegion(b.row.canonical_market_family ?? "");
     return {
       identity: b.identity, family: b.row.canonical_market_family ?? "",
-      supportFamilyEligible: b.supportFamilyEligible, takerSupportEligible: b.takerSupportEligible,
-      supportBand: bStrategySupportRegion(b.row.canonical_market_family ?? ""), reference: b.reference, t30Evidence: b.t30Evidence,
+      // TAKER initial support = the CURRENT executable ask of the fresh book (never the capture-time row).
+      supportFamilyEligible: b.supportFamilyEligible, takerSupportEligible: b.supportFamilyEligible && !!ev?.ok && priceInBand(ev.bestAsk, supportBand),
+      supportBand, reference: b.reference, t30Evidence: b.t30Evidence,
       t10: ev ? {
         bestBid: ev.bestBid, bestAsk: ev.bestAsk, bookFresh: ev.ok, observedAtMs: Date.parse(ev.observedAtIso),
         askLevels, feeUsdForFullStake, tickSize: ev.tickSize, askDepthUsd: ev.capDepthUsd,
@@ -347,8 +368,11 @@ export type FrozenExecutionContract = {
   economic_policy_version: typeof T10_ECONOMIC_ACTION_POLICY_VERSION;
   execution_mode: "TAKER_FIRST" | "MAKER_FIRST";
   price_authority_version: typeof PRICE_AUTHORITY_VERSION;
+  /** The CURRENT execution book observation the action was frozen on (never a T30 key). */
   price_authority_observation_id: string;
+  /** Frozen current-book price ceiling: TAKER = hard cap, MAKER = the maker limit. */
   p_buy_max: number;
+  /** T30 research telemetry only (grade of T10 + T30 witnesses); never a gate. */
   reference_status: string;
   physical_event_id: string;
   condition_id: string;
@@ -366,6 +390,8 @@ export type FrozenExecutionContract = {
   tick_size: number;
   minimum_order_size: number;
   spread_telemetry: number | null;
+  /** T30 research telemetry only: the T30 observation key if one existed. LIVE_AUTHORITY is always false. */
+  t30_telemetry_v1: { observation_key: string | null; LIVE_AUTHORITY: false };
   taker: null | {
     price_limit: number;
     authorized_raw_vwap: number;
@@ -414,7 +440,7 @@ export async function reverifySelectedAction(input: {
   const k = key(sel.candidateIdentity);
   const exec = input.event.executions.get(k);
   const pBuyMax = sel.priceAuthority.pBuyMax;
-  if (!exec || !exec.evidence?.ok || !num(exec.evidence.tickSize) || !num(pBuyMax) || !exec.t30ObservationKey) {
+  if (!exec || !exec.evidence?.ok || !num(exec.evidence.tickSize) || !num(pBuyMax)) {
     return fail("T10_ECON_FROZEN_EVIDENCE_INCOMPLETE");
   }
   if (input.exposureExists) return fail("T10_ECON_GUARD_EXPOSURE_EXISTS");
@@ -432,7 +458,8 @@ export async function reverifySelectedAction(input: {
 
   const common = {
     execution_policy_version: T10_EXECUTION_POLICY_VERSION, economic_policy_version: T10_ECONOMIC_ACTION_POLICY_VERSION,
-    price_authority_version: PRICE_AUTHORITY_VERSION, price_authority_observation_id: exec.t30ObservationKey,
+    price_authority_version: PRICE_AUTHORITY_VERSION,
+    price_authority_observation_id: `T10_CURRENT_BOOK:${sel.candidateIdentity.conditionId}:${sel.candidateIdentity.tokenId}:${sel.candidateIdentity.side}:${ev.observedAtIso}`,
     p_buy_max: pBuyMax, reference_status: sel.referenceStatus,
     physical_event_id: sel.candidateIdentity.physicalEventId, condition_id: sel.candidateIdentity.conditionId,
     token_id: sel.candidateIdentity.tokenId, side: sel.candidateIdentity.side, market_family: sel.candidateIdentity.family,
@@ -440,6 +467,7 @@ export async function reverifySelectedAction(input: {
     execution_book_observed_at: ev.observedAtIso, execution_book_provider_timestamp_ms: ev.providerTimestampMs,
     execution_book_latency_ms: ev.latencyMs, tick_size: ev.tickSize, minimum_order_size: minOrder,
     spread_telemetry: ev.spread, activation_switch: T10_ECONOMIC_ACTIVATION_ENV,
+    t30_telemetry_v1: { observation_key: exec.t30ObservationKey, LIVE_AUTHORITY: false as const },
   } as const;
 
   if (decision.action === "TAKER_FIRST") {
@@ -487,16 +515,18 @@ export async function reverifySelectedAction(input: {
     } } };
   }
 
-  // MAKER_FIRST: recompute only the mechanical on-tick limit with the SAME frozen P_BUY_MAX.
+  // MAKER_FIRST: recompute the mechanical on-tick limit from the REFRESHED current book; the frozen decision-time
+  // maker limit (p_buy_max) is a ceiling, so a rising bid can never raise the price after selection.
   const timing = primaryMakerTiming(input.event.latestEntryIso);
   if (!timing) return fail("T10_ECON_GUARD_MAKER_TIMING_INVALID", null, ev);
   // The released Ireland reserve is never weakened: a late T10 after cancel_by fails closed.
   if (!(input.nowMs < Date.parse(timing.primary_maker_cancel_by_iso))) {
     return fail(`T10_ECON_GUARD_AFTER_PRIMARY_MAKER_CANCEL_BY: cancel_by=${timing.primary_maker_cancel_by_iso}`, null, ev);
   }
-  const makerLimit = makerLimitPrice(pBuyMax, ev.bestAsk, ev.tickSize, cap);
+  if (!num(ev.bestBid) || !(ev.bestBid > 0)) return fail("T10_ECON_GUARD_MAKER_BEST_BID_MISSING", null, ev);
+  const makerLimit = evaluateMakerPlacement(ev.bestBid, ev.bestAsk, ev.tickSize, Math.min(pBuyMax, cap)).limit;
   if (makerLimit === null) return fail("T10_ECON_GUARD_MAKER_LIMIT_INVALID", null, ev);
-  // MAKER support is re-proven on the refreshed limit (never the ask): <= P_BUY_MAX, <= 0.54, inside the band.
+  // MAKER support is re-proven on the refreshed limit (never the ask): <= frozen ceiling, <= 0.54, inside the band.
   const makerSupport = evaluateMakerSupportPrice(makerLimit, pBuyMax, cap, bStrategySupportRegion(sel.candidateIdentity.family));
   if (!makerSupport.ok) return fail(`T10_ECON_GUARD_${makerSupport.reason}: limit=${makerLimit}`, null, ev);
   const requiredShares = ceilShares(minOrder);
