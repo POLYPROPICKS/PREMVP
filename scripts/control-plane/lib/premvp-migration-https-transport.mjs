@@ -19,7 +19,7 @@
  *    exact reviewed SQL file text the adapter already SHA-256-pinned. Declaration text is never interpolated.
  *  - The dry-run's ROLLBACK is only trustworthy if the SQL cannot end the transaction itself, so the SQL is
  *    run through a faithful single-pass PostgreSQL lexer (nested comments, E'' strings, dollar quotes, quoted
- *    identifiers) and refused on any transaction-control statement. This guard does not rely on the SHA pin.
+ *    identifiers) and refused on any transaction-control statement, any SET, and set_config(). This guard does not rely on the SHA pin.
  *  - HTTPS only, fixed origin; the access token travels only in the Authorization header and is redacted from
  *    every message this module produces.
  *  - Dry-run is real: it first PROVES the endpoint preserves explicit-transaction semantics on ONE session (a
@@ -157,7 +157,8 @@ export function resolveTrackedStrict(versions, fileNames) {
 // ── faithful PostgreSQL lexer + SQL guards (pure) ────────────────────────────
 
 const IDENT_CHAR = /[A-Za-z0-9_$\u0080-￿]/;
-const DOLLAR_TAG = /^\$(?:[A-Za-z\u0080-￿_][A-Za-z0-9\u0080-￿_]*)?\$/;
+// Sticky + uncapped: PostgreSQL's scanner has no length limit on a dollar-quote delimiter.
+const DOLLAR_TAG = /\$(?:[A-Za-z\u0080-￿_][A-Za-z0-9\u0080-￿_]*)?\$/y;
 
 /**
  * Single-pass PostgreSQL lexer. Returns the residual CODE with comments removed and every string / quoted
@@ -172,13 +173,14 @@ export function lexSql(sql) {
   if (s.includes('\0')) throw new HttpsTransportError('HTTPS_SQL_LEX_UNTERMINATED', 'nul byte');
   const n = s.length;
   let i = 0;
+  let dollarEnd = -1;
   let code = '';
   const unterminated = (what) => { throw new HttpsTransportError('HTTPS_SQL_LEX_UNTERMINATED', what); };
   while (i < n) {
     const c = s[i];
     const d = s[i + 1];
     if (c === '-' && d === '-') {
-      while (i < n && s[i] !== '\n') i += 1;
+      while (i < n && s[i] !== '\n' && s[i] !== '\r') i += 1; // scan.l: newline [\n\r]
       code += ' ';
     } else if (c === '/' && d === '*') {
       let depth = 1;
@@ -215,11 +217,13 @@ export function lexSql(sql) {
       if (!closed) unterminated('quoted identifier');
       i = j;
       code += '""';
-    } else if (c === '$' && (i === 0 || !IDENT_CHAR.test(s[i - 1])) && DOLLAR_TAG.test(s.slice(i, i + 80))) {
-      const tag = DOLLAR_TAG.exec(s.slice(i, i + 80))[0];
+    } else if (c === '$' && (i === 0 || i === dollarEnd || !IDENT_CHAR.test(s[i - 1])) && (DOLLAR_TAG.lastIndex = i, DOLLAR_TAG.test(s))) {
+      DOLLAR_TAG.lastIndex = i;
+      const tag = DOLLAR_TAG.exec(s)[0];
       const end = s.indexOf(tag, i + tag.length);
       if (end === -1) unterminated('dollar-quoted body');
       i = end + tag.length;
+      dollarEnd = i; // the closing '$' ended a token: a following '$' starts a NEW token, not an identifier tail
       code += '$$';
     } else {
       code += c;
@@ -229,8 +233,10 @@ export function lexSql(sql) {
   return { code, statements: code.split(';').map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean) };
 }
 
-// Whole-word statement starts only (COMMENT is not COMMIT); SET is allowed only as SET LOCAL (transaction-scoped).
-const TRANSACTION_CONTROL = /^(?:(?:begin|start|commit|end|rollback|abort|savepoint|release|prepare|reset)\b|set\s+(?!local\b)|\\)/i;
+// Whole-word statement starts only (COMMENT is not COMMIT). EVERY SET is refused (even SET LOCAL: a file must not
+// change lock/statement timeouts or string-lexing GUCs); the wrapper's own SET LOCAL lines never pass through this guard.
+const TRANSACTION_CONTROL = /^(?:(?:begin|start|commit|end|rollback|abort|savepoint|release|prepare|reset|set)\b|\\)/i;
+const GUC_FUNCTION = /\bset_config\s*\(/i;
 
 /**
  * The dry-run's ROLLBACK (and the apply's COMMIT) only mean something if the SQL cannot end/replace the
@@ -238,7 +244,7 @@ const TRANSACTION_CONTROL = /^(?:(?:begin|start|commit|end|rollback|abort|savepo
  */
 export function assertNoTransactionControl(sql) {
   for (const statement of lexSql(sql).statements) {
-    if (TRANSACTION_CONTROL.test(statement)) throw new HttpsTransportError('HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN');
+    if (TRANSACTION_CONTROL.test(statement) || GUC_FUNCTION.test(statement)) throw new HttpsTransportError('HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN');
   }
   return true;
 }

@@ -213,6 +213,18 @@ test('transaction-control guard is a faithful lexer: constructs that hide a COMM
     'E after an identifier char is not an E-string': "SELECT ae'x'; COMMIT;",
     'plain COMMIT': 'ALTER TABLE t ADD COLUMN x int; COMMIT;', BEGIN: 'begin; select 1;', END: 'SELECT 1; END;', ROLLBACK: 'ROLLBACK', SAVEPOINT: 'SELECT 1; SAVEPOINT s;',
     'SET (session)': 'SET search_path = x; select 1;', RESET: 'RESET ALL;', 'START TRANSACTION': 'START TRANSACTION;', 'psql meta': '\\copy x',
+    // R1: PostgreSQL's scanner ends a -- comment at \n OR \r (scan.l: newline [\n\r])
+    'lone CR ends a line comment': 'SELECT 1; -- x\rCOMMIT;',
+    'CR-only line endings': 'SELECT 1;\r-- c\rCOMMIT;\r',
+    // R2: dollar-quote delimiters have no length limit
+    'dollar tag of 79 chars': `SELECT $${'L'.repeat(79)}$ ' $${'L'.repeat(79)}$; COMMIT; SELECT $${'L'.repeat(79)}$ ' $${'L'.repeat(79)}$;`,
+    'dollar tag of 100 chars': `SELECT $${'L'.repeat(100)}$ ' $${'L'.repeat(100)}$; COMMIT; SELECT $${'L'.repeat(100)}$ ' $${'L'.repeat(100)}$;`,
+    'non-ASCII dollar tag': "SELECT $é日$ ' $é日$; COMMIT; SELECT $é日$ ' $é日$;",
+    'back-to-back dollar quotes': 'SELECT $a$ x $a$||$b$ y $b$; COMMIT;',
+    // every SET is refused (a file must not change lock/statement timeouts or string-lexing GUCs), as is set_config()
+    'SET LOCAL': "SET LOCAL lock_timeout = '0'; select 1;",
+    'SET LOCAL standard_conforming_strings': 'SET LOCAL standard_conforming_strings = off; select 1;',
+    'set_config()': "SELECT set_config('lock_timeout', '0', true);",
   };
   for (const [label, sql] of Object.entries(hidden)) {
     assert.throws(() => assertNoTransactionControl(sql), /HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN/, label);
@@ -220,7 +232,8 @@ test('transaction-control guard is a faithful lexer: constructs that hide a COMM
   const harmless = {
     'target-like file': TARGET_SQL,
     'COMMIT only as text in a string': "COMMENT ON COLUMN t.c IS 'commit; rollback; begin;';",
-    'SET LOCAL is transaction-scoped': "SET LOCAL lock_timeout = '1s'; select 1;",
+    'the word set inside a comment/string': "COMMENT ON COLUMN t.c IS 'set_config( and SET x'; -- set_config('a','b',true)\nselect 1;",
+    'long tag whose body is bait': `SELECT $${'L'.repeat(100)}$ '; COMMIT; --$${'L'.repeat(100)}$;`,
     'BEGIN/END inside a DO body': 'DO $x$ BEGIN PERFORM 1; END $x$; select 1;',
     'whole nested comment': '/* outer /* inner */ COMMIT; */ select 1;',
     'quoted identifier': 'SELECT 1 AS "commit;"; select 2;',
