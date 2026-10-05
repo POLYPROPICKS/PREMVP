@@ -26,6 +26,7 @@ import {
   assertHttpsPreconditions,
   createHttpsMigrationTransport,
   isDirectTransportUnavailable,
+  resolveTrackedStrict,
   runHttpsCloneSchema,
   runHttpsTargetOnly,
   validateCloneSchemaDeclaration,
@@ -196,7 +197,7 @@ async function runHttpsFallback({ migrationFileRel, targetBasename, targetAbs, o
     });
     const evidence = await runHttpsTargetOnly({
       transport, targetBasename, targetSql, targetSha256: declaration.target_sha256, apply: wantApply, verify: declaration.verify_columns ?? null,
-      resolveTracked: (versions) => resolveTrackedLocalFiles(versions, path.join(root, 'supabase', 'migrations')),
+      resolveTracked: (versions) => resolveTrackedStrict(versions, fs.readdirSync(path.join(root, 'supabase', 'migrations')).filter((f) => f.endsWith('.sql'))),
     });
     process.stdout.write(JSON.stringify({ ok: true, migration_file: migrationFileRel, direct_path_unavailable: true, direct_path_failure: directFailure, ...evidence, env_bridge: describeBridge(bridge) }) + '\n');
     process.exit(0);

@@ -5,8 +5,9 @@ import assert from 'node:assert/strict';
 import {
   HttpsTransportError, PREMVP_RESEARCH_CLONE_PROJECT_REFS, SQL_LEDGER_VERSIONS, SQL_SCHEMA_FINGERPRINT,
   SQL_TRANSACTION_PROBE, assertApplyConfirmation, assertCloneSqlSafe, assertHttpsPreconditions, assertNoTransactionControl,
-  columnsProof, createHttpsMigrationTransport, isDirectTransportUnavailable, parseMigrationHistory, parseTargetBasename,
-  runHttpsCloneSchema, runHttpsTargetOnly, sqlColumnsProof, sqlDryRun, sqlRepairLedgerVersion, validateCloneSchemaDeclaration,
+  columnsProof, createHttpsMigrationTransport, isDirectTransportUnavailable, lexSql, parseMigrationHistory, parseTargetBasename,
+  resolveTrackedStrict, runHttpsCloneSchema, runHttpsTargetOnly, sqlCloneApply, sqlColumnsProof, sqlDryRun, sqlRepairLedgerVersion,
+  validateCloneSchemaDeclaration,
 } from '../../scripts/control-plane/lib/premvp-migration-https-transport.mjs';
 
 import {
@@ -28,6 +29,15 @@ test('fallback is eligible ONLY for a proven direct-transport failure', () => {
   // real gate failures are never routed around
   assert.equal(isDirectTransportUnavailable({ stdout: 'DbConnectError: failed to connect to postgres: password authentication failed for user "postgres"' }), false);
   assert.equal(isDirectTransportUnavailable({ stdout: 'DbConnectError ... hostname resolving error ... SASL authentication failed' }), false);
+  // identity / authorization / policy-class connect failures are never routed around, even though they carry the generic pgx wrapper
+  const wrapper = 'DbConnectError: failed to connect to postgres: failed to connect to `host=db.x.supabase.co user=postgres database=postgres`: ';
+  for (const gate of ['failed to receive message (unexpected EOF) Tenant or user not found', 'no pg_hba.conf entry for host "1.2.3.4", user "postgres", SSL off',
+    'Circuit breaker open: Too many authentication errors', 'role "postgres" does not exist', 'database "postgres" does not exist', 'tls error: certificate verify failed',
+    'server error (FATAL: permission denied)']) {
+    assert.equal(isDirectTransportUnavailable({ stdout: wrapper + gate }), false, gate);
+  }
+  // the generic wrapper alone (no transport cause) is NOT enough
+  assert.equal(isDirectTransportUnavailable({ stdout: wrapper + 'unexpected message from server' }), false);
   assert.equal(isDirectTransportUnavailable({ stderr: 'LegacyDbPushMissingLocalError' }), false);
   assert.equal(isDirectTransportUnavailable({ stderr: 'unexpected token in migration' }), false);
   assert.equal(isDirectTransportUnavailable({}), false);
@@ -81,8 +91,9 @@ test('DRY-RUN executes the exact SQL in BEGIN..ROLLBACK and proves schema + ledg
   assert.equal(api.log.some((l) => l.path === '/migrations' && l.method === 'POST'), false, 'the native apply endpoint is never touched in dry-run');
   const dry = api.log.find((l) => l.query === sqlDryRun(TARGET_SQL));
   assert.ok(dry, 'the exact reviewed SQL ran wrapped in BEGIN..ROLLBACK');
-  assert.match(dry.query, /^BEGIN;\n/);
-  assert.match(dry.query, /ROLLBACK;$/);
+  assert.match(dry.query, /^BEGIN;\nSET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '45s';\n/, 'a DDL that cannot get its lock fails fast instead of queueing behind live traffic');
+  assert.match(dry.query, /ROLLBACK;\nSELECT 'PREMVP_DRYRUN_COMPLETE' AS premvp_marker;$/);
+  assert.equal(evidence.dry_run.script_completed, true);
 });
 
 test('ledger is checked BEFORE and AFTER the dry-run, and the probe precedes the target SQL', async () => {
@@ -108,7 +119,7 @@ test('if a dry-run ever persisted DDL the fingerprint check fails closed (defenc
   // probe says "transactional" but the dry-run statement still persists: the post-dry-run proof must catch it
   const lying = { ...api, fetchImpl: async (url, init) => {
     const body = init.body ? JSON.parse(init.body) : null;
-    if (body?.query?.startsWith('BEGIN;\n') && body.query.endsWith('ROLLBACK;')) { api.state.schema.add('public.reservation_market_observations.taker_fee_state'); return { ok: true, status: 201, text: async () => '[]' }; }
+    if (body?.query?.startsWith('BEGIN;\nSET LOCAL') && body.query.includes('ROLLBACK;\nSELECT')) { api.state.schema.add('public.reservation_market_observations.taker_fee_state'); return { ok: true, status: 201, text: async () => JSON.stringify([{ premvp_marker: 'PREMVP_DRYRUN_COMPLETE' }]) }; }
     return api.fetchImpl(url, init);
   } };
   await assert.rejects(run(lying), (e) => e.code === 'HTTPS_DRY_RUN_SCHEMA_NOT_ROLLED_BACK');
@@ -190,13 +201,51 @@ test('declaration-controlled values can never inject SQL', async () => {
   assert.throws(() => sqlRepairLedgerVersion('20261005162341', TARGET_VERSION, "n'; drop"), /HTTPS_LEDGER_REPAIR_ARGS_INVALID/);
 });
 
-test('SQL that could end or replace the surrounding transaction is refused (comments, strings and DO bodies ignored)', () => {
-  for (const bad of ['COMMIT;', 'ALTER TABLE t ADD COLUMN x int; COMMIT;', 'begin; select 1;', 'END;', 'ROLLBACK', 'SAVEPOINT s;', 'SET search_path = x;', 'RESET ALL;', 'START TRANSACTION;', '\\copy x']) {
-    assert.throws(() => assertNoTransactionControl(bad), /HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN/, bad);
+test('transaction-control guard is a faithful lexer: constructs that hide a COMMIT from regexes are caught (D1)', () => {
+  const hidden = {
+    'line comment containing /* hides nothing': '-- see /*\nCOMMIT;\n-- end */\nSELECT 1;',
+    "E'' string with backslash-quote": "SELECT E'\\''; COMMIT; SELECT '';",
+    'dollar signs inside a string': "SELECT '$$'; COMMIT; SELECT '$$';",
+    'dollar signs inside a comment': '-- $$\nCOMMIT;\n-- $$\nSELECT 1;',
+    'nested comment closed, real COMMIT after': '/* a /* b */ c */ COMMIT;',
+    'dollar tag with digits then COMMIT': 'DO $a1$ BEGIN PERFORM 1; END $a1$; COMMIT;',
+    'identifier containing $ is not a dollar quote': 'SELECT foo$bar$ FROM t; COMMIT;',
+    'E after an identifier char is not an E-string': "SELECT ae'x'; COMMIT;",
+    'plain COMMIT': 'ALTER TABLE t ADD COLUMN x int; COMMIT;', BEGIN: 'begin; select 1;', END: 'SELECT 1; END;', ROLLBACK: 'ROLLBACK', SAVEPOINT: 'SELECT 1; SAVEPOINT s;',
+    'SET (session)': 'SET search_path = x; select 1;', RESET: 'RESET ALL;', 'START TRANSACTION': 'START TRANSACTION;', 'psql meta': '\\copy x',
+  };
+  for (const [label, sql] of Object.entries(hidden)) {
+    assert.throws(() => assertNoTransactionControl(sql), /HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN/, label);
   }
-  for (const good of [TARGET_SQL, "COMMENT ON COLUMN t.c IS 'commit';", 'SET LOCAL lock_timeout = 1000; select 1;', 'DO $x$ BEGIN PERFORM 1; END $x$;', '/* COMMIT; */ select 1;']) {
-    assert.equal(assertNoTransactionControl(good), true, good);
+  const harmless = {
+    'target-like file': TARGET_SQL,
+    'COMMIT only as text in a string': "COMMENT ON COLUMN t.c IS 'commit; rollback; begin;';",
+    'SET LOCAL is transaction-scoped': "SET LOCAL lock_timeout = '1s'; select 1;",
+    'BEGIN/END inside a DO body': 'DO $x$ BEGIN PERFORM 1; END $x$; select 1;',
+    'whole nested comment': '/* outer /* inner */ COMMIT; */ select 1;',
+    'quoted identifier': 'SELECT 1 AS "commit;"; select 2;',
+  };
+  for (const [label, sql] of Object.entries(harmless)) assert.equal(assertNoTransactionControl(sql), true, label);
+});
+
+test('lexer fails closed on anything unterminated (nothing would execute on the server either)', () => {
+  for (const bad of ['/* never closed', "select 'never closed", 'select "never closed', 'DO $x$ never closed', 'select 1;\0commit;']) {
+    assert.throws(() => lexSql(bad), (e) => e.code === 'HTTPS_SQL_LEX_UNTERMINATED', bad);
+    assert.throws(() => assertNoTransactionControl(bad), (e) => e.code === 'HTTPS_SQL_LEX_UNTERMINATED', bad);
   }
+  assert.deepEqual(lexSql("select 'a;b'; select 2 -- tail; x").statements, ["select ''", 'select 2']);
+});
+
+test('the transaction guard is enforced on the dry-run and apply PATHS, independent of the SHA pin', async () => {
+  const evil = `${TARGET_SQL}SELECT E'\\''; COMMIT; SELECT '';\n`;
+  const api = fakeApi();
+  await assert.rejects(runHttpsTargetOnly({ transport: transportFor(api), targetBasename: TARGET_BASENAME, targetSql: evil, targetSha256: sha256OfText(evil), resolveTracked: tracked, verify: VERIFY }),
+    (e) => e.code === 'HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN');
+  assert.equal(api.log.length, 0, 'refused before a single request, even with a matching SHA pin');
+  const t = transportFor(api);
+  await assert.rejects(t.dryRunExactSql(evil), /HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN/);
+  await assert.rejects(t.applyNative({ sql: evil, name: 'x' }), /HTTPS_SQL_TRANSACTION_CONTROL_FORBIDDEN/);
+  assert.equal(api.log.length, 0);
 });
 
 test('no generic SQL surface is exported from the transport', async () => {
@@ -260,10 +309,11 @@ test('CLONE: allowlisted ref, exact idempotent file, rolled-back dry-run, one tr
   assert.equal(applied.mode, 'applied');
   assert.equal(applied.schema_changed, true);
   assert.equal(applied.columns_proof[0].all_present_nullable, true);
-  assert.equal(applied.production_rows_mutated, false);
-  assert.equal(applied.historical_backfill, false);
+  assert.equal(applied.production_rows_mutated, undefined, 'no unmeasured literal claims; "no row mutation" is structural (allow-list)');
   assert.equal(api.log.some((l) => l.path === '/migrations'), false, 'the clone schema never touches the migration ledger');
-  assert.equal(api.log.some((l) => l.query === `BEGIN;\n${CLONE_SQL}COMMIT;`), true, 'exact file in one transaction');
+  assert.equal(api.log.some((l) => l.query === sqlCloneApply(CLONE_SQL)), true, 'exact file in one transaction');
+  assert.deepEqual(applied.statement_kinds, { create_table_if_not_exists: 1, add_column_if_not_exists: 1, revoke: 1, grant_to_service_role: 1 });
+  assert.equal(applied.statement_allowlist_enforced, true);
 });
 
 test('CLONE: wrong project, non-idempotent, traversal path, destructive SQL and unproven columns are rejected', async () => {
@@ -283,6 +333,61 @@ test('CLONE: wrong project, non-idempotent, traversal path, destructive SQL and 
   const api = fakeApi();
   const transport = transportFor(api, CLONE, PREMVP_RESEARCH_CLONE_PROJECT_REFS);
   const noColumnSql = 'CREATE TABLE IF NOT EXISTS public.reservation_market_observations (id uuid PRIMARY KEY);\n';
-  await assert.rejects(runHttpsCloneSchema({ transport, schemaSql: noColumnSql, schemaSha256: 'a'.repeat(64), schemaFile: 'f', apply: true, verify: VERIFY }), (e) => e.code === 'CLONE_SCHEMA_COLUMNS_NOT_PROVEN');
+  await assert.rejects(runHttpsCloneSchema({ transport, schemaSql: noColumnSql, schemaSha256: sha256OfText(noColumnSql), schemaFile: 'f', apply: true, verify: VERIFY }), (e) => e.code === 'CLONE_SCHEMA_COLUMNS_NOT_PROVEN');
   assert.deepEqual(columnsProof([{ column_name: 'a', data_type: 'text', is_nullable: false }], { schema: 's', table: 't', columns: ['a', 'b'] }).missing, ['b']);
+});
+
+
+// ── review fixes: probe control, completion proof, enforced columns, orchestrator-level SHA ──────────
+
+test('D3: a request split across sessions fails the same-session positive control; target SQL never sent', async () => {
+  const api = fakeApi({ sessionSplit: true });
+  await assert.rejects(run(api), (e) => e.code === 'HTTPS_TRANSACTIONAL_DRY_RUN_NOT_PROVEN');
+  assert.equal(api.log.some((l) => (l.query ?? '').includes('ADD COLUMN')), false);
+  assert.match(SQL_TRANSACTION_PROBE, /to_regclass\('pg_temp\.premvp_txn_probe'\) IS NULL THEN RAISE EXCEPTION/, 'positive control inside the transaction');
+});
+
+test('the dry-run response must prove the script ran to its end (completion marker), not merely a 2xx', async () => {
+  await assert.rejects(run(fakeApi({ noCompletionMarker: true })), (e) => e.code === 'HTTPS_DRY_RUN_COMPLETION_NOT_PROVEN');
+});
+
+test('D6: apply ENFORCES the column proof (ledger recorded but DDL absent => fail closed with state) and REQUIRES verify columns', async () => {
+  await assert.rejects(run(fakeApi({ nativeSkipsDdl: true }), { apply: true }), (e) => e.code === 'TARGET_ONLY_COLUMNS_NOT_PROVEN' && /ledger_recorded=true/.test(e.detail ?? ''));
+  const api = fakeApi();
+  await assert.rejects(run(api, { apply: true, verify: null }), (e) => e.code === 'TARGET_ONLY_VERIFY_COLUMNS_REQUIRED');
+  await assert.rejects(run(api, { apply: true, verify: [] }), (e) => e.code === 'TARGET_ONLY_VERIFY_COLUMNS_REQUIRED');
+  assert.equal(api.log.length, 0, 'refused before any request');
+  const dry = await run(api, { verify: null });
+  assert.equal(dry.mode, 'dry_run', 'a dry-run needs no verify list');
+});
+
+test('the SHA pin is re-enforced inside the orchestrators (defence in depth), not only in the adapter', async () => {
+  const api = fakeApi();
+  await assert.rejects(run(api, { targetSha256: 'a'.repeat(64) }), (e) => e.code === 'HTTPS_TARGET_SHA256_MISMATCH');
+  const transport = transportFor(api, CLONE, PREMVP_RESEARCH_CLONE_PROJECT_REFS);
+  await assert.rejects(runHttpsCloneSchema({ transport, schemaSql: CLONE_SQL, schemaSha256: 'a'.repeat(64), schemaFile: 'f', verify: VERIFY }), (e) => e.code === 'HTTPS_TARGET_SHA256_MISMATCH');
+  assert.equal(api.log.length, 0);
+});
+
+test('remote ledger -> local file resolution is strict (no vacuous prefix matches)', () => {
+  const files = ['20260930070000_a.sql', '20261001085007_b.sql'];
+  assert.deepEqual(resolveTrackedStrict(['20260930070000'], files).missing, []);
+  assert.deepEqual(resolveTrackedStrict(['2026'], files).missing, ['2026'], 'a short remote version must not match by prefix');
+  assert.deepEqual(resolveTrackedStrict(['20260930070001'], files).missing, ['20260930070001']);
+  assert.deepEqual(resolveTrackedStrict(['20261001085007'], ['20261001085007.sql']).missing, []);
+});
+
+test('CLONE SQL is an ALLOW-LIST of idempotent structural statements: DML, DROP, functions, policies and wide grants are refused', () => {
+  for (const bad of [
+    'INSERT INTO public.t VALUES (1);', 'UPDATE public.t SET a = 1;', ' DELETE FROM public.t;', 'TRUNCATE public.t;', 'DROP TABLE public.t;', 'DROP POLICY p ON public.t;',
+    'DROP VIEW v;', 'ALTER TABLE public.t DROP COLUMN a;', 'ALTER TABLE public.t ADD COLUMN IF NOT EXISTS a int, DROP COLUMN b;', 'ALTER TABLE public.t ALTER COLUMN a TYPE text;',
+    'ALTER TABLE public.t ADD COLUMN a int;', 'CREATE TABLE public.t (id int);', 'CREATE TABLE IF NOT EXISTS public.t AS SELECT 1;', 'CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ select 1 $$ LANGUAGE sql;',
+    'GRANT ALL ON public.t TO anon;', 'GRANT SELECT ON public.t TO authenticated;', 'COPY public.t FROM STDIN;', 'MERGE INTO public.t USING s ON true WHEN MATCHED THEN DELETE;',
+    'DO $$ BEGIN DELETE FROM public.t; END $$;', 'CREATE INDEX ix ON public.t (a);',
+  ]) {
+    assert.throws(() => assertCloneSqlSafe(bad), (e) => e instanceof HttpsTransportError, bad);
+  }
+  const ok = assertCloneSqlSafe(`${CLONE_SQL}CREATE INDEX IF NOT EXISTS ix ON public.t (a);\nALTER TABLE public.t ENABLE ROW LEVEL SECURITY;\n-- DROP TABLE in a comment is fine\n`);
+  assert.deepEqual(ok.statement_kinds, { create_table_if_not_exists: 1, add_column_if_not_exists: 1, revoke: 1, grant_to_service_role: 1, create_index_if_not_exists: 1, enable_row_level_security: 1 });
+  assert.throws(() => assertCloneSqlSafe('-- only a comment\n'), /CLONE_SQL_EMPTY/);
 });

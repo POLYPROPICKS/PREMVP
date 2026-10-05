@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { sqlCloneApply } from '../../scripts/control-plane/lib/premvp-migration-https-transport.mjs';
 import { CLONE, COLS, PROD, TARGET_BASENAME, TARGET_SQL, TOKEN, VERIFY, sha256OfText } from './helpers/fakeManagementApi.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -229,9 +230,9 @@ test('CLONE: dry-run then apply of the exact ops file on the allowlisted clone, 
   assert.equal(r.status, 0, r.stdout);
   assert.equal(r.out.mode, 'applied');
   assert.equal(r.out.columns_proof[0].all_present_nullable, true);
-  assert.equal(r.out.production_rows_mutated, false);
-  assert.equal(r.out.historical_backfill, false);
-  assert.ok(r.requests.some((q) => q.query === `BEGIN;\n${CLONE_SQL}COMMIT;`), 'exact file in one transaction');
+  assert.equal(r.out.statement_allowlist_enforced, true);
+  assert.ok(r.out.statement_kinds.add_column_if_not_exists >= 1);
+  assert.ok(r.requests.some((q) => q.query === sqlCloneApply(CLONE_SQL)), 'exact file in one transaction');
   assert.equal(r.requests.some((q) => q.path === '/migrations'), false, 'no ledger');
   noSecrets(r);
 }));
@@ -254,6 +255,24 @@ test('CLONE: gates — confirmation, allowlist (production ref refused), exact S
   fs.writeFileSync(path.join(tmp, CLONE_FILE), `${CLONE_SQL}DROP TABLE public.x;\n`);
   r = runAdapter(tmp, { decl: cloneDecl({ target_sha256: sha256OfText(`${CLONE_SQL}DROP TABLE public.x;\n`) }), flags: ['--clone-schema'] });
   assert.equal(r.status, 1);
-  assert.equal(r.out.reason, 'CLONE_SQL_FORBIDDEN');
+  assert.equal(r.out.reason, 'CLONE_SQL_STATEMENT_NOT_ALLOWED');
   assert.equal(r.requests.length, 0);
+}));
+
+test('apply over HTTPS without verify_columns is refused before any request (the column proof is mandatory on apply)', { skip }, withTree((tmp) => {
+  const decl = targetDecl();
+  delete decl.verify_columns;
+  const r = runAdapter(tmp, { decl, flags: ['--target-only', '--apply', '--confirm'], env: { PREMVP_TARGET_ONLY_APPLY_CONFIRM: '1' } });
+  assert.equal(r.status, 1);
+  assert.equal(r.out.reason, 'TARGET_ONLY_VERIFY_COLUMNS_REQUIRED');
+  assert.equal(r.requests.length, 0);
+  noSecrets(r);
+}));
+
+test('ledger recorded but DDL missing => the adapter exits non-zero with TARGET_ONLY_COLUMNS_NOT_PROVEN (never ok:true)', { skip }, withTree((tmp) => {
+  const r = runAdapter(tmp, { decl: targetDecl(), flags: ['--target-only', '--apply', '--confirm'], env: { PREMVP_TARGET_ONLY_APPLY_CONFIRM: '1' }, api: { nativeSkipsDdl: true } });
+  assert.equal(r.status, 1);
+  assert.equal(r.out.reason, 'TARGET_ONLY_COLUMNS_NOT_PROVEN');
+  assert.equal(r.out.ok, false);
+  noSecrets(r);
 }));
