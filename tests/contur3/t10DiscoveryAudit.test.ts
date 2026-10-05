@@ -179,6 +179,9 @@ test("the default gameId reader hands the RAW bounded set to the audit (other ga
     let run: Record<string, unknown> = {};
     await captureReservationMarketObservation(fixtureReservation(), "T_MINUS_10", {
       observedAt: "2026-07-19T18:50:00.000Z", alreadyCaptured: async () => false, fetchBooks: fixtureBooks({}),
+      // Telemetry reads are injected so the URL list below stays the pure discovery contract.
+      fetchFeeSchedule: async (tokenId) => ({ ok: false, tokenId, errorCode: "FEE_TEST_OFFLINE", latencyMs: 0 }),
+      readT30Universe: async () => [],
       write: async (r) => { run = r; },
     });
     assert.equal(urls.length, 2, "one exact-event read and ONE bounded same-game query");

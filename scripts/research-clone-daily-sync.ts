@@ -41,7 +41,7 @@ const TELEMETRY_MAX_PAGES = 8;
 const TELEMETRY_BOOTSTRAP_SINCE = "2026-09-30T00:00:00.000Z";
 const TELEMETRY_PURGE_FLOOR = "1970-01-01T00:00:00.000Z";
 const CAPTURE_RUN_PROJECTION = "id,reservation_id,plan_run_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,source_version,source_observed_at,markets_discovered_n,market_tokens_expected_n,market_tokens_observed_n,orderbooks_success_n,orderbooks_failed_n,capture_complete,capture_status,failure_reason,created_at,discovery_audit_v1";
-const MARKET_OBSERVATION_PROJECTION = "id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,condition_id,token_id,side,outcome,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,live_policy_eligibility,live_policy_rejection_reason,best_bid,best_ask,mid_price,bid_decimal_odds,ask_decimal_odds,spread_abs,spread_bps,bid_depth_relevant_usd,ask_depth_relevant_usd,reference_entry_price,execution_price_cap,requested_stake_usd,full_stake_executable_vwap,tick_size,minimum_order_size,orderbook_fetch_latency_ms,orderbook_fetch_status,orderbook_failure_reason,source_version,created_at";
+const MARKET_OBSERVATION_PROJECTION = "id,capture_run_id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,condition_id,token_id,side,outcome,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,live_policy_eligibility,live_policy_rejection_reason,best_bid,best_ask,mid_price,bid_decimal_odds,ask_decimal_odds,spread_abs,spread_bps,bid_depth_relevant_usd,ask_depth_relevant_usd,reference_entry_price,execution_price_cap,requested_stake_usd,full_stake_executable_vwap,tick_size,minimum_order_size,orderbook_fetch_latency_ms,orderbook_fetch_status,orderbook_failure_reason,source_version,created_at,executable_telemetry_version,executable_full_stake,executable_full_stake_state,full_stake_shares,full_stake_worst_ask_price,taker_fee_state,taker_fee_reason,taker_fee_rate,taker_fee_usd,taker_effective_cost_per_share,taker_fee_formula_version,p_buy_max,p_buy_max_state,p_buy_max_source_key";
 const STRATEGY_OBSERVATION_PROJECTION = "id,market_observation_id,capture_run_id,reservation_id,physical_event_id,condition_id,token_id,side,observation_phase,evaluated_at,minutes_to_start,strategy_variant,strategy_version,evaluation_state,eligible,rejection_reason,available_best_ask,available_decimal_odds,spread_abs,executable_depth_usd,maker_target_price,maker_target_decimal_odds,maker_target_state,target_policy_version,target_touched,maker_band_min_price,maker_band_max_price,maker_band_min_odds,maker_band_max_odds,maker_band_state,maker_band_version,acceptable_band_observed,created_at";
 const RESERVATION_PARENT_PROJECTION = [
   "id",
@@ -782,6 +782,21 @@ export function auditParityConfirmedIds(
     .map((row) => row.id);
 }
 
+/**
+ * T10_EXECUTABLE_SIBLING_TELEMETRY_V1 durability: production market observations are purged once confirmed
+ * in the clone, and the clone only holds the projected columns. A production row that carries executable
+ * telemetry is therefore confirmed only when the clone row carries it too, so the evidence can never be
+ * purged unseen (e.g. a row copied by a sync run that predates the projection).
+ */
+export function executableTelemetryParityConfirmedIds(
+  cloneRows: ReadonlyArray<{ id: string; executable_telemetry_version: unknown }>,
+  sourceTelemeteredIds: ReadonlySet<string>,
+): string[] {
+  return cloneRows
+    .filter((row) => !sourceTelemeteredIds.has(row.id) || (row.executable_telemetry_version !== null && row.executable_telemetry_version !== undefined))
+    .map((row) => row.id);
+}
+
 function telemetryTimeField(table: TelemetryTable): string {
   return table === "reservation_strategy_observations" ? "evaluated_at" : "observed_at";
 }
@@ -821,6 +836,14 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number) {
         if (audited.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(audited.error)}`);
         const auditedIds = new Set(((audited.data ?? []) as Array<{ id: string }>).map((row) => row.id));
         return auditParityConfirmedIds((clone.data ?? []) as Array<{ id: string; discovery_audit_v1: unknown }>, auditedIds);
+      }
+      if (table === "reservation_market_observations") {
+        const clone = await target.from(table).select("id,executable_telemetry_version").in("id", [...ids]);
+        if (clone.error) throw new Error(`TELEMETRY_PURGE_CLONE_CONFIRM_${table}:${safeError(clone.error)}`);
+        const telemetered = await source.from(table).select("id").in("id", [...ids]).not("executable_telemetry_version", "is", null);
+        if (telemetered.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(telemetered.error)}`);
+        const telemeteredIds = new Set(((telemetered.data ?? []) as Array<{ id: string }>).map((row) => row.id));
+        return executableTelemetryParityConfirmedIds((clone.data ?? []) as Array<{ id: string; executable_telemetry_version: unknown }>, telemeteredIds);
       }
       const { data, error } = await target.from(table).select("id").in("id", [...ids]);
       if (error) throw new Error(`TELEMETRY_PURGE_CLONE_CONFIRM_${table}:${safeError(error)}`);

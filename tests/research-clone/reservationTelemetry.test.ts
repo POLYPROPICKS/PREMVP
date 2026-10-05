@@ -94,3 +94,39 @@ test("CLONE_PARITY_REPAIR_V1: purge never confirms an audited row whose clone au
   );
   assert.deepEqual(confirmed, ["a", "c"]);
 });
+
+// T10_EXECUTABLE_SIBLING_TELEMETRY_V1 durability: production rows are purged once confirmed in the clone and the
+// clone only holds the projected columns, so every new column must be projected AND exist in the clone schema.
+const T10_NEW_TELEMETRY_COLUMNS = [
+  "executable_telemetry_version", "executable_full_stake", "executable_full_stake_state", "full_stake_shares",
+  "full_stake_worst_ask_price", "taker_fee_state", "taker_fee_reason", "taker_fee_rate", "taker_fee_usd",
+  "taker_effective_cost_per_share", "taker_fee_formula_version", "p_buy_max", "p_buy_max_state", "p_buy_max_source_key",
+];
+
+test("T10_EXECUTABLE_SIBLING_TELEMETRY_V1: every telemetry column is projected, in the clone schema and in the production migration", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { T10_EXECUTABLE_TELEMETRY_KEYS } = await import("../../lib/executor/reservationMarketBaseline");
+  const projection = SPECS.find((entry) => entry.table === "reservation_market_observations")?.projection ?? "";
+  const cloneSql = readFileSync("ops/research-clone/reservation-telemetry-schema.sql", "utf8");
+  const migration = readFileSync("supabase/migrations/20261005090000_t10_executable_sibling_telemetry_v1.sql", "utf8");
+  for (const column of T10_EXECUTABLE_TELEMETRY_KEYS) assert.match(projection, new RegExp(`(^|,)${column}(,|$)`), `projection: ${column}`);
+  for (const column of T10_NEW_TELEMETRY_COLUMNS) {
+    assert.ok((T10_EXECUTABLE_TELEMETRY_KEYS as readonly string[]).includes(column), `writer key: ${column}`);
+    assert.match(cloneSql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column} `), `clone schema: ${column}`);
+    assert.match(migration, new RegExp(`ADD COLUMN IF NOT EXISTS ${column} `), `production migration: ${column}`);
+  }
+  assert.equal(new Set(projection.split(",")).size, projection.split(",").length, "no duplicated projected column");
+});
+
+test("T10_EXECUTABLE_SIBLING_TELEMETRY_V1: purge never confirms a telemetered production row whose clone copy lacks telemetry", async () => {
+  const { executableTelemetryParityConfirmedIds } = await import("../../scripts/research-clone-daily-sync");
+  const confirmed = executableTelemetryParityConfirmedIds(
+    [
+      { id: "a", executable_telemetry_version: "T10_EXECUTABLE_SIBLING_TELEMETRY_V1" },
+      { id: "b", executable_telemetry_version: null },
+      { id: "c", executable_telemetry_version: null },
+    ],
+    new Set(["a", "b"]),
+  );
+  assert.deepEqual(confirmed, ["a", "c"], "b is telemetered in production but not in the clone -> stays unconfirmed; c has no telemetry anywhere");
+});

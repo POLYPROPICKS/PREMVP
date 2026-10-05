@@ -46,6 +46,23 @@ ALTER TABLE public.reservation_market_observations
   ADD COLUMN IF NOT EXISTS execution_price_cap numeric,
   ADD COLUMN IF NOT EXISTS requested_stake_usd numeric,
   ADD COLUMN IF NOT EXISTS full_stake_executable_vwap numeric;
+-- T10_EXECUTABLE_SIBLING_TELEMETRY_V1: same meaning as production; nullable, additive, evidence-only.
+-- APPLY THIS ON THE CLONE BEFORE the sync projection that selects these columns is deployed.
+ALTER TABLE public.reservation_market_observations
+  ADD COLUMN IF NOT EXISTS executable_telemetry_version text,
+  ADD COLUMN IF NOT EXISTS executable_full_stake boolean,
+  ADD COLUMN IF NOT EXISTS executable_full_stake_state text,
+  ADD COLUMN IF NOT EXISTS full_stake_shares numeric,
+  ADD COLUMN IF NOT EXISTS full_stake_worst_ask_price numeric,
+  ADD COLUMN IF NOT EXISTS taker_fee_state text,
+  ADD COLUMN IF NOT EXISTS taker_fee_reason text,
+  ADD COLUMN IF NOT EXISTS taker_fee_rate numeric,
+  ADD COLUMN IF NOT EXISTS taker_fee_usd numeric,
+  ADD COLUMN IF NOT EXISTS taker_effective_cost_per_share numeric,
+  ADD COLUMN IF NOT EXISTS taker_fee_formula_version text,
+  ADD COLUMN IF NOT EXISTS p_buy_max numeric,
+  ADD COLUMN IF NOT EXISTS p_buy_max_state text,
+  ADD COLUMN IF NOT EXISTS p_buy_max_source_key text;
 REVOKE ALL ON public.reservation_market_observations FROM anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.reservation_market_observations TO service_role;
 

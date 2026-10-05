@@ -353,6 +353,8 @@ async function captureT3(res: NightEventReservationRow, askFor: (tokenId: string
     readGameEvents: async () => withCount(gameEvents(GAME_A)),
     fetchBooks: async (ids: string[]) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1,
       book: { tokenId, bids: [{ price: askFor(tokenId) - 0.02, size: 100 }], asks: [{ price: askFor(tokenId), size: 100 }], raw: {} } })) as never,
+    fetchFeeSchedule: async (tokenId) => ({ ok: false, tokenId, errorCode: "FEE_TEST_OFFLINE", latencyMs: 0 }),
+    readT30Universe: async () => [],
     write: async (r, o) => { run = r; observations = o; },
   });
   return { run, observations: observations as unknown as FinalT3MarketObservation[] };

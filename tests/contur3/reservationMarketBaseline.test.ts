@@ -58,6 +58,9 @@ test("T30, T10 and T3 each fetch the one reserved event and preserve every suppl
         alreadyCaptured: async () => false,
         fetchBooks: async (ids) => ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1,
           book: { tokenId, bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }] } })),
+        // The exact Gamma URL list below is the discovery contract; telemetry reads are injected, not fetched.
+        fetchFeeSchedule: async (tokenId) => ({ ok: false, tokenId, errorCode: "FEE_TEST_OFFLINE", latencyMs: 0 }),
+        readT30Universe: async () => [],
         write: async (run, rows, strategies = []) => { snapshots.push({ run, rows, strategies }); },
       });
     }

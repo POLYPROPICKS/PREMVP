@@ -1,7 +1,7 @@
 import type { RuntimeSupabaseClient } from "../constructor/bootstrap";
 import { createHash } from "node:crypto";
 import type { NightEventReservationRow } from "./executorQueueTypes";
-import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
+import { fetchOrderBooksConcurrent, type TokenFeeScheduleResult } from "../liquidity/polymarketClient";
 import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from "../liquidity/orderbookMath";
 import { GAMMA_GAME_EVENTS_LIMIT, fetchPolymarketEventById, fetchPolymarketEventsByGameId } from "../feed/polymarketClient";
 import type { PolymarketRawEvent } from "../feed/types";
@@ -15,6 +15,29 @@ export type ReservationMarketPhase = typeof PHASE | "T_MINUS_30" | "T_MINUS_10" 
 
 /** Single authority for the live Final Rebalance source phase (T_MINUS_3 is historical-only). */
 export const FINAL_REBALANCE_PHASE = "T_MINUS_10" as const;
+
+/**
+ * T10_EXECUTABLE_SIBLING_TELEMETRY_V1: every key every T_MINUS_10 observation row carries, so one bulk
+ * upsert is homogeneous. Evidence only: nothing in selection, Queue, stake, P_BUY_MAX or Ireland reads it.
+ * The computation lives in t10ExecutableSiblingTelemetry.ts (loaded lazily: import-cyclic with this file).
+ */
+export const T10_EXECUTABLE_TELEMETRY_VERSION = "T10_EXECUTABLE_SIBLING_TELEMETRY_V1" as const;
+export const T10_EXECUTABLE_TELEMETRY_KEYS = [
+  "executable_telemetry_version", "requested_stake_usd", "execution_price_cap", "ask_depth_relevant_usd",
+  "full_stake_executable_vwap", "full_stake_shares", "full_stake_worst_ask_price", "executable_full_stake",
+  "executable_full_stake_state", "taker_fee_state", "taker_fee_reason", "taker_fee_rate", "taker_fee_usd",
+  "taker_effective_cost_per_share", "taker_fee_formula_version", "p_buy_max", "p_buy_max_state", "p_buy_max_source_key",
+] as const;
+
+/** Typed, honest failure row: the sibling still gets its telemetry row, with UNKNOWN and a reason. Never invents a number. */
+export function executableTelemetryFailureColumns(reason: string): Record<string, unknown> {
+  return {
+    ...Object.fromEntries(T10_EXECUTABLE_TELEMETRY_KEYS.map((key) => [key, null])),
+    executable_telemetry_version: T10_EXECUTABLE_TELEMETRY_VERSION,
+    executable_full_stake_state: "UNKNOWN_TELEMETRY_COMPUTE_FAILED",
+    taker_fee_state: "UNKNOWN", taker_fee_reason: reason, p_buy_max_state: reason,
+  };
+}
 
 export function classifyReservationMarketPhase(eventStartIso: string, nowMs: number): Exclude<ReservationMarketPhase, typeof PHASE> | null {
   const minutes = (Date.parse(eventStartIso) - nowMs) / 60_000;
@@ -525,6 +548,10 @@ export async function captureReservationMarketObservation(
     observedAt?: string;
     alreadyCaptured?: (reservationId: string, phase: ReservationMarketPhase, sourceVersion: string) => Promise<boolean>;
     getClient?: RuntimeClientGetter;
+    /** T10 executable-sibling telemetry only (evidence): token-specific taker fee schedule, default = Gamma. */
+    fetchFeeSchedule?: (tokenId: string, opts: { timeoutMs: number }) => Promise<TokenFeeScheduleResult>;
+    /** T10 executable-sibling telemetry only (evidence): the complete T_MINUS_30 universe for P_BUY_MAX context. */
+    readT30Universe?: (reservation: NightEventReservationRow) => Promise<readonly FinalT3MarketObservation[]>;
   } = {},
 ): Promise<void> {
   if (phase === PHASE) return captureReservationMarketBaseline(reservation, deps);
@@ -593,7 +620,28 @@ export async function captureReservationMarketObservation(
     failureReason = "RESERVED_EVENT_MARKET_SET_UNAVAILABLE";
   }
   const { tokens, expected, missingIdentity } = inventoryTokens(markets);
-  const books = await (deps.fetchBooks ?? fetchOrderBooksConcurrent)(tokens.map((t) => t.tokenId), 5);
+  // T10_EXECUTABLE_SIBLING_TELEMETRY_V1 (evidence only, T_MINUS_10 only). The fee schedules are fetched in
+  // parallel with the books, bounded, and can never reject; a missing/failed schedule is typed UNKNOWN.
+  const telemetry = phase === FINAL_REBALANCE_PHASE && tokens.length > 0
+    ? await import("./t10ExecutableSiblingTelemetry").catch(() => null) : null;
+  const readT30 = deps.readT30Universe ?? ((r: NightEventReservationRow) => readCompletedT30Universe(r, createFinalT3ReadPort(deps.getClient)));
+  // Books, fee schedules and the T30 context run concurrently, so telemetry adds ~no wall time to the capture.
+  const [books, feeByToken, t30Universe] = await Promise.all([
+    (deps.fetchBooks ?? fetchOrderBooksConcurrent)(tokens.map((t) => t.tokenId), 5),
+    telemetry
+      ? telemetry.fetchFeeSchedulesBounded(tokens, { fetchFee: deps.fetchFeeSchedule }).catch(() => null)
+      : Promise.resolve(null),
+    telemetry ? Promise.resolve().then(() => readT30(reservation)).catch(() => null) : Promise.resolve(null),
+  ]);
+  const executableColumns = phase !== FINAL_REBALANCE_PHASE ? null : tokens.map((token, i) => {
+    if (!telemetry) return executableTelemetryFailureColumns("TELEMETRY_MODULE_UNAVAILABLE");
+    try {
+      return telemetry.buildExecutableSiblingColumns({
+        physicalEventId: reservation.physical_event_id ?? "", token, result: books[i],
+        fee: feeByToken?.get(token.tokenId) ?? null, t30Universe,
+      });
+    } catch { return executableTelemetryFailureColumns("TELEMETRY_COMPUTE_FAILED"); }
+  });
   const minutesToStart = (Date.parse(start ?? "") - Date.parse(observedAt)) / 60000;
   const observations = tokens.map((token, i) => {
     const result = books[i];
@@ -620,6 +668,7 @@ export async function captureReservationMarketObservation(
       orderbook_fetch_status: result?.ok ? "SUCCESS" : "FAILED",
       orderbook_failure_reason: result?.ok ? null : result?.errorCode ?? "UNKNOWN_FAILURE",
       source_version: MARKET_SOURCE_VERSION,
+      ...(executableColumns?.[i] ?? {}),
     };
   });
   const failed = observations.filter((row) => row.orderbook_fetch_status === "FAILED").length;
