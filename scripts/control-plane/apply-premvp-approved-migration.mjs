@@ -18,7 +18,19 @@ import {
   classifyTargetOnlyDryRun,
   assertNoIncludeAll,
   buildTargetOnlyEvidence,
+  sha256OfText,
 } from './lib/premvp-target-only-migration.mjs';
+import {
+  PREMVP_RESEARCH_CLONE_PROJECT_REFS,
+  assertApplyConfirmation,
+  assertHttpsPreconditions,
+  createHttpsMigrationTransport,
+  isDirectTransportUnavailable,
+  runHttpsCloneSchema,
+  runHttpsTargetOnly,
+  validateCloneSchemaDeclaration,
+  validateVerifyColumns,
+} from './lib/premvp-migration-https-transport.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = process.argv.slice(2);
@@ -29,6 +41,13 @@ const declaration = JSON.parse(raw);
 
 // Static migration-directory hygiene — fail closed before any Supabase CLI invocation.
 assertCleanMigrationDirectory(root);
+
+// ── research-clone schema mode ─────────────────────────────────────────────
+// The exact reviewed, idempotent ops/research-clone/*-schema.sql file on the allowlisted research clone,
+// over the same sanctioned HTTPS transport (lib/premvp-migration-https-transport.mjs). No ledger, no row mutation.
+if (args.includes('--clone-schema')) {
+  await runCloneSchema();
+}
 
 // ── target-only mode ───────────────────────────────────────────────────────
 // Applies exactly one reviewed migration through an isolated migrations view that
@@ -93,7 +112,15 @@ async function runTargetOnly() {
     }
     listOut = supa(['migration', 'list', ...contextArgs], root);
   }
-  if (listOut && listOut.__failed) fail('TARGET_ONLY_MIGRATION_LIST_FAILED', extractCausalFailure(listOut, secrets));
+  if (listOut && listOut.__failed) {
+    // The Supabase CLI / direct-Postgres path stays first choice. ONLY a proven direct-transport failure (DNS, no route,
+    // refused, timeout — e.g. an IPv6-only DB host from a no-IPv6 / HTTPS-only environment) may fall back to the
+    // Management API over HTTPS. Authentication/authorization failures never qualify and still fail closed below.
+    if (isDirectTransportUnavailable(listOut)) {
+      await runHttpsFallback({ migrationFileRel, targetBasename, targetAbs, observedRef, childEnv, secrets, sanitize, directFailure: extractCausalFailure(listOut, secrets), bridge });
+    }
+    fail('TARGET_ONLY_MIGRATION_LIST_FAILED', extractCausalFailure(listOut, secrets));
+  }
   const tracked = trackedRemoteVersions(firstJson(listOut));
   const { resolved: trackedFiles, missing } = resolveTrackedLocalFiles(tracked, path.join(root, 'supabase', 'migrations'));
   if (missing.length) fail('TARGET_ONLY_REMOTE_TRACKED_FILE_MISSING_LOCALLY', missing);
@@ -147,6 +174,66 @@ async function runTargetOnly() {
 function fail(reason, detail) {
   process.stdout.write(JSON.stringify({ ok: false, verdict: 'FAIL_CLOSED', reason, detail: detail ?? null }) + '\n');
   process.exit(1);
+}
+
+// ── HTTPS fallback (target-only) ───────────────────────────────────────────
+// Reached only after the CLI/direct path proved its TRANSPORT unavailable. Every gate the CLI path applied before this
+// point already ran (declaration, allowlist, project-ref equality, SHA-256 pin); they are re-asserted here, then the
+// same one reviewed file is dry-run (BEGIN..ROLLBACK, schema + ledger proven unchanged) and, only on the explicit
+// --apply --confirm + PREMVP_TARGET_ONLY_APPLY_CONFIRM=1 gates, applied through the native migrations endpoint.
+async function runHttpsFallback({ migrationFileRel, targetBasename, targetAbs, observedRef, childEnv, secrets, sanitize, directFailure, bridge }) {
+  try {
+    const targetSql = fs.readFileSync(targetAbs, 'utf8').replace(/\r\n/g, '\n');
+    assertHttpsPreconditions({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: observedRef, allowlist: PREMVP_PRODUCTION_PROJECT_REFS,
+      declaredProjectRef: declaration.project_ref, expectedSha256: declaration.target_sha256, actualSha256: sha256OfText(targetSql),
+    });
+    const verifyErrors = validateVerifyColumns(declaration.verify_columns);
+    if (verifyErrors.length) fail('TARGET_ONLY_VERIFY_COLUMNS_INVALID', verifyErrors);
+    const wantApply = assertApplyConfirmation(args, process.env);
+    const transport = createHttpsMigrationTransport({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: observedRef, allowlist: PREMVP_PRODUCTION_PROJECT_REFS, redact: (text, extra) => sanitizeDiagnosticText(text, [...secrets, ...extra]),
+    });
+    const evidence = await runHttpsTargetOnly({
+      transport, targetBasename, targetSql, targetSha256: declaration.target_sha256, apply: wantApply, verify: declaration.verify_columns ?? null,
+      resolveTracked: (versions) => resolveTrackedLocalFiles(versions, path.join(root, 'supabase', 'migrations')),
+    });
+    process.stdout.write(JSON.stringify({ ok: true, migration_file: migrationFileRel, direct_path_unavailable: true, direct_path_failure: directFailure, ...evidence, env_bridge: describeBridge(bridge) }) + '\n');
+    process.exit(0);
+  } catch (error) {
+    fail(error?.code ?? 'TARGET_ONLY_HTTPS_FALLBACK_FAILED', sanitize(String(error?.detail ?? error?.message ?? '')).slice(0, 400));
+  }
+}
+
+// ── research-clone schema (HTTPS) ──────────────────────────────────────────
+async function runCloneSchema() {
+  const decl = validateCloneSchemaDeclaration(declaration);
+  if (!decl.ok) fail('CLONE_SCHEMA_DECLARATION_INVALID', decl.errors);
+  const opsDir = path.join(root, 'ops', 'research-clone');
+  const schemaAbs = path.resolve(root, declaration.schema_file);
+  if (path.dirname(schemaAbs) !== opsDir || !fs.existsSync(schemaAbs)) fail('CLONE_SCHEMA_FILE_NOT_FOUND', declaration.schema_file);
+  const bridge = bridgePersistentUserEnv({ names: SUPABASE_ENV_NAMES, baseEnv: process.env });
+  const childEnv = bridge.env;
+  const secrets = [childEnv.SUPABASE_DB_PASSWORD, childEnv.SUPABASE_ACCESS_TOKEN, childEnv.SUPABASE_DB_URL].filter(Boolean);
+  const sanitize = (text) => sanitizeDiagnosticText(text, secrets);
+  try {
+    const schemaSql = fs.readFileSync(schemaAbs, 'utf8').replace(/\r\n/g, '\n');
+    assertHttpsPreconditions({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: declaration.project_ref, allowlist: PREMVP_RESEARCH_CLONE_PROJECT_REFS,
+      declaredProjectRef: declaration.project_ref, expectedSha256: declaration.target_sha256, actualSha256: sha256OfText(schemaSql),
+    });
+    const wantApply = assertApplyConfirmation(args, process.env);
+    const transport = createHttpsMigrationTransport({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: declaration.project_ref, allowlist: PREMVP_RESEARCH_CLONE_PROJECT_REFS, redact: (text, extra) => sanitizeDiagnosticText(text, [...secrets, ...extra]),
+    });
+    const evidence = await runHttpsCloneSchema({
+      transport, schemaSql, schemaSha256: declaration.target_sha256, schemaFile: declaration.schema_file, apply: wantApply, verify: declaration.verify_columns,
+    });
+    process.stdout.write(JSON.stringify({ ok: true, ...evidence, env_bridge: describeBridge(bridge) }) + '\n');
+    process.exit(0);
+  } catch (error) {
+    fail(error?.code ?? 'CLONE_SCHEMA_HTTPS_FAILED', sanitize(String(error?.detail ?? error?.message ?? '')).slice(0, 400));
+  }
 }
 
 const migrationFile = readAndValidateMigration(root, declaration);
