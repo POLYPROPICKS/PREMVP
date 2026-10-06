@@ -26,12 +26,13 @@ function contract(mode: "TAKER_FIRST" | "MAKER_FIRST", over: Record<string, unkn
     execution_policy_version: "T10_ECONOMIC_ACTION_EXECUTION_V1", economic_policy_version: "T10_ECONOMIC_ACTION_POLICY_V1",
     execution_mode: mode, price_authority_version: "T30_EXACT_BID_ANCHOR_V1", price_authority_observation_id: "T30_BOOK:run:tok1:YES",
     p_buy_max: 0.5, reference_status: "STRONG", physical_event_id: EVENT, condition_id: "cond1", token_id: "tok1", side: "YES",
-    market_family: "TOTALS", stake_usd: 2.5, hard_price_cap: 0.54, latest_entry_iso: "2026-10-01T18:50:00.000Z",
+    market_family: "TOTALS", stake_usd: 2.5, hard_price_cap: 0.555, latest_entry_iso: "2026-10-01T19:03:00.000Z",
     tick_size: 0.01, minimum_order_size: 5, spread_telemetry: 0.02, activation_switch: "T10_ECONOMIC_ACTION_ACTIVATION",
     taker: mode === "TAKER_FIRST" ? { price_limit: 0.49 } : null,
     maker: mode === "MAKER_FIRST" ? { maker_limit_price: 0.5, maker_shares: 5 } : null,
-    ...(mode === "MAKER_FIRST" ? { primary_maker_cancel_by_iso: "2026-10-01T18:40:20.000Z",
-      fallback_deadline_iso: "2026-10-01T18:50:00.000Z", required_min_remaining_seconds: 580 } : {}),
+    // event start 19:00 -> cancel_by = start - 12m40s; fallback_deadline = latest_entry = start + 3m (reserve 940 s >= 580 s)
+    ...(mode === "MAKER_FIRST" ? { primary_maker_cancel_by_iso: "2026-10-01T18:47:20.000Z",
+      fallback_deadline_iso: "2026-10-01T19:03:00.000Z", required_min_remaining_seconds: 580 } : {}),
     ...over,
   };
 }
@@ -42,7 +43,7 @@ function queueRow(mode: "TAKER_FIRST" | "MAKER_FIRST" | null, over: Partial<Even
     event_title: "A v B", event_slug: "a-v-b", sport: "soccer", league: "x", game_start_iso: "2026-10-01T19:00:00.000Z",
     condition_id: "cond1", token_id: "tok1", side: "YES", market_slug: "m", market_title: "m", market_family: "TOTALS",
     score: null, coverage: null, tier: "TIER1", stake_usd: 2.5, preferred_entry_iso: "2026-10-01T17:00:00.000Z",
-    latest_entry_iso: "2026-10-01T18:50:00.000Z", selection_rank: 1, selection_reason: null, status: "SENT",
+    latest_entry_iso: "2026-10-01T19:03:00.000Z", selection_rank: 1, selection_reason: null, status: "SENT",
     order_key: "k", idempotency_key: IDEM,
     diagnostics: {
       physical_event_id: EVENT, max_entry_price: mode === "MAKER_FIRST" ? 0.5 : mode === "TAKER_FIRST" ? 0.49 : 0.54,
@@ -226,7 +227,7 @@ test("MAKER_FALLBACK_1 requires TAKER_ATTEMPT_1 + authoritative terminal ZERO (r
 test("T10 fallback price = floor_tick(min(P_BUY_MAX, ask - tick, parent cap, 0.54)), never bestBid + tick", async () => {
   // P_BUY_MAX 0.50, parent cap 0.49 (fee-inclusive taker limit), ask 0.52, bid 0.30 -> 0.49, not 0.31.
   const cmd = (row: EventExecutionQueueRow, book: Parameters<typeof buildMakerFallbackCommand>[0]["book"]) =>
-    buildMakerFallbackCommand({ queue: row, book, deadlineIso: "2026-10-01T18:50:00.000Z", nowIso: NOW.toISOString() });
+    buildMakerFallbackCommand({ queue: row, book, deadlineIso: "2026-10-01T19:03:00.000Z", nowIso: NOW.toISOString() });
   const book = { bestBid: 0.3, bestAsk: 0.52, tickSize: 0.01 };
   const lowMin = queueRow("TAKER_FIRST", { diagnostics: { ...queueRow("TAKER_FIRST").diagnostics, t10_economic_action_v1: contract("TAKER_FIRST", { minimum_order_size: 5 }) } });
   const a = cmd(lowMin, book);

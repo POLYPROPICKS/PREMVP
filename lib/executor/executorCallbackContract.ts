@@ -25,7 +25,9 @@ import {
   callbackIsTerminalProvenZero,
   isMakerAttemptCallback,
   isPrimaryMakerCallback,
+  isProvenRejectedBeforeSubmissionZero,
   makerAttemptIdIsValid,
+  preSubmissionZeroConsistentWithQueueRow,
   readExecutionAttempts,
   readIrelandExecutionResult,
   type MakerFallbackCommand,
@@ -417,19 +419,24 @@ const REJECTED_ORDER_STATUSES = new Set(["REJECTED", "ORDER_REJECTED", "FAILED",
 type OrderEventClassification =
   | { kind: "ACCEPTED"; clobOrderId: string }
   | { kind: "REJECTED"; clobOrderId: string | null; reason: string | null }
+  /** The exact authoritative PROVEN_REJECTED_BEFORE_SUBMISSION terminal zero: nothing reached the venue. */
+  | { kind: "PRE_SUBMISSION_ZERO" }
   | { kind: "UNKNOWN" };
 
 /**
  * Classifies an order event as ACCEPTED (real exchange order id, nothing
  * signals rejection), REJECTED (an explicit rejection signal is present:
  * success:false, accepted:false, or a recognized rejected order_status/status
- * string -- regardless of whether an order id is also present), or UNKNOWN
+ * string -- regardless of whether an order id is also present), PRE_SUBMISSION_ZERO
+ * (the exact authoritative PROVEN_REJECTED_BEFORE_SUBMISSION terminal zero: no
+ * venue order id, no fill fact -- a terminal, zero-exposure primary attempt), or UNKNOWN
  * (no order id and no rejection signal -- ambiguous, triggers no queue
  * mutation either way). clob_order_id is preferred; order_id/order_hash are
  * accepted equivalents some Ireland executor versions may send instead.
  */
-function classifyOrderEvent(raw: Record<string, unknown>): OrderEventClassification {
+function classifyOrderEvent(raw: Record<string, unknown>, preSubmissionZero = false): OrderEventClassification {
   const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  if (preSubmissionZero) return { kind: "PRE_SUBMISSION_ZERO" };
   const clobOrderId = deriveOrderEventPersistenceFields(raw).clob_order_id;
   const status = str(raw.order_status)?.toUpperCase() ?? str(raw.status)?.toUpperCase() ?? null;
 
@@ -460,12 +467,13 @@ async function markQueueTerminalFromOrderEvent(
   queueRow: EventExecutionQueueRow | null,
   storedEvent: StoredOrderEvent,
   raw: Record<string, unknown>,
+  preSubmissionZero = false,
 ): Promise<OrderEventQueueMarkOutcome> {
   if (!queueRow) return { kind: "QUEUE_ROW_NOT_FOUND" };
   const queueId = queueRow.id;
   if (!queueId) return { kind: "QUEUE_ROW_NOT_FOUND" };
 
-  const classification = classifyOrderEvent(raw);
+  const classification = classifyOrderEvent(raw, preSubmissionZero);
 
   // MAKER_FALLBACK_1 is a second execution attempt on the SAME economic bet: its order event
   // is accounted on the parent Queue identity, but the parent row's status belongs to the
@@ -486,6 +494,25 @@ async function markQueueTerminalFromOrderEvent(
       await port.updateQueueRowStatus(queueId, { status: "EXECUTED", diagnostics: newDiag });
       return { kind: "EXECUTED", queue_id: queueId };
     }
+  }
+
+  // Exact PROVEN_REJECTED_BEFORE_SUBMISSION: the primary attempt is terminal with proven ZERO exposure. A claimed (or
+  // still-READY) parent is terminal-marked NOW, so it never waits for the stale-claim sweep to expire it as
+  // CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT while its authorized MAKER_FALLBACK_1 is consumed. Any other status is
+  // left exactly as it is (an EXECUTED / SENT row is never touched; the order-event identity guard already refuses it).
+  if (classification.kind === "PRE_SUBMISSION_ZERO") {
+    if (queueRow.status === "FAILED") return { kind: "ALREADY_FAILED", queue_id: queueId };
+    if ((queueRow.status !== "CLAIMED" && queueRow.status !== "READY") || !preSubmissionZeroConsistentWithQueueRow(queueRow, "PRIMARY")) {
+      return { kind: "NOT_ACCEPTED" };
+    }
+    const newDiag: Record<string, unknown> = {
+      ...(queueRow.diagnostics ?? {}),
+      queue_mark_result: "PRE_SUBMISSION_PROVEN_ZERO",
+      order_event_id: storedEvent.id,
+      rejection_reason: "PROVEN_REJECTED_BEFORE_SUBMISSION",
+    };
+    await port.updateQueueRowStatus(queueId, { status: "FAILED", diagnostics: newDiag });
+    return { kind: "FAILED", queue_id: queueId };
   }
 
   if (classification.kind === "UNKNOWN") return { kind: "NOT_ACCEPTED" };
@@ -534,6 +561,14 @@ async function markQueueTerminalFromOrderEvent(
 export async function handleOrderEventSubmission(
   port: OrderEventDbPort,
   raw: Record<string, unknown>,
+  options: {
+    /**
+     * Verdict of isProvenRejectedBeforeSubmissionZero on the ORIGINAL (un-normalized) callback. The route normalizes
+     * a zero-class maker callback for accounting (fill facts stripped, fill-status words rewritten), so the
+     * pre-submission exemption must hold on the original payload too. Omitted = judged on `raw` alone (direct callers).
+     */
+    callbackProvedPreSubmissionZero?: boolean;
+  } = {},
 ): Promise<OrderEventOutcome> {
   const tokenId = typeof raw.token_id === "string" && raw.token_id.length > 0 ? raw.token_id : null;
   if (!tokenId) return { kind: "REJECTED_MISSING_TOKEN_ID" };
@@ -574,6 +609,9 @@ export async function handleOrderEventSubmission(
     primaryMakerShares = frozen.contract.maker.maker_shares;
   }
 
+  // The exact authoritative PROVEN_REJECTED_BEFORE_SUBMISSION shape, on the original payload AND the one handed to us.
+  const preSubmissionShape = options.callbackProvedPreSubmissionZero !== false && isProvenRejectedBeforeSubmissionZero(raw);
+
   let makerCommand: MakerFallbackCommand | null = null;
   if (makerAttempt) {
     makerCommand = readExecutionAttempts(queueRow.diagnostics).maker_fallback_1?.command ?? null;
@@ -595,7 +633,12 @@ export async function handleOrderEventSubmission(
       submitted_size: numLike(raw.submitted_size) ?? numLike(raw.stake_usd),
       submitted_price: numLike(raw.submitted_price),
     };
-    const validation = validateOrderEventAgainstQueueRow(submission, queueRow);
+    // The exact authoritative pre-submission proven zero (nothing reached the venue) legitimately has no submitted
+    // price. Only that shape, on a Queue row whose own recorded facts agree, is exempt from the price requirement;
+    // partial / positive / UNKNOWN / any other zero class / a callback carrying venue evidence stays fail-closed.
+    const preSubmissionProvenZero = preSubmissionShape &&
+      preSubmissionZeroConsistentWithQueueRow(queueRow, makerAttempt ? "FALLBACK" : "PRIMARY");
+    const validation = validateOrderEventAgainstQueueRow(submission, queueRow, { preSubmissionProvenZero });
     if (!validation.ok) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason };
     // Primary maker: never above the frozen maker shares (price is bounded by max_entry_price = maker limit).
     if (primaryMakerShares !== null && submission.submitted_size !== null && submission.submitted_size > primaryMakerShares + 1e-9) {
@@ -620,10 +663,10 @@ export async function handleOrderEventSubmission(
     if (classification === "CONFLICT") return { kind: "CONFLICT_IDEMPOTENCY" };
     if (classification === "PROGRESSION") {
       const progressedRow = await port.updateOrderEventProgression(existingByIdempotency.id, raw);
-      const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, progressedRow, raw);
+      const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, progressedRow, raw, preSubmissionShape);
       return { kind: "PROGRESSED", row: progressedRow, queueMark };
     }
-    const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, existingByIdempotency, raw);
+    const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, existingByIdempotency, raw, preSubmissionShape);
     return { kind: "DUPLICATE", row: existingByIdempotency, queueMark };
   }
 
@@ -634,7 +677,7 @@ export async function handleOrderEventSubmission(
 
   const insertResult = await port.insertOrderEvent(raw, queueRow);
   if (insertResult.ok) {
-    const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, insertResult.row, raw);
+    const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, insertResult.row, raw, preSubmissionShape);
     return { kind: "INSERTED", row: insertResult.row, queueMark };
   }
 
@@ -646,10 +689,10 @@ export async function handleOrderEventSubmission(
     if (classification === "CONFLICT") return { kind: "CONFLICT_IDEMPOTENCY" };
     if (classification === "PROGRESSION") {
       const progressedRow = await port.updateOrderEventProgression(canonicalRow.id, raw);
-      const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, progressedRow, raw);
+      const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, progressedRow, raw, preSubmissionShape);
       return { kind: "PROGRESSED", row: progressedRow, queueMark };
     }
-    const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, canonicalRow, raw);
+    const queueMark = await markQueueTerminalFromOrderEvent(port, queueRow, canonicalRow, raw, preSubmissionShape);
     return { kind: "DUPLICATE", row: canonicalRow, queueMark };
   }
   if (insertResult.code === "UNIQUE_VIOLATION_CLOB_ORDER_ID") return { kind: "CONFLICT_CLOB_ORDER_ID" };

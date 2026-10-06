@@ -4,8 +4,8 @@ const MINSK_UTC_OFFSET_HOURS = 3;
 export const MAX_RESERVATION_HORIZON_HOURS = 24;
 export const RESERVATION_ANCHOR_DELAY_TOLERANCE_MINUTES = 5;
 
-import { REBALANCE_MINUTES_BEFORE_START, LATEST_ENTRY_MINUTES_BEFORE, isDueForRebalance as isDueForRebalanceAtUtc } from "./reservationRebalanceContract.mjs";
-export { REBALANCE_MINUTES_BEFORE_START, LATEST_ENTRY_MINUTES_BEFORE };
+import { REBALANCE_MINUTES_BEFORE_START, LATEST_ENTRY_MINUTES_BEFORE, LATEST_ENTRY_MINUTES_AFTER_START, isDueForRebalance as isDueForRebalanceAtUtc } from "./reservationRebalanceContract.mjs";
+export { REBALANCE_MINUTES_BEFORE_START, LATEST_ENTRY_MINUTES_BEFORE, LATEST_ENTRY_MINUTES_AFTER_START };
 export const REBALANCE_LATE_MINUTES_BEFORE_START = 30;
 export const PREFERRED_ENTRY_MINUTES_BEFORE = 45;
 
@@ -80,6 +80,7 @@ export function buildRebalanceRunId(nowMs: number): string { return `rebalance:$
 export function isWithinHorizon(gameStartMs: number, win: NightWindow, nowMs: number): boolean { return gameStartMs > nowMs && gameStartMs >= win.startMs && gameStartMs < win.horizonEndMs; }
 export function isDueForRebalance(gameStartMs: number, nowMs: number): boolean { return isDueForRebalanceAtUtc(gameStartMs, nowMs); }
 export function preferredEntryIso(gameStartMs: number): string { return new Date(gameStartMs - PREFERRED_ENTRY_MINUTES_BEFORE * 60_000).toISOString(); }
-export function latestEntryIso(gameStartMs: number): string { return new Date(gameStartMs - LATEST_ENTRY_MINUTES_BEFORE * 60_000).toISOString(); }
+/** The final entry deadline: the physical event start + 3 minutes (LATEST_ENTRY_MINUTES_AFTER_START). At/after it nothing enters. */
+export function latestEntryIso(gameStartMs: number): string { return new Date(gameStartMs + LATEST_ENTRY_MINUTES_AFTER_START * 60_000).toISOString(); }
 export function minskHourOf(nowMs: number): number { const p = minskParts(nowMs); return p.h + p.minute / 60; }
 export function formatMinskUtc(iso: string): string { const ms = Date.parse(iso); if (!Number.isFinite(ms)) return iso; const m = new Date(ms + MINSK_UTC_OFFSET_HOURS * 3_600_000), u = new Date(ms), pad = (n: number) => n.toString().padStart(2, "0"); return `${pad(m.getUTCDate())}.${pad(m.getUTCMonth()+1)} ${pad(m.getUTCHours())}:${pad(m.getUTCMinutes())} Minsk / ${pad(u.getUTCHours())}:${pad(u.getUTCMinutes())} UTC`; }

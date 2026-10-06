@@ -126,7 +126,7 @@ function repoFor(res: NightEventReservationRow) {
 test("QME-1: constants are the corrected two-level envelope and a normal Queue row gets the $2.50 default, not $4.00", async () => {
   assert.equal(QUEUE_DEFAULT_STAKE_USD, 2.5);
   assert.equal(QUEUE_MAX_STAKE_USD, 4);
-  assert.equal(QUEUE_MAX_ENTRY_PRICE, 0.54);
+  assert.equal(QUEUE_MAX_ENTRY_PRICE, 0.555, "LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2: the single canonical hard cap");
   assert.equal(EXECUTABLE_STAKE_USD, 2.5, "EXECUTABLE_STAKE_USD is the ordinary default, never the exceptional ceiling");
   const repo = repoFor(reservation(0.5));
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchExactTokenOrderbook: passingOrderbookFetcher });
@@ -178,12 +178,13 @@ test("QME-3: a historical Queue row without diagnostics.max_stake_usd is never s
 
 // ── envelope function itself ────────────────────────────────────────────────
 
-test("QME-4: the pure row-level envelope check fails closed above $4.00 / 0.54 and passes at the bounds", () => {
+test("QME-4: the pure row-level envelope check fails closed above $4.00 / 0.555 and passes at the bounds", () => {
+  assert.equal(queueMoneyEnvelopeViolation(4, 0.555), null);
   assert.equal(queueMoneyEnvelopeViolation(4, 0.54), null);
   assert.equal(queueMoneyEnvelopeViolation(2.5, 0.5), null);
   assert.equal(queueMoneyEnvelopeViolation(4.01, 0.5), "QUEUE_STAKE_ABOVE_ENVELOPE");
   assert.equal(queueMoneyEnvelopeViolation(Number.NaN, 0.5), "QUEUE_STAKE_ABOVE_ENVELOPE");
-  assert.equal(queueMoneyEnvelopeViolation(4, 0.5401), "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING");
+  assert.equal(queueMoneyEnvelopeViolation(4, 0.5551), "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING");
 });
 
 test("QME-5: identity, GTD/latest_entry and idempotency are unchanged by the corrected envelope", async () => {

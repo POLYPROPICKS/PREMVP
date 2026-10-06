@@ -34,6 +34,7 @@ import {
   callbackIsTerminalProvenZero,
   fallbackPublicationRetryable,
   isMakerAttemptCallback,
+  isProvenRejectedBeforeSubmissionZero,
   normalizeMakerCallbackForAccounting,
   IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED,
   type MakerAuthorizationOutcome,
@@ -623,7 +624,11 @@ export async function POST(request: NextRequest) {
 
   let outcome;
   try {
-    outcome = await handleOrderEventSubmission(createSupabaseOrderEventDbPort(), accountingRaw);
+    // The accounting copy has its fill facts stripped for a zero-class maker callback, so the exact
+    // PROVEN_REJECTED_BEFORE_SUBMISSION exemption (no submitted price) is also judged on the ORIGINAL payload.
+    outcome = await handleOrderEventSubmission(createSupabaseOrderEventDbPort(), accountingRaw, {
+      callbackProvedPreSubmissionZero: isProvenRejectedBeforeSubmissionZero(raw),
+    });
   } catch (error) {
     console.error("[executor/order-events] Unexpected error:", error instanceof Error ? error.message : "unknown");
     return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });

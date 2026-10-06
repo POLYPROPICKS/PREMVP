@@ -93,11 +93,17 @@ test("BLOCK maker: missing callback/result is never zero", async () => {
   assert.equal(state.claims, 0);
 });
 
-test("BLOCK maker: expired deadline / kickoff", async () => {
+test("BLOCK maker: expired deadline; the deadline is latest_entry (event start + 3m), kickoff is no longer a ceiling", async () => {
   const { out } = await run(zero(), queueRow(), new Date("2026-10-01T18:51:00.000Z"));
   assert.equal(out.kind, "MAKER_BLOCKED");
-  const kicked = await run(zero(), queueRow({ latest_entry_iso: "2026-10-01T19:30:00.000Z" }), new Date("2026-10-01T19:01:00.000Z"));
-  assert.equal(kicked.out.kind, "MAKER_BLOCKED");
+  const row = queueRow({ latest_entry_iso: "2026-10-01T19:03:00.000Z" });   // kickoff 19:00 + 3m
+  const afterKickoff = await run(zero(), row, new Date("2026-10-01T19:01:00.000Z"));
+  assert.equal(afterKickoff.out.kind, "MAKER_AUTHORIZED", "T+1:00 is inside the entry window");
+  const lastSecond = await run(zero(), row, new Date("2026-10-01T19:02:59.000Z"));
+  assert.equal(lastSecond.out.kind, "MAKER_AUTHORIZED", "T+2:59 is still eligible");
+  const atDeadline = await run(zero(), row, new Date("2026-10-01T19:03:00.000Z"));
+  assert.equal(atDeadline.out.kind, "MAKER_BLOCKED", "T+3:00: no new entry");
+  assert.ok((atDeadline.out as { reasons: string[] }).reasons.includes("DEADLINE_PASSED"));
 });
 
 test("BLOCK maker: identity mismatch and maker-mode/attempt confusion", async () => {

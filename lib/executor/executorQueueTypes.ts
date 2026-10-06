@@ -29,19 +29,25 @@ export type ReservationStatus =
 //                             the ordinary stake, never equal to stake_usd by
 //                             construction. Persisted separately, per Queue
 //                             row, as diagnostics.max_stake_usd.
-//   QUEUE_MAX_ENTRY_PRICE     max_entry_price may never exceed 0.54
-//                             (NARROW_FOOTBALL_MONEY_POLICY_V1, 2026-09-24 --
-//                             lowered from 0.62 to align the executable price
-//                             ceiling with the ~1.85-2.00 implied-odds /
-//                             0.50-0.54 share-price money band; a worse live
-//                             ask fails closed rather than widening the cap).
+//   QUEUE_MAX_ENTRY_PRICE     max_entry_price may never exceed 0.555
+//                             (LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2, Founder
+//                             decision 2026-10-06 -- moved from 0.54, which
+//                             itself was lowered from 0.62 by
+//                             NARROW_FOOTBALL_MONEY_POLICY_V1, 2026-09-24).
+//                             This is the SINGLE canonical money-path hard
+//                             cap: TAKER proves raw executable VWAP <= cap AND
+//                             fee-inclusive effective cost <= cap; MAKER and
+//                             MAKER_FALLBACK_1 limits are <= cap on a valid
+//                             tick. The support odds bands are NOT part of it
+//                             and are unchanged; a worse live ask still fails
+//                             closed rather than widening the cap.
 // PREMVP stays the authority; a value above either bound is rejected (fail
 // closed), never silently clamped. Existing Queue rows keep their
 // already-persisted stake. This contract authorizes the envelope only -- it
 // does not decide when a consumer may actually spend above the default.
 export const QUEUE_DEFAULT_STAKE_USD = 2.5 as const;
 export const QUEUE_MAX_STAKE_USD = 4.0 as const;
-export const QUEUE_MAX_ENTRY_PRICE = 0.54 as const;
+export const QUEUE_MAX_ENTRY_PRICE = 0.555 as const;
 export const EXECUTABLE_TIER = "TIER1" as const;
 
 // ALIGN_B2_LIVE_ORDERBOOK_GUARD_WITH_EXISTING_EXECUTION_POLICY_V1 — the ONE
@@ -56,11 +62,18 @@ export const QUEUE_SCHEMA_VERSION = "executor-queue-v1" as const;
 export const QUEUE_EXECUTION_MODE = "NIGHT_LIVE_EXECUTION" as const;
 export const QUEUE_SOURCE = "event_execution_queue" as const;
 
-// LIVE_EXECUTION_FINAL_ACTIVATION_V1 -- released Ireland MAKER_FIRST timing contract.
-// fallback_deadline = latest_entry (never later); the primary maker must be cancelled by
-// fallback_deadline - IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS so the single MAKER_FALLBACK_1 keeps
-// Ireland's full reserve. A primary that cannot start before cancel_by fails closed.
+// LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2 -- released Ireland MAKER_FIRST timing contract.
+//   latest_entry (= fallback_deadline)   event_start + 3 minutes (nightWindow.latestEntryIso; no entry at/after it)
+//   primary_maker_cancel_by              event_start - 12m40s  (a FIXED offset from the physical event start)
+//   Queue creation target                ~T-20 (T-22..T-18), so the primary MAKER has ~440 s to run, well above
+//                                        Ireland's 180 s MAKER_PRECLAIM_MIN_REMAINING_SECONDS
+// The fallback reserve is a FLOOR that is validated, never the formula: cancel_by is no longer derived from
+// latest_entry. IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS stays the minimum time Ireland needs between the
+// primary cancel and fallback_deadline for the single MAKER_FALLBACK_1 (here 940 s >= 580 s).
 export const IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS = 580 as const;
+export const PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS = 760 as const; // T-12m40s
+/** Ireland's released pre-claim minimum remaining time to primary_maker_cancel_by (Ireland-owned; informational here). */
+export const IRELAND_PRECLAIM_MIN_REMAINING_SECONDS = 180 as const;
 
 export type PrimaryMakerTiming = {
   primary_maker_cancel_by_iso: string;
@@ -68,12 +81,18 @@ export type PrimaryMakerTiming = {
   required_min_remaining_seconds: number;
 };
 
-/** Pure derivation from the unchanged latest_entry_iso. Null when unparseable (fails closed). */
-export function primaryMakerTiming(latestEntryIso: string): PrimaryMakerTiming | null {
+/**
+ * Pure derivation from the physical event start (cancel_by) and the Queue latest_entry (fallback deadline).
+ * Null when either is unparseable or when the fallback reserve floor is not met (fails closed).
+ */
+export function primaryMakerTiming(eventStartIso: string, latestEntryIso: string): PrimaryMakerTiming | null {
+  const start = Date.parse(eventStartIso);
   const deadline = Date.parse(latestEntryIso);
-  if (!Number.isFinite(deadline)) return null;
+  if (!Number.isFinite(start) || !Number.isFinite(deadline)) return null;
+  const cancelBy = start - PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS * 1000;
+  if (deadline - cancelBy < IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS * 1000) return null;
   return {
-    primary_maker_cancel_by_iso: new Date(deadline - IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS * 1000).toISOString(),
+    primary_maker_cancel_by_iso: new Date(cancelBy).toISOString(),
     fallback_deadline_iso: new Date(deadline).toISOString(),
     required_min_remaining_seconds: IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS,
   };
@@ -353,7 +372,7 @@ const onTick = (price: number, tick: number) => Math.abs(price / tick - Math.rou
  * depends on must be present and self-consistent with the row; anything else is a reason string.
  */
 export function readT10FrozenContract(
-  row: Pick<EventExecutionQueueRow, "condition_id" | "token_id" | "side" | "stake_usd" | "latest_entry_iso" | "diagnostics">
+  row: Pick<EventExecutionQueueRow, "condition_id" | "token_id" | "side" | "stake_usd" | "latest_entry_iso" | "game_start_iso" | "diagnostics">
 ): { ok: true; contract: T10FrozenContractScalars } | { ok: false; reason: string } {
   const mode = t10FrozenExecutionMode(row.diagnostics);
   if (mode === null) return { ok: false, reason: "T10_CONTRACT_ABSENT" };
@@ -422,12 +441,19 @@ export function readT10FrozenContract(
       }
     }
     maker = { maker_limit_price: limit, maker_shares: shares };
-    const expected = primaryMakerTiming(row.latest_entry_iso);
     const required = c.required_min_remaining_seconds;
     const fallbackMs = typeof c.fallback_deadline_iso === "string" ? Date.parse(c.fallback_deadline_iso) : NaN;
     const cancelMs = typeof c.primary_maker_cancel_by_iso === "string" ? Date.parse(c.primary_maker_cancel_by_iso) : NaN;
-    if (!expected || typeof required !== "number" || !Number.isInteger(required) || required < IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS ||
-        fallbackMs !== Date.parse(expected.fallback_deadline_iso) || cancelMs !== fallbackMs - required * 1000) {
+    const startMs = Date.parse(row.game_start_iso);
+    // fallback_deadline is the Queue latest_entry; primary_maker_cancel_by is the FIXED event_start - 12m40s; the
+    // reserve between them is a validated floor (>= the Ireland reserve), never the derivation of cancel_by. A row
+    // frozen under the previous contract (latest_entry T-3m, cancel_by latest_entry - 580s) has the same numeric
+    // cancel_by (event_start - 760s) and a reserve of exactly 580 s, so it keeps validating after the release.
+    if (!Number.isFinite(startMs) || !Number.isFinite(fallbackMs) || !Number.isFinite(cancelMs) ||
+        typeof required !== "number" || !Number.isInteger(required) || required < IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS ||
+        fallbackMs !== Date.parse(row.latest_entry_iso) ||
+        cancelMs !== startMs - PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS * 1000 ||
+        fallbackMs - cancelMs < required * 1000) {
       return { ok: false, reason: "T10_MAKER_TIMING_CONTRACT_INVALID" };
     }
     timing = {
@@ -641,10 +667,17 @@ export type OrderEventValidationResult =
  *   - submitted price is mandatory, must be finite/positive, and <= queue row
  *     max_entry_price (consumer may get a better price, never pay above the cap)
  * Missing/unreported fields are treated as fail-safe rejections, not silent passes.
+ *
+ * The ONE exception (options.preSubmissionProvenZero) is a callback the caller has already proven to be the
+ * exact authoritative PROVEN_REJECTED_BEFORE_SUBMISSION terminal zero (isProvenRejectedBeforeSubmissionZero plus
+ * a consistent Queue row): nothing reached the venue, so there is no submitted price to bound. It waives ONLY the
+ * ABSENCE of submitted_price -- a price that is present is validated exactly as before, and every identity,
+ * stake and Queue-envelope check above still applies.
  */
 export function validateOrderEventAgainstQueueRow(
   submitted: OrderEventSubmission,
-  queueRow: EventExecutionQueueRow
+  queueRow: EventExecutionQueueRow,
+  options: { preSubmissionProvenZero?: boolean } = {}
 ): OrderEventValidationResult {
   if (!queueRow.id || submitted.queue_id !== queueRow.id) {
     return { ok: false, reason: "QUEUE_ID_MISMATCH" };
@@ -684,6 +717,10 @@ export function validateOrderEventAgainstQueueRow(
   }
   if (maxEntryPrice > QUEUE_MAX_ENTRY_PRICE) {
     return { ok: false, reason: "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING" };
+  }
+  if (submitted.submitted_price === null && options.preSubmissionProvenZero === true) {
+    // Proven rejected before submission: no order existed, so there is no price and no notional to bound.
+    return { ok: true };
   }
   if (
     submitted.submitted_price === null ||

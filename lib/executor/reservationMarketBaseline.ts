@@ -74,10 +74,20 @@ async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | null> 
   }
 }
 
+/**
+ * Phase windows (minutes before the physical event start). The two windows are adjacent and never overlap.
+ *   T_MINUS_30: (20, 30]  research telemetry only -- it never authorizes, vetoes, prices or ranks a live action.
+ *   T_MINUS_10: (9, 20]   the Final Rebalance source (name kept: it is a persisted phase label, not a time).
+ * LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2: the T_MINUS_10 window now OPENS at T-20 (was T-15), so on the every-minute
+ * rebalance cron the capture and the economic action / Queue creation happen at ~T-20 (T-22..T-18) and the primary
+ * MAKER gets ~440 s before primary_maker_cancel_by (T-12m40s), well above Ireland's 180 s pre-claim minimum. The
+ * lower edge (9) is unchanged, so a tick that missed the first minutes still captures later (a TAKER_FIRST needs no
+ * primary window; a MAKER_FIRST at/after cancel_by fails closed).
+ */
 export function classifyReservationMarketPhase(eventStartIso: string, nowMs: number): Exclude<ReservationMarketPhase, typeof PHASE> | null {
   const minutes = (Date.parse(eventStartIso) - nowMs) / 60_000;
   if (minutes > 20 && minutes <= 30) return "T_MINUS_30";
-  if (minutes > 9 && minutes <= 15) return "T_MINUS_10";
+  if (minutes > 9 && minutes <= 20) return "T_MINUS_10";
   return null;
 }
 

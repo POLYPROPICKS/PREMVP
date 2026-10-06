@@ -2,7 +2,7 @@
 // T_MINUS_10 sibling of one reserved physical event.
 //
 // ANALYTICS / OFF-POLICY EVIDENCE ONLY. Nothing here is read by T10 selection, ranking, the support
-// bands, the 0.54 hard cap, stake, the Queue, fallback or Ireland, and nothing here places an order.
+// bands, the hard cap, stake, the Queue, fallback or Ireland, and nothing here places an order.
 // T30 is research telemetry only and plays NO role here: the CURRENT T10 book is the only authority this
 // module reads (T30_MONEY_GATE_REMOVAL_V1: no T30-derived value is computed, persisted or consulted).
 // It answers one question per exact sibling (physical_event_id, condition_id, token_id, side):
@@ -12,7 +12,9 @@
 //
 // Benchmark definition (frozen, mirrors the live TAKER walk; no new venue model):
 //   stake            QUEUE_DEFAULT_STAKE_USD ($2.50). The $4.00 adaptive headroom is NOT used.
-//   price limit      QUEUE_MAX_ENTRY_PRICE (0.54) — the hard cap, the one authority every sibling has.
+//   price limit      QUEUE_MAX_ENTRY_PRICE (0.555, moved from 0.54 by LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2) — the hard cap,
+//                    the one authority every sibling has; it mirrors the live TAKER cap, so each observation row records
+//                    the cap it was evaluated under in execution_price_cap.
 //   walk             walkTakerFill (t10EconomicActivation) over the exact token's ask ladder <= cap.
 //   min order        blocked when walk.shares + 1e-9 < book.minimumOrderSize (same test as the live
 //                    LIVE_GUARD re-verification), recorded explicitly, never silently dropped.

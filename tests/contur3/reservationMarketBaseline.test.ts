@@ -95,13 +95,16 @@ test("empty exact event records a typed source failure", async () => {
 test("milestone windows have deterministic non-overlapping boundaries", () => {
   const start = "2026-10-01T00:00:00Z";
   const at = (minutes: number) => Date.parse(start) - minutes * 60_000;
+  // LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2: the Final Rebalance source (T_MINUS_10) window opens at T-20, adjacent to T_MINUS_30 (20, 30].
   assert.equal(classifyReservationMarketPhase(start, at(30)), "T_MINUS_30");
-  assert.equal(classifyReservationMarketPhase(start, at(20)), null);
+  assert.equal(classifyReservationMarketPhase(start, at(20.5)), "T_MINUS_30");
+  assert.equal(classifyReservationMarketPhase(start, at(20)), "T_MINUS_10", "T-20 is the first Queue / economic-action instant");
   assert.equal(classifyReservationMarketPhase(start, at(15)), "T_MINUS_10");
   assert.equal(classifyReservationMarketPhase(start, at(9.5)), "T_MINUS_10");
   assert.equal(classifyReservationMarketPhase(start, at(9)), null);
   assert.equal(classifyReservationMarketPhase(start, at(5)), null); // no live T_MINUS_3 capture
   assert.equal(classifyReservationMarketPhase(start, at(3)), null);
+  assert.equal(classifyReservationMarketPhase(start, at(30.5)), null);
 });
 
 test("persisted milestone skips inventory and CLOB on a repeated tick", async () => {

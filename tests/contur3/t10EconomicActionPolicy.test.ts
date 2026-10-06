@@ -76,7 +76,7 @@ test("T30-1: missing T30 does NOT block an otherwise-safe TAKER", () => {
   assert.equal(r.shadowAction, "TAKER_FIRST");
   assert.equal(r.priceAuthority.version, PRICE_AUTHORITY_VERSION);
   assert.equal(r.priceAuthority.source, "T10_CURRENT_BOOK");
-  assert.equal(r.priceAuthority.pBuyMax, 0.54, "TAKER price authority is the hard cap, not a T30 bid");
+  assert.equal(r.priceAuthority.pBuyMax, 0.555, "TAKER price authority is the hard cap (0.555), not a T30 bid");
 });
 
 test("T30-2: unusable / wide T30 (and an UNRESOLVED reference grade) does NOT block an otherwise-safe TAKER", () => {
@@ -169,9 +169,14 @@ test("TAKER-1: effective cost within the hard cap -> eligible, fee is part of th
 });
 
 test("TAKER-2: fee-inclusive cost above the hard cap -> no TAKER (hard cap fails closed)", () => {
-  // raw VWAP 0.54 is within the cap and the band, but 0.54 + fee 0.05 / 4.63 sh = 0.5508 > 0.54.
-  const r = evaluateT10EconomicAction(cand({ t10: [0.52, 0.54], extra: { askLevels: ladder(0.54), feeUsdForFullStake: 0.05 } }));
-  assert.equal(r.taker.rawVwap, 0.54);
+  // Hard cap 0.555: raw VWAP 0.54 + fee 0.05 / 4.63 sh = 0.5508 is within it (eligible); 0.55 + fee 0.07 / 4.55 sh = 0.5654 is not.
+  const within = evaluateT10EconomicAction(cand({ t10: [0.52, 0.54], extra: { askLevels: ladder(0.54), feeUsdForFullStake: 0.05 } }));
+  assert.equal(within.taker.rawVwap, 0.54);
+  assert.equal(within.taker.eligible, true);
+  assert.ok(within.taker.effectiveCost! <= 0.555);
+  // MONEYLINE (band 1.70..2.00) so that an ask of 0.55 is inside the support band and only the hard cap decides.
+  const r = evaluateT10EconomicAction(cand({ family: "MONEYLINE", t10: [0.53, 0.55], extra: { askLevels: ladder(0.55), feeUsdForFullStake: 0.07 } }));
+  assert.equal(r.taker.rawVwap, 0.55);
   assert.equal(r.taker.eligible, false);
   assert.equal(r.taker.rejectReason, "TAKER_EFFECTIVE_COST_ABOVE_CAP");
   // A custom (tighter) cap is honoured the same way.
@@ -254,10 +259,10 @@ test("MAKER-2: the maker limit is passive, inside the band and never above the h
   const outside = evaluateT10EconomicAction(cand({ t10: [0.49, 0.5] }));
   assert.equal(outside.maker.eligible, false);
   assert.equal(outside.maker.rejectReason, "MAKER_SUPPORT_PRICE_OUTSIDE_BAND");
-  // Hard cap: bid 0.58 -> limit 0.54, never higher; a tighter cap binds the same way.
-  const capped = evaluateT10EconomicAction(cand({ t10: [0.58, 0.6] }));
-  assert.equal(capped.maker.limitPrice, 0.54);
-  assert.equal(evaluateT10EconomicAction({ ...cand({ t10: [0.58, 0.6] }), hardCap: 0.52 }).maker.limitPrice, 0.52);
+  // Hard cap 0.555: bid 0.58 -> limit floor_to_tick(0.555) = 0.55, never higher; a tighter cap binds the same way.
+  const capped = evaluateT10EconomicAction(cand({ family: "MONEYLINE", t10: [0.58, 0.6] }));
+  assert.equal(capped.maker.limitPrice, 0.55);
+  assert.equal(evaluateT10EconomicAction({ ...cand({ family: "MONEYLINE", t10: [0.58, 0.6] }), hardCap: 0.52 }).maker.limitPrice, 0.52);
   assert.deepEqual(evaluateMakerSupportPrice(0.55, 0.6, 0.54, bStrategySupportRegion("MONEYLINE")), { ok: false, reason: "MAKER_ABOVE_PRICE_CAP" });
 });
 
@@ -488,17 +493,17 @@ test("ML-3: maker limit above the price ceiling or above 0.54 fails closed", () 
   assert.equal(evaluateMakerSupportPrice(0.54, 0.54, 0.54, band).ok, true);
 });
 
-test("ML-4 LIVE BUG: MONEYLINE bid 0.56 / ask 0.57 -> TAKER never pays 0.57 (no depth <= cap), MAKER posts 0.54 in band", () => {
+test("ML-4 LIVE BUG: MONEYLINE bid 0.56 / ask 0.57 -> TAKER never pays 0.57 (no depth <= cap), MAKER posts 0.55 in band", () => {
   const r = evaluateT10EconomicAction(ml({ t10: [0.56, 0.57], t30: null,
     extra: { askLevels: [], feeUsdForFullStake: 0.01 } }));
   assert.equal(r.taker.eligible, false, "never buy 0.57");
   assert.equal(r.maker.eligible, true);
-  assert.equal(r.maker.limitPrice, 0.54);
-  assert.equal(r.priceAuthority.pBuyMax, 0.54);
+  assert.equal(r.maker.limitPrice, 0.55);
+  assert.equal(r.priceAuthority.pBuyMax, 0.55);
   assert.equal(r.shadowAction, "MAKER_FIRST");
   assert.equal(r.support.maker.MAKER_SUPPORT_PRICE_SOURCE, "MAKER_LIMIT");
-  assert.equal(r.support.maker.SUPPORT_PRICE, 0.54);
-  assert.ok(Math.abs(r.support.maker.SUPPORT_DECIMAL_ODDS! - 1.851852) < 1e-5);
+  assert.equal(r.support.maker.SUPPORT_PRICE, 0.55);
+  assert.ok(Math.abs(r.support.maker.SUPPORT_DECIMAL_ODDS! - 1.818182) < 1e-5);
   assert.equal(r.support.maker.SUPPORT_PRICE_IN_BAND, true);
   assert.equal(r.support.taker.TAKER_SUPPORT_PRICE_SOURCE, "EXECUTABLE_CURRENT_ASK");
   assert.equal(r.support.taker.SUPPORT_PRICE, 0.57);
