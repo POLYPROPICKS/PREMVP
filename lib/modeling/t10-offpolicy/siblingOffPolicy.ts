@@ -8,7 +8,7 @@
 // Honest-unknown rules (never invented): unresolved is never a loss; fee is never assumed 0; a pre-telemetry row
 // whose depth was never persisted is UNKNOWN (an upper bound), never "executable". RAW signal economics and
 // EXECUTABLE-at-T10 economics are separate views and are never merged.
-import { QUEUE_DEFAULT_STAKE_USD, QUEUE_MAX_ENTRY_PRICE } from "../../executor/executorQueueTypes";
+import { QUEUE_DEFAULT_STAKE_USD } from "../../executor/executorQueueTypes";
 import { T10_EXECUTABLE_TELEMETRY_VERSION } from "../../executor/reservationMarketBaseline";
 import { resolveSignalOutcome, type GammaMarket } from "../../feed/resolveSignalOutcome";
 import {
@@ -17,6 +17,12 @@ import {
 } from "../research-engine";
 
 export const T10_OFFPOLICY_VERSION = "T10_SIBLING_OFFPOLICY_V1" as const;
+/**
+ * FROZEN research hard cap. The evaluation is defined at the 0.54 executable cap that was live when it was frozen; it
+ * must not drift when the live money-path cap (QUEUE_MAX_ENTRY_PRICE) is moved (0.555 under
+ * LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2), so it is pinned here and never imported from the live constant.
+ */
+export const OFFPOLICY_FROZEN_HARD_CAP = 0.54 as const;
 const EPS = 1e-9;
 const SETTLEMENT_PRICE_PLACEHOLDER = 0.5;
 const SUPPORTED_FAMILIES: ReadonlySet<string> = new Set(["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
@@ -112,7 +118,7 @@ const TELEMETRY_STATES: ReadonlySet<string> = new Set([
  * ask, so shares <= stake / best_ask and a min-size block at the best ask cannot be cured by depth). Anything else is
  * UNKNOWN — an upper bound, never "executable".
  */
-export function classifyExecutability(row: SiblingObservationRow, stakeUsd = QUEUE_DEFAULT_STAKE_USD, cap = QUEUE_MAX_ENTRY_PRICE): ExecutabilityClass {
+export function classifyExecutability(row: SiblingObservationRow, stakeUsd = QUEUE_DEFAULT_STAKE_USD, cap = OFFPOLICY_FROZEN_HARD_CAP): ExecutabilityClass {
   if (row.executable_telemetry_version === T10_EXECUTABLE_TELEMETRY_VERSION && typeof row.executable_full_stake_state === "string") {
     // An unrecognized state string is never a verdict: it is a non-conclusive compute failure.
     if (!TELEMETRY_STATES.has(row.executable_full_stake_state)) return { state: "UNKNOWN_TELEMETRY_COMPUTE_FAILED", source: "TELEMETRY_V1", conclusive: false };
@@ -177,7 +183,7 @@ export function buildOffPolicyDataset(
   rows: readonly SiblingObservationRow[],
   settlementByKey: ReadonlyMap<string, SiblingSettlement>,
   stakeUsd = QUEUE_DEFAULT_STAKE_USD,
-  cap = QUEUE_MAX_ENTRY_PRICE,
+  cap = OFFPOLICY_FROZEN_HARD_CAP,
 ): OffPolicyDatasetRow[] {
   const supported = rows.filter(isSupportedSibling);
   // One provider market (condition_id) settles once. If the captured universe attributes it to more than one physical

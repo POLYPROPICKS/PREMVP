@@ -1591,8 +1591,9 @@ type T3FinalIdentity = Readonly<{
 }>;
 
 /** The current Planning Reservation contour has one live strategy, fixed for this release. */
-// Upper edge of the T_MINUS_10 capture window; Queue may open once it passes.
-const FINAL_REBALANCE_OPEN_MINUTES = 15;
+// Upper edge of the T_MINUS_10 capture window (reservationMarketBaseline.classifyReservationMarketPhase); the Queue
+// may open once the window opens, i.e. at ~T-20 (LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2, was T-15).
+const FINAL_REBALANCE_OPEN_MINUTES = 20;
 // Capture window lower edge: before this the T_MINUS_10 snapshot may still be pending.
 const FINAL_REBALANCE_CAPTURE_PENDING_MINUTES = 9;
 const LIVE_T3_STRATEGY = "B_FOUR_MARKET_PRIORITY_V1" as const;
@@ -1807,7 +1808,7 @@ async function selectQueueRowFromT10EconomicAction(
     return { outcome: "SKIPPED", reason: "T10_ECON_UNSUPPORTED_EXECUTION_MODE", queueRow: null };
   }
   const selectionReason = taker ? T10_ECONOMIC_TAKER_SELECTION_REASON : T10_ECONOMIC_MAKER_SELECTION_REASON;
-  // Ireland price authority: TAKER = fee-inclusive limit; MAKER = frozen maker limit. Both <= P_BUY_MAX <= 0.54.
+  // Ireland price authority: TAKER = fee-inclusive limit; MAKER = frozen maker limit. Both <= P_BUY_MAX <= QUEUE_MAX_ENTRY_PRICE.
   const priceAuthority = taker ? taker.price_limit : maker!.maker_limit_price;
   const observation = universe.find((r) => r.condition_id === contract.condition_id && r.token_id === contract.token_id && r.side === contract.side);
   if (!observation) return { outcome: "SKIPPED", reason: "T10_ECON_SELECTED_IDENTITY_NOT_IN_UNIVERSE", queueRow: null };
@@ -2271,8 +2272,8 @@ export async function runEventRebalance(
     expired = [];
   }
   // The broad Rebalance window remains available for comparisons. Only the
-  // final-rebalance window (completed T_MINUS_10 source, minutes_to_start <= 15,
-  // latest_entry still T-3) may freeze an economic instruction.
+  // final-rebalance window (completed T_MINUS_10 source, minutes_to_start <= 20,
+  // before latest_entry = event start + 3 minutes) may freeze an economic instruction.
   // Keep early reservations active; do not resolve identity, run LIVE_GUARD,
   // write Queue, or mark a terminal Reservation state for them.
   const waitingForFinal = write ? due.filter((r) =>

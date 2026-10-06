@@ -96,7 +96,7 @@ test("depth: asks only above the cap, or too thin below it, is NOT_EXECUTABLE_DE
   assert.equal(above.full_stake_executable_vwap, null);
   assert.equal(above.full_stake_shares, null);
   assert.equal(above.taker_fee_usd, null, "no fill -> no fee number");
-  const thin = build(book("t", [[0.53, 2], [0.55, 100]], { minimumOrderSize: 5 }), feeOk("t", 0.03));
+  const thin = build(book("t", [[0.53, 2], [0.56, 100]], { minimumOrderSize: 5 }), feeOk("t", 0.03));
   assert.equal(thin.executable_full_stake_state, "NOT_EXECUTABLE_DEPTH_AT_CAP");
   assert.equal(thin.ask_depth_relevant_usd, 1.06);
   const empty = build(book("t", [], { minimumOrderSize: 5 }), feeOk("t", 0.03));
@@ -235,7 +235,7 @@ const T10_BOOKS: Record<string, FetchOrderBookResult> = {
   "t-ml-away": book("t-ml-away", [[0.3, 100]], { minimumOrderSize: 5, tickSize: 0.01 }), // EXECUTABLE
   "t-sp-a": book("t-sp-a", [[0.54, 100]], { minimumOrderSize: 5, tickSize: 0.01 }), // min-size blocked
   "t-sp-b": book("t-sp-b", [[0.7, 100]], { minimumOrderSize: 5, tickSize: 0.01 }), // above cap
-  "t-tot-over": book("t-tot-over", [[0.53, 2], [0.55, 100]], { minimumOrderSize: 5, tickSize: 0.01 }), // thin under cap
+  "t-tot-over": book("t-tot-over", [[0.53, 2], [0.56, 100]], { minimumOrderSize: 5, tickSize: 0.01 }), // thin under the 0.555 cap
   "t-tot-under": { ok: false, tokenId: "t-tot-under", latencyMs: 5, errorCode: "TIMEOUT" }, // book failed
   "t-tc-yes": book("t-tc-yes", [[0.45, 2], [0.5, 50]], { tickSize: 0.01 }), // min size unknown
   // EXECUTABLE, feesEnabled=false. NB: at $2.50 a 5-share minimum is only met at a VWAP <= 0.50 (2.50 / 0.52 = 4.81 shares).
@@ -290,7 +290,7 @@ test("FULL PATH: every supported T10 sibling gets exactly one telemetry row with
     assert.equal(row.executable_full_stake, executable, token);
     assert.equal(row.taker_fee_state, feeState, token);
     assert.equal(row.requested_stake_usd, 2.5, token);
-    assert.equal(row.execution_price_cap, 0.54, token);
+    assert.equal(row.execution_price_cap, 0.555, token);
     // exact lineage + support family/type + timestamp are the existing canonical columns of the same row
     for (const key of ["capture_run_id", "reservation_id", "physical_event_id", "condition_id", "token_id", "side", "canonical_market_family", "canonical_market_type", "observed_at"]) {
       assert.ok(row[key], `${token}.${key}`);

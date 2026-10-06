@@ -29,11 +29,11 @@ import { buildExecutionReconciliation } from "../../lib/executor/executionReconc
 import { eventExposureNotProvenZero } from "../../lib/executor/eventExecutionQueue";
 import { QUEUE_MAX_ENTRY_PRICE, primaryMakerTiming, type EventExecutionQueueRow } from "../../lib/executor/executorQueueTypes";
 
-const NOW = new Date("2026-10-03T19:56:20.000Z");
+const NOW = new Date("2026-10-03T20:40:00.000Z");            // T-20: the Queue / economic-action target
 const IDEM = "idem_mf_1";
 const EVENT = "provider:polymarket:991:2026-10-03";
-const LATEST = "2026-10-03T20:40:00.000Z";
 const KICKOFF = "2026-10-03T21:00:00.000Z";
+const LATEST = "2026-10-03T21:03:00.000Z";                  // latest_entry = event start + 3 minutes
 
 function frozenMakerFirst(over: Record<string, unknown> = {}) {
   return {
@@ -43,7 +43,7 @@ function frozenMakerFirst(over: Record<string, unknown> = {}) {
     market_family: "TOTALS", stake_usd: 2.5, hard_price_cap: 0.54, latest_entry_iso: LATEST,
     tick_size: 0.01, minimum_order_size: 5, spread_telemetry: 0.02, activation_switch: "T10_ECONOMIC_ACTION_ACTIVATION",
     taker: null, maker: { maker_limit_price: 0.5, maker_shares: 5 },
-    ...primaryMakerTiming((over.latest_entry_iso as string | undefined) ?? LATEST),
+    ...primaryMakerTiming(KICKOFF, (over.latest_entry_iso as string | undefined) ?? LATEST),
     ...over,
   };
 }
@@ -195,7 +195,7 @@ test("T1: outcome-only terminal-zero callback on the accepted MAKER_FIRST order 
   assert.equal(cmd.physical_event_id, EVENT);
   assert.equal(cmd.stake_usd, 2.5, "stake unchanged");
   assert.ok(cmd.limit_price <= 0.5 + 1e-9, "never above frozen P_BUY_MAX / Queue cap");
-  assert.ok(cmd.limit_price <= QUEUE_MAX_ENTRY_PRICE && QUEUE_MAX_ENTRY_PRICE === 0.54, "hard cap 0.54");
+  assert.ok(cmd.limit_price <= QUEUE_MAX_ENTRY_PRICE && QUEUE_MAX_ENTRY_PRICE === 0.555, "hard cap 0.555");
   assert.ok(cmd.quantity * cmd.limit_price <= 2.5 + 1e-9);
   assert.equal(cmd.deadline_iso, LATEST);
   assert.equal(w.st.row.status, "EXECUTED", "no second Queue row, status untouched");
@@ -349,13 +349,12 @@ test("regression (wrong identity): rejected before any mutation or authorization
   assert.equal(w.st.events.size, 1);
 });
 
-test("regression (expired deadline): terminal zero is ACKed and reconciled, but no fallback after the entry deadline", async () => {
-  const early = "2026-10-03T19:50:00.000Z";
-  const row = makerFirstRow({ status: "READY", latest_entry_iso: early });
-  row.diagnostics = { ...row.diagnostics, t10_economic_action_v1: frozenMakerFirst({ latest_entry_iso: early }) };
-  const w = await acceptedWorld(row);
-  const { auth, order } = await deliver(w, terminal());
-  assert.equal(order?.kind, "PROGRESSED", "ACK does not depend on the deadline");
+test("regression (expired deadline): terminal zero is ACKed and reconciled, but no fallback at/after the entry deadline (event start + 3m)", async () => {
+  const w = await acceptedWorld();
+  const atDeadline = new Date(LATEST);
+  const auth = await recordResultAndAuthorizeMaker(w.maker, terminal(), atDeadline);
+  const order = await handleOrderEventSubmission(w.orders, normalizeMakerCallbackForAccounting(terminal()));
+  assert.equal(order.kind, "PROGRESSED", "ACK does not depend on the deadline");
   assert.equal(auth.kind, "MAKER_BLOCKED");
   assert.ok((auth as { reasons: string[] }).reasons.includes("DEADLINE_PASSED"));
   assert.equal(w.st.claims, 0);

@@ -15,10 +15,10 @@
 //   tick size / minimum order size    same /book payload        (tick_size / min_order_size, no hardcoded tick)
 //   taker fee schedule                Gamma GET /markets?clob_token_ids=  (fetchTokenFeeSchedule)
 //   exposure                          existing Queue authority  (non-terminal Queue row for the Reservation)
-//   latest entry                      nightWindow.latestEntryIso (canonical, unchanged)
+//   latest entry                      nightWindow.latestEntryIso (canonical: physical event start + 3 minutes)
 //
 // Frozen price ceiling (`p_buy_max` / price_authority_version T10_CURRENT_BOOK_EXECUTION_AUTHORITY_V1):
-//   TAKER_FIRST = the hard cap (0.54): fee-inclusive cost per share must stay <= the cap.
+//   TAKER_FIRST = the hard cap (QUEUE_MAX_ENTRY_PRICE = 0.555): fee-inclusive cost per share must stay <= the cap.
 //   MAKER_FIRST = the current-book maker limit (never raised after selection).
 //   price_authority_observation_id = the CURRENT execution book observation (never a T30 key).
 //
@@ -28,12 +28,12 @@
 //   per-share bound at fill price p: p * (1 + rate * (1 - p))  -- strictly increasing on (0, 1).
 //
 // TAKER execution limit (frozen as the Queue max_entry_price, the only price Ireland may pay):
-//   L = the highest on-tick price with L * (1 + rate * (1 - L)) <= 0.54 (the hard cap) and L <= 0.54.
+//   L = the highest on-tick price with L * (1 + rate * (1 - L)) <= the hard cap and L <= the hard cap.
 //   Every share filled at <= L therefore costs <= the hard cap after fees, even if the book moves
 //   between this decision and the venue. The full $2.50 stake must be fillable from levels <= L.
 //   The policy is evaluated on exactly that executable ladder (asks <= L).
 //
-// MAKER limit (CURRENT book only): floor_to_tick(min(current best bid, current best ask - tick, 0.54)).
+// MAKER limit (CURRENT book only): floor_to_tick(min(current best bid, current best ask - tick, hard cap)).
 //   The current best bid is the placement authority; an empty/wide spread is never jumped with
 //   `ask - tick` alone. Support is proven on the limit itself. No fill probability anywhere.
 //
@@ -48,10 +48,12 @@
 // ONLY when the venue minimum quantity is the SOLE blocker at $2.50 is the stake raised to the smallest
 // cent amount that satisfies it (<= QUEUE_MAX_STAKE_USD $4.00, else SKIP). TAKER re-walks the ACTUAL
 // increased stake against the actual book and re-proves full depth, fee-inclusive cost <= the hard cap
-// and raw price <= 0.54. The 0.54 cap and the limit formulas are never changed.
+// and raw price <= the hard cap. The hard cap and the limit formulas are never changed by this stage.
 //
-// MAKER_FIRST timing (released Ireland contract): fallback_deadline = latest_entry (unchanged),
-// primary_maker_cancel_by = fallback_deadline - 580s. A MAKER_FIRST at/after cancel_by fails closed.
+// MAKER_FIRST timing (released Ireland contract, LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2): fallback_deadline =
+// latest_entry (event start + 3 minutes); primary_maker_cancel_by = event start - 12m40s (a FIXED offset, never
+// derived from latest_entry); the >= 580 s fallback reserve between them is validated, not a formula. The Queue is
+// created at ~T-20, so the primary has ~440 s. A MAKER_FIRST at/after cancel_by fails closed.
 import { getBestBidAsk, computeSpread } from "@/lib/liquidity/orderbookMath";
 import type { FetchOrderBookResult } from "@/lib/liquidity/types";
 import type { TokenFeeScheduleResult } from "@/lib/liquidity/polymarketClient";
@@ -231,6 +233,8 @@ export type CandidateExecution = {
 
 export type T10EconomicEventDecision = {
   decision: EventDecision;
+  /** The physical event start the timing contract (cancel_by) and latest_entry are anchored to. */
+  eventStartIso: string;
   latestEntryIso: string;
   beforeLatestEntry: boolean;
   exposureExists: boolean;
@@ -357,7 +361,7 @@ export async function decideT10EconomicEvent(input: {
     policyVersion: T10_ECONOMIC_ACTION_POLICY_VERSION, physicalEventId: input.physicalEventId, action: "SKIP" as const,
     selected: null, bestMakerAlternative: null, evaluations: [], reason: "EMPTY_T10_UNIVERSE",
   };
-  return { decision, latestEntryIso: latest, beforeLatestEntry, exposureExists: input.exposureExists,
+  return { decision, eventStartIso: input.eventStartIso, latestEntryIso: latest, beforeLatestEntry, exposureExists: input.exposureExists,
     t30SourceAvailable: input.t30Universe !== null, executions };
 }
 
@@ -517,7 +521,7 @@ export async function reverifySelectedAction(input: {
 
   // MAKER_FIRST: recompute the mechanical on-tick limit from the REFRESHED current book; the frozen decision-time
   // maker limit (p_buy_max) is a ceiling, so a rising bid can never raise the price after selection.
-  const timing = primaryMakerTiming(input.event.latestEntryIso);
+  const timing = primaryMakerTiming(input.event.eventStartIso, input.event.latestEntryIso);
   if (!timing) return fail("T10_ECON_GUARD_MAKER_TIMING_INVALID", null, ev);
   // The released Ireland reserve is never weakened: a late T10 after cancel_by fails closed.
   if (!(input.nowMs < Date.parse(timing.primary_maker_cancel_by_iso))) {
@@ -526,7 +530,7 @@ export async function reverifySelectedAction(input: {
   if (!num(ev.bestBid) || !(ev.bestBid > 0)) return fail("T10_ECON_GUARD_MAKER_BEST_BID_MISSING", null, ev);
   const makerLimit = evaluateMakerPlacement(ev.bestBid, ev.bestAsk, ev.tickSize, Math.min(pBuyMax, cap)).limit;
   if (makerLimit === null) return fail("T10_ECON_GUARD_MAKER_LIMIT_INVALID", null, ev);
-  // MAKER support is re-proven on the refreshed limit (never the ask): <= frozen ceiling, <= 0.54, inside the band.
+  // MAKER support is re-proven on the refreshed limit (never the ask): <= frozen ceiling, <= the hard cap, inside the band.
   const makerSupport = evaluateMakerSupportPrice(makerLimit, pBuyMax, cap, bStrategySupportRegion(sel.candidateIdentity.family));
   if (!makerSupport.ok) return fail(`T10_ECON_GUARD_${makerSupport.reason}: limit=${makerLimit}`, null, ev);
   const requiredShares = ceilShares(minOrder);

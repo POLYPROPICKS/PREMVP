@@ -217,12 +217,15 @@ export interface MakerEligibility {
   deadline_iso: string | null;
 }
 
-/** The earlier of the Queue latest-entry deadline and kickoff. Null when unparseable (fails closed). */
-export function makerDeadlineIso(queue: Pick<EventExecutionQueueRow, "latest_entry_iso" | "game_start_iso">): string | null {
-  const a = Date.parse(queue.latest_entry_iso);
-  const b = Date.parse(queue.game_start_iso);
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
-  return new Date(Math.min(a, b)).toISOString();
+/**
+ * The MAKER_FALLBACK_1 deadline is the Queue latest-entry instant (physical event start + 3 minutes under
+ * LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2): the fallback is an entry attempt and may run until then, never past it.
+ * Kickoff is no longer a ceiling (it used to be min(latest_entry, kickoff) while latest_entry preceded kickoff).
+ * Null when unparseable (fails closed).
+ */
+export function makerDeadlineIso(queue: Pick<EventExecutionQueueRow, "latest_entry_iso">): string | null {
+  const deadline = Date.parse(queue.latest_entry_iso);
+  return Number.isFinite(deadline) ? new Date(deadline).toISOString() : null;
 }
 
 export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEligibility {
@@ -331,7 +334,7 @@ export function t10MakerLimitPrice(pBuyMax: number, ask: number, tick: number, c
 
 /**
  * T10 economic-policy rows only: MAKER_FALLBACK_1 price authority is the frozen P_BUY_MAX, never
- * bestBid + tick. limit = floor_to_tick(min(P_BUY_MAX, current ask - tick, parent Queue cap, 0.54))
+ * bestBid + tick. limit = floor_to_tick(min(P_BUY_MAX, current ask - tick, parent Queue cap, QUEUE_MAX_ENTRY_PRICE))
  * on the SAME token, and the stake-derived size must meet the authoritative minimum order.
  * The stake is never increased and the quantity never inflated to reach the minimum.
  */
@@ -552,6 +555,71 @@ export const isZeroProofResult = isTerminalProvenZeroResult;
 /** Terminal proven ZERO read straight off a callback payload (null-safe; absence is never zero). */
 export function callbackIsTerminalProvenZero(raw: Record<string, unknown>): boolean {
   return isTerminalProvenZeroResult(readIrelandExecutionResult(raw, ""));
+}
+
+/** The released Ireland class proving the order never reached the venue (no submission, hence no price). */
+export const PRE_SUBMISSION_ZERO_CLASS = "PROVEN_REJECTED_BEFORE_SUBMISSION" as const;
+
+// Any of these on a callback is venue evidence that an order existed or filled -- never a pre-submission result.
+const PRE_SUBMISSION_FORBIDDEN_VENUE_ID_KEYS = ["clob_order_id", "venue_order_id", "order_id", "order_hash"] as const;
+const PRE_SUBMISSION_FORBIDDEN_FILL_KEYS = [
+  "executed_size", "filled_size", "executed_shares", "filled_price", "average_fill_price", "actual_fill_price",
+  "executed_notional_usd", "making_amount", "taking_amount",
+] as const;
+// Statuses that assert a fill or a live resting order. Everything else is free-form executor wording and is not
+// evidence by itself (the venue-id / fill-fact / transaction checks above carry the exposure proof).
+const PRE_SUBMISSION_FORBIDDEN_STATUSES: ReadonlySet<string> = new Set([
+  "matched", "filled", "fully_filled", "partially_filled", "partial", "live",
+]);
+
+function isAbsentOrZeroFact(v: unknown): boolean {
+  if (v === undefined || v === null) return true;
+  if (typeof v === "number") return v === 0;
+  if (typeof v === "string") return v.trim() === "" || (Number.isFinite(Number(v)) && Number(v) === 0);
+  return false;
+}
+
+/**
+ * The EXACT authoritative pre-submission proven ZERO (released Ireland PROVEN_REJECTED_BEFORE_SUBMISSION).
+ * The order never reached the venue, so the callback legitimately carries no submitted price. True ONLY when ALL hold:
+ *   - the reported result class is exactly PROVEN_REJECTED_BEFORE_SUBMISSION (no other class is ever eligible);
+ *   - terminal === true AND economic_exposure_proven_zero === true AND a REPORTED filled_quantity of exactly 0;
+ *   - no venue order id anywhere on the payload or its result envelopes, no fill fact other than zero, no
+ *     transaction hash, and no fill / live-order status word.
+ * It is deliberately narrower than callbackIsTerminalProvenZero: PROVEN_ZERO_* classes, partial / positive /
+ * UNKNOWN_* results, an unreported quantity and anything carrying venue evidence all return false, so they keep
+ * failing closed on the existing authoritative-economics requirements (including a submitted price).
+ */
+export function isProvenRejectedBeforeSubmissionZero(raw: Record<string, unknown>): boolean {
+  const result = readIrelandExecutionResult(raw, "");
+  if (!result || result.result_class !== PRE_SUBMISSION_ZERO_CLASS) return false;
+  if (result.terminal !== true || result.economic_exposure_proven_zero !== true || result.filled_quantity !== 0) return false;
+  if (!isTerminalProvenZeroResult(result) || result.venue_order_id !== null) return false;
+  for (const source of attemptSources(raw)) {
+    for (const k of PRE_SUBMISSION_FORBIDDEN_VENUE_ID_KEYS) if (nonEmptyStr(source[k]) !== null) return false;
+    for (const k of PRE_SUBMISSION_FORBIDDEN_FILL_KEYS) if (!isAbsentOrZeroFact(source[k])) return false;
+  }
+  const hashes = raw.transaction_hashes;
+  if (hashes !== undefined && hashes !== null && !(Array.isArray(hashes) && hashes.length === 0)) return false;
+  const status = String(raw.order_status ?? raw.status ?? raw.state ?? "").toLowerCase();
+  return !PRE_SUBMISSION_FORBIDDEN_STATUSES.has(status);
+}
+
+/**
+ * Whether the Queue row's own recorded facts are consistent with a pre-submission zero for THIS attempt: no
+ * recorded result of the attempt's slot may show exposure (a recorded non-zero / unknown result wins over a
+ * later zero claim), and a primary attempt's row must not already be EXECUTED / SENT (an accepted or sent venue
+ * order exists). Used together with isProvenRejectedBeforeSubmissionZero before the submitted-price waiver applies.
+ */
+export function preSubmissionZeroConsistentWithQueueRow(
+  queue: Pick<EventExecutionQueueRow, "status" | "diagnostics">,
+  attempt: "PRIMARY" | "FALLBACK",
+): boolean {
+  const attempts = readExecutionAttempts(queue.diagnostics);
+  const slot = attempt === "FALLBACK" ? attempts.maker_fallback_1 : attempts[primaryAttemptSlot(queue)];
+  if (slot?.result !== undefined && !isTerminalProvenZeroResult(slot.result)) return false;
+  if (attempt === "PRIMARY" && (queue.status === "EXECUTED" || queue.status === "SENT")) return false;
+  return true;
 }
 
 /** The slot holding the row's primary attempt result (the parent of MAKER_FALLBACK_1). */

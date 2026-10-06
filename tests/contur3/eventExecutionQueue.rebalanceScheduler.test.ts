@@ -26,7 +26,7 @@ import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/exe
 import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
 import { FINAL_REBALANCE_PHASE, classifyReservationMarketPhase, captureReservationMarketMilestones, readCompletedFinalT3Universe, type FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
-import { LATEST_ENTRY_MINUTES_BEFORE } from "../../lib/executor/reservationRebalanceContract.mjs";
+import { LATEST_ENTRY_MINUTES_AFTER_START, LATEST_ENTRY_MINUTES_BEFORE } from "../../lib/executor/reservationRebalanceContract.mjs";
 import { captureFixture, fixtureReservation, universeFromRows } from "./helpers/t10SameGameFixture";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -34,10 +34,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 const KICKOFF_MS = Date.parse(KICKOFF_ISO);
 
-// T-70..T-3 window for a 19:00Z kickoff = 17:50Z..18:57Z.
+// T-70..T+3 window for a 19:00Z kickoff = 17:50Z..19:03Z (latest entry = event start + 3 minutes).
 const BEFORE_WINDOW_MS = Date.parse("2026-07-19T17:00:00.000Z"); // T-120m
 const IN_WINDOW_MS = Date.parse("2026-07-19T18:52:00.000Z"); // T-8m, final window
-const AFTER_WINDOW_MS = Date.parse("2026-07-19T18:59:00.000Z"); // T-1m
+const AFTER_WINDOW_MS = Date.parse("2026-07-19T19:03:00.000Z"); // T+3:00 = latest entry: no new entry
 
 test("P1B2: one T3 array persists A/B before B Final Identity, exact guard, and one Queue row", async () => {
   const physicalId = "provider:polymarket:event-1:2026-07-19";
@@ -87,7 +87,7 @@ test("P1B2: one T3 array persists A/B before B Final Identity, exact guard, and 
   const row = repo.queueRows[0];
   assert.deepEqual([row.condition_id, row.token_id, row.side, row.market_family], ["b-spread", "b-token", "Yes", "SPREADS"]);
   assert.equal(row.stake_usd, 2.5);
-  assert.equal(row.diagnostics.max_entry_price, 0.54);
+  assert.equal(row.diagnostics.max_entry_price, 0.555, "released path: the single canonical hard cap");
   const identity = row.diagnostics.final_identity as Record<string, unknown>;
   assert.equal(identity.capture_run_id, "one-t3-run");
   assert.equal(identity.physical_event_id, physicalId);
@@ -459,7 +459,7 @@ test("B2: inside T-70..T-3, a canonical READY queue row is created", async () =>
   assert.equal(repo.queueRows[0].condition_id, "cond-esp-arg");
 });
 
-test("B3: after T-3, zero new queue rows are created (reservation expires instead)", async () => {
+test("B3: at/after T+3 (latest entry), zero new queue rows are created (reservation expires instead)", async () => {
   const repo = makeFakeRepo([baseReservation()]);
   const result = await runEventRebalance(
     AFTER_WINDOW_MS,
@@ -616,7 +616,7 @@ test("P0 queue-start parity: an equivalent ISO instant queues with timing derive
   assert.equal(repo.queueRows.length, 0, "legacy timing selection remains read-only");
   assert.equal(result.outcomes[0]?.queue_row?.game_start_iso, PARITY_RESERVATION_START);
   assert.equal(result.outcomes[0]?.queue_row?.preferred_entry_iso, "2026-07-29T15:50:00.000Z");
-  assert.equal(result.outcomes[0]?.queue_row?.latest_entry_iso, "2026-07-29T16:32:00.000Z");
+  assert.equal(result.outcomes[0]?.queue_row?.latest_entry_iso, "2026-07-29T16:38:00.000Z", "latest entry = Reservation start + 3 minutes");
 });
 
 // ── Integration Phase 1: CONTRACT_A_V1 authoritative-market rebalance ──────
@@ -1846,29 +1846,32 @@ test("T10-J: Guard reject at T-12 creates no Queue row", async () => {
   assert.equal(repo.queueRows.length, 0);
 });
 
-test("T10-window: before T-15 waits; T10 source pending in (9,15] waits instead of terminal skip; latest_entry stays T-3", async () => {
-  const early = await t10Run(KICKOFF_MS - 16 * 60_000, true);
+test("T10-window: before T-20 waits; T10 source pending in (9,20] waits instead of terminal skip; latest_entry is event start + 3m", async () => {
+  const early = await t10Run(KICKOFF_MS - 21 * 60_000, true);
   assert.equal(early.repo.queueRows.length, 0);
   assert.equal(early.log.length, 0);
-  assert.equal(LATEST_ENTRY_MINUTES_BEFORE, 3);
+  assert.equal(LATEST_ENTRY_MINUTES_AFTER_START, 3);
+  assert.equal(LATEST_ENTRY_MINUTES_BEFORE, -3, "signed offset: negative means AFTER the event start");
   const physicalId = "provider:polymarket:event-1:2026-07-19";
   const reservation = baseReservation({ id: "t10-r", physical_event_id: physicalId, event_start_iso: KICKOFF_ISO,
     diagnostics: { contract_a_stage: "PLANNING" } });
   const repo = makeFakeRepo([reservation]);
-  const pending = await runEventRebalance(KICKOFF_MS - 12 * 60_000, { write: true }, {
-    repo, readFinalT3Universe: async () => { throw new Error("FINAL_T3_SOURCE_UNAVAILABLE"); },
-  });
-  assert.equal(pending.queued_count, 0);
-  assert.equal(reservation.status === "SKIPPED", false);
+  for (const minutes of [19, 12]) {
+    const pending = await runEventRebalance(KICKOFF_MS - minutes * 60_000, { write: true }, {
+      repo, readFinalT3Universe: async () => { throw new Error("FINAL_T3_SOURCE_UNAVAILABLE"); },
+    });
+    assert.equal(pending.queued_count, 0);
+    assert.equal(reservation.status === "SKIPPED", false, `T-${minutes}: capture may still be in flight`);
+  }
   const late = await runEventRebalance(KICKOFF_MS - 8 * 60_000, { write: true }, {
     repo, readFinalT3Universe: async () => { throw new Error("FINAL_T3_SOURCE_UNAVAILABLE"); },
   });
   assert.equal(late.queued_count, 0);
 });
 
-test("T10-K: Queue latest_entry_iso remains kickoff minus 3 minutes", async () => {
+test("T10-K: Queue latest_entry_iso is kickoff plus 3 minutes", async () => {
   const { repo } = await t10Run(KICKOFF_MS - 12 * 60_000, true);
-  assert.equal(Date.parse(repo.queueRows[0].latest_entry_iso!), KICKOFF_MS - 3 * 60_000);
+  assert.equal(Date.parse(repo.queueRows[0].latest_entry_iso!), KICKOFF_MS + 3 * 60_000);
 });
 
 // ── T10_DISCOVERY_AUDIT_AND_TOTAL_CORNERS_PROOF_V1 ──────────────────────────
