@@ -75,9 +75,24 @@ async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | null> 
 }
 
 /**
+ * T40_T20_CAPTURE_ALIGNMENT_V1 (Founder contract: early capture = T-40, money / final rebalance = T-20).
+ * T_MINUS_30 = legacy persisted label, business target now T40.
+ * T_MINUS_10 = legacy persisted label, business target now T20.
+ * The DB phase labels are NOT renamed in this hotfix (rows, unique keys and readers depend on them); only the effective
+ * early window moved from (20, 30] to (20, 40]. The early phase is still captured exactly once: the first eligible
+ * tick (~T-40) persists the run, and `defaultAlreadyCaptured` + the (reservation_id, observation_phase, source_version)
+ * upsert key make every later tick through T-20 a no-op for a non-WRITE_INCOMPLETE run.
+ */
+export const EARLY_CAPTURE_WINDOW_OPEN_MINUTES = 40;
+const FINAL_WINDOW_OPEN_MINUTES = 20;
+const FINAL_WINDOW_CLOSE_MINUTES = 9;
+
+/**
  * Phase windows (minutes before the physical event start). The two windows are adjacent and never overlap.
- *   T_MINUS_30: (20, 30]  research telemetry only -- it never authorizes, vetoes, prices or ranks a live action.
+ *   T_MINUS_30: (20, 40]  research telemetry only -- it never authorizes, vetoes, prices or ranks a live action.
+ *                         Legacy persisted label; business target is T40 (first eligible tick ~T-40).
  *   T_MINUS_10: (9, 20]   the Final Rebalance source (name kept: it is a persisted phase label, not a time).
+ *                         Legacy persisted label; business target is T20.
  * LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2: the T_MINUS_10 window now OPENS at T-20 (was T-15), so on the every-minute
  * rebalance cron the capture and the economic action / Queue creation happen at ~T-20 (T-22..T-18) and the primary
  * MAKER gets ~440 s before primary_maker_cancel_by (T-12m40s), well above Ireland's 180 s pre-claim minimum. The
@@ -86,8 +101,8 @@ async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T | null> 
  */
 export function classifyReservationMarketPhase(eventStartIso: string, nowMs: number): Exclude<ReservationMarketPhase, typeof PHASE> | null {
   const minutes = (Date.parse(eventStartIso) - nowMs) / 60_000;
-  if (minutes > 20 && minutes <= 30) return "T_MINUS_30";
-  if (minutes > 9 && minutes <= 20) return "T_MINUS_10";
+  if (minutes > FINAL_WINDOW_OPEN_MINUTES && minutes <= EARLY_CAPTURE_WINDOW_OPEN_MINUTES) return "T_MINUS_30";
+  if (minutes > FINAL_WINDOW_CLOSE_MINUTES && minutes <= FINAL_WINDOW_OPEN_MINUTES) return "T_MINUS_10";
   return null;
 }
 
@@ -1175,7 +1190,8 @@ export async function captureReservationMarketMilestones(
 ): Promise<void> {
   const observedAt = new Date(nowMs).toISOString();
   const lower = new Date(nowMs + 3 * 60_000).toISOString();
-  const upper = new Date(nowMs + 30 * 60_000).toISOString();
+  // Cohort upper bound must equal the early window's open edge, or a T-40 reservation is never loaded.
+  const upper = new Date(nowMs + EARLY_CAPTURE_WINDOW_OPEN_MINUTES * 60_000).toISOString();
   const rows = await (deps.load ?? ((lo, up) => defaultMilestoneReservationLoader(lo, up, deps.getClient)))(lower, upper);
   for (const reservation of rows.slice(0, 200)) {
     const phase = classifyReservationMarketPhase(reservation.event_start_iso ?? "", nowMs);
