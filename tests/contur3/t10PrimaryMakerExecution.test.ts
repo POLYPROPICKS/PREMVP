@@ -89,16 +89,14 @@ const OUTCOMES = [
 
 // ── 1. primary maker callback ───────────────────────────────────────────────
 
-test("primary MAKER_FIRST: every released execution_result_v1.outcome is consumed on the maker_first slot; only terminal proven ZERO authorizes MAKER_FALLBACK_1", async () => {
+test("primary MAKER_FIRST: every released execution_result_v1.outcome is consumed on the maker_first slot; NONE (not even terminal proven ZERO) authorizes MAKER_FALLBACK_1", async () => {
   for (const outcome of OUTCOMES) {
     const filled = outcome.startsWith("PROVEN_") ? 0 : outcome.startsWith("UNKNOWN") ? null : outcome === "FULL_FILL" ? 5 : 2;
     const f = fakePort(queueRow("MAKER_FIRST"));
     const out = await recordResultAndAuthorizeMaker(f.port, primary(outcome, { filled_quantity: filled, fee_usd: 0 }), NOW);
-    const zero = outcome.startsWith("PROVEN_");
-    if (zero) assert.equal(out.kind, "MAKER_AUTHORIZED", outcome);
-    else assert.deepEqual(out, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" }, outcome);
+    assert.deepEqual(out, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" }, outcome);
     assert.deepEqual(f.state.slots, ["maker_first"]);
-    assert.equal(f.state.claims, zero ? 1 : 0, "only terminal proven ZERO authorizes exactly one MAKER_FALLBACK_1");
+    assert.equal(f.state.claims, 0, "SINGLE_MAKER_PREGAME_CONTRACT_V1: a MAKER_FIRST row never authorizes a MAKER_FALLBACK_1");
     const r = readExecutionAttempts(f.state.row.diagnostics).maker_first!.result!;
     assert.equal(r.result_class, outcome);
     assert.equal(r.filled_quantity, filled, "venue-reported only");
@@ -199,8 +197,11 @@ test("a TAKER callback on a MAKER_FIRST Queue row can never authorize MAKER_FALL
   const r = readIrelandExecutionResult(takerZero().execution_result_v1 as Record<string, unknown> & object, NOW.toISOString());
   assert.equal(r, null, "outcome is read only from the execution_result_v1 envelope");
   const verdict = evaluateMakerEligibility({ result: readIrelandExecutionResult(takerZero(), NOW.toISOString()), queue: queueRow("MAKER_FIRST"), nowMs: NOW.getTime() });
-  assert.ok(verdict.reasons.includes("ATTEMPT_NOT_PRIMARY_MAKER"));
-  assert.ok(verdict.reasons.includes("MODE_NOT_MAKER_FIRST"));
+  assert.ok(verdict.reasons.includes("PRIMARY_MAKER_ROW_NO_FALLBACK"), "a MAKER_FIRST row is never a fallback parent");
+  assert.equal(verdict.eligible, false);
+  // Even a perfectly shaped MAKER_FIRST terminal zero is ineligible.
+  const mfZero = readIrelandExecutionResult(primary("PROVEN_ZERO_FILL_CANCELLED", { filled_quantity: 0 }) as Record<string, unknown>, NOW.toISOString());
+  assert.equal(evaluateMakerEligibility({ result: mfZero, queue: queueRow("MAKER_FIRST"), nowMs: NOW.getTime() }).eligible, false);
 });
 
 test("MAKER_FALLBACK_1 requires TAKER_ATTEMPT_1 + authoritative terminal ZERO (released outcome)", async () => {

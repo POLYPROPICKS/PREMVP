@@ -1736,6 +1736,10 @@ export function eventExposureNotProvenZero(rows: readonly EventExecutionQueueRow
     const recorded = [a.taker_attempt_1?.result, a.maker_first?.result, a.maker_fallback_1?.result].filter((r) => r !== undefined);
     if (recorded.some((r) => !isZeroProofResult(r))) return true;
     if (a.maker_fallback_1?.command && !a.maker_fallback_1.result) return true;
+    // SINGLE_MAKER_PREGAME_CONTRACT_V1: a recorded maker result (MAKER_FIRST, or the TAKER-fallback maker) -- even a
+    // terminal proven ZERO -- consumes the event's single maker attempt. The event is closed: never re-selected,
+    // so a zero-filled maker can never be followed by a second maker on a new Queue row.
+    if (a.maker_first?.result || a.maker_fallback_1?.result) return true;
     if (row.status === "SKIPPED" || row.status === "CANCELLED") return false;
     if (row.status === "EXPIRED" && row.selection_reason === READY_QUEUE_EXPIRY_REASON) return false;
     return recorded.length === 0;

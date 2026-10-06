@@ -34,6 +34,7 @@ const IDEM = "idem_mf_1";
 const EVENT = "provider:polymarket:991:2026-10-03";
 const KICKOFF = "2026-10-03T21:00:00.000Z";
 const LATEST = "2026-10-03T21:03:00.000Z";                  // latest_entry = event start + 3 minutes
+const CUTOFF = "2026-10-03T20:59:00.000Z";                  // the single pre-kickoff maker cutoff = event start - 60 s
 
 function frozenMakerFirst(over: Record<string, unknown> = {}) {
   return {
@@ -165,7 +166,7 @@ test("canonical terminal-zero predicate: released outcome-only PROVEN_ZERO_* qua
 
 // ── 2. transition 1: terminal callback -> ACK -> reconciliation -> fallback command ─────
 
-test("T1: outcome-only terminal-zero callback on the accepted MAKER_FIRST order -> PROGRESSED on the same row, one fallback authorized", async () => {
+test("T1: outcome-only terminal-zero callback on the accepted MAKER_FIRST order -> PROGRESSED on the same row, terminal, NO fallback (single maker)", async () => {
   const w = await acceptedWorld();
   const before = structuredClone([...w.st.events.values()][0]);
   const { auth, order } = await deliver(w, terminal());
@@ -180,25 +181,15 @@ test("T1: outcome-only terminal-zero callback on the accepted MAKER_FIRST order 
   }
   if (order?.kind === "PROGRESSED") assert.equal(order.queueMark.kind, "ALREADY_EXECUTED", "Queue never downgraded");
 
-  // Exactly one same-token MAKER_FALLBACK_1.
-  assert.equal(auth.kind, "MAKER_AUTHORIZED");
-  assert.equal(w.st.claims, 1);
-  const cmd = (auth as { command: MakerFallbackCommand }).command;
-  assert.equal(cmd.attempt_id, "MAKER_FALLBACK_1");
-  assert.equal(cmd.parent_attempt_id, "MAKER_FIRST");
-  assert.equal(cmd.parent_queue_id, "q1");
-  assert.equal(cmd.parent_idempotency_key, IDEM);
-  assert.equal(cmd.reservation_id, "res1");
-  assert.equal(cmd.condition_id, "cond1");
-  assert.equal(cmd.token_id, "tok1");
-  assert.equal(cmd.side, "YES");
-  assert.equal(cmd.physical_event_id, EVENT);
-  assert.equal(cmd.stake_usd, 2.5, "stake unchanged");
-  assert.ok(cmd.limit_price <= 0.5 + 1e-9, "never above frozen P_BUY_MAX / Queue cap");
-  assert.ok(cmd.limit_price <= QUEUE_MAX_ENTRY_PRICE && QUEUE_MAX_ENTRY_PRICE === 0.555, "hard cap 0.555");
-  assert.ok(cmd.quantity * cmd.limit_price <= 2.5 + 1e-9);
-  assert.equal(cmd.deadline_iso, LATEST);
+  // SINGLE_MAKER_PREGAME_CONTRACT_V1: a MAKER_FIRST zero-fill is terminal for the event -- NO MAKER_FALLBACK_1.
+  assert.deepEqual(auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" });
+  assert.equal(w.st.claims, 0);
+  const attempts = readExecutionAttempts(w.st.row.diagnostics);
+  assert.equal(attempts.maker_fallback_1, undefined, "no fallback command on a MAKER_FIRST row");
+  assert.equal(attempts.maker_first?.result?.economic_exposure_proven_zero, true, "exposure = 0");
+  assert.equal(attempts.maker_first?.result?.result_class, "PROVEN_ZERO_FILL_CANCELLED");
   assert.equal(w.st.row.status, "EXECUTED", "no second Queue row, status untouched");
+  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], NOW.getTime()).length, 0, "nothing for Ireland to execute");
 });
 
 test("T1: terminal-zero reconciliation is TERMINAL_NO_FILL / SETTLED_NO_FILL with nothing fabricated", async () => {
@@ -219,29 +210,28 @@ test("T1: terminal-zero reconciliation is TERMINAL_NO_FILL / SETTLED_NO_FILL wit
   assert.equal(rec.fee_usd, null, "no fabricated fee");
   assert.equal(rec.submitted_price, 0.5, "original request facts preserved");
   assert.equal(rec.requested_shares, 5);
-  // Zero economic exposure: the event-level guard sees the primary as proven zero, while the
-  // pending fallback command still holds the event's single exposure slot.
-  const recordedOnly = { ...queue, diagnostics: { ...queue.diagnostics, execution_attempts_v1: { maker_first: readExecutionAttempts(queue.diagnostics).maker_first } } };
-  assert.equal(eventExposureNotProvenZero([recordedOnly as EventExecutionQueueRow]), false);
-  assert.equal(eventExposureNotProvenZero([queue]), true, "authorized fallback without result = exposure held");
+  // Zero economic exposure, but the recorded MAKER_FIRST result consumes the event's single maker attempt:
+  // the event is closed for new selection (never a second maker on a new Queue row).
+  assert.equal(readExecutionAttempts(queue.diagnostics).maker_first?.result?.economic_exposure_proven_zero, true);
+  assert.equal(eventExposureNotProvenZero([queue]), true, "MAKER_FIRST zero-fill closes the event: no re-selection, no second maker");
 });
 
 // ── 3. idempotency ──────────────────────────────────────────────────────────
 
-test("duplicate terminal-zero callback cannot create a second authorization (sequential and concurrent)", async () => {
+test("duplicate terminal-zero callback never creates any fallback authorization (sequential and concurrent)", async () => {
   const w = await acceptedWorld();
   const first = await deliver(w, terminal());
   const again = await deliver(w, terminal());
-  assert.equal(first.auth.kind, "MAKER_AUTHORIZED");
-  assert.equal(again.auth.kind, "MAKER_ALREADY_AUTHORIZED");
-  assert.deepEqual((again.auth as { command: MakerFallbackCommand }).command, (first.auth as { command: MakerFallbackCommand }).command);
+  assert.deepEqual(first.auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" });
+  assert.deepEqual(again.auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" });
   assert.ok(again.order?.kind === "PROGRESSED" || again.order?.kind === "DUPLICATE", again.order?.kind);
   assert.equal(w.st.events.size, 1);
+  assert.equal(w.st.claims, 0);
 
   const c = await acceptedWorld();
   const outs = await Promise.all([1, 2, 3].map(() => recordResultAndAuthorizeMaker(c.maker, terminal(), NOW)));
-  assert.equal(outs.filter((o) => o.kind === "MAKER_AUTHORIZED").length, 1);
-  assert.equal(c.st.claims, 1);
+  assert.equal(outs.filter((o) => o.kind === "MAKER_AUTHORIZED").length, 0);
+  assert.equal(c.st.claims, 0);
 });
 
 test("CAS claim re-verifies the FRESH maker_first slot: a contradictory fill stops the claim", async () => {
@@ -265,41 +255,22 @@ test("CAS claim re-verifies the FRESH maker_first slot: a contradictory fill sto
 
 // ── 4. transition 2: fallback command -> executor-facing Queue response ────
 
-test("T2: the authorized command is surfaced verbatim in the executor Queue `maker_fallback_commands` contract until its result or deadline", async () => {
+test("T2: after a MAKER_FIRST terminal zero nothing is surfaced in `maker_fallback_commands`, and a forged MAKER_FALLBACK_1 callback is rejected", async () => {
   const w = await acceptedWorld();
   const { auth } = await deliver(w, terminal());
-  const cmd = (auth as { command: MakerFallbackCommand }).command;
-  const surfaced = selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], NOW.getTime());
-  assert.deepEqual(surfaced, [cmd]);
-  assert.deepEqual(Object.keys(surfaced[0]).sort(), [
-    "attempt_id", "authorized_at_iso", "condition_id", "deadline_iso", "execution_mode", "execution_side", "idempotency_key",
-    "limit_price", "market_family", "max_stake_usd", "parent_attempt_id", "parent_idempotency_key", "parent_queue_id",
-    "physical_event_id", "price_cap", "quantity", "reservation_id", "side", "stake_usd", "status", "strategy_variant",
-    "strategy_version", "token_id",
-  ]);
-  assert.equal(surfaced[0].execution_mode, "MAKER");
-  assert.equal(surfaced[0].execution_side, "BUY");
-  assert.equal(surfaced[0].status, "AUTHORIZED");
-  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], Date.parse(LATEST)).length, 0, "not after deadline");
-
-  // T3: the fallback's own callback binds to the SAME Queue row (no second row) and records its result.
+  assert.equal(auth.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT");
+  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], NOW.getTime()).length, 0);
+  // A MAKER_FALLBACK_1 callback against a MAKER_FIRST parent cannot bind: no command was ever authorized.
   const fb = {
-    event_type: "ORDER_RESULT", attempt_id: "MAKER_FALLBACK_1", execution_mode: "MAKER", idempotency_key: cmd.idempotency_key,
+    event_type: "ORDER_RESULT", attempt_id: "MAKER_FALLBACK_1", execution_mode: "MAKER", idempotency_key: "forged-fallback-key",
     parent_idempotency_key: IDEM, queue_id: "q1", reservation_id: "res1", condition_id: "cond1", token_id: "tok1", side: "YES",
-    stake_usd: 2.5, submitted_size: cmd.quantity, submitted_price: cmd.limit_price, clob_order_id: "v-2", order_status: "live",
+    stake_usd: 2.5, submitted_size: 5, submitted_price: 0.5, clob_order_id: "v-2", order_status: "live",
   };
-  const fbOut = await deliver(w, fb);
-  assert.equal(fbOut.order?.kind, "INSERTED", JSON.stringify(fbOut.order));
-  if (fbOut.order?.kind === "INSERTED") assert.equal(fbOut.order.queueMark.kind, "ALREADY_EXECUTED");
-  assert.equal(w.st.events.size, 2, "the fallback is its own order event on the same Queue identity");
-  const fbZero = await deliver(w, { ...fb, order_status: "CANCELLED", execution_result_v1: { attempt_id: "MAKER_FALLBACK_1", execution_mode: "MAKER", outcome: "PROVEN_ZERO_FILL_EXPIRED", venue_order_id: "v-2" } });
-  assert.deepEqual(fbOut.auth.kind, "NO_RESULT");
-  assert.deepEqual(fbZero.auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_fallback_1" }, "never a MAKER_FALLBACK_2");
-  assert.equal(w.st.claims, 1);
-  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], NOW.getTime()).length, 0, "consumed once a result exists");
-  // The fallback above the authorized command limit is refused.
-  const over = await handleOrderEventSubmission(w.orders, { ...fb, idempotency_key: cmd.idempotency_key, clob_order_id: "v-3", submitted_price: cmd.limit_price + 0.01 });
-  assert.equal(over.kind, "REJECTED_QUEUE_POLICY_MISMATCH");
+  const forged = await deliver(w, fb);
+  assert.deepEqual(forged.auth, { kind: "MAKER_CALLBACK_REJECTED", reason: "MAKER_NOT_AUTHORIZED_FOR_PARENT" });
+  assert.equal(forged.order, null);
+  assert.equal(w.st.events.size, 1, "no second order event");
+  assert.equal(w.st.claims, 0);
 });
 
 // ── 5. regressions ──────────────────────────────────────────────────────────
@@ -349,36 +320,35 @@ test("regression (wrong identity): rejected before any mutation or authorization
   assert.equal(w.st.events.size, 1);
 });
 
-test("regression (expired deadline): terminal zero is ACKed and reconciled, but no fallback at/after the entry deadline (event start + 3m)", async () => {
-  const w = await acceptedWorld();
-  const atDeadline = new Date(LATEST);
-  const auth = await recordResultAndAuthorizeMaker(w.maker, terminal(), atDeadline);
-  const order = await handleOrderEventSubmission(w.orders, normalizeMakerCallbackForAccounting(terminal()));
-  assert.equal(order.kind, "PROGRESSED", "ACK does not depend on the deadline");
-  assert.equal(auth.kind, "MAKER_BLOCKED");
-  assert.ok((auth as { reasons: string[] }).reasons.includes("DEADLINE_PASSED"));
-  assert.equal(w.st.claims, 0);
+test("regression (cutoff / kickoff): a MAKER_FIRST terminal zero is ACKed and reconciled at any time, and NEVER yields a fallback", async () => {
+  for (const at of [new Date(CUTOFF), new Date(KICKOFF), new Date(LATEST)]) {
+    const w = await acceptedWorld();
+    const auth = await recordResultAndAuthorizeMaker(w.maker, terminal(), at);
+    const order = await handleOrderEventSubmission(w.orders, normalizeMakerCallbackForAccounting(terminal()));
+    assert.equal(order.kind, "PROGRESSED", "ACK does not depend on the clock");
+    assert.deepEqual(auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" });
+    assert.equal(w.st.claims, 0);
+  }
 });
 
 test("regression: a recorded positive primary fill is never overridden by a later zero claim", async () => {
   const w = await acceptedWorld();
   await deliver(w, terminal({ outcome: "PARTIAL_FILL_CANCELLED", filled_quantity: 2, average_fill_price: 0.5 }));
   const { auth } = await deliver(w, terminal());
-  assert.equal(auth.kind, "MAKER_BLOCKED");
+  assert.equal(auth.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT", "a MAKER_FIRST result never authorizes a fallback");
   assert.equal(w.st.claims, 0);
 });
 
-test("regression: economics unchanged -- book that would require exceeding P_BUY_MAX / stake / minimum fails closed", async () => {
-  // ask - tick binds lower -> price 0.45, quantity floor(2.5/0.45)=5.55 >= min 5: still authorized, stake unchanged.
-  const lower = await acceptedWorld(undefined, { bestBid: 0.3, bestAsk: 0.46, tickSize: 0.01 });
-  const ok = await deliver(lower, terminal());
-  assert.equal(ok.auth.kind, "MAKER_AUTHORIZED");
-  assert.equal((ok.auth as { command: MakerFallbackCommand }).command.limit_price, 0.45);
-  assert.equal((ok.auth as { command: MakerFallbackCommand }).command.stake_usd, 2.5);
-  // Tick changed vs frozen contract -> blocked (no re-pricing authority).
-  const tick = await acceptedWorld(undefined, { bestBid: 0.3, bestAsk: 0.53, tickSize: 0.001 });
-  assert.deepEqual((await deliver(tick, terminal())).auth, { kind: "MAKER_BLOCKED", reasons: ["T10_TICK_CHANGED"] });
-  // Live minimum above stake-derived size -> blocked, quantity never inflated.
-  const min = await acceptedWorld(undefined, { bestBid: 0.3, bestAsk: 0.53, tickSize: 0.01, minimumOrderSize: 6 });
-  assert.deepEqual((await deliver(min, terminal())).auth, { kind: "MAKER_BLOCKED", reasons: ["BELOW_MINIMUM_ORDER_SIZE"] });
+test("regression: no book (lower ask, changed tick, higher minimum) can produce a fallback after a MAKER_FIRST terminal zero", async () => {
+  for (const book of [
+    { bestBid: 0.3, bestAsk: 0.46, tickSize: 0.01 },
+    { bestBid: 0.3, bestAsk: 0.53, tickSize: 0.001 },
+    { bestBid: 0.3, bestAsk: 0.53, tickSize: 0.01, minimumOrderSize: 6 },
+  ]) {
+    const w = await acceptedWorld(undefined, book);
+    const { auth } = await deliver(w, terminal());
+    assert.deepEqual(auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" }, JSON.stringify(book));
+    assert.equal(w.st.claims, 0);
+    assert.equal(readExecutionAttempts(w.st.row.diagnostics).maker_fallback_1, undefined);
+  }
 });

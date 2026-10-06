@@ -43,7 +43,7 @@ import {
 } from "../../lib/executor/reservationMarketBaseline";
 
 const KICKOFF = "2026-07-19T19:00:00.000Z";
-// T-13.5: a LATE decision (50 s before primary_maker_cancel_by T-12:40) -- still valid. The production decision lead is ~T-20
+// T-13.5: a decision well before primary_maker_cancel_by (T-1:00) -- valid. The production decision lead is ~T-20
 // (LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2; see liveRecoveryHotfixV2.test.ts); latest entry is event start + 3 minutes.
 const NOW = Date.parse("2026-07-19T18:46:30.000Z");
 const AFTER_LATEST = Date.parse("2026-07-19T19:03:00.000Z");   // exactly latest_entry (T+3:00): no new entry
@@ -546,7 +546,7 @@ test("21: activation OFF (default and explicit) preserves released B priority + 
 const M: Row = { cond: "m-ml", token: "m-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.53, 0.56], t30: [0.53, 0.56] };
 const mBook = (min: number | null = 5) => ({ ...LIVE, "m-token": bookOf("m-token", [[0.53, 100]], [[0.56, 100]], 0.01, min) });
 const LATEST_ENTRY = "2026-07-19T19:03:00.000Z";             // event start + 3 minutes
-const CANCEL_BY = "2026-07-19T18:47:20.000Z";                // event start - 12m40s (a fixed offset, not derived from latest_entry)
+const CANCEL_BY = "2026-07-19T18:59:00.000Z";                // event start - 60 s (SINGLE_MAKER_PREGAME_CONTRACT_V1; a fixed offset, not derived from latest_entry)
 
 const WIRE_FALLBACK_COMMAND_KEYS = [
   "attempt_id", "authorized_at_iso", "condition_id", "deadline_iso", "execution_mode", "execution_side", "idempotency_key",
@@ -580,7 +580,7 @@ const primaryCallback = (row: EventExecutionQueueRow, outcome: string, extra: Re
   execution_result_v1: { attempt_id: "MAKER_FIRST", execution_mode: "MAKER_FIRST", outcome, venue_order_id: "v-1", ...extra },
 });
 
-test("FULL PATH: Reservation -> T30 -> T10 -> $2.50 fails ONLY minimum size -> $2.65 -> Queue -> MAKER_FIRST timing -> terminal ZERO -> one fallback on the wire", async () => {
+test("FULL PATH: Reservation -> T30 -> T10 -> $2.50 fails ONLY minimum size -> $2.65 -> Queue -> MAKER_FIRST timing -> terminal ZERO -> NO fallback (single maker)", async () => {
   // $2.50 / 0.53 = 4.71 shares < minimum 5: the only blocker.
   const { result, repo, res } = await run(true, [M], mBook(5));
   assert.equal(result.queued_count, 1);
@@ -627,30 +627,16 @@ test("FULL PATH: Reservation -> T30 -> T10 -> $2.50 fails ONLY minimum size -> $
   assert.deepEqual(validateOrderEventAgainstQueueRow(sub, row), { ok: true });
   assert.equal(validateOrderEventAgainstQueueRow({ ...sub, submitted_price: 0.54 }, row).ok, false);
 
-  // Terminal proven ZERO -> result recorded -> zero exposure re-verified -> exactly one MAKER_FALLBACK_1.
+  // Terminal proven ZERO -> result recorded -> event closed: NO MAKER_FALLBACK_1 after MAKER_FIRST.
   const w = fallbackWorld(row);
-  const callbackNow = new Date(Date.parse(CANCEL_BY) + 5_000);
+  const callbackNow = new Date(Date.parse(CANCEL_BY) - 5_000);
   const auth = await recordResultAndAuthorizeMaker(w.port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), callbackNow);
-  assert.equal(auth.kind, "MAKER_AUTHORIZED");
-  assert.equal(fallbackPublicationRetryable(auth), false, "published -> callback may be acknowledged");
+  assert.deepEqual(auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" });
+  assert.equal(fallbackPublicationRetryable(auth), false, "nothing to publish -> callback may be acknowledged");
   const dup = await recordResultAndAuthorizeMaker(w.port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), callbackNow);
-  assert.equal(dup.kind, "MAKER_ALREADY_AUTHORIZED");
-  assert.equal(w.st.claims, 1, "duplicate terminal ZERO -> one fallback only");
-  // Visible through maker_fallback_commands with the exact released wire shape.
-  const cmds = selectExecutorMakerFallbackCommands([w.st.row], callbackNow.getTime());
-  assert.equal(cmds.length, 1);
-  const cmd = cmds[0];
-  assert.deepEqual(Object.keys(cmd).sort(), WIRE_FALLBACK_COMMAND_KEYS);
-  assert.equal(cmd.attempt_id, "MAKER_FALLBACK_1");
-  assert.equal(cmd.parent_attempt_id, "MAKER_FIRST");
-  assert.deepEqual([cmd.condition_id, cmd.token_id, cmd.side, cmd.physical_event_id], [row.condition_id, row.token_id, row.side, EVENT]);
-  assert.equal(cmd.stake_usd, 2.65, "inherits the parent authorized stake, never more");
-  assert.equal(cmd.max_stake_usd, 4);
-  assert.equal(cmd.limit_price, 0.53);
-  assert.equal(cmd.quantity, 5);
-  assert.ok(cmd.quantity * cmd.limit_price <= cmd.stake_usd + 1e-6);
-  assert.equal(cmd.deadline_iso, LATEST_ENTRY, "fallback never beyond latest_entry");
-  assert.equal(selectExecutorMakerFallbackCommands([w.st.row], Date.parse(LATEST_ENTRY)).length, 0);
+  assert.equal(dup.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT");
+  assert.equal(w.st.claims, 0, "MAX_MAKER_ATTEMPTS_PER_EVENT = 1: terminal ZERO never authorizes a second maker");
+  assert.equal(selectExecutorMakerFallbackCommands([w.st.row], callbackNow.getTime()).length, 0, "nothing on maker_fallback_commands");
 });
 
 test("normal $2.50 regression: required stake <= $2.50 stays exactly $2.50 with no adjustment (MAKER and TAKER)", async () => {
@@ -741,8 +727,8 @@ test("strict contract: a stake above $2.50 requires valid minimum-order headroom
   }
 });
 
-test("timing: a T10 at/after primary_maker_cancel_by fails closed (reserve never weakened); after latest_entry nothing executes", async () => {
-  for (const now of [Date.parse(CANCEL_BY), Date.parse("2026-07-19T18:50:00.000Z")]) {
+test("timing: a T10 MAKER_FIRST at/after primary_maker_cancel_by (T-1:00) fails closed -- including at/after kickoff; after latest_entry nothing executes", async () => {
+  for (const now of [Date.parse(CANCEL_BY), Date.parse("2026-07-19T18:59:30.000Z"), Date.parse(KICKOFF), Date.parse(KICKOFF) + 60_000]) {
     const { event, d } = await decide([A], { now, d: deps(LIVE_A_MAKER) });
     const g = await reverifySelectedAction({ event, nowMs: now, exposureExists: false, fetchExactTokenOrderbook: d.fetchExactTokenOrderbook });
     assert.equal(g.ok, false);
@@ -757,29 +743,29 @@ test("timing: a T10 at/after primary_maker_cancel_by fails closed (reserve never
   }
 });
 
-test("fallback blocking on the adaptive row: partial / positive / UNKNOWN never authorize; deterministic blocks are acknowledged", async () => {
+test("MAKER_FIRST adaptive row: no outcome (partial / positive / UNKNOWN / terminal ZERO) ever authorizes a fallback; nothing is retryable", async () => {
   const { repo } = await run(true, [M], mBook(5));
   const row = { ...repo.queueRows[0], id: "q-adaptive", status: "EXECUTED" as const };
-  const at = new Date(Date.parse(CANCEL_BY) + 5_000);
+  const at = new Date(Date.parse(CANCEL_BY) - 5_000);
   for (const [outcome, extra] of [["PARTIAL_FILL_CANCELLED", { filled_quantity: 2, average_fill_price: 0.53 }], ["FULL_FILL", { filled_quantity: 5, average_fill_price: 0.53 }],
-    ["UNKNOWN_AFTER_SUBMISSION", {}], ["PARTIAL_FILL", { filled_quantity: 1 }]] as const) {
+    ["UNKNOWN_AFTER_SUBMISSION", {}], ["PARTIAL_FILL", { filled_quantity: 1 }], ["PROVEN_ZERO_FILL_CANCELLED", {}], ["PROVEN_ZERO_FILL_EXPIRED", {}]] as const) {
     const w = fallbackWorld(row);
     const auth = await recordResultAndAuthorizeMaker(w.port, primaryCallback(row, outcome, extra), at);
-    assert.notEqual(auth.kind, "MAKER_AUTHORIZED", outcome);
+    assert.deepEqual(auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" }, outcome);
     assert.equal(w.st.claims, 0, outcome);
+    assert.equal(fallbackPublicationRetryable(auth), false, outcome);
     assert.equal(selectExecutorMakerFallbackCommands([w.st.row], at.getTime()).length, 0);
   }
-  // Transient publication failure is retryable (never acknowledged); a deterministic block is final.
+  // Even an unavailable book can no longer matter: there is no publication to retry.
   const noBook = fallbackWorld(row);
   noBook.port.fetchBook = async () => null;
-  const blocked = await recordResultAndAuthorizeMaker(noBook.port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), at);
-  assert.deepEqual(blocked, { kind: "MAKER_BLOCKED", reasons: ["BOOK_UNAVAILABLE"] });
-  assert.equal(fallbackPublicationRetryable(blocked), true);
+  const none = await recordResultAndAuthorizeMaker(noBook.port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), at);
+  assert.equal(none.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT");
+  assert.equal(fallbackPublicationRetryable(none), false);
+  // Transient publication failure on the TAKER fallback path stays retryable; deterministic blocks are final.
+  assert.equal(fallbackPublicationRetryable({ kind: "MAKER_BLOCKED", reasons: ["BOOK_UNAVAILABLE"] }), true);
   assert.equal(fallbackPublicationRetryable({ kind: "MAKER_BLOCKED", reasons: ["AUTHORIZATION_ERROR"] }), true);
   assert.equal(fallbackPublicationRetryable({ kind: "MAKER_BLOCKED", reasons: ["DEADLINE_PASSED"] }), false);
-  const lateZero = await recordResultAndAuthorizeMaker(fallbackWorld(row).port, primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), new Date(LATEST_ENTRY));
-  assert.equal(lateZero.kind, "MAKER_BLOCKED");
-  assert.equal(fallbackPublicationRetryable(lateZero), false);
 });
 
 
@@ -861,7 +847,7 @@ test("re-verification fails closed when the refreshed maker limit leaves the sup
   if (!guard.ok) assert.match(guard.reason, /MAKER_SUPPORT_PRICE_OUTSIDE_BAND/);
 });
 
-test("FULL PATH (MONEYLINE band + maker authority): Reservation -> T30 -> T10 ask 0.57 -> MAKER_FIRST 0.55 -> Queue -> Ireland wire -> terminal ZERO -> one fallback", async () => {
+test("FULL PATH (MONEYLINE band + maker authority): Reservation -> T30 -> T10 ask 0.57 -> MAKER_FIRST 0.55 -> Queue -> Ireland wire -> terminal ZERO -> no fallback", async () => {
   const { result, repo, res } = await run(true, [DRC], drcBook());
   assert.equal(result.queued_count, 1);
   assert.equal(res.status, "QUEUED");
@@ -899,21 +885,17 @@ test("FULL PATH (MONEYLINE band + maker authority): Reservation -> T30 -> T10 as
   assert.equal(wire.maker_shares, 5);
   assert.equal(wire.required_min_remaining_seconds, 580);
   assert.equal(primaryMakerSubmissionOpen(wire, NOW), true);
-  // Terminal ZERO -> exactly one MAKER_FALLBACK_1.
+  // Terminal ZERO -> recorded, event closed: NO MAKER_FALLBACK_1 after MAKER_FIRST.
   const w = fallbackWorld(row);
   const callbackNow = new Date(Date.parse(CANCEL_BY) + 5_000);
   const cb = { ...primaryCallback(row, "PROVEN_ZERO_FILL_CANCELLED"), submitted_price: 0.55 };
   const auth = await recordResultAndAuthorizeMaker(w.port, cb, callbackNow);
-  assert.equal(auth.kind, "MAKER_AUTHORIZED");
+  assert.deepEqual(auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" });
   assert.equal(fallbackPublicationRetryable(auth), false);
   const dup = await recordResultAndAuthorizeMaker(w.port, cb, callbackNow);
-  assert.equal(dup.kind, "MAKER_ALREADY_AUTHORIZED");
-  assert.equal(w.st.claims, 1);
-  const cmds = selectExecutorMakerFallbackCommands([w.st.row], callbackNow.getTime());
-  assert.equal(cmds.length, 1);
-  assert.equal(cmds[0].attempt_id, "MAKER_FALLBACK_1");
-  assert.equal(cmds[0].limit_price <= 0.55, true);
-  assert.equal(cmds[0].deadline_iso, LATEST_ENTRY);
+  assert.equal(dup.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT");
+  assert.equal(w.st.claims, 0);
+  assert.equal(selectExecutorMakerFallbackCommands([w.st.row], callbackNow.getTime()).length, 0);
 });
 
 // ── T30_MONEY_GATE_REMOVAL_V1: T30 is research telemetry, never a live gate / price / rank ───────────

@@ -50,10 +50,10 @@
 // increased stake against the actual book and re-proves full depth, fee-inclusive cost <= the hard cap
 // and raw price <= the hard cap. The hard cap and the limit formulas are never changed by this stage.
 //
-// MAKER_FIRST timing (released Ireland contract, LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2): fallback_deadline =
-// latest_entry (event start + 3 minutes); primary_maker_cancel_by = event start - 12m40s (a FIXED offset, never
-// derived from latest_entry); the >= 580 s fallback reserve between them is validated, not a formula. The Queue is
-// created at ~T-20, so the primary has ~440 s. A MAKER_FIRST at/after cancel_by fails closed.
+// MAKER_FIRST timing (SINGLE_MAKER_PREGAME_CONTRACT_V1): fallback_deadline = latest_entry (event start + 3 minutes);
+// primary_maker_cancel_by = event start - 60 s (a FIXED pre-kickoff safety margin, never derived from latest_entry).
+// The Queue is created at ~T-20, so the single maker rests ~19 minutes. A MAKER_FIRST at/after cancel_by fails
+// closed. A MAKER_FIRST zero-fill is terminal for the event: there is no MAKER_FALLBACK_1 after MAKER_FIRST.
 import { getBestBidAsk, computeSpread } from "@/lib/liquidity/orderbookMath";
 import type { FetchOrderBookResult } from "@/lib/liquidity/types";
 import type { TokenFeeScheduleResult } from "@/lib/liquidity/polymarketClient";
