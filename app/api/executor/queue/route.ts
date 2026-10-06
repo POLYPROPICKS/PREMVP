@@ -96,14 +96,14 @@ export async function GET(request: NextRequest) {
     // Identity). Explicit command; Ireland infers nothing. Only before the stated deadline.
     const { data: makerRows } = await supabaseAdmin
       .from("event_execution_queue")
-      .select("diagnostics")
+      .select("diagnostics, game_start_iso")
       .not("diagnostics->execution_attempts_v1->maker_fallback_1->command", "is", null)
       .is("diagnostics->execution_attempts_v1->maker_fallback_1->result", null)
       .gt("latest_entry_iso", nowIso)
       .order("latest_entry_iso", { ascending: true })
       .limit(cap);
     const makerFallbackCommands = selectExecutorMakerFallbackCommands(
-      (makerRows ?? []) as { diagnostics: Record<string, unknown> | null }[],
+      (makerRows ?? []) as { diagnostics: Record<string, unknown> | null; game_start_iso?: string | null }[],
       nowMs,
     );
 

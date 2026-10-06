@@ -761,16 +761,29 @@ export function fallbackPublicationRetryable(outcome: MakerAuthorizationOutcome)
  * The MAKER_FALLBACK_1 commands surfaced on GET /api/executor/queue (`maker_fallback_commands`):
  * an authorized command with no recorded fallback result, strictly before its stated deadline.
  * The command is returned verbatim from the parent Queue row -- no second Queue row exists.
+ * SINGLE_MAKER_PREGAME_CONTRACT_V1 defense in depth for commands authorized BEFORE this contract: only a
+ * TAKER_ATTEMPT_1 parent may carry a fallback maker, and when the row's physical start is supplied the surfaced
+ * deadline never exceeds start - 60 s (the command is returned with the capped deadline), so no resting BUY maker
+ * can survive kickoff even from a pre-contract command (whose deadline was latest_entry = start + 3 min).
  */
 export function selectExecutorMakerFallbackCommands(
-  rows: readonly { diagnostics: Record<string, unknown> | null }[],
+  rows: readonly { diagnostics: Record<string, unknown> | null; game_start_iso?: string | null }[],
   nowMs: number,
 ): MakerFallbackCommand[] {
-  return rows
-    .map((r) => readExecutionAttempts(r.diagnostics).maker_fallback_1)
-    .filter((m): m is { command: MakerFallbackCommand } => !!m?.command && !m.result)
-    .map((m) => m.command)
-    .filter((c) => Date.parse(c.deadline_iso) > nowMs);
+  const out: MakerFallbackCommand[] = [];
+  for (const r of rows) {
+    const m = readExecutionAttempts(r.diagnostics).maker_fallback_1;
+    const c = m?.command;
+    if (!c || m.result) continue;
+    if (c.parent_attempt_id !== TAKER_ATTEMPT_1) continue;
+    const start = typeof r.game_start_iso === "string" ? Date.parse(r.game_start_iso) : null;
+    if (start !== null && !Number.isFinite(start)) continue;
+    const stated = Date.parse(c.deadline_iso);
+    const deadline = start === null ? stated : Math.min(stated, start - MAKER_PREGAME_CUTOFF_SECONDS * 1000);
+    if (!(deadline > nowMs)) continue;
+    out.push(deadline === stated ? c : { ...c, deadline_iso: new Date(deadline).toISOString() });
+  }
+  return out;
 }
 
 // ── accounting normalization (maker callbacks) ────────────────────────────

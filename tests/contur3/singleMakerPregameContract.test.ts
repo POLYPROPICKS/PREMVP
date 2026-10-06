@@ -251,3 +251,26 @@ test("G: no resting maker survives kickoff -- MAKER_FIRST submission, fallback a
     assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], nowMs).length, 0, `fallback command withdrawn @${nowMs}`);
   }
 });
+
+test("G (legacy commands): a pre-contract command never surfaces from a MAKER_FIRST parent, and is capped at event start - 60 s", async () => {
+  const w = world(queueRow("TAKER_FIRST"));
+  const out = await recordResultAndAuthorizeMaker(w.port,
+    takerResult("PROVEN_REJECTED_BEFORE_SUBMISSION", { terminal: true, economic_exposure_proven_zero: true, filled_quantity: 0, venue_order_id: null }), NOW);
+  const cmd = (out as { command: MakerFallbackCommand }).command;
+  const attempts = (command: unknown) => ({ execution_attempts_v1: { maker_fallback_1: { command } } });
+  // a command authorized under the old contract: deadline = latest_entry (start + 3 min)
+  const legacy = { ...cmd, deadline_iso: LATEST };
+  const row = { diagnostics: attempts(legacy), game_start_iso: KICKOFF };
+  const listed = selectExecutorMakerFallbackCommands([row], CUTOFF_MS - 1_000);
+  assert.equal(listed.length, 1);
+  assert.equal(listed[0].deadline_iso, CUTOFF, "surfaced deadline is capped at the pre-kickoff cutoff");
+  for (const nowMs of [CUTOFF_MS, KICKOFF_MS, KICKOFF_MS + 60_000]) {
+    assert.equal(selectExecutorMakerFallbackCommands([row], nowMs).length, 0, `no resting maker @${nowMs}`);
+  }
+  // a command with a MAKER_FIRST parent (old contract) is never surfaced
+  const mfParent = { diagnostics: attempts({ ...legacy, parent_attempt_id: "MAKER_FIRST" }), game_start_iso: KICKOFF };
+  assert.equal(selectExecutorMakerFallbackCommands([mfParent], CUTOFF_MS - 1_000).length, 0);
+  // an unparseable start fails closed; an absent start keeps the stored deadline (new commands already carry the cutoff)
+  assert.equal(selectExecutorMakerFallbackCommands([{ ...row, game_start_iso: "garbage" }], CUTOFF_MS - 1_000).length, 0);
+  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: attempts(cmd) }], CUTOFF_MS - 1_000)[0].deadline_iso, CUTOFF);
+});
