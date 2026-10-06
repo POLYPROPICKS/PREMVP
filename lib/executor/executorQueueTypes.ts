@@ -62,16 +62,21 @@ export const QUEUE_SCHEMA_VERSION = "executor-queue-v1" as const;
 export const QUEUE_EXECUTION_MODE = "NIGHT_LIVE_EXECUTION" as const;
 export const QUEUE_SOURCE = "event_execution_queue" as const;
 
-// LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2 -- released Ireland MAKER_FIRST timing contract.
+// SINGLE_MAKER_PREGAME_CONTRACT_V1 -- ONE maker attempt per physical event, resting until the last safe PRE-KICKOFF cutoff.
 //   latest_entry (= fallback_deadline)   event_start + 3 minutes (nightWindow.latestEntryIso; no entry at/after it)
-//   primary_maker_cancel_by              event_start - 12m40s  (a FIXED offset from the physical event start)
-//   Queue creation target                ~T-20 (T-22..T-18), so the primary MAKER has ~440 s to run, well above
-//                                        Ireland's 180 s MAKER_PRECLAIM_MIN_REMAINING_SECONDS
-// The fallback reserve is a FLOOR that is validated, never the formula: cancel_by is no longer derived from
-// latest_entry. IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS stays the minimum time Ireland needs between the
-// primary cancel and fallback_deadline for the single MAKER_FALLBACK_1 (here 940 s >= 580 s).
+//   maker cancel_by (MAKER_FIRST and the TAKER-proven-zero MAKER_FALLBACK_1)
+//                                        event_start - 60 s (a FIXED safety margin from the physical event start; no
+//                                        resting BUY maker survives kickoff)
+//   Queue creation target                ~T-20 (T-22..T-18), so the single MAKER rests ~19 minutes
+// A MAKER_FIRST zero-fill is terminal for the event: there is NO MAKER_FALLBACK_1 after MAKER_FIRST, so no fallback
+// reserve is needed between cancel_by and latest_entry. IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS is retained ONLY as
+// the already-released wire value of `required_min_remaining_seconds`; it is no longer a window constraint.
 export const IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS = 580 as const;
-export const PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS = 760 as const; // T-12m40s
+/** The single canonical pre-kickoff cutoff (seconds before the physical event start) for every resting maker. */
+export const MAKER_PREGAME_CUTOFF_SECONDS = 60 as const; // T-1:00
+export const PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS = MAKER_PREGAME_CUTOFF_SECONDS;
+/** Already-frozen MAKER_FIRST rows (created before SINGLE_MAKER_PREGAME_CONTRACT_V1) carry cancel_by = T-12:40; strictly earlier = safe. */
+export const LEGACY_PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS = 760 as const;
 /** Ireland's released pre-claim minimum remaining time to primary_maker_cancel_by (Ireland-owned; informational here). */
 export const IRELAND_PRECLAIM_MIN_REMAINING_SECONDS = 180 as const;
 
@@ -82,15 +87,15 @@ export type PrimaryMakerTiming = {
 };
 
 /**
- * Pure derivation from the physical event start (cancel_by) and the Queue latest_entry (fallback deadline).
- * Null when either is unparseable or when the fallback reserve floor is not met (fails closed).
+ * Pure derivation from the physical event start (cancel_by = start - 60 s) and the Queue latest_entry.
+ * Null when either is unparseable or when cancel_by would fall after latest_entry (fails closed).
  */
 export function primaryMakerTiming(eventStartIso: string, latestEntryIso: string): PrimaryMakerTiming | null {
   const start = Date.parse(eventStartIso);
   const deadline = Date.parse(latestEntryIso);
   if (!Number.isFinite(start) || !Number.isFinite(deadline)) return null;
   const cancelBy = start - PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS * 1000;
-  if (deadline - cancelBy < IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS * 1000) return null;
+  if (deadline < cancelBy) return null;
   return {
     primary_maker_cancel_by_iso: new Date(cancelBy).toISOString(),
     fallback_deadline_iso: new Date(deadline).toISOString(),
@@ -321,7 +326,7 @@ export interface IrelandQueueCandidate {
   primary_maker_cancel_by_iso?: string;
   /** = latest_entry_iso; MAKER_FALLBACK_1 never runs past it. */
   fallback_deadline_iso?: string;
-  /** >= IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS (580). */
+  /** Released wire value (580); no longer a window constraint -- there is no fallback after MAKER_FIRST. */
   required_min_remaining_seconds?: number;
 }
 
@@ -450,15 +455,16 @@ export function readT10FrozenContract(
     const fallbackMs = typeof c.fallback_deadline_iso === "string" ? Date.parse(c.fallback_deadline_iso) : NaN;
     const cancelMs = typeof c.primary_maker_cancel_by_iso === "string" ? Date.parse(c.primary_maker_cancel_by_iso) : NaN;
     const startMs = Date.parse(row.game_start_iso);
-    // fallback_deadline is the Queue latest_entry; primary_maker_cancel_by is the FIXED event_start - 12m40s; the
-    // reserve between them is a validated floor (>= the Ireland reserve), never the derivation of cancel_by. A row
-    // frozen under the previous contract (latest_entry T-3m, cancel_by latest_entry - 580s) has the same numeric
-    // cancel_by (event_start - 760s) and a reserve of exactly 580 s, so it keeps validating after the release.
+    // fallback_deadline is the Queue latest_entry; primary_maker_cancel_by is the FIXED event_start - 60 s
+    // (SINGLE_MAKER_PREGAME_CONTRACT_V1). A row frozen before this contract carries the earlier T-12:40 cancel_by:
+    // it keeps validating (strictly earlier = safe). No reserve window is enforced -- there is no fallback after
+    // MAKER_FIRST; the released required_min_remaining_seconds integer floor is kept for wire compatibility.
     if (!Number.isFinite(startMs) || !Number.isFinite(fallbackMs) || !Number.isFinite(cancelMs) ||
         typeof required !== "number" || !Number.isInteger(required) || required < IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS ||
         fallbackMs !== Date.parse(row.latest_entry_iso) ||
-        cancelMs !== startMs - PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS * 1000 ||
-        fallbackMs - cancelMs < required * 1000) {
+        (cancelMs !== startMs - PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS * 1000 &&
+          cancelMs !== startMs - LEGACY_PRIMARY_MAKER_CANCEL_BEFORE_START_SECONDS * 1000) ||
+        fallbackMs < cancelMs) {
       return { ok: false, reason: "T10_MAKER_TIMING_CONTRACT_INVALID" };
     }
     timing = {

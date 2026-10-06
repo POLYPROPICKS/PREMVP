@@ -4,7 +4,7 @@
 //   A/B  pre-submission proven-zero callback (no submitted_price) -> 200, terminal zero persisted, exactly one
 //        MAKER_FALLBACK_1, parent never left CLAIMED until lease expiry; everything else stays fail-closed
 //   C    single canonical hard cap 0.555 (TAKER raw VWAP AND fee-inclusive cost; MAKER on tick; fallback inherits)
-//   D    primary_maker_cancel_by = event start - 12m40s (fixed), latest_entry = event start + 3m, Queue at ~T-20
+//   D    primary_maker_cancel_by = event start - 60 s (fixed; SINGLE_MAKER_PREGAME_CONTRACT_V1), latest_entry = event start + 3m, Queue at ~T-20
 import { mock, test } from "node:test";
 import assert from "node:assert/strict";
 import type { NextRequest } from "next/server";
@@ -13,6 +13,7 @@ import {
   deriveT10FallbackLimit,
   evaluateMakerEligibility,
   isProvenRejectedBeforeSubmissionZero,
+  makerDeadlineIso,
   mergeAttemptResult,
   normalizeMakerCallbackForAccounting,
   readExecutionAttempts,
@@ -51,9 +52,10 @@ import type { FinalT3MarketObservation } from "../../lib/executor/reservationMar
 const KICKOFF = "2026-10-06T11:00:00.000Z";
 const KICKOFF_MS = Date.parse(KICKOFF);
 const LATEST = "2026-10-06T11:03:00.000Z";                       // event start + 3 minutes
-const CANCEL_BY = "2026-10-06T10:47:20.000Z";                    // event start - 12m40s
+const CANCEL_BY = "2026-10-06T10:59:00.000Z";                    // event start - 60 s (SINGLE_MAKER_PREGAME_CONTRACT_V1)
+const LEGACY_CANCEL_BY = "2026-10-06T10:47:20.000Z";             // event start - 12m40s (rows frozen before the contract)
 const T20 = KICKOFF_MS - 20 * 60_000;                           // Queue / economic-action target
-const CALLBACK_AT = new Date("2026-10-06T10:45:30.000Z");        // Ireland pre-claim refusal: 110 s left before cancel_by (< 180 s)
+const CALLBACK_AT = new Date("2026-10-06T10:45:30.000Z");        // Ireland pre-claim refusal, well before the T-1:00 cutoff
 const IDEM = "idem_hotfix_v2";
 const EVENT = "provider:polymarket:chi2-1:2026-10-06";
 
@@ -167,16 +169,16 @@ async function deliver(w: ReturnType<typeof world>, raw: Record<string, unknown>
 
 // ═══ A. pre-submission proven zero ══════════════════════════════════════════════════════════════════════
 
-test("1: the overnight callback (no submitted_price) is accepted, terminal zero persisted, exactly one fallback authorized (legacy and v1 envelopes)", async () => {
-  for (const [name, raw] of [["top-level result_class", overnight()], ["execution_result_v1", overnightV1()]] as const) {
+test("1: the overnight callback (no submitted_price) on a TAKER_ATTEMPT_1 parent is accepted, terminal zero persisted, exactly one fallback authorized (legacy and v1 envelopes); a MAKER_FIRST parent authorizes NONE", async () => {
+  for (const [name, raw] of [["top-level result_class", overnight("TAKER_ATTEMPT_1")], ["execution_result_v1", overnightV1("TAKER_ATTEMPT_1")]] as const) {
     assert.equal(isProvenRejectedBeforeSubmissionZero(raw), true, name);
-    const w = world(queueRow("MAKER_FIRST"));
+    const w = world(queueRow("TAKER_FIRST"));
     const { auth, order } = await deliver(w, raw);
     assert.equal(order?.kind, "INSERTED", `${name}: ${JSON.stringify(order)}`);            // the route maps INSERTED -> HTTP 200
     assert.equal(auth.kind, "MAKER_AUTHORIZED", name);
     assert.equal(w.st.claims, 1, "exactly one MAKER_FALLBACK_1");
     // canonical terminal zero persisted on the primary slot
-    const slot = readExecutionAttempts(w.st.row.diagnostics).maker_first?.result;
+    const slot = readExecutionAttempts(w.st.row.diagnostics).taker_attempt_1?.result;
     assert.equal(slot?.result_class, "PROVEN_REJECTED_BEFORE_SUBMISSION");
     assert.equal(slot?.terminal, true);
     assert.equal(slot?.economic_exposure_proven_zero, true);
@@ -184,13 +186,23 @@ test("1: the overnight callback (no submitted_price) is accepted, terminal zero 
     // the fallback is the SAME economic bet: identity, stake and parent lineage
     const cmd = (auth as { command: MakerFallbackCommand }).command;
     assert.deepEqual([cmd.attempt_id, cmd.parent_attempt_id, cmd.token_id, cmd.condition_id, cmd.side, cmd.stake_usd],
-      ["MAKER_FALLBACK_1", "MAKER_FIRST", "tok1", "cond1", "YES", 2.5]);
-    assert.equal(cmd.deadline_iso, LATEST, "fallback deadline = latest_entry = event start + 3m");
+      ["MAKER_FALLBACK_1", "TAKER_ATTEMPT_1", "tok1", "cond1", "YES", 2.5]);
+    assert.equal(cmd.deadline_iso, CANCEL_BY, "fallback deadline = the single pre-kickoff cutoff = event start - 60 s");
     // one immutable order event, no venue order, no submitted price fabricated
     assert.equal(w.st.events.size, 1);
     const ev = [...w.st.events.values()][0];
     assert.equal(ev.clob_order_id, null);
     assert.equal(ev.submitted_price, null);
+  }
+  // A MAKER_FIRST parent with the very same proven-zero shape: recorded, terminal, NO fallback.
+  for (const raw of [overnight(), overnightV1()]) {
+    const w = world(queueRow("MAKER_FIRST"));
+    const { auth, order } = await deliver(w, raw);
+    assert.equal(order?.kind, "INSERTED", JSON.stringify(order));
+    assert.deepEqual(auth, { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" });
+    assert.equal(w.st.claims, 0, "no MAKER_FALLBACK_1 after MAKER_FIRST");
+    assert.equal(readExecutionAttempts(w.st.row.diagnostics).maker_fallback_1, undefined);
+    assert.equal(readExecutionAttempts(w.st.row.diagnostics).maker_first?.result?.economic_exposure_proven_zero, true);
   }
 });
 
@@ -204,9 +216,9 @@ test("1b: the same shape on a TAKER_ATTEMPT_1 parent is accepted and authorizes 
 });
 
 test("B: the claim black hole is closed -- the parent is terminal at once, never left CLAIMED to be expired as CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT", async () => {
-  const w = world(queueRow("MAKER_FIRST"));
+  const w = world(queueRow("TAKER_FIRST"));
   assert.equal(w.st.row.status, "CLAIMED");
-  const { auth, order } = await deliver(w, overnight());
+  const { auth, order } = await deliver(w, overnight("TAKER_ATTEMPT_1"));
   assert.equal(auth.kind, "MAKER_AUTHORIZED");
   assert.equal(order?.kind, "INSERTED");
   if (order?.kind === "INSERTED") assert.equal(order.queueMark.kind, "FAILED", "terminal no-exposure mark on the parent attempt");
@@ -230,10 +242,10 @@ test("B: the claim black hole is closed -- the parent is terminal at once, never
 });
 
 test("2: a duplicate callback is idempotent -- same row, no second event, no second fallback, status not rewritten", async () => {
-  const w = world(queueRow("MAKER_FIRST"));
-  const first = await deliver(w, overnight());
+  const w = world(queueRow("TAKER_FIRST"));
+  const first = await deliver(w, overnight("TAKER_ATTEMPT_1"));
   const writesAfterFirst = w.st.statusWrites.length;
-  const again = await deliver(w, overnight());
+  const again = await deliver(w, overnight("TAKER_ATTEMPT_1"));
   assert.equal(first.auth.kind, "MAKER_AUTHORIZED");
   assert.equal(again.auth.kind, "MAKER_ALREADY_AUTHORIZED");
   assert.deepEqual((again.auth as { command: MakerFallbackCommand }).command, (first.auth as { command: MakerFallbackCommand }).command);
@@ -243,8 +255,8 @@ test("2: a duplicate callback is idempotent -- same row, no second event, no sec
   assert.equal(w.st.claims, 1);
   assert.equal(w.st.statusWrites.length, writesAfterFirst, "no second status write");
   // concurrent duplicates still produce exactly one authorization
-  const c = world(queueRow("MAKER_FIRST"));
-  const outs = await Promise.all([1, 2, 3].map(() => recordResultAndAuthorizeMaker(c.maker, overnight(), CALLBACK_AT)));
+  const c = world(queueRow("TAKER_FIRST"));
+  const outs = await Promise.all([1, 2, 3].map(() => recordResultAndAuthorizeMaker(c.maker, overnight("TAKER_ATTEMPT_1"), CALLBACK_AT)));
   assert.equal(outs.filter((o) => o.kind === "MAKER_AUTHORIZED").length, 1);
   assert.equal(c.st.claims, 1);
 });
@@ -303,7 +315,7 @@ test("3b: the waiver covers ONLY an absent price -- a present price is validated
   const filled = world(queueRow("MAKER_FIRST"));
   await recordResultAndAuthorizeMaker(filled.maker, { ...overnight(), result_class: "PARTIAL_FILL_CANCELLED", filled_quantity: 2, economic_exposure_proven_zero: false, venue_order_id: "v-9", clob_order_id: "v-9" }, CALLBACK_AT);
   const late = await deliver(filled, overnight());
-  assert.equal(late.auth.kind, "MAKER_BLOCKED");
+  assert.equal(late.auth.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT", "a MAKER_FIRST result never authorizes a fallback");
   assert.deepEqual(late.order, { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "MISSING_SUBMITTED_PRICE" });
   assert.equal(filled.st.claims, 0);
 });
@@ -317,15 +329,16 @@ test("3c: an accepted order's later terminal zero keeps its price requirement an
   const zero = { ...accepted, order_status: "CANCELLED", execution_result_v1: { attempt_id: "MAKER_FIRST", execution_mode: "MAKER_FIRST", outcome: "PROVEN_ZERO_FILL_CANCELLED", venue_order_id: "v-1" } };
   const progressed = await deliver(w, zero);
   assert.equal(progressed.order?.kind, "PROGRESSED");
-  assert.equal(progressed.auth.kind, "MAKER_AUTHORIZED");
+  assert.equal(progressed.auth.kind, "RESULT_RECORDED_NO_FURTHER_ATTEMPT", "MAKER_FIRST zero-fill is terminal: no fallback");
+  assert.equal(w.st.claims, 0);
   // The pre-submission class arriving AFTER an accepted order is contradictory and conflicts / is refused.
   const contradiction = await deliver(world(w.st.row), overnight());
   assert.notEqual(contradiction.order?.kind, "INSERTED");
 });
 
 test("7: the fallback attempt's own pre-submission zero is accepted without a price, consumes the command, never touches the parent, never creates MAKER_FALLBACK_2", async () => {
-  const w = world(queueRow("MAKER_FIRST"));
-  const first = await deliver(w, overnight());
+  const w = world(queueRow("TAKER_FIRST"));
+  const first = await deliver(w, overnight("TAKER_ATTEMPT_1"));
   const cmd = (first.auth as { command: MakerFallbackCommand }).command;
   const parentStatus = w.st.row.status;
   const fb = { event_type: "ORDER_RESULT", idempotency_key: cmd.idempotency_key, parent_idempotency_key: IDEM, attempt_id: "MAKER_FALLBACK_1", execution_mode: "MAKER",
@@ -394,9 +407,15 @@ test("C: MAKER limit <= 0.555 on a valid tick (floors to .55 at tick .01); MAKER
   parent.diagnostics = { ...parent.diagnostics, max_entry_price: 0.55, max_stake_usd: 4,
     t10_economic_action_v1: frozenMakerFirst({ p_buy_max: 0.55, stake_usd: 2.75, stake_authorization: headroom, maker: { maker_limit_price: 0.55, maker_shares: 5 } }) };
   assert.equal(readT10FrozenContract(parent).ok, true);
-  const fb = deriveT10FallbackLimit({ queue: parent, book: { bestAsk: 0.7, tickSize: 0.01, minimumOrderSize: 5 }, priceCap: 0.55, stakeUsd: 2.75 });
+  // A MAKER_FIRST row is never a fallback parent (SINGLE_MAKER_PREGAME_CONTRACT_V1).
+  const noFb = deriveT10FallbackLimit({ queue: parent, book: { bestAsk: 0.7, tickSize: 0.01, minimumOrderSize: 5 }, priceCap: 0.55, stakeUsd: 2.75 });
+  assert.deepEqual(noFb, { ok: false, reason: "T10_CONTRACT_INVALID" });
+  // TAKER_FIRST parent at the cap: the fallback never rises above the parent cap, whatever the ask or a looser cap.
+  const capParent = queueRow("TAKER_FIRST", { status: "EXECUTED" });
+  capParent.diagnostics = { ...capParent.diagnostics, max_entry_price: 0.55, t10_economic_action_v1: frozenTakerFirst({ minimum_order_size: 4, taker: { price_limit: 0.55 } }) };
+  const fb = deriveT10FallbackLimit({ queue: capParent, book: { bestAsk: 0.7, tickSize: 0.01, minimumOrderSize: 4 }, priceCap: 0.55, stakeUsd: 2.5 });
   assert.equal(fb.ok && fb.limit_price, 0.55, "a far ask can never lift the fallback above the parent cap");
-  const looser = deriveT10FallbackLimit({ queue: parent, book: { bestAsk: 0.7, tickSize: 0.01, minimumOrderSize: 5 }, priceCap: 0.6, stakeUsd: 2.75 });
+  const looser = deriveT10FallbackLimit({ queue: capParent, book: { bestAsk: 0.7, tickSize: 0.01, minimumOrderSize: 4 }, priceCap: 0.6, stakeUsd: 2.5 });
   assert.ok(looser.ok && looser.limit_price <= QUEUE_MAX_ENTRY_PRICE, "even a looser parent cap is clamped to the canonical cap");
   // TAKER_FIRST parent: frozen ceiling 0.555 (the hard cap) but its own price cap is the fee-inclusive taker limit 0.54 -> the fallback inherits 0.54.
   const takerParent = queueRow("TAKER_FIRST", { status: "EXECUTED" });
@@ -431,20 +450,19 @@ test("9: adaptive venue-minimum headroom -- MAKER 0.53 x 5 = $2.65 unchanged, TA
 
 // ═══ D. timing ══════════════════════════════════════════════════════════════════════════════════════════
 
-test("4: a Queue created at T-20 has cancel_by = T-12:40 -> ~440 s primary window, above Ireland's 180 s pre-claim minimum; reserve >= 580 s is validated, not derived", async () => {
+test("4: a Queue created at T-20 has cancel_by = T-1:00 -> a ~1140 s single-maker window, above Ireland's 180 s pre-claim minimum; no fallback reserve", async () => {
   const timing = primaryMakerTiming(KICKOFF, LATEST)!;
   assert.equal(timing.primary_maker_cancel_by_iso, CANCEL_BY);
   assert.equal(timing.fallback_deadline_iso, LATEST);
   assert.equal(timing.required_min_remaining_seconds, IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS);
   const primaryWindowSeconds = (Date.parse(timing.primary_maker_cancel_by_iso) - T20) / 1000;
-  assert.equal(primaryWindowSeconds, 440);
+  assert.equal(primaryWindowSeconds, 1140);
   assert.ok(primaryWindowSeconds > IRELAND_PRECLAIM_MIN_REMAINING_SECONDS);
-  const reserve = (Date.parse(timing.fallback_deadline_iso) - Date.parse(timing.primary_maker_cancel_by_iso)) / 1000;
-  assert.equal(reserve, 940);
-  assert.ok(reserve >= IRELAND_REQUIRED_FALLBACK_RESERVE_SECONDS);
+  assert.equal(Date.parse(KICKOFF) - Date.parse(timing.primary_maker_cancel_by_iso), 60_000, "T-1:00: strictly before kickoff");
+  assert.equal((Date.parse(timing.fallback_deadline_iso) - Date.parse(timing.primary_maker_cancel_by_iso)) / 1000, 240, "no fallback reserve is required after MAKER_FIRST");
   // cancel_by is NOT derived from latest_entry any more
   assert.equal(primaryMakerTiming(KICKOFF, "2026-10-06T11:10:00.000Z")!.primary_maker_cancel_by_iso, CANCEL_BY);
-  // a deadline that leaves less than the reserve floor is refused (fails closed), as is garbage
+  // a latest_entry before cancel_by is refused (fails closed), as is garbage
   assert.equal(primaryMakerTiming(KICKOFF, "2026-10-06T10:56:00.000Z"), null);
   assert.equal(primaryMakerTiming("garbage", LATEST), null);
   assert.equal(primaryMakerTiming(KICKOFF, "garbage"), null);
@@ -459,7 +477,7 @@ test("4: a Queue created at T-20 has cancel_by = T-12:40 -> ~440 s primary windo
     assert.equal(g.contract.fallback_deadline_iso, LATEST);
     assert.equal(g.contract.latest_entry_iso, LATEST);
     assert.equal(g.contract.required_min_remaining_seconds, 580);
-    assert.equal((Date.parse(g.contract.primary_maker_cancel_by_iso!) - T20) / 1000, 440);
+    assert.equal((Date.parse(g.contract.primary_maker_cancel_by_iso!) - T20) / 1000, 1140);
     assert.equal(g.contract.t30_telemetry_v1.LIVE_AUTHORITY, false, "T30 stays telemetry only");
   }
   // The T-20 instant is the first Queue instant: the Final Rebalance source window opens exactly there.
@@ -468,20 +486,19 @@ test("4: a Queue created at T-20 has cancel_by = T-12:40 -> ~440 s primary windo
   assert.equal(classifyReservationMarketPhase(KICKOFF, KICKOFF_MS - 18 * 60_000), "T_MINUS_10", "the T-22..T-18 scheduling band");
 });
 
-test("D: frozen-contract timing is validated against the FIXED cancel_by and the reserve floor; rows frozen before the release keep validating", () => {
+test("D: frozen-contract timing is validated against the FIXED cancel_by = event start - 60 s; rows frozen before the contract keep validating", () => {
   const ok = queueRow("MAKER_FIRST");
   assert.equal(readT10FrozenContract(ok).ok, true);
-  // legacy regime: latest_entry = start - 3m, cancel_by = latest - 580 s = start - 12m40s (same numeric cancel_by), reserve exactly 580 s
-  const legacyLatest = "2026-10-06T10:57:00.000Z";
-  const legacy = queueRow("MAKER_FIRST", { latest_entry_iso: legacyLatest });
-  legacy.diagnostics = { ...legacy.diagnostics, t10_economic_action_v1: frozenMakerFirst({ latest_entry_iso: legacyLatest, fallback_deadline_iso: legacyLatest, primary_maker_cancel_by_iso: CANCEL_BY }) };
-  assert.equal(readT10FrozenContract(legacy).ok, true, "pre-release rows are not stranded");
+  // pre-contract rows froze cancel_by = start - 12m40s (strictly earlier = safe): not stranded by the release
+  const legacy = queueRow("MAKER_FIRST");
+  legacy.diagnostics = { ...legacy.diagnostics, t10_economic_action_v1: frozenMakerFirst({ primary_maker_cancel_by_iso: LEGACY_CANCEL_BY }) };
+  assert.equal(readT10FrozenContract(legacy).ok, true, "pre-contract rows are not stranded");
   const broken = (patch: Record<string, unknown>) => readT10FrozenContract({ ...ok, diagnostics: { ...ok.diagnostics, t10_economic_action_v1: { ...(ok.diagnostics.t10_economic_action_v1 as object), ...patch } } });
-  assert.equal(broken({ primary_maker_cancel_by_iso: "2026-10-06T10:50:00.000Z" }).ok, false, "cancel_by must be event start - 12m40s");
-  assert.equal(broken({ primary_maker_cancel_by_iso: "2026-10-06T10:40:00.000Z" }).ok, false);
+  assert.equal(broken({ primary_maker_cancel_by_iso: "2026-10-06T10:50:00.000Z" }).ok, false, "cancel_by must be event start - 60 s (or the legacy T-12:40)");
+  assert.equal(broken({ primary_maker_cancel_by_iso: "2026-10-06T11:00:00.000Z" }).ok, false, "cancel_by at kickoff is refused");
+  assert.equal(broken({ primary_maker_cancel_by_iso: "2026-10-06T11:01:00.000Z" }).ok, false, "cancel_by after kickoff is refused");
   assert.equal(broken({ fallback_deadline_iso: "2026-10-06T11:05:00.000Z" }).ok, false, "fallback deadline = latest_entry");
-  assert.equal(broken({ required_min_remaining_seconds: 579 }).ok, false, "reserve floor 580 s");
-  assert.equal(broken({ required_min_remaining_seconds: 941 }).ok, false, "a required reserve above the actual window is refused");
+  assert.equal(broken({ required_min_remaining_seconds: 579 }).ok, false, "released wire floor 580");
   assert.equal(broken({ required_min_remaining_seconds: 580.5 }).ok, false);
   assert.equal(broken({ primary_maker_cancel_by_iso: undefined }).ok, false);
 });
@@ -506,23 +523,29 @@ test("5/6: latest entry = event start + 3m -- T+2:59 is eligible everywhere, T+3
   assert.equal(lateEvent.decision.reason, "EVENT_AFTER_LATEST_ENTRY");
   const lateGuard = await reverifySelectedAction({ event: okEvent, nowMs: at, exposureExists: false, fetchExactTokenOrderbook: fetch });
   assert.equal(!lateGuard.ok && lateGuard.reason, "T10_ECON_GUARD_AFTER_LATEST_ENTRY");
-  // a MAKER_FIRST can never start at/after cancel_by (T-12:40), long before latest_entry
+  // a MAKER_FIRST can never start at/after cancel_by (T-1:00), before kickoff
   const { event: makerEvent, fetch: mf } = await decide(bookOf("x-token", [[0.53, 100]], [[0.56, 100]], 5));
   const afterCancel = await reverifySelectedAction({ event: makerEvent, nowMs: Date.parse(CANCEL_BY), exposureExists: false, fetchExactTokenOrderbook: mf });
   assert.match(!afterCancel.ok ? afterCancel.reason : "", /T10_ECON_GUARD_AFTER_PRIMARY_MAKER_CANCEL_BY/);
-  // fallback authorization: same deadline
-  const result = readIrelandExecutionResult({ ...overnight(), idempotency_key: IDEM }, "")!;
-  const row = queueRow("MAKER_FIRST");
-  assert.equal(evaluateMakerEligibility({ result, queue: row, nowMs: before }).eligible, true);
-  const atDeadline = evaluateMakerEligibility({ result, queue: row, nowMs: at });
-  assert.equal(atDeadline.eligible, false);
-  assert.ok(atDeadline.reasons.includes("DEADLINE_PASSED"));
-  // executor-facing command list: visible until (excluding) the deadline
-  const w = world(queueRow("MAKER_FIRST"));
-  const { auth } = await deliver(w, overnight());
+  // fallback authorization (TAKER_ATTEMPT_1 parent only): the single pre-kickoff cutoff, never past kickoff
+  const result = readIrelandExecutionResult({ ...overnight("TAKER_ATTEMPT_1"), idempotency_key: IDEM }, "")!;
+  const row = queueRow("TAKER_FIRST");
+  const cutoff = Date.parse(CANCEL_BY);
+  assert.equal(makerDeadlineIso(row), CANCEL_BY);
+  assert.equal(evaluateMakerEligibility({ result, queue: row, nowMs: cutoff - 1_000 }).eligible, true);
+  for (const nowMs of [cutoff, KICKOFF_MS, before, at]) {
+    const blocked = evaluateMakerEligibility({ result, queue: row, nowMs });
+    assert.equal(blocked.eligible, false, String(nowMs));
+    assert.ok(blocked.reasons.includes("DEADLINE_PASSED"));
+  }
+  // executor-facing command list: visible until (excluding) the cutoff; never after kickoff
+  const w = world(queueRow("TAKER_FIRST"));
+  const { auth } = await deliver(w, overnight("TAKER_ATTEMPT_1"));
   assert.equal(auth.kind, "MAKER_AUTHORIZED");
-  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], before).length, 1);
-  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], at).length, 0);
+  assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], cutoff - 1_000).length, 1);
+  for (const nowMs of [cutoff, KICKOFF_MS, before, at]) {
+    assert.equal(selectExecutorMakerFallbackCommands([{ diagnostics: w.st.row.diagnostics }], nowMs).length, 0, String(nowMs));
+  }
 });
 
 test("T30 stays telemetry only: no live decision input reads it (frozen contract flags it LIVE_AUTHORITY=false)", async () => {
@@ -587,10 +610,13 @@ const post = (body: Record<string, unknown>): NextRequest => new Request("http:/
 
 test("1 (route): the overnight callback returns HTTP 200 end to end, persists the terminal zero, authorizes exactly one fallback; a duplicate is 200 + idempotent", async () => {
   dbQueue.length = 0; dbEvents.length = 0;
-  dbQueue.push({ ...queueRow("MAKER_FIRST") });
+  dbQueue.push({ ...queueRow("TAKER_FIRST") });
   const { POST } = await import("../../app/api/executor/order-events/route");
+  // The route authorizes against the wall clock: pin it to the fixture's callback instant (deterministic deadline).
+  mock.timers.enable({ apis: ["Date"], now: CALLBACK_AT });
+  try {
 
-  const first = await POST(post(overnight()));
+  const first = await POST(post(overnight("TAKER_ATTEMPT_1")));
   const firstBody = await first.json();
   assert.equal(first.status, 200, JSON.stringify(firstBody));
   assert.equal(firstBody.success, true);
@@ -603,11 +629,11 @@ test("1 (route): the overnight callback returns HTTP 200 end to end, persists th
   const row = dbQueue[0] as unknown as EventExecutionQueueRow;
   assert.equal(row.status, "FAILED", "not left CLAIMED");
   const a = readExecutionAttempts(row.diagnostics);
-  assert.equal(a.maker_first?.result?.result_class, "PROVEN_REJECTED_BEFORE_SUBMISSION");
+  assert.equal(a.taker_attempt_1?.result?.result_class, "PROVEN_REJECTED_BEFORE_SUBMISSION");
   const command = a.maker_fallback_1?.command;
   assert.ok(command);
 
-  const dup = await POST(post(overnight()));
+  const dup = await POST(post(overnight("TAKER_ATTEMPT_1")));
   const dupBody = await dup.json();
   assert.equal(dup.status, 200, JSON.stringify(dupBody));
   assert.equal(dupBody.duplicate, true);
@@ -624,4 +650,5 @@ test("1 (route): the overnight callback returns HTTP 200 end to end, persists th
     assert.equal((await res.json()).reason, "MISSING_SUBMITTED_PRICE", name);
     assert.equal(dbEvents.length, 0, name);
   }
+  } finally { mock.timers.reset(); }
 });

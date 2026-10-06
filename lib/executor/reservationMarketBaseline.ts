@@ -95,7 +95,7 @@ const FINAL_WINDOW_CLOSE_MINUTES = 9;
  *                         Legacy persisted label; business target is T20.
  * LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2: the T_MINUS_10 window now OPENS at T-20 (was T-15), so on the every-minute
  * rebalance cron the capture and the economic action / Queue creation happen at ~T-20 (T-22..T-18) and the primary
- * MAKER gets ~440 s before primary_maker_cancel_by (T-12m40s), well above Ireland's 180 s pre-claim minimum. The
+ * MAKER rests ~19 minutes until primary_maker_cancel_by (T-1m, SINGLE_MAKER_PREGAME_CONTRACT_V1), well above Ireland's 180 s pre-claim minimum. The
  * lower edge (9) is unchanged, so a tick that missed the first minutes still captures later (a TAKER_FIRST needs no
  * primary window; a MAKER_FIRST at/after cancel_by fails closed).
  */

@@ -597,8 +597,8 @@ export async function handleOrderEventSubmission(
   if (primaryMaker && frozenMode !== "MAKER_FIRST") {
     return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "PRIMARY_MAKER_NOT_FROZEN_ON_QUEUE_ROW" };
   }
-  // The only other attempt a MAKER_FIRST row accepts is its authorized MAKER_FALLBACK_1 (bound to the
-  // stored command below); a TAKER callback is never accepted on it.
+  // A MAKER_FIRST row accepts only its primary maker; a TAKER callback is never accepted on it. A maker-fallback
+  // callback is bound to a stored MAKER_FALLBACK_1 command, which a MAKER_FIRST row can never carry.
   if (!primaryMaker && !makerAttempt && frozenMode === "MAKER_FIRST") {
     return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "MAKER_FIRST_ROW_REQUIRES_PRIMARY_MAKER_ATTEMPT" };
   }

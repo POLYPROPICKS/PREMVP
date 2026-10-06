@@ -6,6 +6,7 @@ import {
   recordResultAndAuthorizeMaker,
   readExecutionAttempts,
   makerIdempotencyKey,
+  makerDeadlineIso,
   deriveMakerLimitPrice,
   type MakerFallbackPort,
   type MakerFallbackCommand,
@@ -93,17 +94,22 @@ test("BLOCK maker: missing callback/result is never zero", async () => {
   assert.equal(state.claims, 0);
 });
 
-test("BLOCK maker: expired deadline; the deadline is latest_entry (event start + 3m), kickoff is no longer a ceiling", async () => {
+test("BLOCK maker: expired deadline; the deadline is the single pre-kickoff cutoff (event start - 60 s), never at/after kickoff", async () => {
   const { out } = await run(zero(), queueRow(), new Date("2026-10-01T18:51:00.000Z"));
   assert.equal(out.kind, "MAKER_BLOCKED");
   const row = queueRow({ latest_entry_iso: "2026-10-01T19:03:00.000Z" });   // kickoff 19:00 + 3m
-  const afterKickoff = await run(zero(), row, new Date("2026-10-01T19:01:00.000Z"));
-  assert.equal(afterKickoff.out.kind, "MAKER_AUTHORIZED", "T+1:00 is inside the entry window");
-  const lastSecond = await run(zero(), row, new Date("2026-10-01T19:02:59.000Z"));
-  assert.equal(lastSecond.out.kind, "MAKER_AUTHORIZED", "T+2:59 is still eligible");
-  const atDeadline = await run(zero(), row, new Date("2026-10-01T19:03:00.000Z"));
-  assert.equal(atDeadline.out.kind, "MAKER_BLOCKED", "T+3:00: no new entry");
-  assert.ok((atDeadline.out as { reasons: string[] }).reasons.includes("DEADLINE_PASSED"));
+  assert.equal(makerDeadlineIso(row), "2026-10-01T18:59:00.000Z", "event start - 60 s");
+  const lastSecond = await run(zero(), row, new Date("2026-10-01T18:58:59.000Z"));
+  assert.equal(lastSecond.out.kind, "MAKER_AUTHORIZED", "T-1:01 is still eligible");
+  assert.equal((lastSecond.out as { command: { deadline_iso: string } }).command.deadline_iso, "2026-10-01T18:59:00.000Z");
+  for (const at of ["2026-10-01T18:59:00.000Z", "2026-10-01T19:00:00.000Z", "2026-10-01T19:01:00.000Z", "2026-10-01T19:02:59.000Z"]) {
+    const late = await run(zero(), row, new Date(at));
+    assert.equal(late.out.kind, "MAKER_BLOCKED", `${at}: no resting maker at/after the cutoff or kickoff`);
+    assert.ok((late.out as { reasons: string[] }).reasons.includes("DEADLINE_PASSED"));
+  }
+  // Fails closed on an unparseable kickoff / latest_entry.
+  assert.equal(makerDeadlineIso({ ...row, game_start_iso: "garbage" }), null);
+  assert.equal(makerDeadlineIso({ ...row, latest_entry_iso: "garbage" }), null);
 });
 
 test("BLOCK maker: identity mismatch and maker-mode/attempt confusion", async () => {

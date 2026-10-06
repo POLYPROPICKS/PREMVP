@@ -2,11 +2,13 @@
 //
 // P2_PREMVP_SAFE_TAKER_TO_MAKER_AUTHORIZATION_V1
 //
-// One reserved physical event may carry TAKER_ATTEMPT_1 and, ONLY on authoritative
-// Ireland proof of ZERO economic exposure, exactly one MAKER_FALLBACK_1 on the SAME
+// SINGLE_MAKER_PREGAME_CONTRACT_V1: ONE maker attempt per physical event. One reserved
+// physical event may carry TAKER_ATTEMPT_1 and, ONLY on authoritative Ireland proof of
+// ZERO economic exposure of that TAKER attempt, exactly one MAKER_FALLBACK_1 on the SAME
 // immutable Final Identity. It is a second execution attempt for the SAME economic bet,
 // never a second market decision and never a second exposure slot. There is no
-// MAKER_FALLBACK_2. Silence is never zero exposure.
+// MAKER_FALLBACK_2, and a primary MAKER_FIRST row NEVER authorizes a fallback: a MAKER_FIRST
+// zero-fill is terminal for the event. Silence is never zero exposure.
 //
 // The lineage lives on the parent (taker) Queue row at
 // diagnostics.execution_attempts_v1 -- no new table, no new Queue row (the Queue's
@@ -15,6 +17,7 @@
 
 import { createHash } from "node:crypto";
 import {
+  MAKER_PREGAME_CUTOFF_SECONDS,
   PRIMARY_MAKER_ATTEMPT_ID,
   QUEUE_MAX_ENTRY_PRICE,
   extractMaxStakeUsd,
@@ -27,7 +30,7 @@ import {
 export const EXECUTION_ATTEMPTS_KEY = "execution_attempts_v1" as const;
 export const TAKER_ATTEMPT_1 = "TAKER_ATTEMPT_1" as const;
 export const MAKER_FALLBACK_1 = "MAKER_FALLBACK_1" as const;
-/** Primary maker attempt of a frozen T10 MAKER_FIRST Queue row. Never a fallback. */
+/** Primary maker attempt of a frozen T10 MAKER_FIRST Queue row. Never a fallback parent. */
 export const MAKER_FIRST = PRIMARY_MAKER_ATTEMPT_ID;
 export type AttemptId = typeof TAKER_ATTEMPT_1 | typeof MAKER_FALLBACK_1 | typeof MAKER_FIRST;
 export type ExecutionMode = "TAKER" | "MAKER" | "MAKER_FIRST";
@@ -145,8 +148,8 @@ export interface MakerFallbackCommand {
   execution_mode: "MAKER";
   execution_side: "BUY";
   status: "AUTHORIZED";
-  /** The row's primary attempt: TAKER_ATTEMPT_1 (TAKER row) or MAKER_FIRST (frozen T10 MAKER_FIRST row). */
-  parent_attempt_id: typeof TAKER_ATTEMPT_1 | typeof MAKER_FIRST;
+  /** The only fallback parent: TAKER_ATTEMPT_1 (a MAKER_FIRST row is never a fallback parent). */
+  parent_attempt_id: typeof TAKER_ATTEMPT_1;
   parent_queue_id: string;
   parent_idempotency_key: string;
   idempotency_key: string;
@@ -170,7 +173,7 @@ export interface MakerFallbackCommand {
 export interface ExecutionAttemptsV1 {
   taker_attempt_1?: { result?: IrelandExecutionResult };
   maker_fallback_1?: { command?: MakerFallbackCommand; result?: IrelandExecutionResult };
-  /** Primary maker of a frozen T10 MAKER_FIRST row. Only its terminal proven ZERO may authorize MAKER_FALLBACK_1. */
+  /** Primary maker of a frozen T10 MAKER_FIRST row. Recorded only; it never authorizes MAKER_FALLBACK_1. */
   maker_first?: { result?: IrelandExecutionResult };
 }
 export type AttemptResultSlot = "taker_attempt_1" | "maker_fallback_1" | "maker_first";
@@ -190,8 +193,6 @@ export type MakerBlockReason =
   | "RESULT_MISSING"
   | "ATTEMPT_NOT_TAKER_ATTEMPT_1"
   | "MODE_NOT_TAKER"
-  | "ATTEMPT_NOT_PRIMARY_MAKER"
-  | "MODE_NOT_MAKER_FIRST"
   | "RESULT_CLASS_CANNOT_PROVE_ZERO"
   | "RESULT_NOT_TERMINAL"
   | "FILLED_QUANTITY_NOT_ZERO"
@@ -218,14 +219,15 @@ export interface MakerEligibility {
 }
 
 /**
- * The MAKER_FALLBACK_1 deadline is the Queue latest-entry instant (physical event start + 3 minutes under
- * LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2): the fallback is an entry attempt and may run until then, never past it.
- * Kickoff is no longer a ceiling (it used to be min(latest_entry, kickoff) while latest_entry preceded kickoff).
- * Null when unparseable (fails closed).
+ * The MAKER_FALLBACK_1 deadline is the single canonical pre-kickoff cutoff: physical event start - 60 s
+ * (SINGLE_MAKER_PREGAME_CONTRACT_V1), never past the Queue latest-entry instant. No resting BUY maker may
+ * survive kickoff. Null when either instant is unparseable (fails closed).
  */
-export function makerDeadlineIso(queue: Pick<EventExecutionQueueRow, "latest_entry_iso">): string | null {
-  const deadline = Date.parse(queue.latest_entry_iso);
-  return Number.isFinite(deadline) ? new Date(deadline).toISOString() : null;
+export function makerDeadlineIso(queue: Pick<EventExecutionQueueRow, "latest_entry_iso" | "game_start_iso">): string | null {
+  const latest = Date.parse(queue.latest_entry_iso);
+  const start = Date.parse(queue.game_start_iso);
+  if (!Number.isFinite(latest) || !Number.isFinite(start)) return null;
+  return new Date(Math.min(latest, start - MAKER_PREGAME_CUTOFF_SECONDS * 1000)).toISOString();
 }
 
 export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEligibility {
@@ -233,20 +235,14 @@ export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEli
   const reasons: MakerBlockReason[] = [];
   const deadline = makerDeadlineIso(queue);
 
-  // The parent of MAKER_FALLBACK_1 is the row's own primary attempt: TAKER_ATTEMPT_1 on a TAKER row,
-  // MAKER_FIRST on a frozen T10 MAKER_FIRST row. An unreadable frozen mode never authorizes.
+  // The ONLY parent of MAKER_FALLBACK_1 is TAKER_ATTEMPT_1. A frozen MAKER_FIRST row (or an unreadable
+  // frozen mode) never authorizes a fallback: its zero-fill is terminal for the event.
   const frozenMode = t10FrozenExecutionMode(queue.diagnostics);
-  const primaryMakerRow = frozenMode === "MAKER_FIRST";
   if (!result) {
     reasons.push("RESULT_MISSING");
   } else {
-    if (primaryMakerRow) {
-      if (result.attempt_id !== MAKER_FIRST) reasons.push("ATTEMPT_NOT_PRIMARY_MAKER");
-      if (result.execution_mode !== "MAKER_FIRST") reasons.push("MODE_NOT_MAKER_FIRST");
-    } else {
-      if (result.attempt_id !== TAKER_ATTEMPT_1) reasons.push("ATTEMPT_NOT_TAKER_ATTEMPT_1");
-      if (result.execution_mode !== "TAKER") reasons.push("MODE_NOT_TAKER");
-    }
+    if (result.attempt_id !== TAKER_ATTEMPT_1) reasons.push("ATTEMPT_NOT_TAKER_ATTEMPT_1");
+    if (result.execution_mode !== "TAKER") reasons.push("MODE_NOT_TAKER");
     if (!ZERO_PROOF_CLASSES.has(result.result_class)) reasons.push("RESULT_CLASS_CANNOT_PROVE_ZERO");
     if (result.terminal !== true) reasons.push("RESULT_NOT_TERMINAL");
     // Outcome-only released results may omit filled_quantity; a REPORTED quantity must be exactly 0.
@@ -273,7 +269,7 @@ export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEli
   }
 
   if (deadline === null || nowMs >= Date.parse(deadline)) reasons.push("DEADLINE_PASSED");
-  if (frozenMode === "INVALID") reasons.push("PRIMARY_MAKER_ROW_NO_FALLBACK");
+  if (frozenMode === "INVALID" || frozenMode === "MAKER_FIRST") reasons.push("PRIMARY_MAKER_ROW_NO_FALLBACK");
 
   return { eligible: reasons.length === 0, reasons, deadline_iso: deadline };
 }
@@ -320,7 +316,7 @@ export type T10FallbackPriceFailure =
   | "BELOW_MINIMUM_ORDER_SIZE";
 export type BuildCommandResult =
   | { ok: true; command: MakerFallbackCommand }
-  | { ok: false; reason: MakerPriceFailure | T10FallbackPriceFailure | "STAKE_UNREPRESENTABLE" | "PRICE_CAP_MISSING" };
+  | { ok: false; reason: MakerPriceFailure | T10FallbackPriceFailure | "STAKE_UNREPRESENTABLE" | "PRICE_CAP_MISSING" | "PRIMARY_MAKER_ROW_NO_FALLBACK" };
 
 /**
  * The frozen T10 policy MAKER formula (identical to t10EconomicActivation.makerLimitPrice, kept
@@ -345,8 +341,8 @@ export function deriveT10FallbackLimit(input: {
   stakeUsd: number;
 }): { ok: true; limit_price: number; quantity: number } | { ok: false; reason: T10FallbackPriceFailure } {
   const frozen = readT10FrozenContract(input.queue);
-  // Same frozen P_BUY_MAX authority for both primary modes; a MAKER_FIRST row must carry its frozen maker.
-  if (!frozen.ok || (frozen.contract.execution_mode === "MAKER_FIRST" && !frozen.contract.maker)) {
+  // Frozen P_BUY_MAX authority of a TAKER_FIRST parent; a MAKER_FIRST row is never a fallback parent.
+  if (!frozen.ok || frozen.contract.execution_mode !== "TAKER_FIRST") {
     return { ok: false, reason: "T10_CONTRACT_INVALID" };
   }
   const { bestAsk, tickSize } = input.book;
@@ -382,6 +378,7 @@ export function buildMakerFallbackCommand(input: {
   const rawCap = d.max_entry_price;
   const priceCap = typeof rawCap === "number" && Number.isFinite(rawCap) ? rawCap : null;
   if (priceCap === null) return { ok: false, reason: "PRICE_CAP_MISSING" };
+  if (t10FrozenExecutionMode(d) === "MAKER_FIRST") return { ok: false, reason: "PRIMARY_MAKER_ROW_NO_FALLBACK" };
   const maxStake = extractMaxStakeUsd(d, queue.stake_usd);
   const stake = queue.stake_usd; // never above the original authorized stake
 
@@ -410,7 +407,7 @@ export function buildMakerFallbackCommand(input: {
       execution_mode: "MAKER",
       execution_side: "BUY",
       status: "AUTHORIZED",
-      parent_attempt_id: t10FrozenExecutionMode(d) === "MAKER_FIRST" ? MAKER_FIRST : TAKER_ATTEMPT_1,
+      parent_attempt_id: TAKER_ATTEMPT_1,
       parent_queue_id: queue.id as string,
       parent_idempotency_key: queue.idempotency_key as string,
       idempotency_key: makerIdempotencyKey(queue.idempotency_key as string),
@@ -647,21 +644,14 @@ export async function recordResultAndAuthorizeMaker(
   const nowIso = now.toISOString();
   if (isPrimaryMakerCallback(raw)) {
     // PRIMARY maker of a frozen MAKER_FIRST row: record the released outcome on its own slot.
-    // It never authorizes MAKER_FALLBACK_1 and is never re-labelled as a TAKER attempt.
-    // Only its terminal proven ZERO may authorize exactly one same-token MAKER_FALLBACK_1.
+    // It NEVER authorizes MAKER_FALLBACK_1 (a MAKER_FIRST zero-fill is terminal for the event: exposure 0,
+    // no second maker) and is never re-labelled as a TAKER attempt.
     const checked = await validatePrimaryMakerCallback((k) => port.loadQueueRowByIdempotencyKey(k), raw);
     if (!checked.ok) return { kind: "MAKER_CALLBACK_REJECTED", reason: checked.reason };
     const primaryResult = readIrelandExecutionResult(raw, nowIso);
     if (!primaryResult) return { kind: "NO_RESULT" };
-    const priorPrimary = readExecutionAttempts(checked.queue.diagnostics).maker_first?.result;
     await port.recordResult(checked.queue.id as string, "maker_first", primaryResult);
-    if (!isTerminalProvenZeroResult(primaryResult)) return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" };
-    // A recorded positive fill, or a different terminal outcome, is never overridden by a later zero
-    // claim (a non-terminal / UNKNOWN prior may be resolved by the terminal proven zero).
-    if (priorPrimary && ((priorPrimary.filled_quantity ?? 0) > 0 || (priorPrimary.terminal === true && !isTerminalProvenZeroResult(priorPrimary)))) {
-      return { kind: "MAKER_BLOCKED", reasons: ["PRIOR_PRIMARY_RESULT_SHOWS_EXPOSURE"] };
-    }
-    return authorizeFallback(port, checked.queue, primaryResult, raw, now, nonEmptyStr(raw.idempotency_key) as string);
+    return { kind: "RESULT_RECORDED_NO_FURTHER_ATTEMPT", slot: "maker_first" };
   }
   const isMaker = isMakerAttemptCallback(raw);
 
@@ -713,9 +703,9 @@ export async function recordResultAndAuthorizeMaker(
 }
 
 /**
- * Shared single-winner MAKER_FALLBACK_1 authorization for the row's primary attempt result
- * (TAKER_ATTEMPT_1 or MAKER_FIRST). Same Queue row, same reservation / condition / token / side,
- * same stake, frozen price authority. A replay returns the already-claimed command, never a second.
+ * Single-winner MAKER_FALLBACK_1 authorization for a TAKER_ATTEMPT_1 terminal proven-zero result
+ * (never MAKER_FIRST). Same Queue row, same reservation / condition / token / side,
+ * same stake, frozen price authority, pre-kickoff deadline (event start - 60 s). A replay returns the already-claimed command, never a second.
  */
 async function authorizeFallback(
   port: MakerFallbackPort,
