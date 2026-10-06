@@ -95,16 +95,69 @@ test("empty exact event records a typed source failure", async () => {
 test("milestone windows have deterministic non-overlapping boundaries", () => {
   const start = "2026-10-01T00:00:00Z";
   const at = (minutes: number) => Date.parse(start) - minutes * 60_000;
-  // LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2: the Final Rebalance source (T_MINUS_10) window opens at T-20, adjacent to T_MINUS_30 (20, 30].
-  assert.equal(classifyReservationMarketPhase(start, at(30)), "T_MINUS_30");
+  // LIVE_BETTING_RECOVERY_FINAL_HOTFIX_V2: the Final Rebalance source (T_MINUS_10) window opens at T-20, adjacent to the early window.
+  // T40_T20_CAPTURE_ALIGNMENT_V1: the early window (persisted label T_MINUS_30, business target T40) is (20, 40].
+  assert.equal(classifyReservationMarketPhase(start, at(40.5)), null, "before the early window opens");
+  assert.equal(classifyReservationMarketPhase(start, at(40)), "T_MINUS_30", "T-40.0 => early phase eligible");
+  assert.equal(classifyReservationMarketPhase(start, at(39.9)), "T_MINUS_30", "T-39.9 => early phase");
+  assert.equal(classifyReservationMarketPhase(start, at(30)), "T_MINUS_30", "T-30 => early phase");
   assert.equal(classifyReservationMarketPhase(start, at(20.5)), "T_MINUS_30");
-  assert.equal(classifyReservationMarketPhase(start, at(20)), "T_MINUS_10", "T-20 is the first Queue / economic-action instant");
+  assert.equal(classifyReservationMarketPhase(start, at(20.1)), "T_MINUS_30", "T-20.1 => early phase");
+  assert.equal(classifyReservationMarketPhase(start, at(20)), "T_MINUS_10", "T-20.0 => final/money phase; first Queue / economic-action instant");
+  assert.equal(classifyReservationMarketPhase(start, at(19.9)), "T_MINUS_10", "T-19.9 => final/money phase");
   assert.equal(classifyReservationMarketPhase(start, at(15)), "T_MINUS_10");
   assert.equal(classifyReservationMarketPhase(start, at(9.5)), "T_MINUS_10");
   assert.equal(classifyReservationMarketPhase(start, at(9)), null);
   assert.equal(classifyReservationMarketPhase(start, at(5)), null); // no live T_MINUS_3 capture
   assert.equal(classifyReservationMarketPhase(start, at(3)), null);
-  assert.equal(classifyReservationMarketPhase(start, at(30.5)), null);
+});
+
+test("T40_T20_CAPTURE_ALIGNMENT_V1: the early phase is captured once at the first eligible tick (~T-40) and never recaptured through T-20", async () => {
+  const start = "2026-10-01T00:00:00Z";
+  const startMs = Date.parse(start);
+  const reservation = { id: "66666666-6666-4666-8666-666666666666", plan_run_id: "plan",
+    physical_event_id: "provider:polymarket:123:2026-10-01", event_start_iso: start,
+    diagnostics: { source_lineage: { provider_event_id: "123", provider_event_start_iso: start } },
+  } as unknown as NightEventReservationRow;
+  const market = { provider_event_id: "123", event_start_iso: start, condition_id: "money",
+    clob_token_ids: '["m1","m2"]', outcomes: '["Home","Away"]', sports_market_type: "moneyline",
+    provider_market_slug: "match-money", sibling_market_count: 1, last_observed_at: "2026-09-30T23:00:00Z" };
+  // Persisted-run stand-in: same contract as defaultAlreadyCaptured (any run that is not WRITE_INCOMPLETE blocks a recapture).
+  const persisted: Array<{ phase: string; status: unknown; minutes: number }> = [];
+  let bookFetches = 0;
+  let loadedCohort: { lower: string; upper: string } | null = null;
+  let upperEdgeLoadedAtT40 = false;
+  for (let minute = 41; minute >= 8; minute -= 1) {
+    const nowMs = startMs - minute * 60_000;
+    await captureReservationMarketMilestones(nowMs, {
+      load: async (lower, upper) => {
+        loadedCohort = { lower, upper };
+        // A real loader returns reservations with lower < start <= upper.
+        return startMs > Date.parse(lower) && startMs <= Date.parse(upper) ? [reservation] : [];
+      },
+      capture: (r, phase, observedAt) => captureReservationMarketObservation(r, phase, {
+        observedAt,
+        alreadyCaptured: async (_id, ph) => persisted.some((p) => p.phase === ph && p.status !== "WRITE_INCOMPLETE"),
+        readExactEvent: async () => [market],
+        readGameEvents: async () => [],
+        fetchBooks: async (ids) => { bookFetches++; return ids.map((tokenId) => ({ ok: true, tokenId, latencyMs: 1,
+          book: { tokenId, bids: [{ price: 0.4, size: 10 }], asks: [{ price: 0.5, size: 10 }] } })); },
+        fetchFeeSchedule: async (tokenId) => ({ ok: false, tokenId, errorCode: "FEE_TEST_OFFLINE", latencyMs: 0 }),
+        write: async (run) => { persisted.push({ phase: String(run.observation_phase), status: run.capture_status === "WRITE_INCOMPLETE" ? "WRITE_INCOMPLETE" : "COMPLETE", minutes: Number(run.minutes_to_start) }); },
+      }),
+      onError: (code) => { throw new Error(`unexpected milestone error ${code} at T-${minute}`); },
+    });
+    if (minute === 40) upperEdgeLoadedAtT40 = persisted.some((p) => p.phase === "T_MINUS_30");
+  }
+  assert.ok(loadedCohort, "the cohort loader ran");
+  assert.equal(upperEdgeLoadedAtT40, true, "the cohort upper bound reaches T-40, so the first eligible tick captures");
+  const early = persisted.filter((p) => p.phase === "T_MINUS_30");
+  const final = persisted.filter((p) => p.phase === "T_MINUS_10");
+  assert.equal(early.length, 1, "early phase persisted exactly once across T-40..T-20");
+  assert.equal(early[0].minutes, 40, "first eligible tick is ~T-40");
+  assert.equal(final.length, 1, "final/money phase persisted exactly once, first at T-20");
+  assert.equal(final[0].minutes, 20);
+  assert.equal(bookFetches, 2, "no CLOB re-read after a completed phase: one fetch per phase, not one per tick");
 });
 
 test("persisted milestone skips inventory and CLOB on a repeated tick", async () => {
