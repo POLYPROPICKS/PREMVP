@@ -1848,6 +1848,8 @@ async function selectQueueRowFromT10EconomicAction(
       stake_adjustment_reason: contract.stake_authorization.stake_adjustment_reason,
       minimum_order_size: contract.stake_authorization.minimum_order_size,
       required_minimum_notional_usd: contract.stake_authorization.required_minimum_notional_usd,
+      current_book_required_minimum_notional_usd: contract.stake_authorization.current_book_required_minimum_notional_usd ?? null,
+      execution_envelope_required_minimum_notional_usd: contract.stake_authorization.execution_envelope_required_minimum_notional_usd ?? null,
       source_authority: "T10_ECONOMIC_ACTION_POLICY",
       current_executable_price: taker ? taker.authorized_raw_vwap : priceAuthority,
       current_executable_depth_usd: taker ? taker.full_stake_depth_usd_at_limit : null,

@@ -407,12 +407,13 @@ test("C: MAKER limit <= 0.555 on a valid tick (floors to .55 at tick .01); MAKER
   assert.equal(readT10FrozenContract({ ...parent, diagnostics: { ...parent.diagnostics, t10_economic_action_v1: frozenMakerFirst({ p_buy_max: 0.56 }) } }).ok, false);
 });
 
-test("9: adaptive venue-minimum headroom is unchanged -- 0.53 x 5 = $2.65 stays valid (TAKER and MAKER), never above $4.00", async () => {
-  // TAKER at ask .53 with min 5: $2.50 buys 4.72 < 5 -> smallest sufficient cent stake $2.65
+test("9: adaptive venue-minimum headroom -- MAKER 0.53 x 5 = $2.65 unchanged, TAKER = 5 x limit 0.54 = $2.70, never above $4.00", async () => {
+  // TAKER at ask .53 with min 5: the Ireland execution envelope is 5 x price_limit 0.54 = $2.70 (TAKER_MIN_NOTIONAL_CONTRACT_HOTFIX_V1; was $2.65)
   const { event, fetch } = await decide(bookOf("x-token", [[0.51, 100]], [[0.53, 100]], 5));
   assert.equal(event.decision.action, "TAKER_FIRST");
   const taker = await reverifySelectedAction({ event, nowMs: T20, exposureExists: false, fetchExactTokenOrderbook: fetch });
-  assert.equal(taker.ok && taker.contract.stake_usd, 2.65);
+  assert.equal(taker.ok && taker.contract.stake_usd, 2.7);
+  assert.equal(taker.ok && taker.contract.stake_authorization.required_minimum_notional_usd, 2.7);
   assert.equal(taker.ok && taker.contract.stake_authorization.stake_adjustment_reason, "VENUE_MINIMUM_ORDER_SIZE");
   // MAKER at bid .53 (ask .56 is above the taker limit): 5 shares x .53
   const { event: me, fetch: mf } = await decide(bookOf("x-token", [[0.53, 100]], [[0.56, 100]], 5));
