@@ -109,7 +109,12 @@ export type StakeAuthorization = {
   max_stake_usd: number;
   stake_adjustment_reason: typeof STAKE_ADJUSTMENT_REASON_MIN_ORDER | null;
   minimum_order_size: number;
+  /** The MAXIMUM authoritative requirement used for authorization (TAKER: max of the two fields below). */
   required_minimum_notional_usd: number | null;
+  /** TAKER only: minimum order quantity walked on the CURRENT ask ladder at <= price_limit. */
+  current_book_required_minimum_notional_usd?: number | null;
+  /** TAKER only: ceilCent(ceilShares(minimum_order_size) x taker price_limit) -- the Ireland execution-envelope minimum. */
+  execution_envelope_required_minimum_notional_usd?: number | null;
 };
 
 /** Venue quantity precision (shares, 0.01). Floor/ceil are float-safe at the boundary. */

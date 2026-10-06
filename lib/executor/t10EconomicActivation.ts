@@ -486,30 +486,35 @@ export async function reverifySelectedAction(input: {
     }
     if (walk.effectiveCost > pBuyMax + EPS) return fail(`T10_ECON_GUARD_EFFECTIVE_COST_ABOVE_P_BUY_MAX: cost=${walk.effectiveCost} p_buy_max=${pBuyMax}`, null, ev);
     if (walk.rawVwap > cap + EPS) return fail("T10_ECON_GUARD_ABOVE_HARD_CAP", null, ev);
-    let authorized = stake;
-    let requiredNotional: number | null = null;
-    if (walk.shares + EPS < minOrder) {
-      // Minimum quantity is the ONLY blocker: smallest cent stake buying the minimum at <= limit.
-      requiredNotional = askNotionalForShares(ev.asks, ceilShares(minOrder), limit);
-      if (requiredNotional === null) {
-        return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder} depth_short_for_minimum`, null, ev);
-      }
-      authorized = Math.max(stake, ceilCentUsd(requiredNotional));
-      if (authorized > QUEUE_MAX_STAKE_USD + EPS) {
-        return fail(`T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE: required_usd=${authorized} max=${QUEUE_MAX_STAKE_USD}`, null, ev);
-      }
+    // TAKER stake authority must satisfy BOTH the actual current book AND the Ireland/venue execution envelope:
+    // the venue minimum quantity at the MAXIMUM raw price Ireland may pay (price_limit), not only at today's ask.
+    const requiredShares = ceilShares(minOrder);
+    const currentBookRequired = askNotionalForShares(ev.asks, requiredShares, limit);
+    if (currentBookRequired === null) {
+      return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder} depth_short_for_minimum`, null, ev);
+    }
+    const envelopeRequired = ceilCentUsd(r6(requiredShares * limit));
+    const requiredNotional = r6(Math.max(currentBookRequired, envelopeRequired));
+    const authorized = Math.max(stake, ceilCentUsd(requiredNotional));
+    if (authorized > QUEUE_MAX_STAKE_USD + EPS) {
+      return fail(`T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE: required_usd=${authorized} max=${QUEUE_MAX_STAKE_USD}`, null, ev);
+    }
+    if (authorized > stake + EPS) {
       // Re-evaluate the ACTUAL increased stake against the actual book.
       walk = walkTakerFill(ev.asks, authorized, limit, fee.takerRate);
       if (!walk.filled || walk.rawVwap === null || walk.effectiveCost === null || walk.feeUsd === null) {
         return fail(`T10_ECON_GUARD_HEADROOM_FULL_STAKE_UNAVAILABLE: stake=${authorized} depth_usd_at_limit=${walk.depthUsd}`, null, ev);
       }
       if (walk.effectiveCost > pBuyMax + EPS) return fail(`T10_ECON_GUARD_HEADROOM_EFFECTIVE_COST_ABOVE_P_BUY_MAX: cost=${walk.effectiveCost}`, null, ev);
+      if (walk.effectiveCost > cap + EPS) return fail(`T10_ECON_GUARD_HEADROOM_EFFECTIVE_COST_ABOVE_HARD_CAP: cost=${walk.effectiveCost}`, null, ev);
+      if (walk.rawVwap > limit + EPS) return fail("T10_ECON_GUARD_HEADROOM_RAW_VWAP_ABOVE_LIMIT", null, ev);
       if (walk.rawVwap > cap + EPS) return fail("T10_ECON_GUARD_HEADROOM_ABOVE_HARD_CAP", null, ev);
-      if (walk.shares + EPS < minOrder) {
-        return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder}`, null, ev);
-      }
     }
-    const stakeAuthorization = stakeAuthorizationOf(stake, authorized, minOrder, requiredNotional);
+    if (walk.shares + EPS < minOrder) {
+      return fail(`T10_ECON_GUARD_TAKER_BELOW_MIN_ORDER_SIZE: shares=${r6(walk.shares)} min=${minOrder}`, null, ev);
+    }
+    const stakeAuthorization = stakeAuthorizationOf(stake, authorized, minOrder, requiredNotional,
+      { currentBook: currentBookRequired, envelope: envelopeRequired });
     return { ok: true, evidence: ev, contract: { ...common, stake_usd: authorized, stake_authorization: stakeAuthorization,
       execution_mode: "TAKER_FIRST", maker: null, taker: {
       price_limit: limit, authorized_raw_vwap: walk.rawVwap, authorized_effective_cost: walk.effectiveCost,
@@ -555,10 +560,15 @@ export async function reverifySelectedAction(input: {
   return { ok: true, contract, evidence: ev };
 }
 
-function stakeAuthorizationOf(base: number, authorized: number, minOrder: number, requiredNotional: number | null): StakeAuthorization {
+function stakeAuthorizationOf(base: number, authorized: number, minOrder: number, requiredNotional: number | null,
+  taker?: { currentBook: number; envelope: number }): StakeAuthorization {
   return {
     base_stake_usd: base, authorized_stake_usd: authorized, max_stake_usd: QUEUE_MAX_STAKE_USD,
     stake_adjustment_reason: authorized > base + EPS ? STAKE_ADJUSTMENT_REASON_MIN_ORDER : null,
     minimum_order_size: minOrder, required_minimum_notional_usd: requiredNotional,
+    ...(taker ? {
+      current_book_required_minimum_notional_usd: taker.currentBook,
+      execution_envelope_required_minimum_notional_usd: taker.envelope,
+    } : {}),
   };
 }

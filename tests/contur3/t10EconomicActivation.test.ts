@@ -402,7 +402,7 @@ test("19-20: activation ON -> exactly one immutable Queue row freezing mode, tok
   assert.deepEqual(c.t30_telemetry_v1, { observation_key: "T30_BOOK:T_MINUS_30-run:b-token:Yes", LIVE_AUTHORITY: false }, "T30 survives as telemetry only");
   assert.equal(c.p_buy_max, 0.555, "TAKER ceiling = hard cap");
   assert.equal(c.token_id, "b-token");
-  assert.equal(c.stake_usd, 2.5);
+  assert.equal(c.stake_usd, 2.7, "TAKER_MIN_NOTIONAL_CONTRACT: min 5 x taker price_limit 0.54 (execution envelope)");
   assert.equal(c.latest_entry_iso, "2026-07-19T19:03:00.000Z", "latest entry = event start + 3m");
   assert.equal(c.taker.price_limit, 0.54);
   assert.equal(c.taker.authorized_raw_vwap, 0.5);
@@ -661,7 +661,8 @@ test("normal $2.50 regression: required stake <= $2.50 stays exactly $2.50 with 
   assert.equal(m.diagnostics.authorized_stake_usd, 2.5);
   assert.equal((m.diagnostics.t10_economic_action_v1 as any).stake_authorization.required_minimum_notional_usd, 2.5);
   assert.ok(!(m.diagnostics.mechanical_guard_trace as string[]).includes("MIN_ORDER_HEADROOM_STAKE_APPLIED"));
-  const taker = await run(true, [A, B]);
+  // TAKER: the execution envelope (min x price_limit 0.54) must itself be <= $2.50: min 4 => 2.16.
+  const taker = await run(true, [A, B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, 4) });
   const t = taker.repo.queueRows[0];
   assert.equal(t.selection_reason, "T10_ECONOMIC_ACTION_TAKER_FIRST_V1");
   assert.equal(t.stake_usd, 2.5);
@@ -676,17 +677,17 @@ test("headroom between $2.50 and $4.00 authorizes the EXACT minimum sufficient s
     assert.equal((row.diagnostics.t10_economic_action_v1 as any).maker.maker_shares >= min, true);
     assert.ok(readT10FrozenContract(row).ok);
   }
-  // TAKER: $2.50 fills 5 shares at 0.50 < minimum 6 -> the ACTUAL $3.00 is re-walked on the book.
+  // TAKER: minimum 6 at the 0.54 price limit => the ACTUAL $3.24 (execution envelope) is re-walked on the book.
   const { repo } = await run(true, [B], { ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], [[0.50, 10], [0.60, 100]], 0.01, 6) });
   const row = repo.queueRows[0];
   const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
   assert.equal(c.execution_mode, "TAKER_FIRST");
-  assert.equal(row.stake_usd, 3);
+  assert.equal(row.stake_usd, 3.24);
   assert.equal(c.taker.authorized_raw_vwap, 0.5);
   assert.ok(c.taker.authorized_effective_cost <= c.p_buy_max, "fee-inclusive cost <= P_BUY_MAX at the increased stake");
   assert.ok(c.taker.price_limit <= c.p_buy_max && c.taker.price_limit <= 0.54);
   assert.equal(c.stake_authorization.stake_adjustment_reason, "VENUE_MINIMUM_ORDER_SIZE");
-  assert.equal(c.stake_authorization.required_minimum_notional_usd, 3);
+  assert.equal(c.stake_authorization.required_minimum_notional_usd, 3.24);
   assert.ok(readT10FrozenContract(row).ok);
   assert.equal(mapQueueRowToIrelandCandidate({ ...row, id: "q" }, NOW).execution_mode, "TAKER");
 });
@@ -1110,7 +1111,107 @@ test("MAKER_FALLBACK_1 after a TAKER_FIRST parent is bounded by the parent price
   const tight = derive(0.51);
   assert.ok(tight.ok);
   if (tight.ok) assert.equal(tight.limit_price, 0.5, "ask - tick binds");
-  // A far-away ask cannot lift the fallback above the parent cap 0.54 (4.62 shares < the 5-share minimum -> fail closed).
+  // A far-away ask cannot lift the fallback above the parent cap 0.54; the TAKER parent stake ($2.70 = 5 x 0.54) buys the minimum there.
   const far = derive(0.7);
-  assert.deepEqual(far, { ok: false, reason: "BELOW_MINIMUM_ORDER_SIZE" });
+  assert.deepEqual(far, { ok: true, limit_price: 0.54, quantity: 5 });
+  // The legacy $2.50 stake still fails closed at the cap (4.62 shares < the 5-share minimum).
+  assert.deepEqual(deriveT10FallbackLimit({ queue: row, book: { bestAsk: 0.7, tickSize: 0.01, minimumOrderSize: 5 }, priceCap: parentCap, stakeUsd: 2.5 }),
+    { ok: false, reason: "BELOW_MINIMUM_ORDER_SIZE" });
+});
+
+// ── TAKER_MIN_NOTIONAL_CONTRACT_HOTFIX_V1: TAKER stake authority >= the Ireland execution envelope ──
+// Live production: min 5, TAKER price_limit 0.54, PREMVP froze $2.65 / $2.50, Ireland required $2.70 and rejected both.
+const bAsks = (asks: Lv[], min: number | null = 5) => ({ ...LIVE, "b-token": bookOf("b-token", [[0.45, 100]], asks, 0.01, min) });
+
+test("TAKER_MIN_NOTIONAL 1/2: live shape (min 5, limit 0.54) authorizes $2.70 for ask 0.53 (was 2.65) AND ask 0.50 (was 2.50)", async () => {
+  for (const [ask, currentBook] of [[0.53, 2.65], [0.5, 2.5]] as const) {
+    const { repo } = await run(true, [B], bAsks([[ask, 100]]));
+    assert.equal(repo.queueRows.length, 1, `ask ${ask}`);
+    const row = { ...repo.queueRows[0], id: "q-min-notional" };
+    const c = contractOf(row);
+    assert.equal(c.execution_mode, "TAKER_FIRST");
+    assert.equal(c.taker.price_limit, 0.54);
+    assert.equal(c.stake_usd, 2.7);
+    const sa = c.stake_authorization;
+    assert.equal(sa.base_stake_usd, 2.5);
+    assert.equal(sa.max_stake_usd, 4);
+    assert.equal(sa.minimum_order_size, 5);
+    assert.equal(sa.required_minimum_notional_usd, 2.7, "canonical field carries the MAXIMUM authoritative requirement");
+    assert.equal(sa.current_book_required_minimum_notional_usd, currentBook);
+    assert.equal(sa.execution_envelope_required_minimum_notional_usd, 2.7);
+    assert.equal(sa.authorized_stake_usd, 2.7);
+    assert.equal(sa.stake_adjustment_reason, "VENUE_MINIMUM_ORDER_SIZE");
+    assert.equal(row.diagnostics.minimum_order_size, 5);
+    assert.equal(row.diagnostics.required_minimum_notional_usd, 2.7);
+    assert.equal(row.diagnostics.current_book_required_minimum_notional_usd, currentBook);
+    assert.equal(row.diagnostics.execution_envelope_required_minimum_notional_usd, 2.7);
+    assert.equal(row.diagnostics.authorized_stake_usd, 2.7);
+    // Re-walked on the ACTUAL stake: full depth, raw VWAP <= price_limit, fee-inclusive cost <= 0.555, quantity >= minimum.
+    assert.equal(c.taker.authorized_raw_vwap, ask);
+    assert.ok(c.taker.authorized_raw_vwap <= c.taker.price_limit);
+    assert.ok(c.taker.authorized_effective_cost <= 0.555);
+    assert.ok(row.stake_usd / c.taker.authorized_raw_vwap >= 5, "authorized stake buys the venue minimum quantity");
+    assert.ok(row.stake_usd >= 5 * c.taker.price_limit - 1e-9, "stake covers the Ireland minimum notional at the max raw price");
+    assert.ok(readT10FrozenContract(row).ok);
+    const wire = mapQueueRowToIrelandCandidate({ ...row, status: "READY" }, NOW);
+    assert.equal(wire.execution_mode, "TAKER");
+    assert.equal(wire.stake_usd, 2.7);
+  }
+});
+
+test("TAKER_MIN_NOTIONAL 3: price_limit 0.55 with min 5 => execution envelope 2.75", async () => {
+  const d = deps(bAsks([[0.5, 100]]), (t) => fee(t, 0.01));
+  const { event } = await decide([B], { d });
+  assert.equal(event.decision.action, "TAKER_FIRST");
+  const g = await reverifySelectedAction({ event, nowMs: NOW, exposureExists: false, fetchExactTokenOrderbook: d.fetchExactTokenOrderbook });
+  assert.ok(g.ok);
+  if (!g.ok) return;
+  const c = g.contract;
+  assert.equal(c.taker!.price_limit, 0.55);
+  assert.equal(c.stake_authorization.execution_envelope_required_minimum_notional_usd, 2.75);
+  assert.equal(c.stake_authorization.required_minimum_notional_usd, 2.75);
+  assert.equal(c.stake_usd, 2.75);
+});
+
+test("TAKER_MIN_NOTIONAL 4: execution envelope above $4.00 fails closed even when the current book alone would fit", async () => {
+  // min 7.5 at ask 0.50: current book needs 3.75 (<= 4) but the envelope 7.5 x 0.54 = 4.05 > 4.00 => SKIP.
+  const { result, repo } = await run(true, [B], bAsks([[0.5, 100]], 7.5));
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes.map((o) => o.reason).join(","), /T10_ECON_GUARD_MIN_ORDER_HEADROOM_ABOVE_MAX_STAKE: required_usd=4\.05/);
+  // Exactly $4.00 (min 7.4 x 0.54 = 3.996 -> 4.00) is still allowed.
+  const ok = await run(true, [B], bAsks([[0.5, 100]], 7.4));
+  assert.equal(ok.repo.queueRows[0].stake_usd, 4);
+});
+
+test("TAKER_MIN_NOTIONAL 5: headroom re-walk re-proves depth, raw VWAP <= limit and the fee-inclusive 0.555 hard cap", async () => {
+  // Depth: the base $2.50 fills but the $2.70 envelope stake cannot be filled at <= the limit => fail closed.
+  const thin = (n: number) => bAsks(n === 1 ? [[0.5, 100]] : [[0.5, 5.2]])["b-token"];
+  const d = deps({ ...LIVE, "b-token": thin as never });
+  const { event } = await decide([B], { d });
+  assert.equal(event.decision.action, "TAKER_FIRST");
+  const g = await reverifySelectedAction({ event, nowMs: NOW, exposureExists: false, fetchExactTokenOrderbook: d.fetchExactTokenOrderbook });
+  assert.equal(g.ok, false);
+  assert.match(!g.ok ? g.reason : "", /^T10_ECON_GUARD_HEADROOM_FULL_STAKE_UNAVAILABLE: stake=2\.7/);
+  // Hard cap: even if a (corrupted) frozen P_BUY_MAX / fee admitted the base stake, the re-walk after headroom is bounded by 0.555.
+  const d2 = deps(bAsks([[0.54, 100]]));
+  const { event: e2 } = await decide([B], { d: d2 });
+  assert.equal(e2.decision.action, "TAKER_FIRST");
+  const sel = e2.decision.selected!;
+  const exec = e2.executions.get(`${sel.candidateIdentity.conditionId}|${sel.candidateIdentity.tokenId}|${sel.candidateIdentity.side}`)!;
+  (sel.priceAuthority as { pBuyMax: number }).pBuyMax = 0.6;
+  (exec.fee as { takerRate: number }).takerRate = 0.2;   // 0.54 x (1 + 0.2 x 0.46) = 0.5897 > 0.555
+  const g2 = await reverifySelectedAction({ event: e2, nowMs: NOW, exposureExists: false, fetchExactTokenOrderbook: d2.fetchExactTokenOrderbook });
+  assert.equal(g2.ok, false);
+  assert.match(!g2.ok ? g2.reason : "", /^T10_ECON_GUARD_HEADROOM_EFFECTIVE_COST_ABOVE_HARD_CAP/);
+});
+
+test("TAKER_MIN_NOTIONAL 6: MAKER adaptive stake is unchanged and carries no TAKER-only diagnostics", async () => {
+  const { repo } = await run(true, [A], { ...LIVE, "a-token": aBook(5.5) });
+  const row = repo.queueRows[0];
+  assert.equal(row.stake_usd, 2.75);
+  const sa = contractOf(row).stake_authorization;
+  assert.equal(sa.required_minimum_notional_usd, 2.75);
+  assert.equal(sa.current_book_required_minimum_notional_usd, undefined);
+  assert.equal(sa.execution_envelope_required_minimum_notional_usd, undefined);
+  assert.ok(readT10FrozenContract(row).ok);
 });
