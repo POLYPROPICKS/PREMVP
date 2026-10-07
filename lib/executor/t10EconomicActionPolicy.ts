@@ -36,6 +36,7 @@ import {
   type ExactMarketReference,
   type ReferenceEvidence,
 } from "./exactMarketReference";
+import { makerPriceEdge, takerProvenEdge, type ExternalFairResolution } from "./externalFairReference";
 
 export const T10_ECONOMIC_ACTION_POLICY_VERSION = "T10_ECONOMIC_ACTION_POLICY_SHADOW_V1" as const;
 export const PRICE_AUTHORITY_VERSION = "T10_CURRENT_BOOK_EXECUTION_AUTHORITY_V1" as const;
@@ -58,6 +59,12 @@ export type PolicyCandidateInput = {
   reference: ExactMarketReference;
   /** TELEMETRY ONLY. T30 research observation of this token; it never authorizes, vetoes, prices or ranks. */
   t30Evidence?: ReferenceEvidence | null;
+  /**
+   * VALUE_RANKING_V1: independent (non-Polymarket) fair probability for exactly this token, already de-vigged and
+   * identity-checked by externalFairReference.ts. Absent => VALUE_REFERENCE_UNPROVEN. `reference` (Polymarket
+   * price evidence) is never read as a fair probability.
+   */
+  externalFair?: ExternalFairResolution | null;
   t10: {
     bestBid: number | null;
     bestAsk: number | null;
@@ -143,8 +150,25 @@ export type PolicyEvaluation = {
     meaningfulBidGuard: "PASSED" | "NOT_PROVEN";
     rejectReason: string | null;
   };
+  /** VALUE_RANKING_V1 scalars. Never a live gate: execution authority stays on the CURRENT book. */
+  value: ValueEvidence;
   shadowAction: ShadowAction;
   reason: string;
+};
+
+export type EdgeStatus = "POSITIVE_EDGE" | "NON_POSITIVE_EDGE" | "VALUE_REFERENCE_UNPROVEN";
+export type ValueEvidence = {
+  fair_status: "PROVEN" | "VALUE_REFERENCE_UNPROVEN";
+  fair_probability: number | null;
+  fair_source: string | null;
+  fair_observed_at: string | null;
+  fair_reason: string;
+  /** fair - fee-inclusive effective cost; only for an eligible TAKER with a proven fair. */
+  taker_proven_edge: number | null;
+  /** fair - maker limit; only for an eligible MAKER with a proven fair. No fill probability. */
+  maker_price_edge: number | null;
+  taker_edge_status: EdgeStatus;
+  maker_edge_status: EdgeStatus;
 };
 
 const EPS = 1e-9;
@@ -295,6 +319,20 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
     }
   }
 
+  const fair = input.externalFair ?? null;
+  const takerEdge = taker.eligible ? takerProvenEdge(fair, taker.effectiveCost) : null;
+  const makerEdge = maker.eligible ? makerPriceEdge(fair, maker.limitPrice) : null;
+  const edgeStatus = (e: number | null): EdgeStatus => e === null ? "VALUE_REFERENCE_UNPROVEN" : e > EPS ? "POSITIVE_EDGE" : "NON_POSITIVE_EDGE";
+  const value: ValueEvidence = {
+    fair_status: fair?.status === "PROVEN" ? "PROVEN" : "VALUE_REFERENCE_UNPROVEN",
+    fair_probability: fair?.status === "PROVEN" ? fair.fairProbability : null,
+    fair_source: fair?.status === "PROVEN" ? fair.source : null,
+    fair_observed_at: fair?.status === "PROVEN" ? fair.observedAtIso : null,
+    fair_reason: fair?.reason ?? "NO_EXTERNAL_FAIR_CARRIER",
+    taker_proven_edge: takerEdge, maker_price_edge: makerEdge,
+    taker_edge_status: edgeStatus(takerEdge), maker_edge_status: edgeStatus(makerEdge),
+  };
+
   const shadowAction: ShadowAction = taker.eligible ? "TAKER_FIRST" : maker.eligible ? "MAKER_FIRST" : "SKIP";
   const reason = shadowAction === "SKIP" ? (gate ?? maker.rejectReason ?? "NO_SAFE_ACTION")
     : shadowAction === "TAKER_FIRST" ? "SAFE_TAKER" : "SAFE_MAKER";
@@ -308,7 +346,7 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
     policyVersion: T10_ECONOMIC_ACTION_POLICY_VERSION,
     candidateIdentity: { ...input.identity, family: input.family },
     referenceStatus: status, priceAuthority, t30: t30Telemetry(input.identity, input.t30Evidence),
-    support, taker, maker, shadowAction, reason,
+    support, taker, maker, value, shadowAction, reason,
   };
 }
 
@@ -321,22 +359,39 @@ const cmpAsc = (a: number | null, b: number | null) =>
 const finish = (n: number, a: Ranked, b: Ranked) =>
   n !== 0 ? n : idKey(a.input.identity) < idKey(b.input.identity) ? -1 : idKey(a.input.identity) > idKey(b.input.identity) ? 1 : 0;
 
-/** TAKER ranking (CURRENT evidence only): lower fee-inclusive cost, lower VWAP, deeper full-stake depth, fresher book, identity. */
+/**
+ * TAKER ranking: 1) proven edge DESC (fair - fee-inclusive effective cost; unproven last), 2) lower effective cost
+ * ONLY as tie-break, 3) deeper full-stake depth, 4) fresher book, 5) identity. Cheaper never wins on price alone.
+ */
 export function compareTaker(a: Ranked, b: Ranked): number {
-  let n = cmpAsc(a.evaluation.taker.effectiveCost, b.evaluation.taker.effectiveCost);
-  if (n === 0) n = cmpAsc(a.evaluation.taker.rawVwap, b.evaluation.taker.rawVwap);
+  let n = cmpDesc(a.evaluation.value.taker_proven_edge, b.evaluation.value.taker_proven_edge);
+  if (n === 0) n = cmpAsc(a.evaluation.taker.effectiveCost, b.evaluation.taker.effectiveCost);
   if (n === 0) n = cmpDesc(a.evaluation.taker.depthUsd, b.evaluation.taker.depthUsd);
   if (n === 0) n = cmpDesc(a.input.t10.observedAtMs, b.input.t10.observedAtMs);
   return finish(n, a, b);
 }
 
-/** MAKER ranking (CURRENT evidence only): fewer ticks to the current ask, current depth, fresher book, identity. Fillability never outranks price. */
+/** MAKER ranking: 1) maker price edge DESC (unproven last), then fewer ticks to the current ask, depth, freshness, identity. No fill probability. */
 export function compareMaker(a: Ranked, b: Ranked): number {
-  let n = cmpAsc(a.evaluation.maker.ticksToAsk, b.evaluation.maker.ticksToAsk);
+  let n = cmpDesc(a.evaluation.value.maker_price_edge, b.evaluation.value.maker_price_edge);
+  if (n === 0) n = cmpAsc(a.evaluation.maker.ticksToAsk, b.evaluation.maker.ticksToAsk);
   if (n === 0) n = cmpDesc(a.input.t10.askDepthUsd ?? null, b.input.t10.askDepthUsd ?? null);
   if (n === 0) n = cmpDesc(a.input.t10.observedAtMs, b.input.t10.observedAtMs);
   return finish(n, a, b);
 }
+
+/**
+ * Shadow VALUE decision (telemetry; live_authority=false). TAKER > MAKER; only a PROVEN POSITIVE edge can be a
+ * value action. No proven fair => SKIP / VALUE_REFERENCE_UNPROVEN: cheapest price is never presented as value.
+ */
+export type ValueDecision = {
+  action: ShadowAction;
+  selected: PolicyEvaluation | null;
+  /** Edge of the selected action (taker_proven_edge or maker_price_edge). */
+  provenEdge: number | null;
+  edgeStatus: EdgeStatus;
+  reason: "MAX_PROVEN_TAKER_EDGE" | "MAX_PROVEN_MAKER_EDGE" | "VALUE_REFERENCE_UNPROVEN" | "NO_POSITIVE_PROVEN_EDGE" | "NO_SAFE_ACTION_IN_SUPPORTED_UNIVERSE" | string;
+};
 
 export type EventDecision = {
   policyVersion: typeof T10_ECONOMIC_ACTION_POLICY_VERSION;
@@ -347,6 +402,9 @@ export type EventDecision = {
   bestMakerAlternative: PolicyEvaluation | null;
   evaluations: PolicyEvaluation[];
   reason: string;
+  /** Why the executable winner won: MAX_PROVEN_EDGE, or EXECUTION_ORDER_ONLY_VALUE_UNPROVEN (cost order is not value). */
+  rankingReason: "MAX_PROVEN_EDGE" | "EXECUTION_ORDER_ONLY_VALUE_UNPROVEN" | "NONE";
+  value: ValueDecision;
 };
 
 /** One physical event => at most one economic exposure. All supported siblings compete economically. */
@@ -359,7 +417,9 @@ export function decideEventAction(candidates: readonly PolicyCandidateInput[]): 
     : candidates.some((c) => !c.beforeLatestEntry) ? "EVENT_AFTER_LATEST_ENTRY" : null;
   if (eventGate) {
     return { policyVersion: T10_ECONOMIC_ACTION_POLICY_VERSION, physicalEventId: candidates[0]?.identity.physicalEventId ?? null,
-      action: "SKIP", selected: null, bestMakerAlternative: null, evaluations: ranked.map((r) => r.evaluation), reason: eventGate };
+      action: "SKIP", selected: null, bestMakerAlternative: null, evaluations: ranked.map((r) => r.evaluation), reason: eventGate,
+      rankingReason: "NONE",
+      value: { action: "SKIP", selected: null, provenEdge: null, edgeStatus: "VALUE_REFERENCE_UNPROVEN", reason: eventGate } };
   }
   const takers = ranked.filter((r) => r.evaluation.taker.eligible).sort(compareTaker);
   const makers = ranked.filter((r) => r.evaluation.maker.eligible).sort(compareMaker);
@@ -367,9 +427,29 @@ export function decideEventAction(candidates: readonly PolicyCandidateInput[]): 
   const action: ShadowAction = takers[0] ? "TAKER_FIRST" : makers[0] ? "MAKER_FIRST" : "SKIP";
   const selected = winner ? { ...winner.evaluation, shadowAction: action,
     reason: action === "TAKER_FIRST" ? "BEST_SAFE_TAKER" : "BEST_SAFE_MAKER" } : null;
+  const winnerEdge = takers[0] ? takers[0].evaluation.value.taker_proven_edge : makers[0]?.evaluation.value.maker_price_edge ?? null;
+  const posTakers = takers.filter((r) => r.evaluation.value.taker_edge_status === "POSITIVE_EDGE");
+  const posMakers = makers.filter((r) => r.evaluation.value.maker_edge_status === "POSITIVE_EDGE");
+  const anyProven = [...takers, ...makers].some((r) => r.evaluation.value.fair_status === "PROVEN");
+  const valueWinner = posTakers[0] ?? posMakers[0] ?? null;
+  const valueAction: ShadowAction = posTakers[0] ? "TAKER_FIRST" : posMakers[0] ? "MAKER_FIRST" : "SKIP";
+  const valueEdge = posTakers[0] ? posTakers[0].evaluation.value.taker_proven_edge : posMakers[0]?.evaluation.value.maker_price_edge ?? null;
+  const value: ValueDecision = {
+    action: valueAction,
+    selected: valueWinner ? { ...valueWinner.evaluation, shadowAction: valueAction,
+      reason: valueAction === "TAKER_FIRST" ? "MAX_PROVEN_TAKER_EDGE" : "MAX_PROVEN_MAKER_EDGE" } : null,
+    provenEdge: valueEdge,
+    edgeStatus: valueEdge === null ? "VALUE_REFERENCE_UNPROVEN" : "POSITIVE_EDGE",
+    reason: valueWinner ? (valueAction === "TAKER_FIRST" ? "MAX_PROVEN_TAKER_EDGE" : "MAX_PROVEN_MAKER_EDGE")
+      : !winner ? "NO_SAFE_ACTION_IN_SUPPORTED_UNIVERSE" : anyProven ? "NO_POSITIVE_PROVEN_EDGE" : "VALUE_REFERENCE_UNPROVEN",
+  };
+  if (!valueWinner && winner && !anyProven) value.edgeStatus = "VALUE_REFERENCE_UNPROVEN";
+  else if (!valueWinner && winner) value.edgeStatus = "NON_POSITIVE_EDGE";
   return {
     policyVersion: T10_ECONOMIC_ACTION_POLICY_VERSION,
     physicalEventId: candidates[0]?.identity.physicalEventId ?? null,
+    rankingReason: !winner ? "NONE" : winnerEdge !== null ? "MAX_PROVEN_EDGE" : "EXECUTION_ORDER_ONLY_VALUE_UNPROVEN",
+    value,
     action, selected,
     bestMakerAlternative: makers[0]?.evaluation ?? null,
     evaluations: ranked.map((r) => r.evaluation),
