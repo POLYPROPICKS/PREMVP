@@ -110,3 +110,32 @@ export async function writeResearchEligibleSignalSnapshots({
 
   return { inserted };
 }
+
+/**
+ * R1_TWO_COMPLETE_GENERATION_EVENT_UNIVERSE_V1 — durable completion marker.
+ *
+ * Call ONLY after writeResearchEligibleSignalSnapshots resolved (every chunk
+ * persisted) or after a legitimate zero-row generation reached the persistence
+ * boundary. Throws on failure so the caller can never claim a false completion.
+ * Insert-only: snapshotRunId is a fresh UUID per producer run.
+ */
+export async function markResearchSnapshotRunComplete({
+  snapshotRunId,
+  snapshotAt,
+  rowCount,
+}: {
+  snapshotRunId: string;
+  snapshotAt: string;
+  rowCount: number;
+}): Promise<void> {
+  const { error } = await (await scopedSupabaseAdmin())
+    .from("research_snapshot_runs")
+    .insert({
+      snapshot_run_id: snapshotRunId,
+      snapshot_at: snapshotAt,
+      row_count: rowCount,
+    });
+  if (error) {
+    throw new Error(`Failed to mark research snapshot run complete: ${error.message}`);
+  }
+}
