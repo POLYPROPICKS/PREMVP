@@ -1949,3 +1949,37 @@ test("T10-S: the legacy CORNERS_NOT_LIVE_EXECUTABLE guard cannot veto the T10 B 
   }
   assert.ok(source.includes('"CORNERS_NOT_LIVE_EXECUTABLE"'), "the legacy guard is retained, not deleted");
 });
+
+test("SOFT-I: event-rebalance completes normal live orchestration even when research exhausts its soft budget", async () => {
+  const baseline = async (captureResearch?: import("../../lib/executor/precontractT20Research").ResearchTickDeps) => {
+    const repo = makeFakeRepo([baseReservation()]);
+    const jobEvidence = makeFakeJobEvidence();
+    const result = await runEventRebalanceWithEvidence(IN_WINDOW_MS, { write: true }, {
+      repo, jobEvidence, captureMilestones: async () => undefined, captureResearch,
+      fetchCandidates: async () => { throw new Error("legacy candidate load must not run"); },
+    });
+    return { result, repo, jobEvidence };
+  };
+  const plain = await baseline();
+  const research: { status?: string; budget_deferred?: unknown; deferred?: unknown } = {};
+  const withResearch = await baseline({
+    store: {
+      loadEventCandidates: async () => [0, 1].map((i) => ({
+        provider_event_id: String(i + 1), provider_game_id: `G${i + 1}`, snapshot_run_id: `run-${i}`, snapshot_at: new Date(IN_WINDOW_MS - 60_000).toISOString(),
+        event_start_iso: new Date(IN_WINDOW_MS + 15 * 60_000).toISOString(), provider_sport_family: "soccer", provider_sport_family_n: 1,
+        provider_sport_code: null, provider_sport_code_n: 0, provider_sport_source: null, provider_sport_source_n: 0,
+        parent_event_volume_24h: 1000 - i, volume_contradiction: false,
+      })),
+      capturedAmong: async () => new Set(), capturedEventCount: async () => 0, writeRows: async () => undefined, purgeExpired: async () => 0,
+    },
+    writeJobRun: async (j) => { research.status = j.status; research.budget_deferred = j.diagnostics?.budget_deferred; research.deferred = j.diagnostics?.deferred_budget_event_n; },
+    budgetMs: 300, softStartMinRemainingMs: 50,
+    capture: async (sel) => { await new Promise((r) => setTimeout(r, 250)); return { kind: "CAPTURED", rows: [{ physical_event_id: sel.event.physicalEventId }], unsupported: {} }; },
+  });
+  assert.deepEqual([research.status, research.budget_deferred, research.deferred], ["success", true, 1], "research ran and soft-deferred");
+  assert.equal(withResearch.result.queued_count, plain.result.queued_count);
+  assert.equal(withResearch.result.first_rejection_code, plain.result.first_rejection_code);
+  assert.equal(withResearch.repo.queueRows.length, plain.repo.queueRows.length);
+  assert.equal(withResearch.jobEvidence.calls.length, plain.jobEvidence.calls.length);
+  assert.equal(withResearch.jobEvidence.calls[0].status, plain.jobEvidence.calls[0].status);
+});

@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { validateApprovedMigrationRelease } from "../../scripts/control-plane/lib/premvp-application-migration-release.mjs";
 import {
   AMERICAN_FOOTBALL_NOT_PROVEN, MAX_NEW_EVENTS_PER_TICK, MAX_RESEARCH_EVENTS_PER_DAY, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT,
-  EVENT_UNIVERSE_CEILING, PRECONTRACT_RESEARCH_SOURCE, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, createResearchStore, admitResearchMarket, buildResearchEvents, captureResearchEvent,
+  EVENT_UNIVERSE_CEILING, PRECONTRACT_RESEARCH_SOURCE, RESEARCH_TICK_BUDGET_MS, compareUrgency, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, createResearchStore, admitResearchMarket, buildResearchEvents, captureResearchEvent,
   inT20Window, isAdmittedTargetSport, runPrecontractT20ResearchFailSoft, runPrecontractT20ResearchTick, selectResearchCohort,
   type EventCaptureOutcome, type ResearchEvent, type ResearchEventCandidateRow, type ResearchStore, type CohortSelection,
 } from "../../lib/executor/precontractT20Research";
@@ -372,7 +372,7 @@ test("TIMEOUT_NO_LATE_WRITE: a slow in-flight capture that settles after the dea
   const slow = deferred<EventCaptureOutcome>();
   let captureStarts = 0;
   const t0 = Date.now();
-  const res = await runPrecontractT20ResearchTick(NOW, { store, budgetMs: 40, capture: () => { captureStarts++; return slow.promise; } });
+  const res = await runPrecontractT20ResearchTick(NOW, { store, budgetMs: 40, softStartMinRemainingMs: 0, capture: () => { captureStarts++; return slow.promise; } });
   assert.equal(res.status, "error");
   assert.equal(res.diagnostics.captured_event_n, 0);
   assert.ok(Date.now() - t0 < 1000);
@@ -442,4 +442,119 @@ test("GSRS game_start_iso index migration: concurrent, partial, index-only; RPC 
   assert.equal(rpc.includes("g.game_start_iso >= p_from"), true);
   assert.equal(rpc.includes("g.game_start_iso < p_to"), true);
   assert.deepEqual([SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA], [40, 20, 40]);
+});
+
+// ---- soft budget guard (PRECONTRACT_T20_RESEARCH_BUDGET_AND_CONTINUATION_FIX_V1) ------------------------------------------
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Store whose writes become visible to capturedAmong(), like the real table, so a second tick resumes correctly. */
+function persistingStore(rows: ResearchEventCandidateRow[]) {
+  const base = fakeStore(rows);
+  const persisted = new Set<string>();
+  const physicalByRow = new Map(buildResearchEvents(rows).map((e) => [e.providerEventId, e.physicalEventId]));
+  const store: ResearchStore = {
+    ...base.store,
+    capturedAmong: async (ids) => new Set(ids.filter((i) => persisted.has(i))),
+    capturedEventCount: async () => persisted.size,
+    writeRows: async (r) => { await base.store.writeRows(r); persisted.add(String(r[0].physical_event_id)); },
+  };
+  return { ...base, store, persisted, physicalByRow };
+}
+const slowCapture = (ms: number, seen: string[] = []) => async (sel: CohortSelection): Promise<EventCaptureOutcome> => {
+  seen.push(sel.event.providerEventId); await sleep(ms);
+  return { kind: "CAPTURED", rows: [{ physical_event_id: sel.event.physicalEventId, id: `r-${sel.event.providerEventId}` }], unsupported: {} };
+};
+const SOFT = { budgetMs: 400, softStartMinRemainingMs: 50 };
+const withJobs = () => { const jobs: Record<string, unknown>[] = []; return { jobs, writeJobRun: async (j: unknown) => { jobs.push(j as Record<string, unknown>); } }; };
+
+test("SOFT-A: one event finishing inside the budget is SUCCESS with no deferral and no hard timeout", async () => {
+  const { store, written } = persistingStore([sourceRow(1, 900)]);
+  const res = await runPrecontractT20ResearchTick(NOW, { store, ...SOFT, capture: slowCapture(20) });
+  assert.equal(res.status, "success");
+  assert.equal(written.length, 1);
+  assert.deepEqual([res.diagnostics.due_event_n, res.diagnostics.attempted_event_n, res.diagnostics.captured_event_n, res.diagnostics.deferred_budget_event_n, res.diagnostics.hard_timeout_hit, res.diagnostics.budget_deferred], [1, 1, 1, 0, false, false]);
+  assert.equal(RESEARCH_TICK_BUDGET_MS, 8_000, "hard budget unchanged");
+});
+
+test("SOFT-B/F: first event captured, second cannot safely start => rows retained, second DEFERRED, SUCCESS, no hard timeout, rejectedCount untouched", async () => {
+  const { store, written, persisted, calls } = persistingStore([sourceRow(1, 900), sourceRow(2, 800)]);
+  const seen: string[] = [];
+  const { jobs, writeJobRun } = withJobs();
+  const res = await runPrecontractT20ResearchTick(NOW, { store, writeJobRun, ...SOFT, capture: slowCapture(250, seen) });
+  assert.equal(res.status, "success");
+  assert.equal(res.diagnostics.error, undefined);
+  assert.deepEqual(seen, ["1"], "second event never started");
+  assert.equal(written.length, 1, "first event rows retained");
+  assert.equal(persisted.size, 1);
+  assert.deepEqual([res.diagnostics.due_event_n, res.diagnostics.attempted_event_n, res.diagnostics.captured_event_n, res.diagnostics.failed_event_n, res.diagnostics.deferred_budget_event_n, res.diagnostics.token_rows_written_n, res.diagnostics.hard_timeout_hit, res.diagnostics.budget_deferred], [2, 1, 1, 0, 1, 1, false, true]);
+  assert.equal(jobs[0].status, "success");
+  assert.equal(jobs[0].errorMessage, undefined);
+  assert.equal(jobs[0].generatedCount, 1);
+  assert.equal(jobs[0].rejectedCount, 0, "a deferred event is not a rejected/failed event");
+  assert.equal(calls.purge, 0, "no retention purge after a soft deferral (leftover budget is too small)");
+});
+
+test("SOFT-C: the next tick sees the first event captured and continues the deferred second event", async () => {
+  const ps = persistingStore([sourceRow(1, 900), sourceRow(2, 800)]);
+  const first = await runPrecontractT20ResearchTick(NOW, { store: ps.store, ...SOFT, capture: slowCapture(250) });
+  assert.equal(first.diagnostics.deferred_budget_event_n, 1);
+  const seen: string[] = [];
+  const second = await runPrecontractT20ResearchTick(NOW + 60_000, { store: ps.store, ...SOFT, capture: slowCapture(20, seen) });
+  assert.deepEqual(seen, ["2"], "only the deferred event is captured");
+  assert.equal(second.status, "success");
+  assert.equal(second.diagnostics.already_captured_event_n, 1);
+  assert.deepEqual([second.diagnostics.captured_event_n, second.diagnostics.deferred_budget_event_n, second.diagnostics.hard_timeout_hit], [1, 0, false]);
+  assert.equal(ps.written.length, 2);
+});
+
+test("SOFT-D/F: a real capture failure increments failed_event_n and is never mislabeled as deferred", async () => {
+  const { store } = persistingStore([sourceRow(1, 900)]);
+  const { jobs, writeJobRun } = withJobs();
+  const res = await runPrecontractT20ResearchTick(NOW, { store, writeJobRun, ...SOFT, capture: async () => ({ kind: "FAILED", reason: "PROVIDER_DOWN", unsupported: {} }) });
+  assert.deepEqual([res.diagnostics.failed_event_n, res.diagnostics.deferred_budget_event_n, res.diagnostics.budget_deferred, res.diagnostics.attempted_event_n], [1, 0, false, 1]);
+  assert.equal(res.status, "empty", "zero durable progress keeps the existing failure semantics");
+  assert.equal(jobs[0].rejectedCount, 1);
+});
+
+test("SOFT-E: the genuine hard timer expiry is still RESEARCH_TICK_TIMEOUT / error with hard_timeout_hit=true; earlier rows are kept", async () => {
+  const { store, written } = persistingStore([sourceRow(1, 900), sourceRow(2, 800)]);
+  const { jobs, writeJobRun } = withJobs();
+  let n = 0;
+  // soft guard disabled (0 floor) so the second event DOES start and the hard timer genuinely fires mid-capture
+  const res = await runPrecontractT20ResearchTick(NOW, { store, writeJobRun, budgetMs: 120, softStartMinRemainingMs: 0, capture: async (sel) => { n++; return n === 1 ? slowCapture(10)(sel) : new Promise<EventCaptureOutcome>(() => undefined); } });
+  assert.equal(res.status, "error");
+  assert.equal(jobs[0].errorMessage, "RESEARCH_TICK_TIMEOUT");
+  assert.equal(res.diagnostics.hard_timeout_hit, true);
+  assert.equal(res.diagnostics.captured_event_n, 1);
+  assert.equal(written.length, 1, "already-written rows preserved");
+});
+
+test("SOFT-ORDER: due events run earliest event_start first, then liquidity; the 40/20/40 cohort is untouched by the guard", async () => {
+  const early = sourceRow(1, 10, "soccer", 11), late = sourceRow(2, 9_999, "soccer", 19), mid = sourceRow(3, 500, "soccer", 11);
+  const rows = [late, early, mid];
+  const seen: string[] = [];
+  const { store } = persistingStore(rows);
+  await runPrecontractT20ResearchTick(NOW, { store, budgetMs: 2_000, softStartMinRemainingMs: 10, capture: slowCapture(1, seen) });
+  assert.deepEqual(seen, ["3", "1", "2"], "start asc (11,11,19); equal start -> higher volume first");
+  const ev3 = buildResearchEvents([early])[0], ev4 = buildResearchEvents([late])[0];
+  assert.ok(compareUrgency(ev3, ev4) < 0);
+  // cohort membership/quotas identical whether or not the soft guard defers
+  const full = persistingStore(rows), deferredRun = persistingStore(rows);
+  const a = await runPrecontractT20ResearchTick(NOW, { store: full.store, budgetMs: 2_000, softStartMinRemainingMs: 10, capture: slowCapture(1) });
+  const b = await runPrecontractT20ResearchTick(NOW, { store: deferredRun.store, ...SOFT, capture: slowCapture(250) });
+  for (const k of ["eligible_event_n", "soccer_selected_n", "tennis_selected_n", "other_quota_underfill_n", "universe_event_n"]) assert.equal(a.diagnostics[k], b.diagnostics[k], k);
+  assert.deepEqual([SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA], [40, 20, 40]);
+});
+
+test("SOFT-H: money-path code never reads research output; the soft guard imports no money/Queue module", () => {
+  const src = readFileSync("lib/executor/precontractT20Research.ts", "utf8");
+  const code = src.replace(/\/\/.*$/gm, "").replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const forbidden of ["T10_REAL_MONEY_EXECUTION_ENABLED", "execution_queue", "hard_cap", "settlement"]) assert.equal(code.includes(forbidden), false, forbidden);
+  const consumers = ["lib/executor/eventExecutionQueue.ts", "lib/executor/reservationRebalanceContract.mjs", "lib/executor/contractADecisions.ts"];
+  for (const f of consumers) {
+    const text = readFileSync(f, "utf8");
+    assert.equal(text.includes("research_precontract_t20_observations"), false, `${f} must not read the research table`);
+  }
+  const hook = readFileSync("lib/executor/eventExecutionQueue.ts", "utf8");
+  assert.equal((hook.match(/runPrecontractT20ResearchFailSoft\(/g) ?? []).length, 1);
+  assert.match(readFileSync("lib/executor/precontractT20Research.ts", "utf8"), /export const RESEARCH_TICK_BUDGET_MS = 8_000;/);
 });
