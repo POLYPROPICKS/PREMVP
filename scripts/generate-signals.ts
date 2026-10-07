@@ -18,7 +18,7 @@ import {
 import { persistCanonicalPrimarySignalPopulation } from "../lib/feed/persistPrimarySignalPopulation";
 import { discoverSportsMarkets, collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
 import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
-import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
+import { markResearchSnapshotRunComplete, writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { shouldSuppressSportsInventoryWrite } from "../lib/feed/cacheSportsEventMarketInventory";
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
 import { isDatabaseTimeout, resolveSignalProducerMode } from "../lib/feed/moneyProducerMode";
@@ -409,6 +409,23 @@ async function main() {
     let researchSnapshotsBeforeDedup = 0;
     let researchSnapshotsAfterDedup = 0;
     let researchSnapshotDuplicatesDropped = 0;
+    let researchRunMarkerWritten = false;
+    let researchRunMarkerWarning: string | null = null;
+    // Completion authority: written only after every GSRS chunk persisted (or a zero-row generation reached this boundary).
+    const markResearchRunComplete = async (rowCount: number) => {
+      if (!researchSnapshotRunId || !researchSnapshotAt) return;
+      try {
+        await markResearchSnapshotRunComplete({
+          snapshotRunId: researchSnapshotRunId,
+          snapshotAt: researchSnapshotAt,
+          rowCount,
+        });
+        researchRunMarkerWritten = true;
+      } catch (markerError) {
+        researchRunMarkerWarning = markerError instanceof Error ? markerError.message : String(markerError);
+        console.warn("[generate-signals] Research run completion marker failed (non-fatal):", researchRunMarkerWarning);
+      }
+    };
     // ── Research universe persistence ──────────────────────────────────────────
     // Mark which research snapshots also landed in the public feed, then write.
     // Runs regardless of generatedCount (research may yield rows even if product feed is empty).
@@ -463,6 +480,7 @@ async function main() {
         });
         researchInserted = researchResult.inserted;
         researchSnapshotsInserted = researchInserted;
+        await markResearchRunComplete(researchInserted);
       } catch (researchError) {
         // Research write failure is non-fatal — log and continue
         researchWriterWarning = researchError instanceof Error ? researchError.message : String(researchError);
@@ -481,6 +499,7 @@ async function main() {
       console.log(`[generate-signals] Research odds corridor: 1.25–4.00`);
     } else {
       console.log(`[generate-signals] Research snapshots collected: 0`);
+      await markResearchRunComplete(0);
     }
     // Append research writer stats to diagnostics for job_runs observability
     diagnostics.researchSnapshotsCollected = rawResearchSnapshots.length;
@@ -490,6 +509,8 @@ async function main() {
     diagnostics.researchWriterAttempted = researchWriterAttempted;
     diagnostics.researchSnapshotsInserted = researchSnapshotsInserted;
     diagnostics.researchWriterWarning = researchWriterWarning;
+    diagnostics.researchRunMarkerWritten = researchRunMarkerWritten;
+    diagnostics.researchRunMarkerWarning = researchRunMarkerWarning;
     const fireModelCaptured = rawResearchSnapshots.filter((snap) => snap.diagnostics?.fireModel);
     diagnostics.fireModelCaptureAttempted = rawResearchSnapshots.length;
     diagnostics.fireModelCaptureInserted = researchSnapshotsInserted;
