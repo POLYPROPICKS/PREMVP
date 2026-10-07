@@ -23,6 +23,7 @@ export type MarketClass =
   | "allowed_fullmatch_moneyline"
   | "allowed_fullmatch_spread"
   | "allowed_fullmatch_total"
+  | "allowed_fullmatch_total_corners"
   | "forbidden_halftime"
   | "forbidden_corners"
   | "forbidden_exact_score"
@@ -98,6 +99,58 @@ export function classifyMarketText(input: unknown): MarketClass {
   if (ALLOWED_SPREAD_SQ.test(squashed)) return "allowed_fullmatch_spread";
   if (ALLOWED_TOTAL_SQ.test(squashed) || ALLOWED_TOTAL_TOKEN.test(joined)) return "allowed_fullmatch_total";
   return "unknown";
+}
+
+// ---------------------------------------------------------------------------
+// SOCCER_FULL_MATCH_TOTAL_CORNERS_V1 — the ONE authority for exact full-match
+// Total Corners.
+//
+// classifyMarketText stays fail-closed: ANY text mentioning "corner" is
+// forbidden_corners, so generic / text-only corners can never be admitted.
+// The allowed class `allowed_fullmatch_total_corners` is NEVER produced from
+// text. It is only minted by this function, from the provider's STRUCTURED
+// market type, after the question and slug are proven free of every partial /
+// derivative marker (team, home, away, first/last, half, race, odd/even).
+// ---------------------------------------------------------------------------
+
+/** Slug/question tokens that turn a corners market into a derivative (team, period, race, parity, first/last corner). */
+export const CORNER_DERIVATIVE_RE = /(?:^|[-_])(team|home|away|first|last|1st|2nd|second|half|halftime|race|odd|even)(?:$|[-_])/i;
+
+export const STRUCTURED_FULLMATCH_TOTAL_CORNERS_TYPE = "total_corners";
+
+export interface FullMatchTotalCornersEvidence {
+  /** The provider's structured market type (sportsMarketType). The only positive evidence. */
+  structuredType?: string | null;
+  /** The provider's market question, e.g. "Match Total Corners O/U 9.5". Required. */
+  question?: string | null;
+  /** The provider market slug, when the surface carries one. */
+  marketSlug?: string | null;
+}
+
+/**
+ * True ONLY for the provider's exact full-match Total Corners market:
+ * structured type `total_corners`, a question that is a "total corners" line,
+ * no derivative marker in the question or slug, full-match scope, and no other
+ * forbidden class once the corner words themselves are set aside.
+ * Fail-closed: a missing question returns false. The slug is checked whenever the
+ * surface carries one (same contract as classifyExactEventMarket); a surface with
+ * no slug is judged on its question alone.
+ */
+export function isExactFullMatchTotalCorners(input: FullMatchTotalCornersEvidence): boolean {
+  if (String(input.structuredType ?? "").trim().toLowerCase() !== STRUCTURED_FULLMATCH_TOTAL_CORNERS_TYPE) return false;
+  const question = String(input.question ?? "").trim();
+  if (!question) return false;
+  const questionTokens = tokensOf(question);
+  if (!/totalcorners/.test(questionTokens.join(""))) return false;
+  if (CORNER_DERIVATIVE_RE.test(questionTokens.join("-"))) return false;
+  const slug = typeof input.marketSlug === "string" ? input.marketSlug.trim() : "";
+  if (slug && CORNER_DERIVATIVE_RE.test(slug)) return false;
+  // Scope and residual class are judged with the corner words set aside: the
+  // bare word "corners" is what classifyMarketText / SCOPE_PROP_TOKEN forbid.
+  const withoutCorners = questionTokens.filter((t) => t !== "corner" && t !== "corners").join(" ");
+  if (classifyEventScope(withoutCorners) !== "full_match") return false;
+  const residual = classifyMarketText(withoutCorners);
+  return !isForbiddenMarketClass(residual) && residual !== "esports_non_policy";
 }
 
 export function isForbiddenMarketClass(cls: MarketClass): boolean {
@@ -296,7 +349,8 @@ export function isAllowedFullMatchMarketClass(cls: MarketClass): boolean {
   return (
     cls === "allowed_fullmatch_moneyline" ||
     cls === "allowed_fullmatch_spread" ||
-    cls === "allowed_fullmatch_total"
+    cls === "allowed_fullmatch_total" ||
+    cls === "allowed_fullmatch_total_corners"
   );
 }
 
