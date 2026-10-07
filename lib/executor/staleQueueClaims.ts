@@ -1,3 +1,5 @@
+import { hasUnresolvedNeedsReconciliation } from "./makerFallbackAuthorization";
+
 export const STALE_CLAIM_REASON = "CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT";
 export const STALE_CLAIM_LIMIT = 50;
 
@@ -21,9 +23,17 @@ export interface StaleClaimPort {
 export async function reconcileStaleClaims(port: StaleClaimPort, nowIso: string, write: boolean) {
   const rows = await port.loadExpiredClaims(nowIso, STALE_CLAIM_LIMIT);
   let protectedByOrderEvent = 0;
+  let protectedByUnresolvedTransport = 0;
   let expired = 0;
   for (const row of rows) {
     if (row.status !== "CLAIMED" || !row.latest_entry_iso || row.latest_entry_iso > nowIso) continue;
+    // A persisted typed UNKNOWN_TRANSPORT / NEEDS_RECONCILIATION row is an unresolved venue outcome, not "no order
+    // event": it must never be silently collapsed into CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT. A later terminal
+    // callback resolves it through the normal Queue mark; the sweep leaves it exactly as it is.
+    if (hasUnresolvedNeedsReconciliation(row.diagnostics)) {
+      protectedByUnresolvedTransport++;
+      continue;
+    }
     // Unknown or mismatched identity must fail closed; it cannot prove the
     // absence of a venue order associated with this Queue instruction.
     if (!row.idempotency_key || !row.condition_id || !row.token_id || !row.side) continue;
@@ -44,5 +54,11 @@ export async function reconcileStaleClaims(port: StaleClaimPort, nowIso: string,
     };
     if (await port.expireClaim(row, nowIso, diagnostics)) expired++;
   }
-  return { scanned: rows.length, protected_by_order_event: protectedByOrderEvent, expired_count: expired };
+  return {
+    scanned: rows.length,
+    protected_by_order_event: protectedByOrderEvent,
+    // Reported only when non-zero so the established result shape is unchanged for every other sweep.
+    ...(protectedByUnresolvedTransport > 0 ? { protected_by_unresolved_transport: protectedByUnresolvedTransport } : {}),
+    expired_count: expired,
+  };
 }

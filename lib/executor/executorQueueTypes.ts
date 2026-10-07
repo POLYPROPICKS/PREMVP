@@ -684,11 +684,17 @@ export type OrderEventValidationResult =
  * a consistent Queue row): nothing reached the venue, so there is no submitted price to bound. It waives ONLY the
  * ABSENCE of submitted_price -- a price that is present is validated exactly as before, and every identity,
  * stake and Queue-envelope check above still applies.
+ *
+ * The SECOND (and only other) exception (options.unknownTransportAmbiguous) is the exact typed
+ * UNKNOWN_TRANSPORT_NEEDS_RECONCILIATION shape the caller has already proven (isUnknownTransportNeedsReconciliationCallback
+ * plus a CLAIMED Queue row with no resolved result): an ambiguous transport outcome has no confirmed submitted price,
+ * and it is neither a fill nor a proven zero. Same rule: only the ABSENCE of submitted_price is waived; every
+ * identity / stake / size / envelope check above still applies and a present price is validated exactly as before.
  */
 export function validateOrderEventAgainstQueueRow(
   submitted: OrderEventSubmission,
   queueRow: EventExecutionQueueRow,
-  options: { preSubmissionProvenZero?: boolean } = {}
+  options: { preSubmissionProvenZero?: boolean; unknownTransportAmbiguous?: boolean } = {}
 ): OrderEventValidationResult {
   if (!queueRow.id || submitted.queue_id !== queueRow.id) {
     return { ok: false, reason: "QUEUE_ID_MISMATCH" };
@@ -731,6 +737,10 @@ export function validateOrderEventAgainstQueueRow(
   }
   if (submitted.submitted_price === null && options.preSubmissionProvenZero === true) {
     // Proven rejected before submission: no order existed, so there is no price and no notional to bound.
+    return { ok: true };
+  }
+  if (submitted.submitted_price === null && options.unknownTransportAmbiguous === true) {
+    // Ambiguous transport: the venue outcome is unknown, so there is no confirmed price to bound (and none is inferred).
     return { ok: true };
   }
   if (

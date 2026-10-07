@@ -633,7 +633,90 @@ export function mergeAttemptResult(
   next: IrelandExecutionResult,
 ): IrelandExecutionResult {
   if (prior && (prior.filled_quantity ?? 0) > 0 && (next.filled_quantity ?? 0) < (prior.filled_quantity ?? 0)) return prior;
+  // An ambiguous transport result carries no new fact: it never rewrites (duplicate) nor replaces (late/stale) any
+  // result already recorded. Only a later TERMINAL / venue-evidenced result upgrades it.
+  if (prior && isAmbiguousTransportResult(next)) return prior;
   return next;
+}
+
+// ── UNKNOWN_TRANSPORT_CALLBACK_RECEIVER_V1 ────────────────────────────────
+
+/** Queue diagnostics key of the typed NEEDS_RECONCILIATION marker (no new status / enum / migration). */
+export const NEEDS_RECONCILIATION_KEY = "needs_reconciliation_v1" as const;
+export const NEEDS_RECONCILIATION_STATE = "NEEDS_RECONCILIATION" as const;
+
+/**
+ * The typed ambiguous-transport result: UNKNOWN_TRANSPORT, explicitly NON-terminal, exposure neither proven zero
+ * nor positive (null), no reported fill. It is NOT a fill and NOT a proven zero -- nothing is inferred from the
+ * missing fields. Every other result (UNKNOWN_AFTER_SUBMISSION, any terminal, any reported quantity) is false.
+ */
+export function isAmbiguousTransportResult(r: IrelandExecutionResult | null | undefined): boolean {
+  return !!r
+    && r.result_class === "UNKNOWN_TRANSPORT"
+    && r.terminal === false
+    && r.economic_exposure_proven_zero === null
+    && r.filled_quantity === null;
+}
+
+/**
+ * The EXACT narrow ambiguous-transport callback shape (execution_mode=TAKER, attempt_id=TAKER_ATTEMPT_1,
+ * result_class=UNKNOWN_TRANSPORT, terminal=false, economic_exposure_proven_zero null, filled_quantity null,
+ * venue_order_id absent). It is deliberately narrower than "an UNKNOWN_* class": a MAKER / MAKER_FIRST attempt,
+ * UNKNOWN_AFTER_SUBMISSION, any terminal or fill result, and any payload carrying venue evidence (an order id, a
+ * fill fact other than zero, a transaction hash, a fill / live status word) all return false and keep failing
+ * closed on the submitted-price requirement.
+ */
+export function isUnknownTransportNeedsReconciliationCallback(raw: Record<string, unknown>): boolean {
+  const result = readIrelandExecutionResult(raw, "");
+  if (!isAmbiguousTransportResult(result) || !result) return false;
+  if (result.attempt_id !== TAKER_ATTEMPT_1 || result.execution_mode !== "TAKER" || result.venue_order_id !== null) return false;
+  for (const source of attemptSources(raw)) {
+    if (source.attempt_id != null && source.attempt_id !== TAKER_ATTEMPT_1) return false;
+    if (source.execution_mode != null && source.execution_mode !== "TAKER") return false;
+    // A reported quantity in ANY source (not only the one the result was read from) contradicts "no reported fill".
+    if (source.filled_quantity != null) return false;
+    for (const k of PRE_SUBMISSION_FORBIDDEN_VENUE_ID_KEYS) if (nonEmptyStr(source[k]) !== null) return false;
+    for (const k of PRE_SUBMISSION_FORBIDDEN_FILL_KEYS) if (!isAbsentOrZeroFact(source[k])) return false;
+  }
+  const hashes = raw.transaction_hashes;
+  if (hashes !== undefined && hashes !== null && !(Array.isArray(hashes) && hashes.length === 0)) return false;
+  // Nested raw CLOB response evidence (order id / fill amounts) makes the callback NOT ambiguous: it is judged by the
+  // ordinary price-required path, so no venue fact is silently discarded by the marker-only receiver.
+  const nestedEvents = objectOrNull(raw.raw_event_json);
+  for (const nested of [objectOrNull(raw.raw_response), objectOrNull(nestedEvents?.raw_response)]) {
+    if (!nested) continue;
+    for (const k of ["orderID", "orderId", "order_id", "orderHash", "order_hash", "clob_order_id", "venue_order_id"]) {
+      if (nonEmptyStr(nested[k]) !== null) return false;
+    }
+    for (const k of ["makingAmount", "takingAmount", "making_amount", "taking_amount", "filled_quantity", "executed_size"]) {
+      if (!isAbsentOrZeroFact(nested[k])) return false;
+    }
+  }
+  const status = String(raw.order_status ?? raw.status ?? raw.state ?? "").toLowerCase();
+  return !PRE_SUBMISSION_FORBIDDEN_STATUSES.has(status);
+}
+
+/**
+ * Whether the Queue row's own recorded facts allow accepting an ambiguous-transport callback: the row must still be
+ * CLAIMED (a resolved EXECUTED / FAILED / SENT / EXPIRED row is never touched) and the TAKER_ATTEMPT_1 slot may hold
+ * nothing or the same ambiguous result -- a recorded terminal / venue-evidenced result always wins.
+ */
+export function unknownTransportConsistentWithQueueRow(queue: Pick<EventExecutionQueueRow, "status" | "diagnostics">): boolean {
+  if (queue.status !== "CLAIMED") return false;
+  const recorded = readExecutionAttempts(queue.diagnostics).taker_attempt_1?.result;
+  return recorded === undefined || isAmbiguousTransportResult(recorded);
+}
+
+/**
+ * True while a Queue row carries the unresolved NEEDS_RECONCILIATION marker (the stale-claim sweep must preserve it).
+ * The marker stops being "unresolved" once the taker slot records a terminal PROVEN ZERO (no exposure exists, so
+ * nothing is hidden by the ordinary lease handling; any authorized fallback command is preserved by the CAS). A
+ * recorded fill / partial / unknown-after-submission result keeps the row preserved: exposure is never silently expired.
+ */
+export function hasUnresolvedNeedsReconciliation(diagnostics: Record<string, unknown> | null | undefined): boolean {
+  const marker = objectOrNull(diagnostics?.[NEEDS_RECONCILIATION_KEY]);
+  if (marker === null || marker.state !== NEEDS_RECONCILIATION_STATE) return false;
+  return !isTerminalProvenZeroResult(readExecutionAttempts(diagnostics).taker_attempt_1?.result);
 }
 
 export async function recordResultAndAuthorizeMaker(
@@ -692,9 +775,12 @@ export async function recordResultAndAuthorizeMaker(
   }
 
   // A recorded taker result that shows exposure (or is unresolved) is never overwritten by a
-  // later callback, and never lets a later zero-proof authorize a maker.
+  // later callback, and never lets a later zero-proof authorize a maker. The ONE exception is the typed
+  // ambiguous transport result (UNKNOWN_TRANSPORT, non-terminal, exposure unknown): it asserts nothing, so a later
+  // terminal fill / partial fill (exposure preserved, no fallback) or terminal proven zero (the single
+  // MAKER_FALLBACK_1 under the existing TAKER-zero contract) upgrades it exactly once, idempotently (CAS).
   const prior = readExecutionAttempts(queue.diagnostics).taker_attempt_1?.result;
-  if (prior && ((prior.filled_quantity !== null && prior.filled_quantity !== 0) || !ZERO_PROOF_CLASSES.has(prior.result_class))) {
+  if (prior && !isAmbiguousTransportResult(prior) && ((prior.filled_quantity !== null && prior.filled_quantity !== 0) || !ZERO_PROOF_CLASSES.has(prior.result_class))) {
     return { kind: "MAKER_BLOCKED", reasons: ["PRIOR_TAKER_RESULT_SHOWS_EXPOSURE_OR_UNRESOLVED"] };
   }
 

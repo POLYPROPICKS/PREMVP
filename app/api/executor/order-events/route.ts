@@ -31,11 +31,15 @@ import {
 } from "@/lib/executor/executionReconciliation";
 import {
   recordResultAndAuthorizeMaker,
+  NEEDS_RECONCILIATION_KEY,
+  NEEDS_RECONCILIATION_STATE,
   callbackIsTerminalProvenZero,
   fallbackPublicationRetryable,
+  hasUnresolvedNeedsReconciliation,
   isMakerAttemptCallback,
   isProvenRejectedBeforeSubmissionZero,
   normalizeMakerCallbackForAccounting,
+  unknownTransportConsistentWithQueueRow,
   IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED,
   type MakerAuthorizationOutcome,
 } from "@/lib/executor/makerFallbackAuthorization";
@@ -361,6 +365,22 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       // Fresh-read + CAS: a stale diagnostics snapshot can never erase execution_attempts_v1.
       await casWriteQueue(createSupabaseQueueCasPort(), queueId, () => ({ status: patch.status, diagnostics: patch.diagnostics }));
     },
+    async markNeedsReconciliation(queueId, marker) {
+      // Fresh read + CAS, status deliberately omitted: the row stays CLAIMED and a concurrently resolved row
+      // (EXECUTED / FAILED / ...) is never touched. execution_attempts_v1 is always taken from the fresh row.
+      let outcome: "WRITTEN" | "ALREADY_MARKED" | "NOT_CLAIMED" = "NOT_CLAIMED";
+      await casWriteQueue(createSupabaseQueueCasPort(), queueId, (fresh) => {
+        // The FRESH row must still be CLAIMED with no resolved taker result (a terminal / fill result recorded after the
+        // snapshot wins: the stale ambiguous callback writes nothing).
+        if (fresh.status !== "CLAIMED" || !unknownTransportConsistentWithQueueRow({ status: "CLAIMED", diagnostics: fresh.diagnostics } as Pick<EventExecutionQueueRow, "status" | "diagnostics">)) {
+          outcome = "NOT_CLAIMED"; return null;
+        }
+        if (hasUnresolvedNeedsReconciliation(fresh.diagnostics)) { outcome = "ALREADY_MARKED"; return null; }
+        outcome = "WRITTEN";
+        return { diagnostics: { ...(fresh.diagnostics ?? {}), [NEEDS_RECONCILIATION_KEY]: marker, queue_mark_result: NEEDS_RECONCILIATION_STATE } };
+      });
+      return outcome;
+    },
     async insertOrderEvent(raw, _queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
       const s = sanitize(raw) as Record<string, unknown>;
       const record = buildOrderEventRecord(s);
@@ -675,6 +695,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "CLOB_ORDER_ID_CONFLICT" }, { status: 409 });
     case "DB_ERROR":
       return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });
+    case "NEEDS_RECONCILIATION":
+      // Typed ambiguous UNKNOWN_TRANSPORT: accepted and preserved for reconciliation. NOT a fill, NOT proven zero,
+      // no order event / telemetry / ledger fact and no maker fallback; terminal=false, exposure unknown.
+      return NextResponse.json(
+        {
+          success: true,
+          duplicate: outcome.duplicate,
+          needs_reconciliation: true,
+          reconciliation_state: NEEDS_RECONCILIATION_STATE,
+          queue_row_id: outcome.queue_id,
+          terminal: false,
+          economic_exposure_proven_zero: null,
+          maker_fallback: makerFallback,
+        },
+        { status: 200 },
+      );
     case "DUPLICATE":
       return NextResponse.json(
         {
