@@ -549,8 +549,10 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
       }
       if (budgetDeferred) break;
     }
-    // Bounded retention: one capped purge call per tick, only while the deadline has not expired.
-    if (live() && remaining() > 500) {
+    // Bounded retention: one capped purge call per tick, only while the deadline has not expired. Skipped after a soft
+    // deferral: the leftover budget is by definition too small, and a slow purge must not turn durable progress into a
+    // false RESEARCH_TICK_TIMEOUT (retention is 7 days, so a skipped purge is harmless; the next tick purges).
+    if (live() && !budgetDeferred && remaining() > 500) {
       const cutoff = new Date(nowMs - PRODUCTION_RETENTION_DAYS * 86_400_000).toISOString();
       const purged = await deps.store.purgeExpired(cutoff, RETENTION_DELETE_BATCH).catch(() => 0);
       if (!live()) return expire();

@@ -1951,7 +1951,7 @@ test("T10-S: the legacy CORNERS_NOT_LIVE_EXECUTABLE guard cannot veto the T10 B 
 });
 
 test("SOFT-I: event-rebalance completes normal live orchestration even when research exhausts its soft budget", async () => {
-  const baseline = async (captureResearch?: Parameters<typeof runEventRebalanceWithEvidence>[2]["captureResearch"]) => {
+  const baseline = async (captureResearch?: import("../../lib/executor/precontractT20Research").ResearchTickDeps) => {
     const repo = makeFakeRepo([baseReservation()]);
     const jobEvidence = makeFakeJobEvidence();
     const result = await runEventRebalanceWithEvidence(IN_WINDOW_MS, { write: true }, {

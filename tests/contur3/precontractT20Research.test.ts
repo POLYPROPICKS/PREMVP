@@ -476,7 +476,7 @@ test("SOFT-A: one event finishing inside the budget is SUCCESS with no deferral 
 });
 
 test("SOFT-B/F: first event captured, second cannot safely start => rows retained, second DEFERRED, SUCCESS, no hard timeout, rejectedCount untouched", async () => {
-  const { store, written, persisted } = persistingStore([sourceRow(1, 900), sourceRow(2, 800)]);
+  const { store, written, persisted, calls } = persistingStore([sourceRow(1, 900), sourceRow(2, 800)]);
   const seen: string[] = [];
   const { jobs, writeJobRun } = withJobs();
   const res = await runPrecontractT20ResearchTick(NOW, { store, writeJobRun, ...SOFT, capture: slowCapture(250, seen) });
@@ -490,6 +490,7 @@ test("SOFT-B/F: first event captured, second cannot safely start => rows retaine
   assert.equal(jobs[0].errorMessage, undefined);
   assert.equal(jobs[0].generatedCount, 1);
   assert.equal(jobs[0].rejectedCount, 0, "a deferred event is not a rejected/failed event");
+  assert.equal(calls.purge, 0, "no retention purge after a soft deferral (leftover budget is too small)");
 });
 
 test("SOFT-C: the next tick sees the first event captured and continues the deferred second event", async () => {
