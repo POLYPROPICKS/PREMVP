@@ -332,6 +332,62 @@ async function readCheckpoint(target: Client, spec: TableSpec, source: string): 
   return checkpointFromDiagnostics(latest.diagnostics, spec.fields);
 }
 
+/**
+ * MODEL_READY_SYNC_COMPLETENESS_GATE_V1 — the ONE durable authority that a FULL
+ * research-clone sync completed. Written to clone `job_runs` (no new table, no
+ * migration) only by the full path, only after every table, research evidence
+ * and every preceding clone write finished with nothing pending. Never written
+ * by `--telemetry-only`. The direct model-ready materializer reads it and fails
+ * closed without a fresh one.
+ */
+export const FULL_SYNC_COMPLETE_SOURCE = `${SYNC_VERSION}:full-sync-complete`;
+
+export interface FullSyncCompletionInput {
+  pendingTables: readonly string[];
+  schemaPendingTables: readonly string[];
+  researchEvidencePending: boolean;
+}
+
+/** True only when nothing is pending, schema-pending, or research-evidence-pending. */
+export function isFullSyncComplete(input: FullSyncCompletionInput): boolean {
+  return (
+    input.pendingTables.length === 0 &&
+    input.schemaPendingTables.length === 0 &&
+    !input.researchEvidencePending
+  );
+}
+
+/** Exact `job_runs` row for the full-sync-complete marker (pure; no I/O). */
+export function buildFullSyncCompleteRow(startedAtMs: number, finishedAtMs: number) {
+  return {
+    source: FULL_SYNC_COMPLETE_SOURCE,
+    formula_version: SYNC_VERSION,
+    started_at: new Date(startedAtMs).toISOString(),
+    finished_at: new Date(finishedAtMs).toISOString(),
+    status: "success",
+    generated_count: 0,
+    rejected_count: 0,
+    duration_ms: Math.max(0, finishedAtMs - startedAtMs),
+    diagnostics: { complete: true, pending_tables: [], schema_pending_tables: [] },
+  };
+}
+
+/**
+ * Writes the marker iff the run is provably complete. Returns whether it wrote.
+ * Throws on a failed write so the run fails rather than claiming completeness.
+ */
+export async function writeFullSyncCompleteMarker(
+  target: Client,
+  input: FullSyncCompletionInput,
+  startedAtMs: number,
+  finishedAtMs: number = Date.now(),
+): Promise<boolean> {
+  if (!isFullSyncComplete(input)) return false;
+  const { error } = await target.from("job_runs").insert(buildFullSyncCompleteRow(startedAtMs, finishedAtMs));
+  if (error) throw new Error(`RESEARCH_CLONE_FULL_SYNC_MARKER_WRITE:${safeError(error)}`);
+  return true;
+}
+
 async function writeCheckpoint(target: Client, spec: TableSpec, source: string, watermark: Watermark): Promise<void> {
   const now = new Date().toISOString();
   const { error } = await target.from("job_runs").insert({
@@ -1195,6 +1251,14 @@ export async function main(): Promise<void> {
       (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
     );
     if (researchEvidence.APPEND_PENDING) pendingTables.push(CLONE_EVIDENCE_TABLE);
+    // Durable completion authority: only after every write above succeeded and
+    // nothing is pending. A throw before this point (or a pending/degraded run)
+    // leaves no marker, so the direct model-ready gate fails closed.
+    await writeFullSyncCompleteMarker(
+      target,
+      { pendingTables, schemaPendingTables, researchEvidencePending: researchEvidence.APPEND_PENDING },
+      startedAt,
+    );
     console.log(
       JSON.stringify({
         TABLES: tables,
