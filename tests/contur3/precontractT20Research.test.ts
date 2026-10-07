@@ -5,9 +5,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   AMERICAN_FOOTBALL_NOT_PROVEN, MAX_NEW_EVENTS_PER_TICK, MAX_RESEARCH_EVENTS_PER_DAY, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT,
-  PRECONTRACT_RESEARCH_SOURCE, admitResearchMarket, captureResearchEvent, collapsePhysicalEvents, inT20Window,
-  isAdmittedTargetSport, runPrecontractT20ResearchFailSoft, runPrecontractT20ResearchTick, selectResearchCohort,
-  type ResearchEvent, type ResearchSourceRow, type ResearchStore, type CohortSelection,
+  EVENT_UNIVERSE_CEILING, PRECONTRACT_RESEARCH_SOURCE, createResearchStore, admitResearchMarket, buildResearchEvents, captureResearchEvent,
+  inT20Window, isAdmittedTargetSport, runPrecontractT20ResearchFailSoft, runPrecontractT20ResearchTick, selectResearchCohort,
+  type EventCaptureOutcome, type ResearchEvent, type ResearchEventCandidateRow, type ResearchStore, type CohortSelection,
 } from "../../lib/executor/precontractT20Research";
 import { EARLY_CAPTURE_WINDOW_OPEN_MINUTES } from "../../lib/executor/reservationMarketBaseline";
 
@@ -33,23 +33,25 @@ test("1/4/12: cohort membership is ranked by parentEventVolume24hr only (no scor
   assert.equal(selectResearchCohort.length, 1, "selector takes only events: no model-score or reservation parameter");
 });
 
-test("5: physical events are deduplicated before ranking (derivative events of one game occupy ONE slot)", () => {
-  const row = (run: string, eventId: string): ResearchSourceRow => ({
-    snapshot_run_id: run, snapshot_at: "2026-10-08T17:00:00Z", game_start_iso: new Date(DAY_START).toISOString(), vol: 500, fam: "soccer", code: "epl",
-    src: "structured_sports_tag", ctx: { eventId, gameId: "G1", eventStartIso: new Date(DAY_START).toISOString() },
-  });
-  const events = collapsePhysicalEvents([row("r1", "11"), row("r1", "12"), row("r1", "11")]);
+const cand = (over: Partial<ResearchEventCandidateRow> = {}): ResearchEventCandidateRow => ({
+  provider_event_id: "11", provider_game_id: "G1", event_start_iso: new Date(DAY_START).toISOString(), snapshot_run_id: "r1",
+  snapshot_at: "2026-10-08T17:00:00Z", provider_sport_family: "soccer", provider_sport_family_n: 1, provider_sport_code: "epl",
+  provider_sport_code_n: 1, provider_sport_source: "structured_sports_tag", provider_sport_source_n: 1,
+  parent_event_volume_24h: 500, volume_contradiction: false, ...over,
+});
+
+test("5: event-level candidates keep the physicalMatchId identity; a duplicate physical id is collapsed, never double counted", () => {
+  const events = buildResearchEvents([cand(), cand({ provider_event_id: "12", snapshot_at: "2026-10-08T17:30:00Z", snapshot_run_id: "r2" })]);
   assert.equal(events.length, 1);
   assert.equal(events[0].physicalEventId, "provider:polymarket:game:g1:2026-10-08");
   assert.equal(events[0].volume, 500);
+  assert.equal(events[0].sourceId, "generated_signal_research_snapshots:r2", "newest snapshot wins");
+  const noGame = buildResearchEvents([cand({ provider_game_id: null, provider_event_id: "77" })]);
+  assert.equal(noGame[0].physicalEventId, "provider:polymarket:77:2026-10-08");
 });
 
-test("12b: contradictory non-null parent volumes exclude the event and are counted (never silently chosen)", () => {
-  const row = (vol: number): ResearchSourceRow => ({
-    snapshot_run_id: "r1", snapshot_at: "2026-10-08T17:00:00Z", game_start_iso: new Date(DAY_START).toISOString(), vol, fam: "soccer", code: null,
-    src: "structured_sports_tag", ctx: { eventId: "11", gameId: "G1", eventStartIso: new Date(DAY_START).toISOString() },
-  });
-  const events = collapsePhysicalEvents([row(100), row(200)]);
+test("12b: server-flagged contradictory parent volumes exclude the event and are counted (never silently chosen)", () => {
+  const events = buildResearchEvents([cand({ parent_event_volume_24h: null, volume_contradiction: true })]);
   assert.equal(events[0].volumeContradiction, true);
   const { selected, diagnostics } = selectResearchCohort(events);
   assert.equal(selected.length, 0);
@@ -117,6 +119,36 @@ test("14: American football is admitted only with exact structured authority; ot
   assert.match(readFileSync("lib/feed/sportScoreOwnership.ts", "utf8"), /football: "soccer"/);
 });
 
+test("NFL_STRUCTURED_CODE_PROOF: family NULL + code nfl + structured_sports_tag -> American football admitted; code stays nfl", () => {
+  const nfl = (over: Partial<ResearchEventCandidateRow> = {}) => cand({ provider_game_id: "N1", provider_sport_family: null, provider_sport_family_n: 0, provider_sport_code: "nfl", ...over });
+  const [e] = buildResearchEvents([nfl()]);
+  assert.equal(e.sportFamily, "american-football");
+  assert.equal(e.sportCode, "nfl", "provider code is persisted unchanged");
+  assert.equal(e.sportSource, "structured_sports_tag");
+  assert.equal(isAdmittedTargetSport(e), true);
+  const sel = selectResearchCohort([e]);
+  assert.equal(sel.selected.length, 1);
+  assert.equal(sel.diagnostics.american_football_identity_state, "ADMITTED");
+  assert.equal(buildResearchEvents([nfl({ provider_sport_code: "NFL" })])[0].sportFamily, "american-football", "code compare is case-insensitive");
+  // rejected: non-structured / missing / ambiguous source, ambiguous code, contradictory or conflicting family
+  for (const over of [
+    { provider_sport_source: "title_text" }, { provider_sport_source: null, provider_sport_source_n: 0 }, { provider_sport_source_n: 2 },
+    { provider_sport_code_n: 2 }, { provider_sport_code: "nflx" }, { provider_sport_family_n: 2, provider_sport_family: "soccer" },
+  ] as Partial<ResearchEventCandidateRow>[]) {
+    const [x] = buildResearchEvents([nfl(over)]);
+    assert.equal(x.sportFamily, null, JSON.stringify(over));
+    assert.equal(isAdmittedTargetSport(x), false, JSON.stringify(over));
+  }
+  const [other] = buildResearchEvents([nfl({ provider_sport_family: "soccer", provider_sport_family_n: 1 })]);
+  assert.equal(other.sportFamily, "soccer", "an existing structured family is never overridden by the nfl code rule");
+});
+
+test("NFL_SCORE_MODEL_UNCHANGED: score ownership has no american football and the research module never imports it", () => {
+  const ownership = readFileSync("lib/feed/sportScoreOwnership.ts", "utf8");
+  assert.equal(/american-football|nfl/i.test(ownership), false);
+  assert.equal(/sportScoreOwnership|fireModel/i.test(readFileSync("lib/executor/precontractT20Research.ts", "utf8")), false);
+});
+
 test("15/16/17: MONEYLINE/SPREAD/TOTAL via existing authority, soccer full-match TOTAL_CORNERS admitted, derivatives excluded", () => {
   assert.equal(admitResearchMarket("basketball", "moneyline", "x").type, "MONEYLINE");
   assert.equal(admitResearchMarket("basketball", "spreads", "x").admitted, true);
@@ -176,21 +208,22 @@ test("3/16/17/18: capture writes scalar research rows only; corners derivatives 
   assert.equal(MAX_RESEARCH_TOKEN_ROWS_PER_EVENT, 128);
 });
 
-function fakeStore(rows: ResearchSourceRow[], captured: Set<string> = new Set()) {
+function fakeStore(rows: ResearchEventCandidateRow[], captured: Set<string> = new Set()) {
   const written: Record<string, unknown>[][] = [];
   const tables: string[] = [];
+  const calls = { load: 0, purge: 0 };
   const store: ResearchStore = {
-    async loadSourceRows() { tables.push("generated_signal_research_snapshots"); return rows; },
+    async loadEventCandidates() { calls.load++; tables.push("generated_signal_research_snapshots"); return rows; },
     async capturedAmong(ids) { return new Set(ids.filter((i) => captured.has(i))); },
     async capturedEventCount() { return captured.size; },
     async writeRows(r) { tables.push("research_precontract_t20_observations"); written.push(r); },
-    async purgeExpired(_c, limit) { assert.ok(limit <= 1000); return 0; },
+    async purgeExpired(_c, limit) { calls.purge++; assert.ok(limit <= 1000); return 0; },
   };
-  return { store, written, tables };
+  return { store, written, tables, calls };
 }
-const sourceRow = (n: number, vol: number, family = "soccer", startOffsetMin = 15): ResearchSourceRow => ({
-  snapshot_run_id: `run-${n}`, snapshot_at: new Date(NOW - 60_000).toISOString(), game_start_iso: new Date(NOW + startOffsetMin * 60_000).toISOString(), vol, fam: family, code: null,
-  src: "structured_sports_tag", ctx: { eventId: String(n), gameId: `G${n}`, eventStartIso: new Date(NOW + startOffsetMin * 60_000).toISOString() },
+const sourceRow = (n: number, vol: number, family = "soccer", startOffsetMin = 15): ResearchEventCandidateRow => cand({
+  provider_event_id: String(n), provider_game_id: `G${n}`, snapshot_run_id: `run-${n}`, snapshot_at: new Date(NOW - 60_000).toISOString(),
+  event_start_iso: new Date(NOW + startOffsetMin * 60_000).toISOString(), parent_event_volume_24h: vol, provider_sport_family: family, provider_sport_code: null, provider_sport_code_n: 0,
 });
 const gameMarkets = (eventId: string, gameId: string, startIso: string) => [{ ...mk(eventId, gameId, "moneyline", "m", 1, `c-${eventId}`), event_start_iso: startIso }];
 
@@ -217,7 +250,7 @@ test("1/2/3/9: non-reserved pre-Contract-A events are captured; <=5 new events/t
 
 test("already-captured events are not re-captured and the daily cap blocks writes at 100", async () => {
   const rows = [sourceRow(1, 900)];
-  const physical = collapsePhysicalEvents(rows)[0].physicalEventId;
+  const physical = buildResearchEvents(rows)[0].physicalEventId;
   const a = fakeStore(rows, new Set([physical]));
   const r1 = await runPrecontractT20ResearchTick(NOW, { store: a.store, readExactEvent: async () => [], readGameEvents: async () => [] });
   assert.equal(a.written.length, 0);
@@ -229,10 +262,10 @@ test("already-captured events are not re-captured and the daily cap blocks write
 });
 
 test("19: research failure or timeout never throws and leaves the live caller untouched", async () => {
-  const throwing: ResearchStore = { ...fakeStore([]).store, loadSourceRows: async () => { throw new Error("db down"); } };
+  const throwing: ResearchStore = { ...fakeStore([]).store, loadEventCandidates: async () => { throw new Error("db down"); } };
   await assert.doesNotReject(runPrecontractT20ResearchFailSoft(NOW, { store: throwing }));
   await assert.doesNotReject(runPrecontractT20ResearchFailSoft(NOW, async () => { throw new Error("factory down"); }));
-  const hanging: ResearchStore = { ...fakeStore([]).store, loadSourceRows: () => new Promise(() => undefined) };
+  const hanging: ResearchStore = { ...fakeStore([]).store, loadEventCandidates: () => new Promise(() => undefined) };
   const t0 = Date.now();
   const res = await runPrecontractT20ResearchTick(NOW, { store: hanging, budgetMs: 50 });
   assert.equal(res.status, "error");
@@ -264,4 +297,128 @@ test("21/22: CURRENT_STATE records the founder-approved 40/20/40 roadmap and the
     assert.ok(guide.includes(needle), needle);
   }
   assert.match(guide, /not a current-state authority/i);
+});
+
+// ---- complete daily event universe (no raw-row truncation) ----------------------------------------------------------
+test("TOP100_COMPLETE_EVENT_UNIVERSE / RAW_5000_TRUNCATION_REMOVED: >5000 identity rows cannot hide a high-volume event", async () => {
+  // The server emits one record per physical event: the 11k+ raw identities of one run are already reduced. Model the
+  // production shape: 276 events, the highest-volume tennis event is NOT in any 'newest' slice.
+  const events: ResearchEventCandidateRow[] = [];
+  for (let i = 1; i <= 275; i++) events.push(sourceRow(i, 10 + (i % 50), i % 4 === 0 ? "tennis" : "soccer"));
+  const hidden = sourceRow(9999, 9_000_000, "tennis");
+  events.unshift(hidden);
+  const universe = buildResearchEvents(events);
+  assert.ok(universe.length > 276 - 1);
+  const { selected } = selectResearchCohort(universe);
+  const top = selected.find((s) => s.event.providerEventId === "9999");
+  assert.ok(top, "qualifying high-volume tennis event is in the cohort");
+  assert.equal(top?.rank, 1);
+  const src = readFileSync("lib/executor/precontractT20Research.ts", "utf8");
+  assert.equal(/CANDIDATE_ROW_READ_LIMIT|\.limit\(Math\.min\(limit, 5/.test(src), false, "raw 5000 read limit removed");
+  assert.equal(/order\("snapshot_at"/.test(src), false, "no newest-first raw slice");
+  const sql = readFileSync("supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql", "utf8");
+  assert.match(sql, /research_precontract_t20_event_candidates/);
+  assert.match(sql, /GROUP BY k\.physical_key/);
+  assert.equal(/select\s+\*\s+from\s+public\.generated_signal_research_snapshots/i.test(sql), false);
+  assert.equal(/event_slug|title/i.test(sql.split("CREATE OR REPLACE FUNCTION")[1] ?? ""), false, "no title/slug identity in the aggregation");
+  // end to end through the tick: the store is asked for the whole day with an EVENT ceiling, and the hidden event is captured first
+  const captures: string[] = [];
+  const { store } = fakeStore(events.map((r) => ({ ...r, event_start_iso: new Date(NOW + 15 * 60_000).toISOString() })));
+  const seenArgs: number[] = [];
+  const wrapped: ResearchStore = { ...store, loadEventCandidates: async (f, t, c) => { seenArgs.push(c); return store.loadEventCandidates(f, t, c); } };
+  await runPrecontractT20ResearchTick(NOW, {
+    store: wrapped,
+    capture: async (sel) => { captures.push(sel.event.providerEventId); return { kind: "FAILED", reason: "X", unsupported: {} }; },
+  });
+  assert.equal(captures[0], "9999");
+  assert.deepEqual([...new Set(seenArgs)], [EVENT_UNIVERSE_CEILING]);
+});
+
+test("RAW_5000_TRUNCATION_REMOVED: the store reads the daily universe ONLY through the event-level function, never raw GSRS rows", async () => {
+  const rpcCalls: { fn: string; args: Record<string, unknown> }[] = [];
+  const client = {
+    from: (table: string) => { throw new Error(`raw table read forbidden: ${table}`); },
+    rpc: async (fn: string, args: Record<string, unknown>) => { rpcCalls.push({ fn, args }); return { data: [cand()], error: null }; },
+  };
+  const store = createResearchStore(() => client as never);
+  const rows = await store.loadEventCandidates("2026-10-07T00:00:00.000Z", "2026-10-08T00:00:00.000Z", EVENT_UNIVERSE_CEILING);
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rpcCalls, [{ fn: "research_precontract_t20_event_candidates", args: { p_from: "2026-10-07T00:00:00.000Z", p_to: "2026-10-08T00:00:00.000Z", p_ceiling: EVENT_UNIVERSE_CEILING } }]);
+  const failing = createResearchStore(() => ({ rpc: async () => ({ data: null, error: { message: "x" } }) }) as never);
+  await assert.rejects(failing.loadEventCandidates("a", "b", 1), /RESEARCH_SOURCE_READ_FAILED/);
+});
+
+test("event-universe ceiling fails closed with an explicit diagnostic (no silent loss, no capture)", async () => {
+  const rows = Array.from({ length: EVENT_UNIVERSE_CEILING + 1 }, (_, i) => sourceRow(i + 1, 1000 - i));
+  const { store, written } = fakeStore(rows);
+  let captured = 0;
+  const res = await runPrecontractT20ResearchTick(NOW, { store, capture: async () => { captured++; return { kind: "FAILED", reason: "X", unsupported: {} }; } });
+  assert.equal(captured, 0);
+  assert.equal(written.length, 0);
+  assert.equal(res.status, "error");
+  assert.equal(res.diagnostics.event_universe_ceiling_exceeded_day_n, 1);
+  assert.equal(res.diagnostics.event_universe_ceiling, EVENT_UNIVERSE_CEILING);
+});
+
+// ---- hard deadline ---------------------------------------------------------------------------------------------
+const deferred = <T,>() => { let resolve!: (v: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { promise, resolve }; };
+const settle = () => new Promise((r) => setTimeout(r, 30));
+const okOutcome = (): EventCaptureOutcome => ({ kind: "CAPTURED", rows: [{ id: "late" }], unsupported: {} });
+
+test("TIMEOUT_NO_LATE_WRITE: a slow in-flight capture that settles after the deadline is discarded (writeRows stays 0)", async () => {
+  const rows = [sourceRow(1, 900), sourceRow(2, 800)];
+  const { store, written, calls } = fakeStore(rows);
+  const slow = deferred<EventCaptureOutcome>();
+  let captureStarts = 0;
+  const t0 = Date.now();
+  const res = await runPrecontractT20ResearchTick(NOW, { store, budgetMs: 40, capture: () => { captureStarts++; return slow.promise; } });
+  assert.equal(res.status, "error");
+  assert.equal(res.diagnostics.captured_event_n, 0);
+  assert.ok(Date.now() - t0 < 1000);
+  slow.resolve(okOutcome());               // the old work now settles AFTER the tick returned
+  await settle(); await settle();
+  assert.equal(written.length, 0, "no research write after the deadline");
+  assert.equal(captureStarts, 1, "no further event capture begins after the deadline");
+  assert.equal(calls.purge, 0, "no retention delete after the deadline");
+});
+
+test("TIMEOUT_NO_NEW_WORK_AFTER_DEADLINE: expired capture starts no provider request; expired tick starts no DB read/write/purge", async () => {
+  let exact = 0, game = 0, books = 0;
+  const slowExact = deferred<never[]>();
+  const sel = selection();
+  let live = true;
+  const pending = captureResearchEvent(sel, START, {
+    isLive: () => live,
+    readExactEvent: () => { exact++; return slowExact.promise as never; },
+    readGameEvents: async () => { game++; return []; },
+    fetchBooks: (async () => { books++; return []; }) as never,
+  });
+  live = false;                                     // deadline expires while the first provider request is in flight
+  slowExact.resolve([mk("11", "G1", "moneyline", "m", 1, "c1")] as never);
+  const out = await pending;
+  assert.deepEqual([out.kind, exact, game, books], ["FAILED", 1, 0, 0], "late provider result starts no further provider request");
+  // already-expired deadline: capture starts nothing at all
+  const none = await captureResearchEvent(sel, START, { isLive: () => false, readExactEvent: async () => { exact++; return []; } });
+  assert.equal(none.kind, "FAILED");
+  assert.equal(exact, 1);
+  // tick: a deadline that expires during the first DB read stops everything after it
+  const slowLoad = deferred<ResearchEventCandidateRow[]>();
+  const base = fakeStore([sourceRow(1, 900)]);
+  let capturedCalls = 0, writes = 0;
+  const store: ResearchStore = {
+    ...base.store, loadEventCandidates: () => slowLoad.promise,
+    capturedAmong: async () => { throw new Error("must not start"); }, writeRows: async () => { writes++; },
+  };
+  await runPrecontractT20ResearchTick(NOW, { store, budgetMs: 30, capture: async () => { capturedCalls++; return okOutcome(); } });
+  slowLoad.resolve([sourceRow(1, 900)]);
+  await settle();
+  assert.deepEqual([capturedCalls, writes, base.calls.purge], [0, 0, 0]);
+});
+
+test("deadline hygiene: a normal tick still captures, writes and purges inside the budget", async () => {
+  const { store, written, calls } = fakeStore([sourceRow(1, 900)]);
+  const res = await runPrecontractT20ResearchTick(NOW, { store, capture: async () => okOutcome() });
+  assert.equal(res.status, "success");
+  assert.equal(written.length, 1);
+  assert.equal(calls.purge, 1);
 });

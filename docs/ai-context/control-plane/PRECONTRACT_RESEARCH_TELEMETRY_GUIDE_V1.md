@@ -15,8 +15,13 @@ Mission: `PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1`.
 5. Inside every allocation: liquidity-first using authoritative `parentEventVolume24hr`
    (`parentEventVolume24hr DESC, event_start_iso ASC, physical_event_id ASC`). Contradictory non-null volumes exclude
    the event (`EVENT_VOLUME_CONTRADICTION`). Never rank by score, Contract A, Reservation rank, coverage or PnL.
-6. Other-sport research set: basketball, baseball, hockey, cricket, American football **only if structured identity is
-   proven** (otherwise `AMERICAN_FOOTBALL_STRUCTURED_IDENTITY_NOT_PROVEN`; never inferred from text). Up to 4
+6. Other-sport research set: basketball, baseball, hockey, cricket, American football. American football is admitted
+   from exact structured evidence only: `providerSportFamily` NULL + `providerSportCode = nfl` +
+   `providerSportSource = structured_sports_tag` (and no contradictory family) maps to the research family
+   `american-football`; the provider code `nfl` and the source are persisted unchanged
+   (`provider_sport_code`, `provider_sport_source`). Any other source, ambiguous code/source or conflicting family is not
+   admitted (diagnostic `AMERICAN_FOOTBALL_STRUCTURED_IDENTITY_NOT_PROVEN` when none is present; never inferred from
+   text). This is research intake only: `lib/feed/sportScoreOwnership.ts` and FireModel are unchanged. Up to 4
    highest-volume events per sport first (diversity floor), then pure liquidity across the combined pool. Unused
    floor, soccer or tennis capacity is refilled by global liquidity (`sampling_bucket = GLOBAL_BACKFILL`); events are
    never invented to force the mix, and underfill is recorded (`*_quota_underfill_n`).
@@ -41,5 +46,17 @@ Mission: `PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1`.
   Unique on `(physical_event_id, condition_id, token_id, side)`. Scalar evidence only.
 - Module: `lib/executor/precontractT20Research.ts`; fail-soft hook in `runEventRebalanceWithEvidence`.
 - Job evidence: aggregate-only `job_runs` with source `PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1`.
-- Known limit: the candidate read is capped at 5000 newest snapshot rows per UTC day; `daily_volume_rank` is the
-  global liquidity rank among that day's eligible events.
+- Daily universe (complete, event-level): the sampler never ranks a raw-row slice. The read-only SQL function
+  `public.research_precontract_t20_event_candidates(p_from, p_to, p_ceiling)` (same migration) reduces the source to ONE
+  scalar record per physical event for the UTC event day, using the newest snapshot run of that event: grouped by
+  provider gameId when present (case-insensitive) else provider eventId, plus the UTC event date (the `physicalMatchId`
+  rule); no title/slug and no text classifier. It returns provider event/game id, event start, newest run lineage,
+  structured sport family/code/source (with distinct counts as contradiction evidence), `parent_event_volume_24h`
+  (NULL on contradiction) and `volume_contradiction`.
+- Defensive ceiling: `EVENT_UNIVERSE_CEILING = 800` events per day (events, not rows; the function returns at most
+  ceiling+1 rows, kept below the 1000-row PostgREST cap). Above it the day fails closed: nothing is captured and the
+  tick records `event_universe_ceiling_exceeded_day_n` / `RESEARCH_EVENT_UNIVERSE_CEILING_EXCEEDED`.
+  `daily_volume_rank` is the global liquidity rank among that day's eligible events.
+- Hard deadline: one monotonic deadline per tick (8 s), checked before every new async operation and after every
+  await. After expiry no event capture, provider request, research DB write or retention delete begins, and a late
+  in-flight result is discarded; the live rebalance is unaffected.

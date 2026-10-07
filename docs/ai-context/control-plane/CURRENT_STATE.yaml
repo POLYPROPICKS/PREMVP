@@ -13,7 +13,7 @@
       "soccer": 40,
       "tennis": 20,
       "other_sports": 40,
-      "other_sports_set": ["basketball", "baseball", "hockey", "cricket", "american_football_only_if_structured_identity_proven"],
+      "other_sports_set": ["basketball", "baseball", "hockey", "cricket", "american_football_via_structured_provider_code_nfl_from_structured_sports_tag"],
       "other_diversity_floor_per_sport": 4,
       "ranking_authority": "parentEventVolume24hr DESC, event_start_iso ASC, physical_event_id ASC"
     },
