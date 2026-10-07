@@ -66,9 +66,45 @@ export type ShadowEconomicActionMarker = {
   selection_reason: string | null;
   reject_reason: string | null;
   policy_version: string;
+  /** VALUE_RANKING_V1 scalars. Telemetry only. null when the decision did not produce them. */
+  value_action: ShadowExecutionMode | null;
+  fair_status: "PROVEN" | "VALUE_REFERENCE_UNPROVEN" | null;
+  fair_probability: number | null;
+  fair_source: string | null;
+  fair_observed_at: string | null;
+  proven_edge: number | null;
+  edge_status: "POSITIVE_EDGE" | "NON_POSITIVE_EDGE" | "VALUE_REFERENCE_UNPROVEN" | null;
+  ranking_reason: string | null;
   live_authority: false;
   real_money_paused: true;
 };
+
+/** Minimal structural view of an EventDecision (kept structural so this file stays dependency-free). */
+type ValueDecisionLike = {
+  rankingReason: string;
+  selected: { value: { fair_status: "PROVEN" | "VALUE_REFERENCE_UNPROVEN"; fair_probability: number | null; fair_source: string | null;
+    fair_observed_at: string | null; taker_proven_edge: number | null; maker_price_edge: number | null;
+    taker_edge_status: "POSITIVE_EDGE" | "NON_POSITIVE_EDGE" | "VALUE_REFERENCE_UNPROVEN";
+    maker_edge_status: "POSITIVE_EDGE" | "NON_POSITIVE_EDGE" | "VALUE_REFERENCE_UNPROVEN" } } | null;
+  value: { action: ShadowExecutionMode; reason: string };
+};
+
+/** Scalars of the selected action's value evidence, written to Reservation/Queue diagnostics and read by the marker. */
+export function valueEdgeScalars(decision: ValueDecisionLike, mode: "TAKER_FIRST" | "MAKER_FIRST") {
+  const v = decision.selected?.value ?? null;
+  const taker = mode === "TAKER_FIRST";
+  return {
+    value_action: decision.value.action,
+    value_reason: decision.value.reason,
+    fair_status: v?.fair_status ?? "VALUE_REFERENCE_UNPROVEN",
+    fair_probability: v?.fair_probability ?? null,
+    fair_source: v?.fair_source ?? null,
+    fair_observed_at: v?.fair_observed_at ?? null,
+    proven_edge: v ? (taker ? v.taker_proven_edge : v.maker_price_edge) : null,
+    edge_status: v ? (taker ? v.taker_edge_status : v.maker_edge_status) : "VALUE_REFERENCE_UNPROVEN",
+    ranking_reason: decision.rankingReason,
+  };
+}
 
 const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
 const str = (v: unknown): string | null => (typeof v === "string" && v !== "" ? v : null);
@@ -91,6 +127,10 @@ export function buildShadowMarkerFromPlannedRow(input: {
   const mode = t10FrozenExecutionMode(d);
   const taker = obj(contract?.taker);
   const maker = obj(contract?.maker);
+  const val = obj(d.t10_value_edge_v1);
+  const fairStatus = val?.fair_status === "PROVEN" ? "PROVEN" : "VALUE_REFERENCE_UNPROVEN";
+  const edgeStatus = val?.edge_status === "POSITIVE_EDGE" || val?.edge_status === "NON_POSITIVE_EDGE" ? val.edge_status : "VALUE_REFERENCE_UNPROVEN";
+  const valueAction = val?.value_action === "TAKER_FIRST" || val?.value_action === "MAKER_FIRST" ? val.value_action : "SKIP";
   return {
     marker_version: SHADOW_ECONOMIC_ACTION_KEY,
     physical_event_id: str(d.physical_event_id),
@@ -117,6 +157,14 @@ export function buildShadowMarkerFromPlannedRow(input: {
     selection_reason: input.row.selection_reason ?? input.reason,
     reject_reason: null,
     policy_version: input.policyVersion,
+    value_action: valueAction,
+    fair_status: fairStatus,
+    fair_probability: num(val?.fair_probability),
+    fair_source: str(val?.fair_source),
+    fair_observed_at: str(val?.fair_observed_at),
+    proven_edge: num(val?.proven_edge),
+    edge_status: edgeStatus,
+    ranking_reason: str(val?.ranking_reason),
     live_authority: false,
     real_money_paused: true,
   };
@@ -140,6 +188,8 @@ export function buildShadowSkipMarker(input: {
     selection_reason: null,
     reject_reason: input.reason,
     policy_version: input.policyVersion,
+    value_action: null, fair_status: null, fair_probability: null, fair_source: null, fair_observed_at: null,
+    proven_edge: null, edge_status: null, ranking_reason: null,
     live_authority: false,
     real_money_paused: true,
   };

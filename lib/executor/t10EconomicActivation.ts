@@ -360,6 +360,8 @@ export async function decideT10EconomicEvent(input: {
   const decision = candidates.length > 0 ? decideEventAction(candidates) : {
     policyVersion: T10_ECONOMIC_ACTION_POLICY_VERSION, physicalEventId: input.physicalEventId, action: "SKIP" as const,
     selected: null, bestMakerAlternative: null, evaluations: [], reason: "EMPTY_T10_UNIVERSE",
+    rankingReason: "NONE" as const,
+    value: { action: "SKIP" as const, selected: null, provenEdge: null, edgeStatus: "VALUE_REFERENCE_UNPROVEN" as const, reason: "EMPTY_T10_UNIVERSE" },
   };
   return { decision, eventStartIso: input.eventStartIso, latestEntryIso: latest, beforeLatestEntry, exposureExists: input.exposureExists,
     t30SourceAvailable: input.t30Universe !== null, executions };

@@ -29,6 +29,7 @@ import {
   SHADOW_ECONOMIC_ACTION_KEY,
   buildShadowMarkerFromPlannedRow,
   buildShadowSkipMarker,
+  valueEdgeScalars,
   isRealMoneyExecutionEnabled,
   readRealMoneyExecutionSwitch,
   readValidShadowMarker,
@@ -1895,6 +1896,8 @@ async function selectQueueRowFromT10EconomicAction(
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
       final_identity: finalIdentity, live_strategy: contract.execution_policy_version,
       shadow_strategy: "B_FOUR_MARKET_PRIORITY_V1",
+      // VALUE_RANKING_V1 scalars (telemetry only; never a gate). Unproven fair stays VALUE_REFERENCE_UNPROVEN.
+      t10_value_edge_v1: valueEdgeScalars(event.decision, taker ? "TAKER_FIRST" : "MAKER_FIRST"),
       current_b_comparison: { selected_identity: bComparison.selectedIdentity, decision_reason: bComparison.decisionReason },
       planning_final_identity_evidence: reservation.diagnostics?.planning_final_identity_evidence ?? null,
       source_lineage: reservation.diagnostics?.source_lineage ?? null,
