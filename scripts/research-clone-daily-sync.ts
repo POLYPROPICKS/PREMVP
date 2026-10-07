@@ -202,6 +202,26 @@ export const SPECS: readonly TableSpec[] = [
   // through the bounded server-side research_evidence_page_v3() RPC instead.
 ];
 
+/**
+ * DBCLONE_HOURLY_EXECUTION_ANALYTICS_SYNC_V1: the bounded execution subset the
+ * hourly `--telemetry-only` run refreshes after telemetry. Single authority;
+ * resolved against SPECS so the same syncTable/bootstrap/reconcile path is reused.
+ */
+export const HOURLY_EXECUTION_TABLES = [
+  "event_execution_queue",
+  "executor_order_events",
+  "bet_execution_ledger",
+] as const;
+export type HourlyExecutionTable = (typeof HOURLY_EXECUTION_TABLES)[number];
+
+export function hourlyExecutionSpecs(): TableSpec[] {
+  return HOURLY_EXECUTION_TABLES.map((table) => {
+    const spec = SPECS.find((entry) => entry.table === table);
+    if (!spec) throw new Error(`HOURLY_EXECUTION_SPEC_MISSING:${table}`);
+    return spec;
+  });
+}
+
 const EMPTY_TABLE_EVIDENCE: TableEvidence = {
   SOURCE_MAX_WATERMARK: null,
   TARGET_BEFORE: null,
@@ -1099,8 +1119,14 @@ export async function main(): Promise<void> {
       }
       const discoveryAudit = await repairDiscoveryAudit(target, source);
       const purge = await purgeTelemetry(target, source, Date.now());
+      // Execution analytics run strictly after telemetry copy + purge so a failure
+      // here (left to throw to the outer handler) cannot skip or undo telemetry.
+      const executionTables = {} as Record<HourlyExecutionTable, TableEvidence>;
+      for (const spec of hourlyExecutionSpecs()) {
+        executionTables[spec.table as HourlyExecutionTable] = await syncTable(target, source, spec);
+      }
       const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING);
-      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
+      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
       return;
     }
 
