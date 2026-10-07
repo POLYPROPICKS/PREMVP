@@ -3,6 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { validateApprovedMigrationRelease } from "../../scripts/control-plane/lib/premvp-application-migration-release.mjs";
 import {
   AMERICAN_FOOTBALL_NOT_PROVEN, MAX_NEW_EVENTS_PER_TICK, MAX_RESEARCH_EVENTS_PER_DAY, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT,
   EVENT_UNIVERSE_CEILING, PRECONTRACT_RESEARCH_SOURCE, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, createResearchStore, admitResearchMarket, buildResearchEvents, captureResearchEvent,
@@ -426,6 +427,15 @@ test("deadline hygiene: a normal tick still captures, writes and purges inside t
 test("GSRS game_start_iso index migration: concurrent, partial, index-only; RPC range predicate and 40/20/40 unchanged", () => {
   const sql = readFileSync("supabase/migrations/20261007090500_gsrs_game_start_iso_index.sql", "utf8");
   assert.equal(/^-- pg-delta: transaction=false$/m.test(sql), true);
+  assert.equal(sql.split("\n")[0], "-- pg-delta: transaction=false");
+  assert.equal(/^-- PREMVP_APPLICATION_MIGRATION_V1$/m.test(sql), true);
+  const migrationFile = "supabase/migrations/20261007090500_gsrs_game_start_iso_index.sql";
+  const release = validateApprovedMigrationRelease({
+    declaration: { mode: "PREMVP_APPLICATION_SCHEMA_MIGRATION_V1", migration_files: [migrationFile], safety_class: "ADDITIVE_COMPATIBLE", direct_raw_mutation: false, rollback_strategy: "COMPATIBILITY_RETAINED" },
+    changedFiles: [migrationFile],
+    readFile: () => sql,
+  });
+  assert.deepEqual(release, { ok: true, errors: [] });
   assert.equal(/CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gsrs_game_start_iso\s+ON public\.generated_signal_research_snapshots \(game_start_iso\)\s+WHERE game_start_iso IS NOT NULL;/.test(sql), true);
   assert.equal(/ALTER\s+TABLE|\bDROP\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b/i.test(sql), false);
   const rpc = readFileSync("supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql", "utf8");
