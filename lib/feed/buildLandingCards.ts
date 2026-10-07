@@ -40,6 +40,7 @@ import {
   deriveProviderEsportsGame,
   discoverSportsMarkets,
 } from "./discoverSportsMarkets";
+import { isExactFullMatchTotalCorners } from "@/lib/contur3/taxonomy";
 import { hasEligibleEventVolume, MINIMUM_MODEL_EVENT_VOLUME_USD } from "./eventLiquidityGate";
 import type { SportsDiscoverySample } from "./types";
 
@@ -183,7 +184,7 @@ export function sampleToCandidateMarkets(sample: SportsDiscoverySample): Candida
       if (!conditionId || seenConditionIds.has(conditionId)) return false;
       // Same canonical full-match product contour already authorized for
       // recovery — moneyline / spread / total only. No new eligibility corridor.
-      if (!isAuthorizedRecoveryMarketType(sib.sportsMarketType)) return false;
+      if (!isAuthorizedRecoveryMarketType(sib.sportsMarketType, { question: sib.question })) return false;
       const outcomes = safeParseArray<string>(sib.outcomes);
       const prices = safeParseArray<unknown>(sib.outcomePrices);
       const tokenIds = safeParseArray<string>(sib.clobTokenIds);
@@ -341,7 +342,7 @@ export interface ForcedOutcomeSelection {
  * selectOutcome collapse.
  */
 function fanOutAuthorizedTwoSidedOutcomeCandidates(candidate: CandidateMarket): CandidateMarket[] {
-  if (!isAuthorizedRecoveryMarketType(getParentMeta(candidate.market).sportsMarketType)) return [candidate];
+  if (!isAuthorizedRecoveryMarketType(getParentMeta(candidate.market).sportsMarketType, candidate.market)) return [candidate];
 
   const outcomes = safeParseArray<string>(candidate.market.outcomes);
   const prices = safeParseArray<unknown>(candidate.market.outcomePrices);
@@ -1112,7 +1113,7 @@ export function orderPrimaryCandidatesEventFair(candidates: CandidateMarket[]): 
 
 /** Exact Reservation input contour, applied only to already-fanned-out identities. */
 function isReservationRelevantPrimaryCandidate(candidate: CandidateMarket): boolean {
-  if (!isAuthorizedRecoveryMarketType(getParentMeta(candidate.market).sportsMarketType)) return false;
+  if (!isAuthorizedRecoveryMarketType(getParentMeta(candidate.market).sportsMarketType, candidate.market)) return false;
   const price = candidate.forcedOutcome?.selectedPriceNum;
   return typeof price === "number" && Number.isFinite(price) && price >= 0.5 && price < 0.54;
 }
@@ -1655,11 +1656,13 @@ const PRIMARY_RECOVERY_CORRIDOR_MIN = 0.20;
 const PRIMARY_RECOVERY_CORRIDOR_MAX = 0.741;
 
 // The Founder-authorized full-match product contour — the SAME universe Contract
-// A planning/rebalence admits (moneyline / spread / full-match total goals).
-// Recovery must not surface a market Contract A would reject: corners, halftime,
-// first-to-score, team-total and half-scoped families stay outside this set.
-// Exact provider `sportsMarketType` match only — "total_corners" / "soccer_*_team_totals"
-// are NOT "totals".
+// A planning/rebalence admits (moneyline / spread / full-match total goals /
+// exact full-match soccer total corners). Recovery must not surface a market
+// Contract A would reject: halftime, first-to-score, team-total, half-scoped and
+// corner-derivative families stay outside this contour.
+// Exact provider `sportsMarketType` match only — "soccer_*_team_totals" are NOT
+// "totals". `total_corners` is admitted ONLY through the taxonomy authority
+// (isExactFullMatchTotalCorners), never as an unqualified set member.
 const AUTHORIZED_RECOVERY_MARKET_TYPES = new Set([
   "moneyline",
   "spread",
@@ -1668,8 +1671,17 @@ const AUTHORIZED_RECOVERY_MARKET_TYPES = new Set([
   "totals",
 ]);
 
-function isAuthorizedRecoveryMarketType(sportsMarketType: unknown): boolean {
-  return AUTHORIZED_RECOVERY_MARKET_TYPES.has(String(sportsMarketType ?? "").trim().toLowerCase());
+function isAuthorizedRecoveryMarketType(
+  sportsMarketType: unknown,
+  evidence?: { question?: unknown; slug?: unknown },
+): boolean {
+  const type = String(sportsMarketType ?? "").trim().toLowerCase();
+  if (AUTHORIZED_RECOVERY_MARKET_TYPES.has(type)) return true;
+  return isExactFullMatchTotalCorners({
+    structuredType: type,
+    question: typeof evidence?.question === "string" ? evidence.question : null,
+    marketSlug: typeof evidence?.slug === "string" ? evidence.slug : null,
+  });
 }
 
 /**
@@ -1699,7 +1711,7 @@ export function selectRecoverablePrimaryMarket(
     const conditionId = safeString(sib.conditionId);
     if (!conditionId || conditionId === primaryConditionId) continue;
     // Authorized full-match product contour only (moneyline / spread / total).
-    if (!isAuthorizedRecoveryMarketType(sib.sportsMarketType)) continue;
+    if (!isAuthorizedRecoveryMarketType(sib.sportsMarketType, { question: sib.question })) continue;
     const outcomes = safeParseArray<string>(sib.outcomes);
     const prices = safeParseArray<unknown>(sib.outcomePrices);
     const tokenIds = safeParseArray<string>(sib.clobTokenIds);
@@ -1757,7 +1769,7 @@ export function selectRecoverablePrimaryMarket(
       // Authorized full-match product contour only (moneyline / spread / total) —
       // corners / halftime / first-to-score / team-total families are excluded
       // so recovery never surfaces a market Contract A planning would reject.
-      if (!isAuthorizedRecoveryMarketType(rm.sportsMarketType)) continue;
+      if (!isAuthorizedRecoveryMarketType(rm.sportsMarketType, { question: rm.marketQuestion })) continue;
       if (!safeString(rm.selectedTokenId) || !safeString(rm.opposingTokenId)) continue;
       const price = Number(rm.selectedPriceNum);
       if (!Number.isFinite(price) || price <= 0 || price >= 1) continue;

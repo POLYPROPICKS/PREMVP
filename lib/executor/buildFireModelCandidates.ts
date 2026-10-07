@@ -3,7 +3,9 @@ import type { RuntimeSupabaseClient } from "@/lib/constructor/bootstrap";
 import {
   classifyMarketText,
   isAllowedFullMatchMarketClass,
+  isExactFullMatchTotalCorners,
   resolveMarketAnchorDecision,
+  STRUCTURED_FULLMATCH_TOTAL_CORNERS_TYPE,
   type EventScope,
   type MarketClass,
 } from "@/lib/contur3/taxonomy";
@@ -392,6 +394,24 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
   }
   if (!exactStructuredMarket && isForbiddenAnchorMarket(candidate)) {
     return { ...base, allowed: false, reason_code: "FORBIDDEN_ANCHOR_MARKET", anchor_kind: "REJECTED" };
+  }
+  if (exactStructuredMarket && structuredType === STRUCTURED_FULLMATCH_TOTAL_CORNERS_TYPE) {
+    // SOCCER_FULL_MATCH_TOTAL_CORNERS_V1: a distinct market class (never folded into
+    // goal totals). Admitted only when the ONE taxonomy authority proves the exact
+    // full-match market; every derivative / ambiguous corner stays rejected.
+    const allowed = isExactFullMatchTotalCorners({
+      structuredType,
+      question: probe.providerMarketQuestion,
+      marketSlug: probe.market_slug,
+    });
+    return {
+      ...base,
+      market_class: allowed ? "allowed_fullmatch_total_corners" : base.market_class,
+      event_scope: allowed ? "full_match" : base.event_scope,
+      allowed,
+      reason_code: allowed ? "EXECUTABLE_MARKET" : "FORBIDDEN_ANCHOR_MARKET",
+      anchor_kind: allowed ? "EXECUTABLE_MARKET" : "REJECTED",
+    };
   }
   if (exactStructuredMarket) {
     // Only the provider's exact full-match market enums establish executable

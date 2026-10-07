@@ -7,6 +7,7 @@ import { GAMMA_GAME_EVENTS_LIMIT, fetchPolymarketEventById, fetchPolymarketEvent
 import type { PolymarketRawEvent } from "../feed/types";
 import { compareExactIdentity } from "./exactIdentityOrder";
 import { physicalMatchId } from "./contractADecisions";
+import { CORNER_DERIVATIVE_RE } from "../contur3/taxonomy";
 
 export const BASELINE_SOURCE_VERSION = "RESERVATION_REFERENCE_BASELINE_V2";
 const MARKET_SOURCE_VERSION = "RESERVATION_MARKET_BASELINE_V1";
@@ -145,7 +146,6 @@ export function classifyObservationalMarket(rawType: unknown): { family: Observa
 
 // The structured provider type is necessary but a slug identifying a team,
 // period, race or other corner derivative cannot certify full-match totals.
-const CORNER_DERIVATIVE_RE = /(?:^|[-_])(team|home|away|first|last|1st|2nd|second|half|halftime|race|odd|even)(?:$|[-_])/i;
 export function classifyExactEventMarket(rawType: unknown, slug: unknown): { family: ObservationalMarketFamily; type: ObservationalMarketType } {
   const market = classifyObservationalMarket(rawType);
   if (market.family === "TOTAL_CORNERS" && typeof slug === "string" && CORNER_DERIVATIVE_RE.test(slug)) {

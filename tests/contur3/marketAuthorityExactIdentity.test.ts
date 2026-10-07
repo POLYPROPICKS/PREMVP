@@ -62,14 +62,20 @@ test("exact full-match spread survives an exact-score parent wrapper", () => {
   assert.equal(anchorDecisionForCandidate(candidate(p)).allowed, true);
 });
 
-test("own exact score, corners, and partial market semantics remain blocked", () => {
+test("own exact score, corner derivatives, and partial market semantics remain blocked; exact full-match TOTAL_CORNERS is allowed", () => {
   for (const [type, question] of [
     ["soccer_exact_score", "Exact Score: 1-0"],
-    ["total_corners", "Total Corners Over 9.5"],
+    ["total_corners", "1st Half Total Corners Over 4.5"],
+    ["total_corners", "Team Total Corners Over 4.5"],
+    ["total_corners", "Corners Over 9.5"],
+    ["soccer_team_total_corners", "Total Corners Over 9.5"],
     ["spreads", "First Half Spread"],
   ]) {
-    assert.equal(resolveUpstreamMarketPolicy(probe({ providerMarketType: type, providerMarketQuestion: question })).allowed, false, type);
+    assert.equal(resolveUpstreamMarketPolicy(probe({ providerMarketType: type, providerMarketQuestion: question })).allowed, false, `${type} ${question}`);
   }
+  const corners = resolveUpstreamMarketPolicy(probe({ providerMarketType: "total_corners", providerMarketQuestion: "Match Total Corners Over 9.5" }));
+  assert.equal(corners.allowed, true);
+  assert.equal(corners.market_class, "allowed_fullmatch_total_corners");
 });
 
 test("sibling market identities receive independent verdicts", () => {

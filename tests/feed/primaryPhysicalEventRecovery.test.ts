@@ -13,7 +13,8 @@ import {
 } from "../../lib/contur3/taxonomy";
 
 // MISSION: align physical-event recovery + Contract A on the Founder-authorized
-// contour — moneyline / spreads / full-match totals only. Corners, halftime,
+// contour — moneyline / spreads / full-match totals / exact full-match soccer
+// total corners (see fullMatchTotalCornersAdmission.test.ts). Corner derivatives, halftime,
 // first-to-score, half/team-half markets stay outside. Contract A must recognise
 // a terse full-match total ("O/U 2.5").
 //
@@ -89,9 +90,9 @@ test("3. cross-provider-event full-match TOTAL recovery works", () => {
 });
 
 // ── 4. recovery NEVER selects corners / halftime / first-to-score ────────────
-test("4. recovery does NOT select corners / halftime / first-to-score alternatives", () => {
+test("4. recovery does NOT select corner derivatives / halftime / first-to-score alternatives", () => {
   const universe: ResearchNestedMarket[] = [
-    rnm({ eventId: "851829", conditionId: "cond-corners", selectedTokenId: "c-o", opposingTokenId: "c-u", selectedPriceNum: 0.45, sportsMarketType: "total_corners", marketQuestion: "Wrexham AFC vs. Birmingham City FC: O/U 9.5 Total Corners" }),
+    rnm({ eventId: "851829", conditionId: "cond-corners", selectedTokenId: "c-o", opposingTokenId: "c-u", selectedPriceNum: 0.45, sportsMarketType: "total_corners", marketQuestion: "Wrexham AFC vs. Birmingham City FC: Team Total Corners O/U 4.5" }),
     rnm({ eventId: "851831", conditionId: "cond-ht", selectedTokenId: "h-a", opposingTokenId: "h-b", selectedPriceNum: 0.45, sportsMarketType: "soccer_halftime_result", marketQuestion: "Wrexham AFC leading at halftime?" }),
     rnm({ eventId: "851833", conditionId: "cond-fts", selectedTokenId: "f-a", opposingTokenId: "f-b", selectedPriceNum: 0.45, sportsMarketType: "soccer_first_to_score", marketQuestion: "Wrexham AFC to score first?" }),
     rnm({ eventId: "851835", conditionId: "cond-hht", selectedTokenId: "hh-o", opposingTokenId: "hh-u", selectedPriceNum: 0.45, sportsMarketType: "soccer_first_half_team_totals", marketQuestion: "Wrexham AFC 1st Half O/U 0.5" }),
@@ -105,7 +106,7 @@ test("4. recovery does NOT select corners / halftime / first-to-score alternativ
   assert.equal(r!.candidate.market.conditionId, "cond-ml");
 });
 
-test("4b. same-shard corners/halftime siblings are also excluded", () => {
+test("4b. same-shard ambiguous corners/halftime siblings are also excluded", () => {
   const sibs = [
     { outcomes: ["Over", "Under"], outcomePrices: [0.44, 0.56], clobTokenIds: ["c1", "c2"], question: "O/U 9.5 Corners", sportsMarketType: "total_corners", conditionId: "cond-c" },
     { outcomes: ["Yes", "No"], outcomePrices: [0.45, 0.55], clobTokenIds: ["h1", "h2"], question: "leading at halftime", sportsMarketType: "soccer_halftime_result", conditionId: "cond-h" },
