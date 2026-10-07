@@ -784,7 +784,7 @@ function inventoryMarketsFromEvent(event: PolymarketRawEvent, providerEventId: s
   }));
 }
 
-async function defaultExactEventReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
+export async function defaultExactEventReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
   const event = await fetchPolymarketEventById(providerEventId);
   if (!event) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
   if (!eventStartMatches(event, eventStartIso)) throw new Error("RESERVED_EVENT_START_MISMATCH");
@@ -802,7 +802,7 @@ function providerEventStartIso(event: PolymarketRawEvent, reservationStartIso: s
  * Returns the RAW discovered set: other-game, other-start and invalid-id markets are NOT dropped here, so the
  * pre-filter discovery audit sees them; `sameGameLiveUniverse` is the single place that filters (never substitutes).
  */
-async function defaultGameEventsReader(gameId: string, eventStartIso: string): Promise<InventoryMarket[]> {
+export async function defaultGameEventsReader(gameId: string, eventStartIso: string): Promise<InventoryMarket[]> {
   const events = await fetchPolymarketEventsByGameId(gameId);
   if (events === null) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
   if (events.length >= GAMMA_GAME_EVENTS_LIMIT) throw new Error(PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS);

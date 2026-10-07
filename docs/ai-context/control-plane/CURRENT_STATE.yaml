@@ -3,6 +3,32 @@
   "updated_at": "2026-09-15T07:59:07Z",
   "state_version": 23,
   "roadmap_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
+  "active_research_roadmap": {
+    "id": "PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1",
+    "status": "FOUNDER_APPROVED_ACTIVE",
+    "guide": "docs/ai-context/control-plane/PRECONTRACT_RESEARCH_TELEMETRY_GUIDE_V1.md",
+    "decision": "Broad research telemetry is independent of Reservation / Contract A: ONE BUSINESS T20 snapshot (9 < minutes_to_start <= 20) for at most 100 high-liquidity physical sporting events per day, captured BEFORE Contract A.",
+    "daily_event_cap": 100,
+    "target_mix": {
+      "soccer": 40,
+      "tennis": 20,
+      "other_sports": 40,
+      "other_sports_set": ["basketball", "baseball", "hockey", "cricket", "american_football_via_structured_provider_code_nfl_from_structured_sports_tag"],
+      "other_diversity_floor_per_sport": 4,
+      "ranking_authority": "parentEventVolume24hr DESC, event_start_iso ASC, physical_event_id ASC"
+    },
+    "market_scope": ["MONEYLINE", "SPREAD", "TOTAL", "soccer full-match TOTAL_CORNERS"],
+    "storage": {
+      "table": "public.research_precontract_t20_observations",
+      "max_token_rows_per_event": 128,
+      "max_new_events_per_tick": 5,
+      "production_retention_days": 7,
+      "long_history": "DBClone, after the next roadmap transition (production -> DBClone -> clone parity proof -> clone-confirmed production purge)"
+    },
+    "money_path_isolation": "Research data MUST NOT authorize money-path actions (Contract A, Reservation, rebalance selection, Queue, Ireland, stake, execution, exposure).",
+    "existing_reservation_t40": "NOT retired by this roadmap decision. It remains until its live price-authority dependency is separately removed.",
+    "runtime_safety": "Roadmap decision recorded with the first production implementation PR. Runtime PASS remains unproven until live job_runs evidence (source PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1) exists."
+  },
   "current_value_step": {
     "id": "BOUNDED_PRE_HOOK_SEED",
     "title": "Bounded pre-hook seed",

@@ -2940,6 +2940,8 @@ export async function runEventRebalanceWithEvidence(
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     jobEvidence?: SchedulerJobEvidencePort;
     captureMilestones?: (nowMs: number) => Promise<void>;
+    /** Test seam for the observational pre-contract research tick (see precontractT20Research.ts). */
+    captureResearch?: import("./precontractT20Research").ResearchTickDeps | (() => Promise<import("./precontractT20Research").ResearchTickDeps>);
     contour?: ComposedContour;
     /** A booted instance: evidence, milestones, repo and engine all go through ITS client; wins over `contour`. */
     runtime?: ContourRuntimeV1;
@@ -2959,6 +2961,19 @@ export async function runEventRebalanceWithEvidence(
         }
       } catch {
         console.error("[event-rebalance] milestone telemetry failed");
+      }
+    }
+    // PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1: observational, pre-Contract-A research telemetry. Fail-soft, 8s
+    // budget, never throws and never reads/writes Reservation, Queue or the rebalance result.
+    if (write && !opts.targetReservationId && (deps.captureResearch || (!deps.repo && !deps.captureMilestones))) {
+      try {
+        const { runPrecontractT20ResearchFailSoft, createResearchStore } = await import("./precontractT20Research");
+        await runPrecontractT20ResearchFailSoft(nowMs, deps.captureResearch ?? (async () => {
+          const getClient = runtimeClient ?? (async () => (await import("@/lib/constructor/runtimeScope")).scopedSupabaseAdmin());
+          return { store: createResearchStore(getClient), writeJobRun: (input) => jobEvidence.writeJobRun(input) };
+        }));
+      } catch {
+        console.error("[event-rebalance] precontract research telemetry failed");
       }
     }
     const result = await runEventRebalance(nowMs, opts, {
