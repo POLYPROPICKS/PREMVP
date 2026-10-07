@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   AMERICAN_FOOTBALL_NOT_PROVEN, MAX_NEW_EVENTS_PER_TICK, MAX_RESEARCH_EVENTS_PER_DAY, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT,
-  EVENT_UNIVERSE_CEILING, PRECONTRACT_RESEARCH_SOURCE, createResearchStore, admitResearchMarket, buildResearchEvents, captureResearchEvent,
+  EVENT_UNIVERSE_CEILING, PRECONTRACT_RESEARCH_SOURCE, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, createResearchStore, admitResearchMarket, buildResearchEvents, captureResearchEvent,
   inT20Window, isAdmittedTargetSport, runPrecontractT20ResearchFailSoft, runPrecontractT20ResearchTick, selectResearchCohort,
   type EventCaptureOutcome, type ResearchEvent, type ResearchEventCandidateRow, type ResearchStore, type CohortSelection,
 } from "../../lib/executor/precontractT20Research";
@@ -421,4 +421,15 @@ test("deadline hygiene: a normal tick still captures, writes and purges inside t
   assert.equal(res.status, "success");
   assert.equal(written.length, 1);
   assert.equal(calls.purge, 1);
+});
+
+test("GSRS game_start_iso index migration: concurrent, partial, index-only; RPC range predicate and 40/20/40 unchanged", () => {
+  const sql = readFileSync("supabase/migrations/20261007090500_gsrs_game_start_iso_index.sql", "utf8");
+  assert.equal(/^-- pg-delta: transaction=false$/m.test(sql), true);
+  assert.equal(/CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gsrs_game_start_iso\s+ON public\.generated_signal_research_snapshots \(game_start_iso\)\s+WHERE game_start_iso IS NOT NULL;/.test(sql), true);
+  assert.equal(/ALTER\s+TABLE|\bDROP\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b/i.test(sql), false);
+  const rpc = readFileSync("supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql", "utf8");
+  assert.equal(rpc.includes("g.game_start_iso >= p_from"), true);
+  assert.equal(rpc.includes("g.game_start_iso < p_to"), true);
+  assert.deepEqual([SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA], [40, 20, 40]);
 });
