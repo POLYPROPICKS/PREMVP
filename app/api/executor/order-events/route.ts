@@ -39,6 +39,7 @@ import {
   isMakerAttemptCallback,
   isProvenRejectedBeforeSubmissionZero,
   normalizeMakerCallbackForAccounting,
+  unknownTransportConsistentWithQueueRow,
   IRELAND_PARENT_IDEMPOTENCY_KEY_REQUIRED,
   type MakerAuthorizationOutcome,
 } from "@/lib/executor/makerFallbackAuthorization";
@@ -369,7 +370,11 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       // (EXECUTED / FAILED / ...) is never touched. execution_attempts_v1 is always taken from the fresh row.
       let outcome: "WRITTEN" | "ALREADY_MARKED" | "NOT_CLAIMED" = "NOT_CLAIMED";
       await casWriteQueue(createSupabaseQueueCasPort(), queueId, (fresh) => {
-        if (fresh.status !== "CLAIMED") { outcome = "NOT_CLAIMED"; return null; }
+        // The FRESH row must still be CLAIMED with no resolved taker result (a terminal / fill result recorded after the
+        // snapshot wins: the stale ambiguous callback writes nothing).
+        if (fresh.status !== "CLAIMED" || !unknownTransportConsistentWithQueueRow({ status: "CLAIMED", diagnostics: fresh.diagnostics } as Pick<EventExecutionQueueRow, "status" | "diagnostics">)) {
+          outcome = "NOT_CLAIMED"; return null;
+        }
         if (hasUnresolvedNeedsReconciliation(fresh.diagnostics)) { outcome = "ALREADY_MARKED"; return null; }
         outcome = "WRITTEN";
         return { diagnostics: { ...(fresh.diagnostics ?? {}), [NEEDS_RECONCILIATION_KEY]: marker, queue_mark_result: NEEDS_RECONCILIATION_STATE } };

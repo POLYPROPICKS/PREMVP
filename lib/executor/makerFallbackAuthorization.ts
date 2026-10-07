@@ -673,11 +673,25 @@ export function isUnknownTransportNeedsReconciliationCallback(raw: Record<string
   for (const source of attemptSources(raw)) {
     if (source.attempt_id != null && source.attempt_id !== TAKER_ATTEMPT_1) return false;
     if (source.execution_mode != null && source.execution_mode !== "TAKER") return false;
+    // A reported quantity in ANY source (not only the one the result was read from) contradicts "no reported fill".
+    if (source.filled_quantity != null) return false;
     for (const k of PRE_SUBMISSION_FORBIDDEN_VENUE_ID_KEYS) if (nonEmptyStr(source[k]) !== null) return false;
     for (const k of PRE_SUBMISSION_FORBIDDEN_FILL_KEYS) if (!isAbsentOrZeroFact(source[k])) return false;
   }
   const hashes = raw.transaction_hashes;
   if (hashes !== undefined && hashes !== null && !(Array.isArray(hashes) && hashes.length === 0)) return false;
+  // Nested raw CLOB response evidence (order id / fill amounts) makes the callback NOT ambiguous: it is judged by the
+  // ordinary price-required path, so no venue fact is silently discarded by the marker-only receiver.
+  const nestedEvents = objectOrNull(raw.raw_event_json);
+  for (const nested of [objectOrNull(raw.raw_response), objectOrNull(nestedEvents?.raw_response)]) {
+    if (!nested) continue;
+    for (const k of ["orderID", "orderId", "order_id", "orderHash", "order_hash", "clob_order_id", "venue_order_id"]) {
+      if (nonEmptyStr(nested[k]) !== null) return false;
+    }
+    for (const k of ["makingAmount", "takingAmount", "making_amount", "taking_amount", "filled_quantity", "executed_size"]) {
+      if (!isAbsentOrZeroFact(nested[k])) return false;
+    }
+  }
   const status = String(raw.order_status ?? raw.status ?? raw.state ?? "").toLowerCase();
   return !PRE_SUBMISSION_FORBIDDEN_STATUSES.has(status);
 }
@@ -693,10 +707,16 @@ export function unknownTransportConsistentWithQueueRow(queue: Pick<EventExecutio
   return recorded === undefined || isAmbiguousTransportResult(recorded);
 }
 
-/** True while a Queue row carries the unresolved NEEDS_RECONCILIATION marker (the stale-claim sweep must preserve it). */
+/**
+ * True while a Queue row carries the unresolved NEEDS_RECONCILIATION marker (the stale-claim sweep must preserve it).
+ * The marker stops being "unresolved" once the taker slot records a terminal PROVEN ZERO (no exposure exists, so
+ * nothing is hidden by the ordinary lease handling; any authorized fallback command is preserved by the CAS). A
+ * recorded fill / partial / unknown-after-submission result keeps the row preserved: exposure is never silently expired.
+ */
 export function hasUnresolvedNeedsReconciliation(diagnostics: Record<string, unknown> | null | undefined): boolean {
   const marker = objectOrNull(diagnostics?.[NEEDS_RECONCILIATION_KEY]);
-  return marker !== null && marker.state === NEEDS_RECONCILIATION_STATE;
+  if (marker === null || marker.state !== NEEDS_RECONCILIATION_STATE) return false;
+  return !isTerminalProvenZeroResult(readExecutionAttempts(diagnostics).taker_attempt_1?.result);
 }
 
 export async function recordResultAndAuthorizeMaker(

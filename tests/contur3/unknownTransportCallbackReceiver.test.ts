@@ -23,6 +23,7 @@ import {
   recordResultAndAuthorizeMaker,
   selectExecutorMakerFallbackCommands,
   hasUnresolvedNeedsReconciliation,
+  unknownTransportConsistentWithQueueRow,
   type MakerFallbackCommand,
   type MakerFallbackPort,
 } from "../../lib/executor/makerFallbackAuthorization";
@@ -114,7 +115,7 @@ function world(row: EventExecutionQueueRow) {
       st.row = { ...st.row, status: patch.status as never, diagnostics: { ...patch.diagnostics, ...(attempts ? { execution_attempts_v1: attempts } : {}) } };
     },
     async markNeedsReconciliation(_id, marker) {                      // mirrors the route's CAS port: status untouched
-      if (st.row.status !== "CLAIMED") return "NOT_CLAIMED";
+      if (st.row.status !== "CLAIMED" || !unknownTransportConsistentWithQueueRow(st.row)) return "NOT_CLAIMED";
       if (hasUnresolvedNeedsReconciliation(st.row.diagnostics)) return "ALREADY_MARKED";
       st.markWrites++;
       st.row = { ...st.row, diagnostics: { ...st.row.diagnostics, needs_reconciliation_v1: marker, queue_mark_result: "NEEDS_RECONCILIATION" } };
@@ -344,6 +345,9 @@ test("H: unrecognized / malformed callbacks and every NEAR-miss of the ambiguous
     ["transaction hash", unknown({ transaction_hashes: ["0x1"] })],
     ["wrong attempt id", unknown({ attempt_id: "TAKER_ATTEMPT_2" })],
     ["no execution_mode", unknown({ execution_mode: undefined })],
+    ["nested raw_response orderID", unknown({ raw_event_json: { raw_response: { orderID: "0xnested" } } })],
+    ["nested raw_response takingAmount", unknown({ raw_response: { takingAmount: "2.5" } })],
+    ["reported filled_quantity in v1 envelope while top-level is ambiguous", { ...unknownV1(), filled_quantity: 2 }],
   ];
   for (const [name, raw] of nearMisses) {
     assert.equal(isUnknownTransportNeedsReconciliationCallback(raw), false, name);
@@ -411,6 +415,46 @@ test("ambiguous-result predicate and monotonic merge", () => {
   assert.equal(mergeAttemptResult(amb, zero), zero, "terminal zero upgrades ambiguous");
   assert.equal(mergeAttemptResult(amb, full), full, "fill upgrades ambiguous");
   assert.equal(mergeAttemptResult(undefined, amb), amb);
+});
+
+// ═══ reviewer hardening (N1 / N2) ══════════════════════════════════════════════════════════════════════
+
+test("N1: the marker protects only an UNRESOLVED row -- a recorded terminal proven zero releases it; a recorded fill keeps it preserved; a stale ambiguous callback never marks a resolved row", async () => {
+  // terminal proven zero recorded after the marker (e.g. the zero callback itself was rejected for a missing price)
+  const w = world(queueRow());
+  await deliver(w, unknown());
+  assert.equal(hasUnresolvedNeedsReconciliation(w.st.row.diagnostics), true);
+  const zeroResult = readIrelandExecutionResult(zeroCancelled(), LATER_AT.toISOString())!;
+  await w.maker.recordResult("q1", "taker_attempt_1", zeroResult);
+  assert.equal(hasUnresolvedNeedsReconciliation(w.st.row.diagnostics), false, "exposure proven zero: nothing left unresolved");
+  const sweep = sweepOf(w.st.row, false);
+  assert.equal((await sweep.run()).expired_count, 1, "an ordinary row is swept again (pre-change behavior for a resolved zero)");
+  // a recorded fill (exposure) keeps the row preserved -- it is never silently expired
+  const f = world(queueRow());
+  await deliver(f, unknown());
+  await f.maker.recordResult("q1", "taker_attempt_1", readIrelandExecutionResult(fill(), LATER_AT.toISOString())!);
+  assert.equal(hasUnresolvedNeedsReconciliation(f.st.row.diagnostics), true);
+  const fSweep = sweepOf(f.st.row, false);
+  assert.equal((await fSweep.run()).expired_count, 0);
+  // race: a terminal result recorded after the snapshot but before the marker CAS -> the marker write is refused
+  const r = world(queueRow());
+  const snapshot = structuredClone(r.st.row);
+  await r.maker.recordResult("q1", "taker_attempt_1", zeroResult);
+  assert.equal(await r.orders.markNeedsReconciliation!("q1", { state: "NEEDS_RECONCILIATION" }), "NOT_CLAIMED");
+  assert.equal(hasUnresolvedNeedsReconciliation(r.st.row.diagnostics), false);
+  assert.equal(snapshot.status, "CLAIMED");
+});
+
+test("N2: a port without the fresh-read CAS marker write fails closed (no stale-snapshot status write)", async () => {
+  const w = world(queueRow());
+  const { markNeedsReconciliation: _omit, ...legacyPort } = w.orders;
+  await recordResultAndAuthorizeMaker(w.maker, unknown(), FIRST_AT);
+  await assert.rejects(
+    handleOrderEventSubmission(legacyPort as OrderEventDbPort, unknown(), { nowIso: FIRST_AT.toISOString() }),
+    /NEEDS_RECONCILIATION_PORT_UNSUPPORTED/,
+  );
+  assert.equal(w.st.statusWrites.length, 0);
+  assert.equal(w.st.row.status, "CLAIMED");
 });
 
 // ═══ I. nothing else moved ══════════════════════════════════════════════════════════════════════════════

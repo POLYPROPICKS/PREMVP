@@ -22,7 +22,6 @@
 import { readT10FrozenContract, t10FrozenExecutionMode, validateOrderEventAgainstQueueRow, type EventExecutionQueueRow, type OrderEventSubmission } from "./executorQueueTypes";
 import {
   FILL_RESULT_CLASSES,
-  NEEDS_RECONCILIATION_KEY,
   NEEDS_RECONCILIATION_STATE,
   callbackIsTerminalProvenZero,
   hasUnresolvedNeedsReconciliation,
@@ -394,7 +393,7 @@ export interface OrderEventDbPort {
    * UNKNOWN_TRANSPORT_CALLBACK_RECEIVER_V1: writes the typed NEEDS_RECONCILIATION marker (diagnostics only) onto a
    * still-CLAIMED Queue row via fresh read + CAS, WITHOUT touching its status. "NOT_CLAIMED" when the fresh row is no
    * longer CLAIMED (resolved concurrently -- nothing is written), "ALREADY_MARKED" for a replay / lost race.
-   * Optional so existing ports stay valid; absent, the marker is written through updateQueueRowStatus(CLAIMED).
+   * Optional so existing ports stay valid; a port without it can never record the marker (fail-closed, no fallback write).
    */
   markNeedsReconciliation?(queueId: string, marker: Record<string, unknown>): Promise<"WRITTEN" | "ALREADY_MARKED" | "NOT_CLAIMED">;
 }
@@ -583,16 +582,10 @@ async function recordNeedsReconciliation(
     venue_order_id: null,
     first_received_at: nowIso,
   };
-  let written: "WRITTEN" | "ALREADY_MARKED" | "NOT_CLAIMED";
-  if (port.markNeedsReconciliation) {
-    written = await port.markNeedsReconciliation(queueId, marker);
-  } else {
-    await port.updateQueueRowStatus(queueId, {
-      status: "CLAIMED",
-      diagnostics: { ...(queueRow.diagnostics ?? {}), [NEEDS_RECONCILIATION_KEY]: marker, queue_mark_result: NEEDS_RECONCILIATION_STATE },
-    });
-    written = "WRITTEN";
-  }
+  // Fail closed: a port without the fresh-read CAS marker write could regress a concurrently resolved row from a
+  // stale snapshot, so it is never used as a fallback (the route surfaces this as DB_ERROR / Ireland retries).
+  if (!port.markNeedsReconciliation) throw new Error("NEEDS_RECONCILIATION_PORT_UNSUPPORTED");
+  const written = await port.markNeedsReconciliation(queueId, marker);
   if (written === "NOT_CLAIMED") return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "QUEUE_ROW_NO_LONGER_CLAIMED" };
   return { kind: "NEEDS_RECONCILIATION", queue_id: queueId, duplicate: written === "ALREADY_MARKED" };
 }
