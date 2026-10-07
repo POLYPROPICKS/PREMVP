@@ -18,6 +18,10 @@ export const DEFAULT_FAIR_MAX_AGE_MS = 30 * 60 * 1000;
 
 /** The exact market a PREMVP candidate token settles on. SPREAD line is HOME-perspective (caller-normalised). */
 export type FairTarget = {
+  /** The exact candidate token this fair is for; the resolution carries it and the policy re-checks it. */
+  candidateTokenId: string;
+  /** MONEYLINE only: declared market shape (3 = Home/Draw/Away, 2 = Home/Away). Never inferred from the quotes. */
+  moneylineWays?: 2 | 3;
   physicalEventId: string;
   kickoffIso: string;
   marketType: FairMarketType;
@@ -47,6 +51,8 @@ export type BookmakerQuote = {
 export type ExternalFairResolution =
   | {
       status: "PROVEN";
+      candidateTokenId: string;
+      physicalEventId: string;
       fairProbability: number;
       source: string;
       observedAtIso: string;
@@ -71,10 +77,10 @@ export const unproven = (reason: string): ExternalFairResolution =>
   ({ status: "VALUE_REFERENCE_UNPROVEN", fairProbability: null, source: null, observedAtIso: null, overround: null, reason });
 
 /** The complete-outcome set the target's market requires (null => unsupported market). */
-function requiredOutcomes(target: FairTarget, quotes: readonly BookmakerQuote[]): readonly FairOutcome[] | null {
+function requiredOutcomes(target: FairTarget): readonly FairOutcome[] | null {
   if (target.marketType === "MONEYLINE") {
-    // 3-way when any DRAW is quoted or the target is DRAW; otherwise a binary moneyline needs both sides.
-    return quotes.some((q) => q.outcome === "DRAW") || target.outcome === "DRAW" ? SETS.MONEYLINE_3WAY : SETS.MONEYLINE_2WAY;
+    // The shape is declared by the target (never inferred from which legs a feed happened to send).
+    return target.moneylineWays === 3 ? SETS.MONEYLINE_3WAY : target.moneylineWays === 2 ? SETS.MONEYLINE_2WAY : null;
   }
   return SETS[target.marketType] ?? null;
 }
@@ -117,8 +123,9 @@ export function resolveExternalFair(
     if (at >= targetKickoff) return unproven("EXTERNAL_FAIR_NOT_PRE_EVENT");
   }
 
-  const required = requiredOutcomes(target, quotes);
-  if (!required) return unproven("MARKET_TYPE_UNSUPPORTED");
+  const required = requiredOutcomes(target);
+  if (!required) return unproven(target.marketType === "MONEYLINE" ? "MONEYLINE_WAYS_UNDECLARED" : "MARKET_TYPE_UNSUPPORTED");
+  if (typeof target.candidateTokenId !== "string" || target.candidateTokenId === "") return unproven("TARGET_TOKEN_MISSING");
   const seen = new Map<FairOutcome, BookmakerQuote>();
   for (const q of quotes) {
     if (seen.has(q.outcome)) return unproven("DUPLICATE_OUTCOME");
@@ -132,7 +139,8 @@ export function resolveExternalFair(
   if (!(total >= 1 - EPS) || total > 1.5) return unproven("OVERROUND_OUT_OF_RANGE");
   const fair = r6(1 / (seen.get(target.outcome) as BookmakerQuote).decimalOdds / total);
   const oldest = quotes.map((q) => q.observedAtIso).sort((a, b) => Date.parse(a) - Date.parse(b))[0];
-  return { status: "PROVEN", fairProbability: fair, source: `BOOKMAKER_ODDS:${provider}`, observedAtIso: oldest, overround: r6(total), reason: "EXTERNAL_FAIR_DEVIGGED" };
+  if (!(fair > 0 && fair < 1)) return unproven("FAIR_PROBABILITY_OUT_OF_RANGE");
+  return { status: "PROVEN", candidateTokenId: target.candidateTokenId, physicalEventId: target.physicalEventId, fairProbability: fair, source: `BOOKMAKER_ODDS:${provider}`, observedAtIso: oldest, overround: r6(total), reason: "EXTERNAL_FAIR_DEVIGGED" };
 }
 
 /** TAKER_EDGE = independent fair probability - fee-inclusive effective cost. Null unless the fair is proven. */

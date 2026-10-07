@@ -26,13 +26,13 @@ const quote = (o: Partial<BookmakerQuote> & { outcome: BookmakerQuote["outcome"]
   marketType: "TOTAL", line: 2.5, period: "FULL_MATCH", settlement: "REGULATION_90", observedAtIso: OBS, ...o,
 });
 const target = (o: Partial<FairTarget> = {}): FairTarget => ({
-  physicalEventId: EVENT, kickoffIso: KICKOFF, marketType: "TOTAL", line: 2.5, period: "FULL_MATCH",
+  candidateTokenId: "a", physicalEventId: EVENT, kickoffIso: KICKOFF, marketType: "TOTAL", line: 2.5, period: "FULL_MATCH",
   settlement: "REGULATION_90", outcome: "OVER", ...o,
 });
 const overUnder = (over = 1.9, under = 1.9, o: Partial<BookmakerQuote> = {}) =>
   [quote({ outcome: "OVER", decimalOdds: over, ...o }), quote({ outcome: "UNDER", decimalOdds: under, ...o })];
-const provenFair = (p: number): ExternalFairResolution =>
-  ({ status: "PROVEN", fairProbability: p, source: "BOOKMAKER_ODDS:book-x", observedAtIso: OBS, overround: 1.05, reason: "EXTERNAL_FAIR_DEVIGGED" });
+const provenFair = (p: number, token?: string): Extract<ExternalFairResolution, { status: "PROVEN" }> =>
+  ({ status: "PROVEN", candidateTokenId: token ?? "*", physicalEventId: EVENT, fairProbability: p, source: "BOOKMAKER_ODDS:book-x", observedAtIso: OBS, overround: 1.05, reason: "EXTERNAL_FAIR_DEVIGGED" });
 
 type C = { token: string; side?: string; family?: string; ask?: number; fee?: number; fair?: ExternalFairResolution | null; bid?: number; maker?: boolean };
 function cand(o: C): PolicyCandidateInput {
@@ -42,7 +42,8 @@ function cand(o: C): PolicyCandidateInput {
   const bid = o.bid ?? 0.5;
   return {
     identity, family, supportFamilyEligible: true, takerSupportEligible: true, supportBand: bStrategySupportRegion(family),
-    reference: evaluateExactMarketReference(identity, []), externalFair: o.fair ?? null,
+    reference: evaluateExactMarketReference(identity, []),
+    externalFair: o.fair && o.fair.status === "PROVEN" && o.fair.candidateTokenId === "*" ? { ...o.fair, candidateTokenId: o.token } : o.fair ?? null,
     t10: { bestBid: bid, bestAsk: ask, bookFresh: true, observedAtMs: NOW, tickSize: 0.01,
       askLevels: o.maker ? null : ladder(ask), feeUsdForFullStake: o.maker ? null : (o.fee ?? 0.01) },
     beforeLatestEntry: true, exposureExists: false,
@@ -134,10 +135,13 @@ test("V9: wrong physical event or kickoff is rejected", () => {
 
 test("V10: 3-way MONEYLINE requires Home + Draw + Away; binary needs both sides", () => {
   const ml = (o: BookmakerQuote["outcome"], odds: number) => quote({ marketType: "MONEYLINE", line: null, outcome: o, decimalOdds: odds });
-  const t = target({ marketType: "MONEYLINE", line: null, outcome: "HOME" });
-  assert.equal(resolveExternalFair(t, [ml("HOME", 1.9), ml("AWAY", 2.0)], NOW).status, "PROVEN", "binary moneyline: both sides");
+  const t = target({ marketType: "MONEYLINE", line: null, outcome: "HOME", moneylineWays: 3 });
+  const t2 = target({ marketType: "MONEYLINE", line: null, outcome: "HOME", moneylineWays: 2 });
+  assert.equal(resolveExternalFair(t2, [ml("HOME", 1.9), ml("AWAY", 2.0)], NOW).status, "PROVEN", "binary moneyline: both sides");
+  assert.equal(resolveExternalFair(t, [ml("HOME", 1.9), ml("AWAY", 2.0)], NOW).reason, "INCOMPLETE_EXTERNAL_MARKET", "declared 3-way with the draw leg missing is NOT silently binary");
+  assert.equal(resolveExternalFair(target({ marketType: "MONEYLINE", line: null, outcome: "HOME" }), [ml("HOME", 1.9), ml("AWAY", 2.0)], NOW).reason, "MONEYLINE_WAYS_UNDECLARED");
   assert.equal(resolveExternalFair(t, [ml("HOME", 2.2), ml("DRAW", 3.3)], NOW).reason, "INCOMPLETE_EXTERNAL_MARKET");
-  assert.equal(resolveExternalFair(target({ marketType: "MONEYLINE", line: null, outcome: "DRAW" }), [ml("HOME", 2.2), ml("AWAY", 3.4)], NOW).reason, "INCOMPLETE_EXTERNAL_MARKET");
+  assert.equal(resolveExternalFair(target({ marketType: "MONEYLINE", line: null, outcome: "DRAW", moneylineWays: 3 }), [ml("HOME", 2.2), ml("AWAY", 3.4)], NOW).reason, "INCOMPLETE_EXTERNAL_MARKET");
   const full = resolveExternalFair(t, [ml("HOME", 2.2), ml("DRAW", 3.3), ml("AWAY", 3.4)], NOW);
   assert.equal(full.status, "PROVEN");
   const q = [1 / 2.2, 1 / 3.3, 1 / 3.4]; const sum = q[0] + q[1] + q[2];
@@ -230,4 +234,19 @@ test("V16: real-money pause is untouched; markers stay live_authority=false and 
   for (const f of ["lib/executor/externalFairReference.ts", "lib/executor/t10EconomicActionPolicy.ts"]) {
     assert.doesNotMatch(fs.readFileSync(f, "utf8"), /T10_REAL_MONEY_EXECUTION|process\.env/, f);
   }
+});
+
+test("V17: a fair is bound to its candidate token/event and must be a probability in (0,1)", () => {
+  const wrongToken = cand({ token: "away", fair: { ...provenFair(0.6), candidateTokenId: "home" } });
+  const e = evaluateT10EconomicAction(wrongToken);
+  assert.equal(e.value.fair_status, "VALUE_REFERENCE_UNPROVEN");
+  assert.equal(e.value.fair_reason, "EXTERNAL_FAIR_IDENTITY_MISMATCH");
+  assert.equal(e.value.taker_proven_edge, null);
+  const wrongEvent = cand({ token: "a", fair: { ...provenFair(0.6), candidateTokenId: "a", physicalEventId: "other" } });
+  assert.equal(evaluateT10EconomicAction(wrongEvent).value.fair_status, "VALUE_REFERENCE_UNPROVEN");
+  for (const p of [1.5, 0, 1, -0.1, Number.NaN]) {
+    assert.equal(evaluateT10EconomicAction(cand({ token: "a", fair: { ...provenFair(p), candidateTokenId: "a" } })).value.fair_status, "VALUE_REFERENCE_UNPROVEN", String(p));
+  }
+  const r = resolveExternalFair(target({ candidateTokenId: "tok-1" }), overUnder(), NOW);
+  assert.equal(r.status === "PROVEN" ? r.candidateTokenId : null, "tok-1");
 });

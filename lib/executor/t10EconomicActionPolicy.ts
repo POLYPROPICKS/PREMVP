@@ -319,7 +319,11 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
     }
   }
 
-  const fair = input.externalFair ?? null;
+  // A fair only counts for the exact token + event it was resolved for, and must be a probability in (0,1).
+  const rawFair = input.externalFair ?? null;
+  const fair = rawFair?.status === "PROVEN"
+    && rawFair.candidateTokenId === input.identity.tokenId && rawFair.physicalEventId === input.identity.physicalEventId
+    && num(rawFair.fairProbability) && rawFair.fairProbability > 0 && rawFair.fairProbability < 1 ? rawFair : null;
   const takerEdge = taker.eligible ? takerProvenEdge(fair, taker.effectiveCost) : null;
   const makerEdge = maker.eligible ? makerPriceEdge(fair, maker.limitPrice) : null;
   const edgeStatus = (e: number | null): EdgeStatus => e === null ? "VALUE_REFERENCE_UNPROVEN" : e > EPS ? "POSITIVE_EDGE" : "NON_POSITIVE_EDGE";
@@ -328,7 +332,7 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
     fair_probability: fair?.status === "PROVEN" ? fair.fairProbability : null,
     fair_source: fair?.status === "PROVEN" ? fair.source : null,
     fair_observed_at: fair?.status === "PROVEN" ? fair.observedAtIso : null,
-    fair_reason: fair?.reason ?? "NO_EXTERNAL_FAIR_CARRIER",
+    fair_reason: fair?.reason ?? (rawFair?.status === "PROVEN" ? "EXTERNAL_FAIR_IDENTITY_MISMATCH" : rawFair?.reason ?? "NO_EXTERNAL_FAIR_CARRIER"),
     taker_proven_edge: takerEdge, maker_price_edge: makerEdge,
     taker_edge_status: edgeStatus(takerEdge), maker_edge_status: edgeStatus(makerEdge),
   };
