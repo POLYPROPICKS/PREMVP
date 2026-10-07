@@ -35,6 +35,15 @@ export const OTHER_DIVERSITY_FLOOR_PER_SPORT = 4;
 export const MAX_RESEARCH_TOKEN_ROWS_PER_EVENT = 128;
 export const MAX_NEW_EVENTS_PER_TICK = 5;
 export const RESEARCH_TICK_BUDGET_MS = 8_000;
+/**
+ * SOFT start guard (cooperative, strictly inside the unchanged 8s HARD budget). A NEW event capture is started only if the
+ * remaining tick budget covers (a) this floor, which is the existing per-call provider timeout authority
+ * (t10ExecutableSiblingTelemetry FEE_FETCH_PER_CALL_TIMEOUT_MS = 2_500) so the first provider round-trip can complete, and
+ * (b) the longest capture+write observed so far in THIS tick times the safety factor. Otherwise the event is left
+ * uncaptured (SAFE_BUDGET_DEFER) and the next cron tick resumes it via capturedAmong() while it is still inside T20.
+ */
+export const SOFT_EVENT_START_MIN_REMAINING_MS = 2_500;
+export const SOFT_EVENT_DURATION_SAFETY_FACTOR = 1.25;
 export const PRODUCTION_RETENTION_DAYS = 7;
 export const RETENTION_DELETE_BATCH = 1_000;
 /** Defensive EVENT-level ceiling (never a raw-row slice). Above it the day fails closed with an explicit diagnostic. */
@@ -425,6 +434,11 @@ function utcDayBounds(ms: number): { fromIso: string; toIso: string } {
   return { fromIso: new Date(start).toISOString(), toIso: new Date(start + 86_400_000).toISOString() };
 }
 
+/** Currently-due events: earliest event_start first (the one about to leave T20), then the existing liquidity tie-breaker. */
+export function compareUrgency(a: ResearchEvent, b: ResearchEvent): number {
+  return Date.parse(a.eventStartIso) - Date.parse(b.eventStartIso) || compareLiquidity(a, b);
+}
+
 export type ResearchTickDeps = ResearchCaptureDeps & {
   store: ResearchStore;
   writeJobRun?: (input: {
@@ -432,6 +446,8 @@ export type ResearchTickDeps = ResearchCaptureDeps & {
     generatedCount: number; rejectedCount: number; durationMs: number; errorMessage?: string; diagnostics?: Record<string, unknown>;
   }) => Promise<void>;
   budgetMs?: number;
+  /** Minimum remaining budget required to start a NEW event (soft guard); defaults to SOFT_EVENT_START_MIN_REMAINING_MS. */
+  softStartMinRemainingMs?: number;
   /** Test seam only: defaults to captureResearchEvent. */
   capture?: (selection: CohortSelection, observedAt: string, deps: ResearchCaptureDeps) => Promise<EventCaptureOutcome>;
 };
@@ -453,7 +469,14 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
   let expiredLatch = false;
   const live = () => !expiredLatch && performance.now() - t0 < budgetMs;
   const remaining = () => budgetMs - (performance.now() - t0);
+  const softMinRemainingMs = deps.softStartMinRemainingMs ?? SOFT_EVENT_START_MIN_REMAINING_MS;
+  let longestEventMs = 0;
+  let budgetDeferred = false;
+  let hardTimeoutHit = false;
+  /** Enough bounded runtime left to start (and likely finish) one more event capture + write? */
+  const canStartEvent = () => remaining() >= Math.max(softMinRemainingMs, longestEventMs * SOFT_EVENT_DURATION_SAFETY_FACTOR);
   const counters = {
+    due_event_n: 0, attempted_event_n: 0, deferred_budget_event_n: 0,
     captured_event_n: 0, already_captured_event_n: 0, failed_event_n: 0, token_rows_written_n: 0,
     token_budget_exceeded_event_n: 0, purged_row_n: 0, event_universe_ceiling_exceeded_day_n: 0,
   };
@@ -461,7 +484,7 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
   let cohortDiagnostics: Record<string, unknown> = {};
   let status: "success" | "empty" | "error" = "empty";
   let errorMessage: string | undefined;
-  const expire = () => { expiredLatch = true; status = "error"; errorMessage ??= "RESEARCH_TICK_TIMEOUT"; };
+  const expire = () => { expiredLatch = true; hardTimeoutHit = true; status = "error"; errorMessage ??= "RESEARCH_TICK_TIMEOUT"; };
   const captureDeps: ResearchCaptureDeps = { ...deps, isLive: live };
   const capture = deps.capture ?? captureResearchEvent;
 
@@ -488,31 +511,43 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
         ? { ...cohortDiagnostics, ...diagnostics, universe_event_n: candidates.length }
         : { ...cohortDiagnostics, [dayKey]: { ...diagnostics, universe_event_n: candidates.length } };
       const due = selected.filter((s) => inT20Window(s.event.eventStartIso, nowMs));
+      counters.due_event_n += due.length;
       if (due.length === 0) continue;
       const captured = await deps.store.capturedAmong(due.map((s) => s.event.physicalEventId));
       if (!live()) return expire();
       counters.already_captured_event_n += due.filter((s) => captured.has(s.event.physicalEventId)).length;
-      const todo = due.filter((s) => !captured.has(s.event.physicalEventId)).sort((a, b) => compareLiquidity(a.event, b.event));
+      const todo = due.filter((s) => !captured.has(s.event.physicalEventId)).sort((a, b) => compareUrgency(a.event, b.event));
       if (todo.length === 0) continue;
       // Daily cap guard independent of cohort drift between ticks (fail-closed on read error).
       let dayCaptured = await deps.store.capturedEventCount(bounds.fromIso, bounds.toIso);
       if (!live()) return expire();
-      for (const selection of todo) {
+      for (let i = 0; i < todo.length; i++) {
+        const selection = todo[i];
         if (newEvents >= MAX_NEW_EVENTS_PER_TICK || !live() || dayCaptured >= MAX_RESEARCH_EVENTS_PER_DAY) break;
+        if (!canStartEvent()) {
+          // SAFE_BUDGET_DEFER: not started, not captured, not failed/rejected. The next tick resumes it (capturedAmong).
+          counters.deferred_budget_event_n += todo.length - i;
+          budgetDeferred = true;
+          break;
+        }
         newEvents++;
+        counters.attempted_event_n++;
+        const eventStartedMs = performance.now();
         const outcome = await capture(selection, new Date(nowMs).toISOString(), captureDeps);
         // A capture that settles after the deadline is discarded: never counted, never written.
         if (!live()) return expire();
         for (const [type, n] of Object.entries(outcome.unsupported)) unsupportedCounts[type] = (unsupportedCounts[type] ?? 0) + n;
-        if (outcome.kind === "TOKEN_BUDGET_EXCEEDED") { counters.token_budget_exceeded_event_n++; continue; }
-        if (outcome.kind === "FAILED") { counters.failed_event_n++; continue; }
+        if (outcome.kind === "TOKEN_BUDGET_EXCEEDED") { counters.token_budget_exceeded_event_n++; longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs); continue; }
+        if (outcome.kind === "FAILED") { counters.failed_event_n++; longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs); continue; }
         try {
           await deps.store.writeRows(outcome.rows);
           if (!live()) return expire();
           counters.captured_event_n++; dayCaptured++;
           counters.token_rows_written_n += outcome.rows.length;
         } catch { if (!live()) return expire(); counters.failed_event_n++; }
+        longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs);
       }
+      if (budgetDeferred) break;
     }
     // Bounded retention: one capped purge call per tick, only while the deadline has not expired.
     if (live() && remaining() > 500) {
@@ -530,7 +565,7 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
     await Promise.race([
       work(),
       new Promise<void>((resolve) => {
-        timer = setTimeout(() => { expiredLatch = true; errorMessage = "RESEARCH_TICK_TIMEOUT"; status = "error"; resolve(); }, budgetMs);
+        timer = setTimeout(() => { expiredLatch = true; hardTimeoutHit = true; errorMessage = "RESEARCH_TICK_TIMEOUT"; status = "error"; resolve(); }, budgetMs);
       }),
     ]);
   } catch (err) {
@@ -543,7 +578,10 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
   // Whatever happens next, no straggler from this tick may start new work.
   expiredLatch = true;
   const durationMs = Date.now() - startedMs;
-  const diagnostics = { ...cohortDiagnostics, ...counters, unsupported_market_type_counts: unsupportedCounts, duration_ms: durationMs };
+  const diagnostics = {
+    ...cohortDiagnostics, ...counters, budget_deferred: budgetDeferred, hard_timeout_hit: hardTimeoutHit,
+    unsupported_market_type_counts: unsupportedCounts, duration_ms: durationMs,
+  };
   try {
     await deps.writeJobRun?.({
       source: PRECONTRACT_RESEARCH_SOURCE, formulaVersion: RESEARCH_SOURCE_VERSION, startedAt, finishedAt: new Date().toISOString(),
