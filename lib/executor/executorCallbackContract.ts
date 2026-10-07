@@ -22,14 +22,19 @@
 import { readT10FrozenContract, t10FrozenExecutionMode, validateOrderEventAgainstQueueRow, type EventExecutionQueueRow, type OrderEventSubmission } from "./executorQueueTypes";
 import {
   FILL_RESULT_CLASSES,
+  NEEDS_RECONCILIATION_KEY,
+  NEEDS_RECONCILIATION_STATE,
   callbackIsTerminalProvenZero,
+  hasUnresolvedNeedsReconciliation,
   isMakerAttemptCallback,
   isPrimaryMakerCallback,
   isProvenRejectedBeforeSubmissionZero,
+  isUnknownTransportNeedsReconciliationCallback,
   makerAttemptIdIsValid,
   preSubmissionZeroConsistentWithQueueRow,
   readExecutionAttempts,
   readIrelandExecutionResult,
+  unknownTransportConsistentWithQueueRow,
   type MakerFallbackCommand,
 } from "./makerFallbackAuthorization";
 
@@ -385,6 +390,13 @@ export interface OrderEventDbPort {
    * condition_id, token_id, side, clob_order_id).
    */
   updateOrderEventProgression(id: string, record: Record<string, unknown>): Promise<StoredOrderEvent>;
+  /**
+   * UNKNOWN_TRANSPORT_CALLBACK_RECEIVER_V1: writes the typed NEEDS_RECONCILIATION marker (diagnostics only) onto a
+   * still-CLAIMED Queue row via fresh read + CAS, WITHOUT touching its status. "NOT_CLAIMED" when the fresh row is no
+   * longer CLAIMED (resolved concurrently -- nothing is written), "ALREADY_MARKED" for a replay / lost race.
+   * Optional so existing ports stay valid; absent, the marker is written through updateQueueRowStatus(CLAIMED).
+   */
+  markNeedsReconciliation?(queueId: string, marker: Record<string, unknown>): Promise<"WRITTEN" | "ALREADY_MARKED" | "NOT_CLAIMED">;
 }
 
 /** Outcome of the queue terminal-marking side effect triggered by an order-event callback. */
@@ -400,6 +412,8 @@ export type OrderEventOutcome =
   | { kind: "INSERTED"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
   | { kind: "DUPLICATE"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
   | { kind: "PROGRESSED"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
+  /** Accepted ambiguous UNKNOWN_TRANSPORT: marker persisted, NO order event / fill / zero / fallback. HTTP 200. */
+  | { kind: "NEEDS_RECONCILIATION"; queue_id: string; duplicate: boolean }
   | { kind: "CONFLICT_IDEMPOTENCY" }
   | { kind: "CONFLICT_CLOB_ORDER_ID" }
   | { kind: "REJECTED_MISSING_TOKEN_ID" }
@@ -547,6 +561,43 @@ async function markQueueTerminalFromOrderEvent(
 }
 
 /**
+ * Persists an accepted ambiguous UNKNOWN_TRANSPORT callback as the typed NEEDS_RECONCILIATION state on the CLAIMED
+ * Queue row (diagnostics only: no new status / enum / migration). The attempt result itself is recorded monotonically
+ * under execution_attempts_v1.taker_attempt_1 by recordResultAndAuthorizeMaker. No executor_order_events row is
+ * written (no venue order exists / is proven), no telemetry / ledger fact is derived, no fallback is authorized.
+ * Idempotent: a replay writes nothing. The stale-claim sweep preserves a row carrying this marker.
+ */
+async function recordNeedsReconciliation(
+  port: OrderEventDbPort,
+  queueRow: EventExecutionQueueRow,
+  nowIso: string,
+): Promise<OrderEventOutcome> {
+  const queueId = queueRow.id as string;
+  if (hasUnresolvedNeedsReconciliation(queueRow.diagnostics)) return { kind: "NEEDS_RECONCILIATION", queue_id: queueId, duplicate: true };
+  const marker: Record<string, unknown> = {
+    state: NEEDS_RECONCILIATION_STATE,
+    reason: "UNKNOWN_TRANSPORT",
+    attempt_id: "TAKER_ATTEMPT_1",
+    terminal: false,
+    economic_exposure_proven_zero: null,
+    venue_order_id: null,
+    first_received_at: nowIso,
+  };
+  let written: "WRITTEN" | "ALREADY_MARKED" | "NOT_CLAIMED";
+  if (port.markNeedsReconciliation) {
+    written = await port.markNeedsReconciliation(queueId, marker);
+  } else {
+    await port.updateQueueRowStatus(queueId, {
+      status: "CLAIMED",
+      diagnostics: { ...(queueRow.diagnostics ?? {}), [NEEDS_RECONCILIATION_KEY]: marker, queue_mark_result: NEEDS_RECONCILIATION_STATE },
+    });
+    written = "WRITTEN";
+  }
+  if (written === "NOT_CLAIMED") return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "QUEUE_ROW_NO_LONGER_CLAIMED" };
+  return { kind: "NEEDS_RECONCILIATION", queue_id: queueId, duplicate: written === "ALREADY_MARKED" };
+}
+
+/**
  * Full order-event submission orchestration: validate -> load the queue row
  * for cross-check (if found; a missing queue row no longer blocks
  * persistence, it only skips policy validation and queue terminal-marking) ->
@@ -568,6 +619,8 @@ export async function handleOrderEventSubmission(
      * pre-submission exemption must hold on the original payload too. Omitted = judged on `raw` alone (direct callers).
      */
     callbackProvedPreSubmissionZero?: boolean;
+    /** Clock for the NEEDS_RECONCILIATION marker timestamp (tests); defaults to now. */
+    nowIso?: string;
   } = {},
 ): Promise<OrderEventOutcome> {
   const tokenId = typeof raw.token_id === "string" && raw.token_id.length > 0 ? raw.token_id : null;
@@ -638,8 +691,17 @@ export async function handleOrderEventSubmission(
     // partial / positive / UNKNOWN / any other zero class / a callback carrying venue evidence stays fail-closed.
     const preSubmissionProvenZero = preSubmissionShape &&
       preSubmissionZeroConsistentWithQueueRow(queueRow, makerAttempt ? "FALLBACK" : "PRIMARY");
-    const validation = validateOrderEventAgainstQueueRow(submission, queueRow, { preSubmissionProvenZero });
+    // UNKNOWN_TRANSPORT_CALLBACK_RECEIVER_V1: ONLY the exact typed nonterminal ambiguous shape (TAKER_ATTEMPT_1,
+    // UNKNOWN_TRANSPORT, terminal=false, exposure unknown, no venue evidence) on a still-CLAIMED row with no resolved
+    // result and no stored order event is exempt from the ABSENCE of submitted_price. Anything else keeps failing closed.
+    const unknownTransportAmbiguous = submission.submitted_price === null && !makerAttempt && !primaryMaker &&
+      isUnknownTransportNeedsReconciliationCallback(raw) && unknownTransportConsistentWithQueueRow(queueRow) &&
+      (await port.findOrderEventByIdempotencyKey(idempotencyKey)) === null;
+    const validation = validateOrderEventAgainstQueueRow(submission, queueRow, { preSubmissionProvenZero, unknownTransportAmbiguous });
     if (!validation.ok) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason };
+    if (unknownTransportAmbiguous) {
+      return recordNeedsReconciliation(port, queueRow, options.nowIso ?? new Date().toISOString());
+    }
     // Primary maker: never above the frozen maker shares (price is bounded by max_entry_price = maker limit).
     if (primaryMakerShares !== null && submission.submitted_size !== null && submission.submitted_size > primaryMakerShares + 1e-9) {
       return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: "PRIMARY_MAKER_SIZE_ABOVE_FROZEN_SHARES" };

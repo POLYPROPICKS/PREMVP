@@ -9,6 +9,7 @@ import {
 } from "@/lib/executor/eventExecutionQueue";
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "@/lib/ops/emergencyQuiesce";
 import { reconcileStaleClaims, type StaleClaimRow } from "@/lib/executor/staleQueueClaims";
+import { hasUnresolvedNeedsReconciliation } from "@/lib/executor/makerFallbackAuthorization";
 import { reconcileExecutionLifecycle } from "@/lib/executor/executionLifecycle";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
@@ -208,7 +209,8 @@ async function handle(request: NextRequest) {
         // Fresh-read + CAS: a CLAIMED row may already carry execution_attempts_v1 (e.g. a proven-zero
         // taker result with an authorized maker command); the expiry must never erase it.
         const res = await casWriteQueue(createSupabaseQueueCasPort(), String(row.id), (fresh) =>
-          fresh.status !== "CLAIMED"
+          // A NEEDS_RECONCILIATION marker written after the load snapshot is never overwritten or expired.
+          fresh.status !== "CLAIMED" || hasUnresolvedNeedsReconciliation(fresh.diagnostics)
             ? null
             : { status: "EXPIRED", diagnostics, extra: { selection_reason: "CLAIM_LEASE_EXPIRED_NO_ORDER_EVENT" } },
         );
