@@ -43,6 +43,7 @@ import type {
   GammaTerminalState,
 } from "@/lib/modeling/forward-rich/types";
 import { toStoredModelRow } from "../../lib/research-clone/modelReady";
+import { FULL_SYNC_COMPLETE_SOURCE } from "../research-clone-daily-sync";
 import type { ScorecardReadyRow } from "../../lib/modeling/research-corpus/rollingCorpus";
 import { normalizeMaterializedSportFamily } from "./clone-model-ready-pipeline";
 import {
@@ -389,6 +390,74 @@ async function writeNonEmptyDayRows(db: SupabaseClient, d: string, rows: Scoreca
   if (dayError) throw new Error(`MATERIALIZE_DAY_WRITE:${dayError.code ?? dayError.message}`);
 }
 
+/** Stable error code: the direct materializer refuses MODEL_READY without a fresh complete full sync. */
+export const MODEL_READY_FULL_SYNC_NOT_PROVEN = "MODEL_READY_FULL_SYNC_NOT_PROVEN";
+
+/** UTC instant (ms) at which Europe/Minsk calendar day `d` fully closed: 2026-10-06 -> 2026-10-06T21:00:00Z. */
+export function minskDayCloseUtcMs(d: string): number {
+  const ms = Date.parse(`${d}T00:00:00Z`);
+  if (!Number.isFinite(ms)) throw new Error(`MATERIALIZE_RANGE_INVALID: bad model date ${d}`);
+  return ms + DAY_MS - MINSK_OFFSET_HOURS * 3600_000;
+}
+
+export interface FullSyncMarkerRow {
+  status?: unknown;
+  finished_at?: unknown;
+  diagnostics?: unknown;
+}
+
+/**
+ * Pure gate decision. Passes only for a success marker with complete=true, no
+ * pending/schema-pending tables, finished at or after the close of the newest
+ * requested Minsk model day. Returns the failing reason otherwise.
+ */
+export function evaluateFullSyncProof(
+  marker: FullSyncMarkerRow | null | undefined,
+  newestModelDate: string,
+): { ok: true } | { ok: false; reason: string } {
+  if (!marker) return { ok: false, reason: "NO_FULL_SYNC_MARKER" };
+  if (marker.status !== "success") return { ok: false, reason: "MARKER_NOT_SUCCESS" };
+  const diag = (marker.diagnostics ?? {}) as {
+    complete?: unknown;
+    pending_tables?: unknown;
+    schema_pending_tables?: unknown;
+  };
+  if (diag.complete !== true) return { ok: false, reason: "MARKER_NOT_COMPLETE" };
+  if (!Array.isArray(diag.pending_tables) || diag.pending_tables.length !== 0) {
+    return { ok: false, reason: "MARKER_PENDING_TABLES" };
+  }
+  if (!Array.isArray(diag.schema_pending_tables) || diag.schema_pending_tables.length !== 0) {
+    return { ok: false, reason: "MARKER_SCHEMA_PENDING_TABLES" };
+  }
+  const finishedMs = typeof marker.finished_at === "string" ? Date.parse(marker.finished_at) : NaN;
+  if (!Number.isFinite(finishedMs)) return { ok: false, reason: "MARKER_FINISHED_AT_INVALID" };
+  if (finishedMs < minskDayCloseUtcMs(newestModelDate)) {
+    return { ok: false, reason: `MARKER_BEFORE_MODEL_DAY_CLOSE:${newestModelDate}` };
+  }
+  return { ok: true };
+}
+
+/**
+ * Fails closed (throws, so the process exits non-zero before any MODEL_READY
+ * write and the `&& modeling-conveyor` chain stops) unless the latest successful
+ * full-sync-complete marker in clone job_runs proves a complete sync after the
+ * newest requested model day closed. Read-only.
+ */
+export async function assertFullSyncProvenForModelReady(db: SupabaseClient, dates: string[]): Promise<void> {
+  if (dates.length === 0) return;
+  const newest = dates.reduce((a, b) => (a > b ? a : b));
+  const { data, error } = await db
+    .from("job_runs")
+    .select("status,finished_at,diagnostics")
+    .eq("source", FULL_SYNC_COMPLETE_SOURCE)
+    .eq("status", "success")
+    .order("finished_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`${MODEL_READY_FULL_SYNC_NOT_PROVEN}:MARKER_READ:${error.code ?? error.message}`);
+  const verdict = evaluateFullSyncProof((data?.[0] ?? null) as FullSyncMarkerRow | null, newest);
+  if (!verdict.ok) throw new Error(`${MODEL_READY_FULL_SYNC_NOT_PROVEN}:${verdict.reason}`);
+}
+
 async function main() {
   const explicitDates = arg("--dates")?.split(",").filter(Boolean).sort();
   const start = arg("--start");
@@ -402,6 +471,10 @@ async function main() {
   // independently-callable path, e.g. a one-off activation for a named
   // historical range) always wins and is never narrowed by this default.
   const dates = explicitDates ?? (start && end ? datesInRange(start, end) : await resolveMissingRecentDates(db));
+
+  // Fail closed BEFORE any read-for-write/MODEL_READY write: the `;`-detached
+  // Railway chain can reach this script after a failed full sync.
+  await assertFullSyncProvenForModelReady(db, dates);
 
   const report: DayMaterializationCounts[] = [];
   // A day whose emptiness this path cannot prove. It is deliberately NOT written
