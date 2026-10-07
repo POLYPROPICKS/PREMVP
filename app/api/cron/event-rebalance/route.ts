@@ -249,6 +249,8 @@ async function handle(request: NextRequest) {
         future_valid_reservations_count: result.future_valid_reservations_count,
         // Hard failure surface: due reservations existed but none reached the queue.
         fail_due_reservations_not_queued: result.fail_due_reservations_not_queued,
+        // T10_REAL_MONEY_EXECUTION_ENABLED=false: would-be Queue actions held as shadow decisions (0 when enabled).
+        real_money_paused_count: result.real_money_paused_count ?? 0,
         // Phase 1 canonical safety cap surface.
         max_queue_writes: result.max_queue_writes,
         planned_queue_writes: result.planned_queue_writes,

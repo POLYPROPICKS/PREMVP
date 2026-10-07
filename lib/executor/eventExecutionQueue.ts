@@ -22,6 +22,18 @@ import {
   T10_ECONOMIC_MAKER_SELECTION_REASON,
   T10_ECONOMIC_TAKER_SELECTION_REASON,
 } from "./t10EconomicActivation";
+import { T10_ECONOMIC_ACTION_POLICY_VERSION } from "./t10EconomicActionPolicy";
+import {
+  REAL_MONEY_PAUSED_SHADOW_ONLY,
+  RealMoneyPausedError,
+  SHADOW_ECONOMIC_ACTION_KEY,
+  buildShadowMarkerFromPlannedRow,
+  buildShadowSkipMarker,
+  isRealMoneyExecutionEnabled,
+  readRealMoneyExecutionSwitch,
+  readValidShadowMarker,
+  type ShadowEconomicActionMarker,
+} from "./t10RealMoneyPause";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   physicalIdUnderStoredFormat,
@@ -474,10 +486,14 @@ function buildBlockedCandidateDiag(c: FireModelCandidate): BlockedCandidateDiag 
 export interface RebalanceOutcome {
   match_family_key: string;
   reservation_id: string | null;
-  result: "QUEUED" | "SKIPPED" | "ALREADY_QUEUED" | "WAITING_FINAL_REBALANCE";
+  result: "QUEUED" | "SKIPPED" | "ALREADY_QUEUED" | "WAITING_FINAL_REBALANCE" | typeof REAL_MONEY_PAUSED_SHADOW_ONLY;
   reason: string;
   queue_row?: EventExecutionQueueRow;
   blocked_candidates?: BlockedCandidateDiag[];
+  /** REAL_MONEY_PAUSED_SHADOW_ONLY only: the mode the normal decision chose, whether the marker was already on file, and whether this tick persisted it. */
+  shadow_execution_mode?: string | null;
+  shadow_repeat?: boolean;
+  shadow_persisted?: boolean;
 }
 
 export interface NextDueReservation {
@@ -521,6 +537,8 @@ export interface RebalanceRunResult {
   future_valid_reservations_count: number;
   // True when reservations were due but none reached the queue — a hard battle failure.
   fail_due_reservations_not_queued: boolean;
+  /** Reservations whose would-be Queue action was held as a shadow decision by T10_REAL_MONEY_EXECUTION_ENABLED=false. */
+  real_money_paused_count?: number;
   outcomes: RebalanceOutcome[];
   // Full per-active-reservation reason table (every RESERVED/REBALANCE_PENDING row).
   reservation_classification: ReservationClassification[];
@@ -749,8 +767,14 @@ export async function admitExecutableQueueRow(
   contour: ComposedContour,
   repo: { insertQueueRow(row: EventExecutionQueueRow): Promise<void> },
   row: EventExecutionQueueRow,
+  opts: { realMoneyEnabled?: boolean } = {},
 ): Promise<void> {
   assertMoneyMovementEnabled(contour, "EXECUTABLE_QUEUE_ROW_ADMISSION");
+  // T10_REAL_MONEY_EXECUTION_ENABLED=false (or malformed): no NEW executable authority, defense in depth for any
+  // caller that did not divert to the shadow path first.
+  if (!(opts.realMoneyEnabled ?? isRealMoneyExecutionEnabled())) {
+    throw new RealMoneyPausedError("EXECUTABLE_QUEUE_ROW_ADMISSION");
+  }
   await repo.insertQueueRow(row);
 }
 
@@ -771,6 +795,11 @@ export interface RebalanceRepoPort {
   markReservationSkipped(id: string, reason: string): Promise<void>;
   insertQueueRow(row: EventExecutionQueueRow): Promise<void>;
   markReservationQueued(id: string, reason: string): Promise<void>;
+  /**
+   * T10_REAL_MONEY_EXECUTION_ENABLED=false only: merge ONE bounded shadow marker into an ACTIVE Reservation's
+   * diagnostics. Never changes status / selection_reason, never touches a terminal row. Optional so existing fakes compile.
+   */
+  recordReservationShadowDecision?(id: string, marker: ShadowEconomicActionMarker): Promise<void>;
   /** Bounded raw source rows for one persisted Contract A Reservation only. */
   loadFinalIdentitySourceRows?(reservation: NightEventReservationRow): Promise<FinalIdentitySourceRow[]>;
   /** Exact idempotency conflict read; never used for market selection. */
@@ -1090,6 +1119,31 @@ export function createSupabaseRebalanceRepoPort(getClient: () => RuntimeSupabase
         .from("night_event_reservations")
         .update({ status: "QUEUED", selection_reason: reason })
         .eq("id", id);
+    },
+    async recordReservationShadowDecision(id, marker) {
+      const supabaseAdmin = await getClient();
+      // Fresh read + merge: only the shadow key is written; every other diagnostics key is carried through verbatim.
+      // Optimistic concurrency on the trigger-maintained updated_at: a concurrent writer between the read and the
+      // write makes the update match zero rows, which is reported as a failure (the next tick retries) -- never a clobber.
+      const { data, error } = await supabaseAdmin
+        .from("night_event_reservations")
+        .select("diagnostics, updated_at")
+        .eq("id", id)
+        .in("status", ["RESERVED", "REBALANCE_PENDING"])
+        .maybeSingle();
+      if (error) throw new Error(`shadow decision read failed: ${error.message}`);
+      if (!data) throw new Error("shadow decision target not active");
+      const row = data as { diagnostics?: Record<string, unknown> | null; updated_at?: string | null };
+      if (!row.updated_at) throw new Error("shadow decision concurrency token missing");
+      const { data: written, error: updateError } = await supabaseAdmin
+        .from("night_event_reservations")
+        .update({ diagnostics: { ...(row.diagnostics ?? {}), [SHADOW_ECONOMIC_ACTION_KEY]: marker } })
+        .eq("id", id)
+        .eq("updated_at", row.updated_at)
+        .in("status", ["RESERVED", "REBALANCE_PENDING"])
+        .select("id");
+      if (updateError) throw new Error(`shadow decision write failed: ${updateError.message}`);
+      if (!written || written.length !== 1) throw new Error("shadow decision write lost a concurrent update");
     },
     async loadFinalIdentitySourceRows(reservation) {
       // A Reservation without the supported immutable candidate manifest is a
@@ -2219,6 +2273,8 @@ export async function runEventRebalance(
     onFinalIdentityAttempt?: () => void;
     /** Rollback switch override; omitted => T10_ECONOMIC_ACTION_ACTIVATION env ("ON" only). */
     t10EconomicActivation?: boolean;
+    /** Real-money pause override; omitted => T10_REAL_MONEY_EXECUTION_ENABLED env (unset = enabled, malformed = paused). */
+    realMoneyExecutionEnabled?: boolean;
     readT30Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
     fetchTokenFeeSchedule?: (tokenId: string) => Promise<TokenFeeScheduleResult>;
   } = {}
@@ -2247,6 +2303,17 @@ export async function runEventRebalance(
       : null);
   const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? ((tokenId: string) => fetchOrderBook(tokenId));
   const t10EconomicActivation = deps.t10EconomicActivation ?? isT10EconomicActivationOn();
+  // PREMVP_QUEUE_PUBLICATION_KILL_SWITCH: paused => the normal write=true orchestration runs unchanged and only the
+  // creation of a NEW executable Queue row is diverted to a shadow marker (see t10RealMoneyPause.ts).
+  const realMoneySwitch = deps.realMoneyExecutionEnabled !== undefined
+    ? { enabled: deps.realMoneyExecutionEnabled, malformed: false }
+    : readRealMoneyExecutionSwitch();
+  const realMoneyEnabled = realMoneySwitch.enabled;
+  const realMoneyPaused = write && !realMoneyEnabled;
+  if (write && realMoneySwitch.malformed) {
+    console.error("[event-rebalance] T10_REAL_MONEY_EXECUTION_ENABLED is malformed: failing closed, new Queue publication paused");
+  }
+  const shadowPolicyVersion = t10EconomicActivation ? T10_ECONOMIC_ACTION_POLICY_VERSION : LIVE_T3_STRATEGY;
   const readT30Universe = deps.readT30Universe ?? (runtimeClient
     ? (reservation: NightEventReservationRow) => readCompletedT30Universe(reservation, createFinalT3ReadPort(runtimeClient))
     : readCompletedT30Universe);
@@ -2400,7 +2467,8 @@ export async function runEventRebalance(
   type PlannedAction =
     | { kind: "ALREADY_QUEUED"; reservation: NightEventReservationRow }
     | { kind: "SKIPPED"; reservation: NightEventReservationRow; reason: string; blockedCandidates?: BlockedCandidateDiag[] }
-    | { kind: "QUEUE"; reservation: NightEventReservationRow; row: EventExecutionQueueRow; reason: string };
+    | { kind: "QUEUE"; reservation: NightEventReservationRow; row: EventExecutionQueueRow; reason: string }
+    | { kind: "PAUSED_SHADOW"; reservation: NightEventReservationRow; marker: ShadowEconomicActionMarker; repeat: boolean };
 
   const plannedActions: PlannedAction[] = [];
   for (const reservation of due) {
@@ -2411,10 +2479,12 @@ export async function runEventRebalance(
     // Read one finalized exact-event source set for this live decision. A/B
     // selection and Final Identity below consume this same array.
     let finalSiblingUniverse: FinalT3MarketObservation[] | null = null;
+    let shadowCaptureRunId: string | null = null;
     if (write) {
       try {
         finalSiblingUniverse = await readFinalT3Universe(reservation);
         if (finalSiblingUniverse.length === 0) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
+        shadowCaptureRunId = finalSiblingUniverse[0].capture_run_id ?? null;
       } catch {
         // T_MINUS_10 capture may still be in flight inside its window: wait, do not skip terminally.
         if ((Date.parse(reservation.game_start_iso) - nowMs) / 60_000 > FINAL_REBALANCE_CAPTURE_PENDING_MINUTES) {
@@ -2426,6 +2496,15 @@ export async function runEventRebalance(
         }
         plannedActions.push({ kind: "SKIPPED", reservation, reason: "FINAL_T3_SOURCE_UNAVAILABLE" });
         continue;
+      }
+      // Paused and this exact completed capture / policy already has its shadow decision on file: do not
+      // recompute or persist it again every cron tick.
+      if (realMoneyPaused) {
+        const existingMarker = readValidShadowMarker(reservation.diagnostics, shadowCaptureRunId, shadowPolicyVersion);
+        if (existingMarker) {
+          plannedActions.push({ kind: "PAUSED_SHADOW", reservation, marker: existingMarker, repeat: true });
+          continue;
+        }
       }
     }
     // The current write contour consumes the T3 Final Identity. The manifest
@@ -2491,6 +2570,14 @@ export async function runEventRebalance(
       plannedActions.push({ kind: "SKIPPED", reservation, reason: envelopeViolation });
     } else if (selection.outcome === "SKIPPED") {
       plannedActions.push({ kind: "SKIPPED", reservation, reason: selection.reason, blockedCandidates: selection.blockedCandidates });
+    } else if (realMoneyPaused) {
+      // The normal economic action is fully known here. It never becomes executable authority while paused.
+      plannedActions.push({
+        kind: "PAUSED_SHADOW", reservation, repeat: false,
+        marker: buildShadowMarkerFromPlannedRow({
+          row: selection.queueRow!, reason: selection.reason, captureRunId: shadowCaptureRunId, nowMs, policyVersion: shadowPolicyVersion,
+        }),
+      });
     } else {
       plannedActions.push({ kind: "QUEUE", reservation, row: selection.queueRow!, reason: selection.reason });
     }
@@ -2537,6 +2624,18 @@ export async function runEventRebalance(
   let queued = 0;
   let skipped = 0;
   let already = 0;
+  let paused = 0;
+  // A failed marker write must never abort the run: the cron route still has lifecycle reconciliation to do.
+  const persistShadowMarker = async (reservationId: string | null | undefined, marker: ShadowEconomicActionMarker): Promise<boolean> => {
+    if (!reservationId || !repo.recordReservationShadowDecision) return false;
+    try {
+      await repo.recordReservationShadowDecision(reservationId, marker);
+      return true;
+    } catch {
+      console.error("[event-rebalance] shadow decision persistence failed");
+      return false;
+    }
+  };
   // First fail-closed code this run -- the single most useful field when a due
   // reservation did not reach the queue. Code only, never the free-text detail.
   const firstSkipped = plannedActions.find((a) => a.kind === "SKIPPED");
@@ -2555,9 +2654,30 @@ export async function runEventRebalance(
       continue;
     }
 
+    if (action.kind === "PAUSED_SHADOW") {
+      paused += 1;
+      const persisted = action.repeat ? true : await persistShadowMarker(action.reservation.id, action.marker);
+      outcomes.push({
+        match_family_key: action.reservation.match_family_key,
+        reservation_id: action.reservation.id ?? null,
+        result: REAL_MONEY_PAUSED_SHADOW_ONLY,
+        reason: REAL_MONEY_PAUSED_SHADOW_ONLY,
+        shadow_execution_mode: action.marker.shadow_execution_mode,
+        shadow_repeat: action.repeat,
+        shadow_persisted: persisted,
+      });
+      continue;
+    }
+
     if (action.kind === "SKIPPED") {
       skipped += 1;
       if (write && action.reservation.id) {
+        // Paused: a natural economic SKIP stays a shadow SKIP with its normal reason recoverable.
+        if (realMoneyPaused) {
+          await persistShadowMarker(action.reservation.id, buildShadowSkipMarker({
+            physicalEventId: action.reservation.physical_event_id ?? null, reason: action.reason, nowMs, policyVersion: shadowPolicyVersion,
+          }));
+        }
         await repo.markReservationSkipped(action.reservation.id, action.reason);
       }
       outcomes.push({
@@ -2573,7 +2693,7 @@ export async function runEventRebalance(
     const row = action.row;
     if (write) {
       try {
-        await admitExecutableQueueRow(deps.contour ?? getActiveContour(), repo, row);
+        await admitExecutableQueueRow(deps.contour ?? getActiveContour(), repo, row, { realMoneyEnabled });
       } catch (err) {
         if (isPostgresUniqueViolation(err) && row.idempotency_key && repo.findQueueRowsByIdempotencyKey) {
           const existing = await repo.findQueueRowsByIdempotencyKey(row.idempotency_key);
@@ -2611,7 +2731,8 @@ export async function runEventRebalance(
   // Hard failure: reservations were due but none reached the queue and none were
   // already queued. SKIPPED rows carry an exact reason; zero queued+already with a
   // positive due count means the queue stage silently produced nothing.
-  const fail_due_reservations_not_queued = due.length > 0 && queued === 0 && already === 0;
+  // A reservation held as a shadow decision by the real-money pause is an intended outcome, not a silent failure.
+  const fail_due_reservations_not_queued = due.length > 0 && queued === 0 && already === 0 && paused === 0;
 
   return {
     rebalance_run_id: rebalanceRunId,
@@ -2623,6 +2744,7 @@ export async function runEventRebalance(
     expired_count: expired.length,
     future_valid_reservations_count: upcoming.length,
     fail_due_reservations_not_queued,
+    real_money_paused_count: paused,
     outcomes,
     reservation_classification,
     wrote: write,
@@ -2727,6 +2849,8 @@ export async function runControlledLiveIntent(
     writeGuardTelemetry?: (reservation: NightEventReservationRow, input: LiveGuardTelemetryInput) => Promise<void>;
     readFinalT3Universe?: (reservation: NightEventReservationRow) => Promise<FinalT3MarketObservation[]>;
     recordStrategyDecision?: typeof recordReservationStrategyDecision;
+    /** Real-money pause override; omitted => T10_REAL_MONEY_EXECUTION_ENABLED env. */
+    realMoneyExecutionEnabled?: boolean;
   } = {}
 ): Promise<ControlledLiveIntentResult> {
   const validation = validateControlledLiveIntentRequest(requestedTestId);
@@ -2736,6 +2860,7 @@ export async function runControlledLiveIntent(
 
   const { deps, runtimeClient, readFinalT3Universe, persistTelemetry, recordStrategyDecision } = bindRuntimeDefaults(rawDeps);
   const write = opts.write === true;
+  const realMoneyEnabled = deps.realMoneyExecutionEnabled ?? readRealMoneyExecutionSwitch().enabled;
   const repo = deps.repo ?? createSupabaseRebalanceRepoPort(runtimeClient);
   const fetchCandidates =
     deps.fetchCandidates ??
@@ -2865,8 +2990,13 @@ export async function runControlledLiveIntent(
       return { kind: "CREATED", reason: "DRY_RUN_PREVIEW", wrote: false, queue_row: controlledRow };
     }
 
+    // T10_REAL_MONEY_EXECUTION_ENABLED=false: no new executable Queue authority from this seam either.
+    if (!realMoneyEnabled) {
+      return { kind: "NO_SAFE_CANDIDATE", reason: REAL_MONEY_PAUSED_SHADOW_ONLY, wrote: false };
+    }
+
     try {
-      await admitExecutableQueueRow(deps.contour ?? getActiveContour(), repo, controlledRow);
+      await admitExecutableQueueRow(deps.contour ?? getActiveContour(), repo, controlledRow, { realMoneyEnabled });
     } catch (err) {
       if (isPostgresUniqueViolation(err)) {
         // The database itself rejected a second controlled row (partial
@@ -2945,6 +3075,8 @@ export async function runEventRebalanceWithEvidence(
     contour?: ComposedContour;
     /** A booted instance: evidence, milestones, repo and engine all go through ITS client; wins over `contour`. */
     runtime?: ContourRuntimeV1;
+    /** Real-money pause override (test seam); omitted => T10_REAL_MONEY_EXECUTION_ENABLED env. */
+    realMoneyExecutionEnabled?: boolean;
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
@@ -2981,6 +3113,7 @@ export async function runEventRebalanceWithEvidence(
       fetchCandidates: deps.fetchCandidates,
       contour: deps.contour,
       runtime: deps.runtime,
+      realMoneyExecutionEnabled: deps.realMoneyExecutionEnabled,
     });
     if (write) {
       const finishedAt = new Date().toISOString();
@@ -3013,6 +3146,7 @@ export async function runEventRebalanceWithEvidence(
           planned_queue_writes: result.planned_queue_writes,
           blocked_by_max_queue_writes: result.blocked_by_max_queue_writes,
           first_rejection_code: result.first_rejection_code,
+          real_money_paused_count: result.real_money_paused_count ?? 0,
         },
       });
     }
