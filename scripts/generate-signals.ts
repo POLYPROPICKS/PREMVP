@@ -18,7 +18,7 @@ import {
 import { persistCanonicalPrimarySignalPopulation } from "../lib/feed/persistPrimarySignalPopulation";
 import { discoverSportsMarkets, collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
 import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
-import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
+import { writeResearchSnapshotGeneration } from "../lib/feed/cacheResearchSnapshots";
 import { shouldSuppressSportsInventoryWrite } from "../lib/feed/cacheSportsEventMarketInventory";
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
 import { isDatabaseTimeout, resolveSignalProducerMode } from "../lib/feed/moneyProducerMode";
@@ -458,7 +458,10 @@ async function main() {
       let researchInserted = 0;
       try {
         researchWriterAttempted = true;
-        const researchResult = await writeResearchEligibleSignalSnapshots({
+        // Chunks first, completion marker last (never marks a partial generation).
+        const researchResult = await writeResearchSnapshotGeneration({
+          snapshotRunId: researchSnapshotRunId as string,
+          snapshotAt: researchSnapshotAt as string,
           snapshots: dedupedSnapshots,
         });
         researchInserted = researchResult.inserted;
@@ -481,6 +484,22 @@ async function main() {
       console.log(`[generate-signals] Research odds corridor: 1.25–4.00`);
     } else {
       console.log(`[generate-signals] Research snapshots collected: 0`);
+      // Zero-row generation that reached the persistence boundary is a completed
+      // generation (row_count = 0), distinct from a generation that failed earlier.
+      try {
+        researchWriterAttempted = true;
+        await writeResearchSnapshotGeneration({
+          snapshotRunId: researchSnapshotRunId as string,
+          snapshotAt: researchSnapshotAt as string,
+          snapshots: [],
+        });
+      } catch (researchError) {
+        researchWriterWarning = researchError instanceof Error ? researchError.message : String(researchError);
+        console.warn(
+          "[generate-signals] Research generation marker write failed (non-fatal):",
+          researchWriterWarning,
+        );
+      }
     }
     // Append research writer stats to diagnostics for job_runs observability
     diagnostics.researchSnapshotsCollected = rawResearchSnapshots.length;

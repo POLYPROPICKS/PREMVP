@@ -1,5 +1,6 @@
 // Research snapshot cache layer — ISOLATED from public feed.
-// Writes ONLY to public.generated_signal_research_snapshots.
+// Writes ONLY to public.generated_signal_research_snapshots and the bounded
+// public.research_snapshot_runs completion marker.
 // Never reads or writes generated_signal_pairs.
 // Never affects API reads, UI, or resolver behavior.
 
@@ -108,5 +109,56 @@ export async function writeResearchEligibleSignalSnapshots({
     inserted += count ?? chunk.length;
   }
 
+  return { inserted };
+}
+
+/**
+ * Durable generation-completion marker (R1 freshness authority).
+ *
+ * One row per research snapshot run, written ONLY after every snapshot chunk of
+ * that run persisted. The T20 event-candidate RPC treats the latest two marked
+ * runs as its freshness authority. rowCount = 0 is a legitimate completed run.
+ * Insert-only (no upsert): service_role has no UPDATE/DELETE on the table.
+ */
+export async function markResearchSnapshotRunComplete({
+  snapshotRunId,
+  snapshotAt,
+  rowCount,
+}: {
+  snapshotRunId: string;
+  snapshotAt: string;
+  rowCount: number;
+}): Promise<void> {
+  const { error } = await (await scopedSupabaseAdmin())
+    .from("research_snapshot_runs")
+    .insert({
+      snapshot_run_id: snapshotRunId,
+      snapshot_at: snapshotAt,
+      row_count: rowCount,
+    });
+  if (error) {
+    throw new Error(
+      `Failed to mark research snapshot run complete: ${error.message} (run ${snapshotRunId}, ${rowCount} rows)`,
+    );
+  }
+}
+
+/**
+ * Persist one whole research generation: all snapshot chunks first, the
+ * completion marker last. A chunk failure throws before the marker is reached,
+ * so a partially persisted generation can never be marked complete. An empty
+ * generation that reaches the persistence boundary is marked with row_count = 0.
+ */
+export async function writeResearchSnapshotGeneration({
+  snapshotRunId,
+  snapshotAt,
+  snapshots,
+}: {
+  snapshotRunId: string;
+  snapshotAt: string;
+  snapshots: ResearchEligibleSignalSnapshot[];
+}): Promise<{ inserted: number }> {
+  const { inserted } = await writeResearchEligibleSignalSnapshots({ snapshots });
+  await markResearchSnapshotRunComplete({ snapshotRunId, snapshotAt, rowCount: inserted });
   return { inserted };
 }
