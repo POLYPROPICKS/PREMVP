@@ -1,4 +1,5 @@
 -- pg-delta: transaction=false
+-- PREMVP_APPLICATION_MIGRATION_V1
 
 -- PR #478 / PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1: access path for the daily
 -- event-universe RPC (game_start_iso range scan). Index only; no business semantics.
