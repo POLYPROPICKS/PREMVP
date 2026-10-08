@@ -7,6 +7,7 @@
 // Pure types only — no DB client, no side effects.
 
 import type { QueueStatus } from "./executorCallbackContract";
+import { isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
 export type { QueueStatus };
 
 export type ReservationStatus =
@@ -556,6 +557,8 @@ export function mapQueueRowToIrelandCandidate(
   // Primary MAKER_FIRST: emitted explicitly or not at all (throws) -- never falls through to TAKER.
   const frozenMode = t10FrozenExecutionMode(row.diagnostics);
   let primaryMaker: Partial<IrelandQueueCandidate> | null = null;
+  // LIVE_MONEY_FAMILY_AUTHORITY_V1: executor handoff never carries a non-live family (SPREADS), even on a pre-existing READY row.
+  if (isObservationOnlyMoneyFamily(row.market_family)) throw new QueueWireContractError("LIVE_MONEY_FAMILY_NOT_AUTHORIZED", row.id ?? null);
   if (frozenMode === "INVALID") throw new QueueWireContractError("T10_EXECUTION_MODE_INVALID", row.id ?? null);
   if (frozenMode === "MAKER_FIRST") {
     const frozen = readT10FrozenContract(row);

@@ -35,6 +35,7 @@ import {
   readValidShadowMarker,
   type ShadowEconomicActionMarker,
 } from "./t10RealMoneyPause";
+import { LiveMoneyFamilyNotAuthorizedError, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   physicalIdUnderStoredFormat,
@@ -771,6 +772,10 @@ export async function admitExecutableQueueRow(
   opts: { realMoneyEnabled?: boolean } = {},
 ): Promise<void> {
   assertMoneyMovementEnabled(contour, "EXECUTABLE_QUEUE_ROW_ADMISSION");
+  // LIVE_MONEY_FAMILY_AUTHORITY_V1: every executable Queue row (T10 economic, controlled, legacy seam) passes here.
+  if (isObservationOnlyMoneyFamily(row.market_family)) {
+    throw new LiveMoneyFamilyNotAuthorizedError("EXECUTABLE_QUEUE_ROW_ADMISSION", row.market_family);
+  }
   // T10_REAL_MONEY_EXECUTION_ENABLED=false (or malformed): no NEW executable authority, defense in depth for any
   // caller that did not divert to the shadow path first.
   if (!(opts.realMoneyEnabled ?? isRealMoneyExecutionEnabled())) {
