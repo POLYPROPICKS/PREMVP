@@ -74,6 +74,7 @@ export class HttpsTransportError extends Error {
 const DIRECT_TRANSPORT_CAUSES = [
   /hostname resolving error/i, /no such host/i, /network is unreachable/i, /address family not supported/i,
   /connection refused/i, /i\/o timeout/i, /dial tcp/i, /\bENETUNREACH\b/, /\bEAI_AGAIN\b/, /\bECONNREFUSED\b/, /\bETIMEDOUT\b/,
+  /connection terminated unexpectedly/i,
 ];
 /** Identity / authorization / policy-class failures: real gate failures, never a transport gap (checked FIRST). */
 const DIRECT_GATE_FAILURES = [
