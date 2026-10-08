@@ -12,6 +12,7 @@ import {
   TELEMETRY_PURGE_ORDER,
   type TelemetryPurgeCursor,
   type TelemetryTable,
+  type PurgeTable,
   type SyncRow,
   type Watermark,
 } from "../lib/research-clone/dailySync";
@@ -880,11 +881,12 @@ export function executableTelemetryParityConfirmedIds(
     .map((row) => row.id);
 }
 
-function telemetryTimeField(table: TelemetryTable): string {
+function telemetryTimeField(table: PurgeTable): string {
+  if (table === "generated_signal_research_snapshots") return "snapshot_at";
   return table === "reservation_strategy_observations" ? "evaluated_at" : "observed_at";
 }
 
-async function purgeTelemetry(target: Client, source: Client, nowMs: number) {
+async function purgeTelemetry(target: Client, source: Client, nowMs: number, researchSnapshots = false) {
   return purgeConfirmedTelemetry(nowMs, {
     async readCursor(table) {
       const field = telemetryTimeField(table);
@@ -933,7 +935,7 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number) {
       return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
     },
     async withoutProductionChildren(table, ids) {
-      if (!ids.length || table === "reservation_strategy_observations") return [...ids];
+      if (!ids.length || table === "reservation_strategy_observations" || table === "generated_signal_research_snapshots") return [...ids];
       const childTable = table === "reservation_market_observations"
         ? "reservation_strategy_observations" : "reservation_market_observations";
       const childKey = table === "reservation_market_observations" ? "market_observation_id" : "capture_run_id";
@@ -945,7 +947,10 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number) {
     },
     async deleteProductionIds(table, ids) {
       if (!ids.length) return;
-      const { error } = await source.from(table).delete().in("id", [...ids]);
+      const deletion = source.from(table).delete().in("id", [...ids]);
+      const { error } = await (table === "generated_signal_research_snapshots"
+        ? deletion.lte("snapshot_at", new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString())
+        : deletion);
       if (error) throw new Error(`TELEMETRY_PURGE_DELETE_${table}:${safeError(error)}`);
     },
     async writeCursor(table, cursor) {
@@ -955,7 +960,9 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number) {
         id: cursor?.id ?? "00000000-0000-0000-0000-000000000000",
       });
     },
-  }, TELEMETRY_PAGE_SIZE, TELEMETRY_MAX_PAGES);
+  }, TELEMETRY_PAGE_SIZE, TELEMETRY_MAX_PAGES, researchSnapshots
+    ? { tables: ["generated_signal_research_snapshots"], retentionDays: 7 }
+    : {});
 }
 
 // MAKE_RESEARCH_CLONE_SYNC_SELF_DIAGNOSTIC_V1 — structured, secret-free causal
@@ -1182,6 +1189,7 @@ export async function main(): Promise<void> {
       }
       const discoveryAudit = await repairDiscoveryAudit(target, source);
       const purge = await purgeTelemetry(target, source, Date.now());
+      const researchSnapshotPurge = await purgeTelemetry(target, source, Date.now(), true);
       // Execution analytics run strictly after telemetry copy + purge so a failure
       // here (left to throw to the outer handler) cannot skip or undo telemetry.
       const executionTables = {} as Record<HourlyExecutionTable, TableEvidence>;
@@ -1189,7 +1197,7 @@ export async function main(): Promise<void> {
         executionTables[spec.table as HourlyExecutionTable] = await syncTable(target, source, spec);
       }
       const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING);
-      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
+      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
       return;
     }
 
@@ -1254,6 +1262,7 @@ export async function main(): Promise<void> {
     const telemetrySchemasReady = TELEMETRY_PURGE_ORDER.every((table) => !schemaPendingTables.includes(table));
     const discoveryAudit = telemetrySchemasReady ? await repairDiscoveryAudit(target, source) : null;
     const telemetryPurge = telemetrySchemasReady ? await purgeTelemetry(target, source, Date.now()) : null;
+    const researchSnapshotPurge = await purgeTelemetry(target, source, Date.now(), true);
     const pendingTables: string[] = (Object.keys(tables) as TableName[]).filter(
       (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
     );
@@ -1272,6 +1281,7 @@ export async function main(): Promise<void> {
         RESEARCH_EVIDENCE_PAGE: researchEvidence,
         DISCOVERY_AUDIT_REPAIR: discoveryAudit,
         TELEMETRY_PURGE: telemetryPurge,
+        RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge,
         PENDING_TABLES: pendingTables,
         RESUME_PENDING: pendingTables.length > 0,
         DURATION_MS: Date.now() - startedAt,
