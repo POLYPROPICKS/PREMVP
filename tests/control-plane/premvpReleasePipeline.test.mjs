@@ -515,6 +515,10 @@ test('bounded prune transition accepts only the exact function replacement; gene
     validateApprovedMigrationRelease({ declaration, changedFiles: [file], readFile: () => source });
   const accepted = check(sql);
   assert.equal(accepted.ok, true, accepted.errors.join('\n'));
+  // The HTTPS transport forbids every SET (incl. SET LOCAL), so the pinned migration must carry none.
+  assert.doesNotMatch(sql, /^\s*SET\b/im);
+  // Re-adding transaction-control SET LOCAL is rejected by the exact-shape validator.
+  assert.equal(check(sql.replace('CREATE OR REPLACE', "SET LOCAL lock_timeout = '2s';\nCREATE OR REPLACE")).ok, false);
   // Declaration must name the exact target and keep the compatibility rollback.
   for (const fields of [{ bounded_prune_target: 'public.other' }, { bounded_prune_target: undefined },
     { rollback_strategy: 'REGENERABLE_SOURCE' }, { direct_raw_mutation: true }]) assert.equal(check(sql, fields).ok, false, JSON.stringify(fields));
