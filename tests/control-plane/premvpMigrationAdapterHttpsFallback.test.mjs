@@ -36,6 +36,7 @@ function makeTree() {
 echo "$*" >> "$FAKE_NPX_LOG"
 case "$FAKE_NPX_MODE" in
   transport_down) echo '{"_tag":"Error","error":{"code":"DbConnectError","message":"failed to connect to postgres: failed to connect to \`host=db.nbnldzfsxffztsfrrxqy.supabase.co user=postgres database=postgres\`: hostname resolving error"}}'; exit 1;;
+  connection_terminated) echo '{"_tag":"Error","error":{"code":"DbConnectError","message":"failed to connect to postgres: Connection terminated unexpectedly"}}'; exit 1;;
   auth_fail) echo '{"_tag":"Error","error":{"code":"DbConnectError","message":"failed to connect to postgres: failed to connect to \`host=db.nbnldzfsxffztsfrrxqy.supabase.co user=postgres database=postgres\`: failed SASL auth (password authentication failed for user postgres)"}}'; exit 1;;
   direct_ok)
     case "$*" in
@@ -100,6 +101,17 @@ test('direct DB reachable: the CLI path runs exactly as before and NO HTTPS requ
   assert.equal(r.out.transport, undefined, 'not the HTTPS transport');
   assert.equal(r.requests.length, 0);
   assert.ok(r.npxCalls.some((c) => c.includes('migration list')) && r.npxCalls.some((c) => c.includes('--dry-run')));
+  noSecrets(r);
+}));
+
+test('migration-list direct connection termination selects the existing HTTPS fallback', { skip }, withTree((tmp) => {
+  const r = runAdapter(tmp, { decl: targetDecl(), npx: 'connection_terminated' });
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(r.out.mode, 'dry_run');
+  assert.equal(r.out.direct_path_unavailable, true);
+  assert.equal(r.out.transport, 'SUPABASE_MANAGEMENT_API_HTTPS_V1');
+  assert.ok(r.npxCalls.some((c) => c.includes('migration list')));
+  assert.ok(r.requests.some((request) => request.path === '/migrations'));
   noSecrets(r);
 }));
 

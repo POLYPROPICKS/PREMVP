@@ -26,6 +26,13 @@ test('fallback is eligible ONLY for a proven direct-transport failure', () => {
   assert.equal(isDirectTransportUnavailable(observed), true);
   assert.equal(isDirectTransportUnavailable({ stderr: 'DbConnectError: dial tcp [2a05::1]:5432: connect: network is unreachable' }), true);
   assert.equal(isDirectTransportUnavailable({ message: 'failed to connect to postgres: dial tcp 1.2.3.4:5432: i/o timeout' }), true);
+  assert.equal(isDirectTransportUnavailable({ stdout: 'DbConnectError: failed to connect to postgres: Connection terminated unexpectedly' }), true);
+  assert.equal(isDirectTransportUnavailable({ stderr: 'failed to connect to postgres: Connection terminated unexpectedly' }), true);
+  assert.equal(isDirectTransportUnavailable({ stderr: 'Connection terminated unexpectedly' }), false);
+  assert.equal(isDirectTransportUnavailable({ stderr: 'DbConnectError: command terminated unexpectedly' }), false);
+  for (const gate of ['password authentication failed', 'SASL authentication failed', 'permission denied', 'TLS certificate verify failed']) {
+    assert.equal(isDirectTransportUnavailable({ stderr: `DbConnectError: ${gate}: Connection terminated unexpectedly` }), false, gate);
+  }
   // real gate failures are never routed around
   assert.equal(isDirectTransportUnavailable({ stdout: 'DbConnectError: failed to connect to postgres: password authentication failed for user "postgres"' }), false);
   assert.equal(isDirectTransportUnavailable({ stdout: 'DbConnectError ... hostname resolving error ... SASL authentication failed' }), false);
