@@ -22,9 +22,6 @@ const FORBIDDEN_SQL = [
 // The only SQL (after comment stripping and whitespace normalisation) the bounded prune class may carry.
 // DELETE FROM is permitted solely because it lives inside this exact, validated function body.
 const BOUNDED_PRUNE_EXACT_SQL = `
-SET LOCAL lock_timeout = '2s';
-SET LOCAL statement_timeout = '5s';
-
 CREATE OR REPLACE FUNCTION public.prune_current_signal_pair_serving(
   p_batch_size integer DEFAULT 25,
   p_resolved_source_generated_signal_pair_ids uuid[] DEFAULT NULL

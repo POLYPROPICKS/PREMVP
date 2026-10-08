@@ -7,9 +7,6 @@
 -- same predicates, ordering, FOR UPDATE SKIP LOCKED, return type and grants, and
 -- raises the maximum p_batch_size from 25 to 500. The default stays 25. It
 -- executes no data DELETE itself, adds no index and mutates no table.
-SET LOCAL lock_timeout = '2s';
-SET LOCAL statement_timeout = '5s';
-
 CREATE OR REPLACE FUNCTION public.prune_current_signal_pair_serving(
   p_batch_size integer DEFAULT 25,
   p_resolved_source_generated_signal_pair_ids uuid[] DEFAULT NULL
