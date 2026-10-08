@@ -1,0 +1,1442 @@
+{
+ "schema": "research_corpus_authority_v1",
+ "generated_at": "2026-10-08T14:18:19Z",
+ "main_sha_requested": "fc8ce096337eef2a7d86822905f40e439251ad94",
+ "main_sha": "cbf706175cefdbfe84c1cb4f88e2add739004f4c",
+ "main_sha_note": "origin/main had advanced past the requested SHA (requested SHA is an ancestor); measured against DBClone live state at generated_at",
+ "clone_project_ref": "nppznoujvnyjargjkmnv",
+ "db_access": "read-only (Management API database/query/read-only); 0 writes; production not queried",
+ "local_date_basis": "Europe/Minsk (UTC+3) applied to event_start_iso",
+ "dataset_summaries": [
+  {
+   "table": "reservation_market_capture_runs",
+   "role": "capture-attempt ledger per reservation x phase",
+   "row_n": 843,
+   "physical_event_n": 233,
+   "token_n": null,
+   "min_ts": "2026-09-30T14:01:16Z",
+   "max_ts": "2026-10-08T14:02:12Z",
+   "date_n": 9,
+   "currently_growing": "YES",
+   "primary_join_keys": [
+    "physical_event_id",
+    "reservation_id",
+    "id"
+   ],
+   "modeling_role": "coverage/completeness audit; 17 events have runs but no observations (REFERENCE_ONLY/CAPTURE_FAILED/INCOMPLETE)",
+   "capture_status_row_n": {
+    "COMPLETE": 563,
+    "REFERENCE_ONLY": 218,
+    "INCOMPLETE_MARKET_SET": 60,
+    "CAPTURE_FAILED": 2
+   },
+   "phase_row_n": {
+    "RESERVATION_BASELINE": 233,
+    "T_MINUS_30": 217,
+    "T_MINUS_10": 217,
+    "T_MINUS_3": 34,
+    "LIVE_GUARD": 142
+   }
+  },
+  {
+   "table": "reservation_market_observations",
+   "role": "PRIMARY prematch observational corpus (token-level book snapshots)",
+   "row_n": 20384,
+   "physical_event_n": 216,
+   "token_n": 9548,
+   "min_ts": "2026-09-30T14:50:39Z",
+   "max_ts": "2026-10-08T11:10:57Z",
+   "date_n": 9,
+   "currently_growing": "YES",
+   "primary_join_keys": [
+    "id",
+    "capture_run_id",
+    "reservation_id",
+    "physical_event_id",
+    "condition_id",
+    "token_id"
+   ],
+   "modeling_role": "A/B/C corpus: event_start_iso - observed_at path; independent of bet/no-bet"
+  },
+  {
+   "table": "reservation_strategy_observations",
+   "role": "per-variant decision telemetry over market observations",
+   "row_n": 78648,
+   "physical_event_n": 216,
+   "token_n": 9548,
+   "min_ts": "2026-09-30T14:50:39Z",
+   "max_ts": "2026-10-08T11:10:57Z",
+   "date_n": 9,
+   "currently_growing": "YES",
+   "primary_join_keys": [
+    "market_observation_id",
+    "capture_run_id",
+    "reservation_id",
+    "physical_event_id",
+    "token_id",
+    "strategy_variant"
+   ],
+   "modeling_role": "decision-authority only for A_CURRENT_CONTROL / B_FOUR_MARKET_PRIORITY_V1; S1-S3 are placeholders"
+  },
+  {
+   "table": "generated_signal_research_snapshots",
+   "role": "signal-engine feature snapshots (all rows)",
+   "row_n": 1130858,
+   "physical_event_n": null,
+   "event_id_n": 31698,
+   "token_n": 259914,
+   "min_ts": "2026-06-02T15:31:21Z",
+   "max_ts": "2026-10-07T22:02:51Z",
+   "date_n": 109,
+   "currently_growing": "YES",
+   "primary_join_keys": [
+    "snapshot_run_id",
+    "condition_id",
+    "selected_token_id",
+    "event_id",
+    "event_slug"
+   ],
+   "modeling_role": "feature/market-path history; no physical_event_id column (identity via event_id/event_slug)",
+   "since_2026_09_28": {
+    "row_n": 249480,
+    "event_id_n": 8855,
+    "token_n": 204339,
+    "date_n": 10
+   }
+  },
+  {
+   "table": "research_precontract_t20_observations",
+   "role": "pre-contract T20 orderbook research sample (observation_phase stored as T_MINUS_10)",
+   "row_n": 166,
+   "physical_event_n": 14,
+   "token_n": 166,
+   "min_ts": "2026-10-07T13:40:20Z",
+   "max_ts": "2026-10-07T17:40:34Z",
+   "date_n": 1,
+   "currently_growing": "NO (single sampling day 2026-10-07 observed)",
+   "primary_join_keys": [
+    "physical_event_id",
+    "condition_id",
+    "token_id"
+   ],
+   "modeling_role": "small executable-book sample, carries provider_sport_family",
+   "by_market_type": {
+    "MONEYLINE": {
+     "row_n": 40,
+     "physical_event_n": 14,
+     "executable_full_stake_n": 20
+    },
+    "SPREAD": {
+     "row_n": 66,
+     "physical_event_n": 6,
+     "executable_full_stake_n": 24
+    },
+    "TOTAL": {
+     "row_n": 60,
+     "physical_event_n": 6,
+     "executable_full_stake_n": 29
+    }
+   },
+   "sport_families": [
+    "basketball",
+    "hockey",
+    "soccer"
+   ]
+  },
+  {
+   "table": "research_inplay_core_path_observations",
+   "role": "in-play structured-state + book path",
+   "row_n": 2508,
+   "physical_event_n": 44,
+   "token_n": 88,
+   "min_ts": "2026-10-08T07:38:20Z",
+   "max_ts": "2026-10-08T14:02:55Z",
+   "date_n": 1,
+   "currently_growing": "YES",
+   "primary_join_keys": [
+    "physical_event_id",
+    "condition_id",
+    "token_id",
+    "sequence_in_event"
+   ],
+   "modeling_role": "E corpus"
+  },
+  {
+   "table": "research_model_ready_rows",
+   "role": "frozen legacy model-ready rows (RESEARCH_CLONE)",
+   "row_n": 114026,
+   "physical_event_n": null,
+   "provider_event_n": 21166,
+   "token_n": 77594,
+   "min_ts": "2026-08-03T21:04:00Z",
+   "max_ts": "2026-10-07T20:32:04Z",
+   "date_n": 66,
+   "currently_growing": "NO (materialized; confirm before reuse)",
+   "primary_join_keys": [
+    "population_id",
+    "condition_id",
+    "selected_token_id",
+    "provider_event_id"
+   ],
+   "modeling_role": "F legacy",
+   "labels": {
+    "WIN": 28580,
+    "LOSS": 30110,
+    "OPEN": 55336
+   },
+   "label_settled_n": 58690,
+   "sport_families": 9,
+   "event_start_range": [
+    "2026-07-28",
+    "2026-10-31"
+   ]
+  },
+  {
+   "table": "generated_signal_pairs",
+   "role": "frozen older clone authority",
+   "row_n": 3065533,
+   "min_ts": "2026-05-05",
+   "max_ts": "2026-10-07",
+   "currently_growing": "UNKNOWN (created_at max 2026-10-07)",
+   "primary_join_keys": [
+    "not profiled"
+   ],
+   "modeling_role": "F legacy; row count only"
+  },
+  {
+   "table": "bet_execution_ledger + event_execution_queue + night_event_reservations",
+   "role": "actual execution / settlement lineage",
+   "row_n": 31,
+   "ledger_rows_with_exchange_order": 31,
+   "physical_event_n": 31,
+   "min_ts": "2026-09-30",
+   "max_ts": "2026-10-07",
+   "currently_growing": "YES",
+   "primary_join_keys": [
+    "ledger(condition_id,token_id) -> queue(condition_id,token_id) -> queue.reservation_id -> night_event_reservations.id -> physical_event_id"
+   ],
+   "modeling_role": "D; ledger has no reservation_id/physical_event_id column \u2014 joined via exact (condition_id, token_id) through the queue; no fan-out (31 rows -> 31 reservations -> 31 events)",
+   "queue_status_n": {
+    "EXECUTED": 300,
+    "EXPIRED": 268,
+    "CLAIMED": 232,
+    "FAILED": 54,
+    "READY": 3,
+    "SKIPPED": 1
+   },
+   "reservations": {
+    "row_n": 1276,
+    "physical_event_n": 1158,
+    "min": "2026-06-22",
+    "max": "2026-10-07"
+   }
+  }
+ ],
+ "no_bet_event_counts": {
+  "definition": "actual execution = bet_execution_ledger row with exchange_order_id and bet_status in (FILLED,WON,LOST) joined to a physical event via exact (condition_id,token_id) -> event_execution_queue -> night_event_reservations. NOT inferred from SELECTED, reservation, queue or observation existence.",
+  "observed_physical_event_n": 216,
+  "capture_run_physical_event_n": 233,
+  "actual_execution_physical_event_n_total": 31,
+  "actual_execution_physical_event_n_in_corpus": 29,
+  "actual_execution_with_fill_price_in_corpus": 27,
+  "actual_execution_outside_corpus": 2,
+  "no_bet_observed_event_n": 187,
+  "arithmetic": "216 - 29 = 187",
+  "no_bet_events_included_in_corpus": "YES",
+  "inclusion_rule": "corpus membership = presence in reservation_market_observations; bet/no-bet status is not a filter",
+  "strategy_selected_events": {
+   "A_CURRENT_CONTROL": 102,
+   "B_FOUR_MARKET_PRIORITY_V1": 127,
+   "note": "SELECTED is a strategy label, not execution; not used for the no-bet split"
+  }
+ },
+ "phase_coverage": {
+  "phase_totals": [
+   {
+    "observation_phase": "LIVE_GUARD",
+    "row_n": 142,
+    "physical_event_n": 142,
+    "token_n": 142,
+    "minutes_to_start_min": 3.69,
+    "minutes_to_start_median": 14.45,
+    "minutes_to_start_max": 69.62
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "row_n": 9382,
+    "physical_event_n": 213,
+    "token_n": 9338,
+    "minutes_to_start_min": 11.95,
+    "minutes_to_start_median": 14.59,
+    "minutes_to_start_max": 19.97
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "row_n": 1374,
+    "physical_event_n": 31,
+    "token_n": 1374,
+    "minutes_to_start_min": 3.98,
+    "minutes_to_start_median": 4.57,
+    "minutes_to_start_max": 4.97
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "row_n": 9486,
+    "physical_event_n": 213,
+    "token_n": 9442,
+    "minutes_to_start_min": 26.21,
+    "minutes_to_start_median": 29.66,
+    "minutes_to_start_max": 39.89
+   }
+  ],
+  "phase_x_local_event_date_x_market_type": [
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-09-30",
+    "canonical_market_type": "NULL",
+    "row_n": 3,
+    "physical_event_n": 3,
+    "token_n": 3
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "NULL",
+    "row_n": 16,
+    "physical_event_n": 16,
+    "token_n": 16
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "NULL",
+    "row_n": 14,
+    "physical_event_n": 14,
+    "token_n": 14
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-03",
+    "canonical_market_type": "NULL",
+    "row_n": 24,
+    "physical_event_n": 24,
+    "token_n": 24
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-04",
+    "canonical_market_type": "NULL",
+    "row_n": 25,
+    "physical_event_n": 25,
+    "token_n": 25
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-05",
+    "canonical_market_type": "NULL",
+    "row_n": 8,
+    "physical_event_n": 8,
+    "token_n": 8
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-06",
+    "canonical_market_type": "NULL",
+    "row_n": 28,
+    "physical_event_n": 28,
+    "token_n": 28
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-07",
+    "canonical_market_type": "NULL",
+    "row_n": 13,
+    "physical_event_n": 13,
+    "token_n": 13
+   },
+   {
+    "observation_phase": "LIVE_GUARD",
+    "local_event_date": "2026-10-08",
+    "canonical_market_type": "NULL",
+    "row_n": 11,
+    "physical_event_n": 11,
+    "token_n": 11
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 60,
+    "physical_event_n": 10,
+    "token_n": 60
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "NULL",
+    "row_n": 634,
+    "physical_event_n": 12,
+    "token_n": 634
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "OTHER_STRUCTURED",
+    "row_n": 74,
+    "physical_event_n": 3,
+    "token_n": 74
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "SPREAD",
+    "row_n": 180,
+    "physical_event_n": 9,
+    "token_n": 180
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "TOTAL",
+    "row_n": 162,
+    "physical_event_n": 9,
+    "token_n": 162
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 150,
+    "physical_event_n": 25,
+    "token_n": 150
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "SPREAD",
+    "row_n": 500,
+    "physical_event_n": 25,
+    "token_n": 500
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "TOTAL",
+    "row_n": 450,
+    "physical_event_n": 25,
+    "token_n": 450
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-03",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 252,
+    "physical_event_n": 42,
+    "token_n": 252
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-03",
+    "canonical_market_type": "SPREAD",
+    "row_n": 840,
+    "physical_event_n": 42,
+    "token_n": 840
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-03",
+    "canonical_market_type": "TOTAL",
+    "row_n": 756,
+    "physical_event_n": 42,
+    "token_n": 756
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-04",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 324,
+    "physical_event_n": 54,
+    "token_n": 324
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-04",
+    "canonical_market_type": "SPREAD",
+    "row_n": 1080,
+    "physical_event_n": 54,
+    "token_n": 1080
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-04",
+    "canonical_market_type": "TOTAL",
+    "row_n": 972,
+    "physical_event_n": 54,
+    "token_n": 972
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-05",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 90,
+    "physical_event_n": 15,
+    "token_n": 90
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-05",
+    "canonical_market_type": "SPREAD",
+    "row_n": 300,
+    "physical_event_n": 15,
+    "token_n": 300
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-05",
+    "canonical_market_type": "TOTAL",
+    "row_n": 270,
+    "physical_event_n": 15,
+    "token_n": 270
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-06",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 168,
+    "physical_event_n": 28,
+    "token_n": 168
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-06",
+    "canonical_market_type": "SPREAD",
+    "row_n": 560,
+    "physical_event_n": 28,
+    "token_n": 560
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-06",
+    "canonical_market_type": "TOTAL",
+    "row_n": 504,
+    "physical_event_n": 28,
+    "token_n": 504
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-07",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 78,
+    "physical_event_n": 13,
+    "token_n": 78
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-07",
+    "canonical_market_type": "SPREAD",
+    "row_n": 260,
+    "physical_event_n": 13,
+    "token_n": 260
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-07",
+    "canonical_market_type": "TOTAL",
+    "row_n": 234,
+    "physical_event_n": 13,
+    "token_n": 234
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-08",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 66,
+    "physical_event_n": 11,
+    "token_n": 66
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-08",
+    "canonical_market_type": "SPREAD",
+    "row_n": 220,
+    "physical_event_n": 11,
+    "token_n": 220
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "local_event_date": "2026-10-08",
+    "canonical_market_type": "TOTAL",
+    "row_n": 198,
+    "physical_event_n": 11,
+    "token_n": 198
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 60,
+    "physical_event_n": 10,
+    "token_n": 60
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "NULL",
+    "row_n": 634,
+    "physical_event_n": 12,
+    "token_n": 634
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "OTHER_STRUCTURED",
+    "row_n": 74,
+    "physical_event_n": 3,
+    "token_n": 74
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "SPREAD",
+    "row_n": 180,
+    "physical_event_n": 9,
+    "token_n": 180
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "TOTAL",
+    "row_n": 162,
+    "physical_event_n": 9,
+    "token_n": 162
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 36,
+    "physical_event_n": 6,
+    "token_n": 36
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "SPREAD",
+    "row_n": 120,
+    "physical_event_n": 6,
+    "token_n": 120
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "TOTAL",
+    "row_n": 108,
+    "physical_event_n": 6,
+    "token_n": 108
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 42,
+    "physical_event_n": 7,
+    "token_n": 42
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "NULL",
+    "row_n": 634,
+    "physical_event_n": 12,
+    "token_n": 634
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "OTHER_STRUCTURED",
+    "row_n": 272,
+    "physical_event_n": 6,
+    "token_n": 272
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "SPREAD",
+    "row_n": 140,
+    "physical_event_n": 7,
+    "token_n": 140
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-01",
+    "canonical_market_type": "TOTAL",
+    "row_n": 126,
+    "physical_event_n": 7,
+    "token_n": 126
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 150,
+    "physical_event_n": 25,
+    "token_n": 150
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "SPREAD",
+    "row_n": 500,
+    "physical_event_n": 25,
+    "token_n": 500
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-02",
+    "canonical_market_type": "TOTAL",
+    "row_n": 450,
+    "physical_event_n": 25,
+    "token_n": 450
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-03",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 252,
+    "physical_event_n": 42,
+    "token_n": 252
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-03",
+    "canonical_market_type": "SPREAD",
+    "row_n": 840,
+    "physical_event_n": 42,
+    "token_n": 840
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-03",
+    "canonical_market_type": "TOTAL",
+    "row_n": 756,
+    "physical_event_n": 42,
+    "token_n": 756
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-04",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 324,
+    "physical_event_n": 54,
+    "token_n": 324
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-04",
+    "canonical_market_type": "SPREAD",
+    "row_n": 1080,
+    "physical_event_n": 54,
+    "token_n": 1080
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-04",
+    "canonical_market_type": "TOTAL",
+    "row_n": 972,
+    "physical_event_n": 54,
+    "token_n": 972
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-05",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 90,
+    "physical_event_n": 15,
+    "token_n": 90
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-05",
+    "canonical_market_type": "SPREAD",
+    "row_n": 300,
+    "physical_event_n": 15,
+    "token_n": 300
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-05",
+    "canonical_market_type": "TOTAL",
+    "row_n": 270,
+    "physical_event_n": 15,
+    "token_n": 270
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-06",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 168,
+    "physical_event_n": 28,
+    "token_n": 168
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-06",
+    "canonical_market_type": "SPREAD",
+    "row_n": 560,
+    "physical_event_n": 28,
+    "token_n": 560
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-06",
+    "canonical_market_type": "TOTAL",
+    "row_n": 504,
+    "physical_event_n": 28,
+    "token_n": 504
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-07",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 78,
+    "physical_event_n": 13,
+    "token_n": 78
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-07",
+    "canonical_market_type": "SPREAD",
+    "row_n": 260,
+    "physical_event_n": 13,
+    "token_n": 260
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-07",
+    "canonical_market_type": "TOTAL",
+    "row_n": 234,
+    "physical_event_n": 13,
+    "token_n": 234
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-08",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 66,
+    "physical_event_n": 11,
+    "token_n": 66
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-08",
+    "canonical_market_type": "SPREAD",
+    "row_n": 220,
+    "physical_event_n": 11,
+    "token_n": 220
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "local_event_date": "2026-10-08",
+    "canonical_market_type": "TOTAL",
+    "row_n": 198,
+    "physical_event_n": 11,
+    "token_n": 198
+   }
+  ],
+  "analytical_time_truth": "event_start_iso - observed_at (minutes_to_start); phase labels are sampling labels only",
+  "phase_notes": {
+   "LIVE_GUARD": "1 row per event, canonical_market_type NULL (pre-canonical guard rows); minutes_to_start up to 69.6",
+   "T_MINUS_3": "legacy, last row 2026-10-02"
+  }
+ },
+ "market_coverage": [
+  {
+   "canonical_market_family": "SPREADS",
+   "canonical_market_type": "SPREAD",
+   "row_n": 8140,
+   "physical_event_n": 197,
+   "first_seen": "2026-10-01 18:15:47.945+00",
+   "last_seen": "2026-10-08 11:10:57.145+00"
+  },
+  {
+   "canonical_market_family": "TOTALS",
+   "canonical_market_type": "TOTAL",
+   "row_n": 7326,
+   "physical_event_n": 197,
+   "first_seen": "2026-10-01 18:15:47.945+00",
+   "last_seen": "2026-10-08 11:10:57.145+00"
+  },
+  {
+   "canonical_market_family": "MONEYLINE",
+   "canonical_market_type": "MONEYLINE",
+   "row_n": 2454,
+   "physical_event_n": 198,
+   "first_seen": "2026-10-01 15:30:20.372+00",
+   "last_seen": "2026-10-08 11:10:57.145+00"
+  },
+  {
+   "canonical_market_family": "NULL",
+   "canonical_market_type": "NULL",
+   "row_n": 2044,
+   "physical_event_n": 142,
+   "first_seen": "2026-09-30 14:50:39.934+00",
+   "last_seen": "2026-10-08 11:10:57.145+00"
+  },
+  {
+   "canonical_market_family": "OTHER_STRUCTURED",
+   "canonical_market_type": "OTHER_STRUCTURED",
+   "row_n": 420,
+   "physical_event_n": 6,
+   "first_seen": "2026-10-01 16:15:47.769+00",
+   "last_seen": "2026-10-01 18:15:47.945+00"
+  }
+ ],
+ "market_status": {
+  "MONEYLINE": "AVAILABLE",
+  "TOTAL": "AVAILABLE",
+  "SPREAD": "SETTLEMENT_ANALYTICALLY_QUARANTINED",
+  "TOTAL_CORNERS": "SOURCE_SAMPLE_ABSENT (0 rows in any phase; canonical_market_type has no TOTAL_CORNERS value)",
+  "OTHER_STRUCTURED": "SAMPLE_TINY (420 rows, 6 events, 2026-10-01 only)",
+  "NULL_UNKNOWN": "LEGACY (2044 rows: 142 LIVE_GUARD + 3 x 634 legacy T10/T3/T30 rows for 12 events; pre-canonical)"
+ },
+ "executable_coverage": {
+  "by_phase_type_version": [
+   {
+    "observation_phase": "LIVE_GUARD",
+    "canonical_market_type": null,
+    "executable_telemetry_version": null,
+    "row_n": 142,
+    "physical_event_n": 142,
+    "full_stake_executable_vwap_nn": 70,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 142
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": "MONEYLINE",
+    "executable_telemetry_version": "T10_EXECUTABLE_SIBLING_TELEMETRY_V1",
+    "row_n": 312,
+    "physical_event_n": 52,
+    "full_stake_executable_vwap_nn": 169,
+    "full_stake_shares_nn": 169,
+    "executable_full_stake_true_n": 156,
+    "taker_fee_usd_nn": 169,
+    "fee_known_n": 312,
+    "fee_unknown_n": 0
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": "MONEYLINE",
+    "executable_telemetry_version": null,
+    "row_n": 876,
+    "physical_event_n": 146,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 876
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": "OTHER_STRUCTURED",
+    "executable_telemetry_version": null,
+    "row_n": 74,
+    "physical_event_n": 3,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 74
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": "SPREAD",
+    "executable_telemetry_version": "T10_EXECUTABLE_SIBLING_TELEMETRY_V1",
+    "row_n": 1040,
+    "physical_event_n": 52,
+    "full_stake_executable_vwap_nn": 416,
+    "full_stake_shares_nn": 416,
+    "executable_full_stake_true_n": 409,
+    "taker_fee_usd_nn": 416,
+    "fee_known_n": 1040,
+    "fee_unknown_n": 0
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": "SPREAD",
+    "executable_telemetry_version": null,
+    "row_n": 2900,
+    "physical_event_n": 145,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 2900
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": "TOTAL",
+    "executable_telemetry_version": "T10_EXECUTABLE_SIBLING_TELEMETRY_V1",
+    "row_n": 936,
+    "physical_event_n": 52,
+    "full_stake_executable_vwap_nn": 490,
+    "full_stake_shares_nn": 490,
+    "executable_full_stake_true_n": 454,
+    "taker_fee_usd_nn": 490,
+    "fee_known_n": 936,
+    "fee_unknown_n": 0
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": "TOTAL",
+    "executable_telemetry_version": null,
+    "row_n": 2610,
+    "physical_event_n": 145,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 2610
+   },
+   {
+    "observation_phase": "T_MINUS_10",
+    "canonical_market_type": null,
+    "executable_telemetry_version": null,
+    "row_n": 634,
+    "physical_event_n": 12,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 634
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "canonical_market_type": "MONEYLINE",
+    "executable_telemetry_version": null,
+    "row_n": 96,
+    "physical_event_n": 16,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 96
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "canonical_market_type": "OTHER_STRUCTURED",
+    "executable_telemetry_version": null,
+    "row_n": 74,
+    "physical_event_n": 3,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 74
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "canonical_market_type": "SPREAD",
+    "executable_telemetry_version": null,
+    "row_n": 300,
+    "physical_event_n": 15,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 300
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "canonical_market_type": "TOTAL",
+    "executable_telemetry_version": null,
+    "row_n": 270,
+    "physical_event_n": 15,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 270
+   },
+   {
+    "observation_phase": "T_MINUS_3",
+    "canonical_market_type": null,
+    "executable_telemetry_version": null,
+    "row_n": 634,
+    "physical_event_n": 12,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 634
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "canonical_market_type": "MONEYLINE",
+    "executable_telemetry_version": null,
+    "row_n": 1170,
+    "physical_event_n": 195,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 1170
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "canonical_market_type": "OTHER_STRUCTURED",
+    "executable_telemetry_version": null,
+    "row_n": 272,
+    "physical_event_n": 6,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 272
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "canonical_market_type": "SPREAD",
+    "executable_telemetry_version": null,
+    "row_n": 3900,
+    "physical_event_n": 195,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 3900
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "canonical_market_type": "TOTAL",
+    "executable_telemetry_version": null,
+    "row_n": 3510,
+    "physical_event_n": 195,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 3510
+   },
+   {
+    "observation_phase": "T_MINUS_30",
+    "canonical_market_type": null,
+    "executable_telemetry_version": null,
+    "row_n": 634,
+    "physical_event_n": 12,
+    "full_stake_executable_vwap_nn": 0,
+    "full_stake_shares_nn": 0,
+    "executable_full_stake_true_n": 0,
+    "taker_fee_usd_nn": 0,
+    "fee_known_n": 0,
+    "fee_unknown_n": 634
+   }
+  ],
+  "T30_BOOK_EXECUTABLE_EVIDENCE_N": 0,
+  "T30_note": "T30_PASSIVE_EXECUTABLE_BOOK_V1 code merged 2026-10-08T13:23Z (f691e6a); newest T30 row in clone is 2026-10-08T10:50Z, so zero persisted rows carry it. Fee semantics when it lands: UNKNOWN / FEE_NOT_ATTEMPTED_PASSIVE_RESEARCH \u2014 never merged with T10 executable cost.",
+  "T10_FEE_COMPLETE_EXECUTABLE_EVIDENCE_N": 1019,
+  "T10_fee_complete_definition": "rows with executable_full_stake=true AND taker_fee_state=KNOWN AND taker_fee_usd non-null; spans 52 physical events (telemetry first seen 2026-10-05T20:45Z); T10 telemetry rows total 2288, vwap non-null 1075",
+  "LIVE_GUARD_EXECUTABLE_EVIDENCE_N": 0,
+  "LIVE_GUARD_note": "70 of 142 LIVE_GUARD rows carry full_stake_executable_vwap, but no shares, no executable flag/state, no telemetry version, no fee -> classified vwap-only, not full-stake-verified executable"
+ },
+ "decision_authority": {
+  "variants": [
+   {
+    "strategy_variant": "A_CURRENT_CONTROL",
+    "classification": "VALID_DECISION_AUTHORITY",
+    "note": "eligible known on all rows; SELECTED 102 events, EVALUATED_NOT_SELECTED 8646 rows / 201 events; strategy_version P1B1_T3_AB_V1; maker fields absent (not applicable)"
+   },
+   {
+    "strategy_variant": "B_FOUR_MARKET_PRIORITY_V1",
+    "classification": "VALID_DECISION_AUTHORITY",
+    "note": "eligible known on all rows; SELECTED 127 events, EVALUATED_NOT_SELECTED 8621 rows / 201 events; strategy_version P1B1_T3_AB_V1"
+   },
+   {
+    "strategy_variant": "S1_TAKER_HOLD",
+    "classification": "PLACEHOLDER_NOT_EVALUATED",
+    "note": "20384 NOT_EVALUATED rows; eligible/maker fields all NULL"
+   },
+   {
+    "strategy_variant": "S2_FIXED_MAKER_HOLD",
+    "classification": "PLACEHOLDER_NOT_EVALUATED",
+    "note": "20384 NOT_EVALUATED rows; maker_target_state NOT_DEFINED_YET; target price/touched all NULL"
+   },
+   {
+    "strategy_variant": "S3_MAKER_VALUE_BAND_HOLD",
+    "classification": "PLACEHOLDER_NOT_EVALUATED",
+    "note": "20384 NOT_EVALUATED rows; eligible/maker fields all NULL"
+   }
+  ],
+  "by_variant_state": [
+   {
+    "strategy_variant": "A_CURRENT_CONTROL",
+    "evaluation_state": "EVALUATED_NOT_SELECTED",
+    "row_n": 8646,
+    "physical_event_n": 201,
+    "maker_target_price_nn": 0,
+    "target_touched_known_n": 0,
+    "eligible_known_n": 8646
+   },
+   {
+    "strategy_variant": "A_CURRENT_CONTROL",
+    "evaluation_state": "SELECTED",
+    "row_n": 102,
+    "physical_event_n": 102,
+    "maker_target_price_nn": 0,
+    "target_touched_known_n": 0,
+    "eligible_known_n": 102
+   },
+   {
+    "strategy_variant": "B_FOUR_MARKET_PRIORITY_V1",
+    "evaluation_state": "EVALUATED_NOT_SELECTED",
+    "row_n": 8621,
+    "physical_event_n": 201,
+    "maker_target_price_nn": 0,
+    "target_touched_known_n": 0,
+    "eligible_known_n": 8621
+   },
+   {
+    "strategy_variant": "B_FOUR_MARKET_PRIORITY_V1",
+    "evaluation_state": "SELECTED",
+    "row_n": 127,
+    "physical_event_n": 127,
+    "maker_target_price_nn": 0,
+    "target_touched_known_n": 0,
+    "eligible_known_n": 127
+   },
+   {
+    "strategy_variant": "S1_TAKER_HOLD",
+    "evaluation_state": "NOT_EVALUATED",
+    "row_n": 20384,
+    "physical_event_n": 216,
+    "maker_target_price_nn": 0,
+    "target_touched_known_n": 0,
+    "eligible_known_n": 0
+   },
+   {
+    "strategy_variant": "S2_FIXED_MAKER_HOLD",
+    "evaluation_state": "NOT_EVALUATED",
+    "row_n": 20384,
+    "physical_event_n": 216,
+    "maker_target_price_nn": 0,
+    "target_touched_known_n": 0,
+    "eligible_known_n": 0
+   },
+   {
+    "strategy_variant": "S3_MAKER_VALUE_BAND_HOLD",
+    "evaluation_state": "NOT_EVALUATED",
+    "row_n": 20384,
+    "physical_event_n": 216,
+    "maker_target_price_nn": 0,
+    "target_touched_known_n": 0,
+    "eligible_known_n": 0
+   }
+  ],
+  "WOULD_BET_ECONOMIC_DECISION_AUTHORITY": "PARTIAL",
+  "would_bet_basis": "A/B eligible+SELECTED persisted, but no persisted economic decision fields (no stake/EV/price-cap decision per row); S1-S3 placeholders; maker_target_price and target_touched non-null = 0 everywhere. Not patched."
+ },
+ "settlement_joinability": {
+  "path": "physical_event_id -> reservation_id -> capture_run_id -> market_observation(condition_id,token_id) -> queue/execution (ledger exchange_order_id) -> fill evidence (fill_price) -> terminal exact-token settlement (raw_order.settlement_v1.winning_token_id)",
+  "ledger_execution_rows": 31,
+  "ACTUAL_EXECUTION_JOINABLE_EVENT_N": 29,
+  "ACTUAL_EXECUTION_JOINABLE_EVENT_N_note": "29 of 31 executed events join to a capture run, reservation-level observation and exact (condition_id,token_id) market observation; 2 executed events pre-date the corpus",
+  "ACTUAL_EXECUTION_EVENT_N_total_ledger": 31,
+  "events_with_fill_price_in_corpus": 27,
+  "ACTUAL_SETTLED_JOINABLE_EVENT_N": 25,
+  "ACTUAL_SETTLED_total_ledger_events": 27,
+  "UNRESOLVED_EXECUTION_EVENT_N": 4,
+  "UNRESOLVED_note": "4 FILLED, no settlement_v1 (2 of 4 also lack fill_price); all 4 inside the corpus",
+  "settlement_consistency": {
+   "WON": 13,
+   "LOST": 14,
+   "won_with_winning_token_eq_token": 13,
+   "lost_with_winning_token_ne_token": 14,
+   "inconsistent": 0,
+   "reconciliation_present": 27
+  },
+  "EXACT_TOKEN_SETTLEMENT_JOIN": "PASS",
+  "caveats": [
+   "clone ledger has filled_at, result_side, real_pnl all NULL; settlement authority is raw_order.settlement_v1 only",
+   "31 executed rows is a tiny sample; no PnL analysed here"
+  ]
+ },
+ "prematch_path_counts": {
+  "definition": "physical events per canonical_market_type with the phase present (canonical-typed rows only)",
+  "by_market_type": {
+   "MONEYLINE": {
+    "event_n": 198,
+    "BOTH": 195,
+    "T30_ONLY": 0,
+    "T10_ONLY": 3
+   },
+   "TOTAL": {
+    "event_n": 197,
+    "BOTH": 195,
+    "T30_ONLY": 0,
+    "T10_ONLY": 2
+   },
+   "SPREAD": {
+    "event_n": 197,
+    "BOTH": 195,
+    "T30_ONLY": 0,
+    "T10_ONLY": 2
+   },
+   "OTHER_STRUCTURED": {
+    "event_n": 6,
+    "BOTH": 3,
+    "T30_ONLY": 3,
+    "T10_ONLY": 0
+   }
+  }
+ },
+ "inplay_coverage": {
+  "by_family_type": [
+   {
+    "provider_sport_family": "tennis",
+    "canonical_market_type": "MONEYLINE",
+    "row_n": 2508,
+    "physical_event_n": 44,
+    "token_n": 88,
+    "min_observed_at": "2026-10-08T07:38:20Z",
+    "max_observed_at": "2026-10-08T14:02:55Z",
+    "distinct_calendar_days": 1
+   }
+  ],
+  "events_with_FINAL_STATE": 30,
+  "events_without_FINAL_STATE": 14,
+  "final_definition": "any row with event_live_status=FINAL",
+  "state_authority": "SPORTS_WS_STRUCTURED_STATUS",
+  "note": "tennis x MONEYLINE only; day 1 of collection; growing"
+ },
+ "sport_authority": {
+  "CANONICAL_SPORT_AUTHORITY": "research_evidence_page_rows.provider_sport_family via reservation provider_event_id (exact join; ancillary: provider_sport_family on research_precontract_t20_observations / research_inplay_core_path_observations via physical_event_id)",
+  "night_event_reservations.sport": "NOT canonical (league/provider-style codes e.g. unl, conl, lal, epl)",
+  "CANONICAL_SPORT_MAPPED_EVENT_N": 213,
+  "SPORT_UNRESOLVED_EVENT_N": 3,
+  "unresolved_reason": "reservation provider_event_id is NULL for 3 observed events; no guessed mapping",
+  "conflicting_mappings": 0,
+  "families_seen": [
+   "baseball",
+   "basketball",
+   "cricket",
+   "esports",
+   "hockey",
+   "mma",
+   "soccer",
+   "table-tennis",
+   "tennis"
+  ]
+ },
+ "corpus_classes": [
+  {
+   "class": "A_PREMATCH_MARKET_PATH",
+   "event_n": 213,
+   "date_range": "2026-09-30..2026-10-08",
+   "market_types": [
+    "MONEYLINE",
+    "TOTAL",
+    "SPREAD",
+    "(OTHER_STRUCTURED tiny)"
+   ],
+   "executable_quality": "book top-of-book only (best bid/ask, depth)",
+   "settlement_quality": "none in table; terminal truth only for the 25 settled executed events",
+   "known_limitation": "no market-level settlement truth; SPREAD settlement quarantined; TOTAL_CORNERS absent; 3 events without sport"
+  },
+  {
+   "class": "B_PREMATCH_EXECUTABLE_T10",
+   "event_n": 52,
+   "date_range": "2026-10-05..2026-10-08",
+   "market_types": [
+    "MONEYLINE",
+    "TOTAL",
+    "SPREAD"
+   ],
+   "executable_quality": "book-derived full-stake VWAP+shares+taker fee KNOWN (1019 fee-complete rows)",
+   "settlement_quality": "none beyond executed sample",
+   "known_limitation": "only 52 events; telemetry only since 2026-10-05; executable_full_stake false on 56 rows (depth/min size)"
+  },
+  {
+   "class": "C_PREMATCH_EXECUTABLE_T30_PASSIVE",
+   "event_n": 0,
+   "date_range": null,
+   "market_types": [],
+   "executable_quality": "book-only, fee UNKNOWN by design",
+   "settlement_quality": "none",
+   "known_limitation": "zero persisted rows in clone: code merged after newest T30 row; re-measure after next capture cycle"
+  },
+  {
+   "class": "D_ACTUAL_EXECUTION_SETTLEMENT",
+   "event_n": 29,
+   "date_range": "2026-09-30..2026-10-07",
+   "market_types": [
+    "(by ledger; not profiled)"
+   ],
+   "executable_quality": "real fills (27 with fill_price)",
+   "settlement_quality": "exact-token PASS: 25 settled (13 WON/14 LOST over all 27 settled), 4 unresolved in corpus",
+   "known_limitation": "31 ledger rows total; clone ledger lacks filled_at/result_side/real_pnl; selection-biased vs observed universe"
+  },
+  {
+   "class": "E_INPLAY_PATH",
+   "event_n": 44,
+   "date_range": "2026-10-08..2026-10-08",
+   "market_types": [
+    "MONEYLINE"
+   ],
+   "executable_quality": "book + full-stake VWAP/exit fields present",
+   "settlement_quality": "FINAL_STATE observed for 30 of 44 events",
+   "known_limitation": "tennis only; single day; 14 events lack FINAL"
+  },
+  {
+   "class": "F_LEGACY_RESEARCH_HISTORY",
+   "event_n": null,
+   "event_n_detail": {
+    "gsrs_event_id_n": 31698,
+    "model_ready_provider_event_n": 21166
+   },
+   "date_range": "2026-05-05..2026-10-07",
+   "market_types": [
+    "mixed (signal-engine families)"
+   ],
+   "executable_quality": "signal entry price only; no orderbook executable evidence",
+   "settlement_quality": "model_ready: 58690 WIN/LOSS labelled, 55336 OPEN",
+   "known_limitation": "no physical_event_id; different identity space (event_id/provider_event_id); not directly joinable to the reservation corpus without an identity bridge"
+  }
+ ],
+ "known_gaps": [
+  "T30 passive executable evidence not yet persisted (0 rows)",
+  "TOTAL_CORNERS source sample absent",
+  "SPREAD settlement anomaly unresolved -> analytically quarantined",
+  "S1/S2/S3 strategy variants are NOT_EVALUATED placeholders; maker_target_price/target_touched never populated",
+  "WOULD_BET_ECONOMIC_DECISION_AUTHORITY=PARTIAL",
+  "executed sample is only 31 ledger rows (29 in corpus, 25 settled); clone ledger lacks filled_at/result_side/real_pnl",
+  "corpus spans only 9 days (2026-09-30..2026-10-08); T10 executable telemetry only 4 days",
+  "3 observed events without canonical sport; night_event_reservations.sport is not canonical",
+  "17 capture-run events (233 vs 216) have no market observations",
+  "legacy GSRS/model_ready use a different event identity from the reservation corpus; no bridge proven here",
+  "in-play is tennis MONEYLINE on a single day",
+  "requested main SHA fc8ce09 was stale; measured at cbf7061 with clone live state",
+  "counts are live snapshots and still growing"
+ ],
+ "writes": {
+  "production": 0,
+  "dbclone": 0,
+  "schema": 0
+ }
+}
