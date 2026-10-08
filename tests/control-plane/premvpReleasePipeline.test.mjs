@@ -500,3 +500,51 @@ test('migration-bearing lifecycle invokes the adapter after the exact R4 receipt
   assert.equal(result.status, 'PASS');
   assert.deepEqual(calls, ['test', 'migration', 'push', 'push']);
 });
+
+// ---- Bounded prune function transition (narrow, exact-shape DELETE exception). --------------------
+test('bounded prune transition accepts only the exact function replacement; generic DELETE stays blocked', async () => {
+  const fs = await import('node:fs');
+  const file = 'supabase/migrations/20261008120000_current_signal_pair_serving_prune_batch_raise_v2.sql';
+  const sql = fs.readFileSync(new URL(`../../${file}`, import.meta.url), 'utf8');
+  const prune = {
+    mode: 'PREMVP_APPLICATION_SCHEMA_MIGRATION_V1', safety_class: 'BOUNDED_PRUNE_FUNCTION_TRANSITION',
+    migration_files: [file], bounded_prune_target: 'public.prune_current_signal_pair_serving',
+    direct_raw_mutation: false, rollback_strategy: 'COMPATIBILITY_RETAINED',
+  };
+  const check = (source, fields = {}, declaration = { ...prune, ...fields }) =>
+    validateApprovedMigrationRelease({ declaration, changedFiles: [file], readFile: () => source });
+  const accepted = check(sql);
+  assert.equal(accepted.ok, true, accepted.errors.join('\n'));
+  // Declaration must name the exact target and keep the compatibility rollback.
+  for (const fields of [{ bounded_prune_target: 'public.other' }, { bounded_prune_target: undefined },
+    { rollback_strategy: 'REGENERABLE_SOURCE' }, { direct_raw_mutation: true }]) assert.equal(check(sql, fields).ok, false, JSON.stringify(fields));
+  // Any deviation from the exact function shape is rejected.
+  for (const [idx, mutated] of [
+    sql.replace('p_batch_size > 500', 'p_batch_size > 501'),
+    sql.replace('p_batch_size > 500', 'p_batch_size > 5000').replace('1 and 500', '1 and 5000'),
+    sql.replace('LANGUAGE plpgsql', 'LANGUAGE plpgsql SECURITY DEFINER'),
+    sql.replace('TO service_role', 'TO PUBLIC'),
+    sql.replace('TO service_role;', 'TO service_role;\nGRANT EXECUTE ON FUNCTION public.prune_current_signal_pair_serving(integer, uuid[]) TO anon;'),
+    sql.replace('public.prune_current_signal_pair_serving(\n', 'public.other_fn(\n'),
+    sql.replace("serving.projection_status = 'ACTIVE'", "serving.projection_status IS NOT NULL"),
+    sql.replace('      FOR UPDATE SKIP LOCKED', '      FOR UPDATE'),
+    sql + '\nDELETE FROM public.current_signal_pair_serving;',
+    sql + '\nUPDATE public.current_signal_pair_serving SET projection_status = \'X\';',
+    sql + '\nDROP TABLE public.current_signal_pair_serving;',
+    sql + '\nTRUNCATE TABLE public.current_signal_pair_serving;',
+    '-- PREMVP_APPLICATION_MIGRATION_V1\nDELETE FROM public.current_signal_pair_serving;',
+    sql.replace('-- PREMVP_APPLICATION_MIGRATION_V1\n', ''),
+  ].entries()) assert.equal(check(mutated).ok, false, `mutation ${idx}`);
+  // Generic classes keep the DELETE FROM ban, even for the very same function SQL.
+  for (const safety_class of ['ADDITIVE_COMPATIBLE', 'COMPATIBILITY_TRANSITION']) {
+    const generic = check(sql, { safety_class, constraint_drop_justification: 'x' });
+    assert.equal(generic.ok, false);
+    assert.match(generic.errors.join('\n'), /MIGRATION_SQL_FORBIDDEN/);
+  }
+  const rawDelete = check('-- PREMVP_APPLICATION_MIGRATION_V1\nDELETE FROM public.safe_probe;', { safety_class: 'ADDITIVE_COMPATIBLE', bounded_prune_target: undefined });
+  assert.equal(rawDelete.ok, false);
+  assert.match(rawDelete.errors.join('\n'), /MIGRATION_SQL_FORBIDDEN/);
+  // The class cannot be used for a different function.
+  const otherFn = sql.replaceAll('prune_current_signal_pair_serving', 'prune_other');
+  assert.equal(check(otherFn).ok, false);
+});
