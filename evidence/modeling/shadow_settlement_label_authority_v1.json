@@ -1,0 +1,136 @@
+{
+  "schema": "shadow_settlement_label_authority_v1",
+  "generated_at": "2026-10-08T15:43:00Z",
+  "main_sha": "c9d2d28b6976e90d66f30bd28d7f4af583151ead",
+  "clone_project_ref": "nppznoujvnyjargjkmnv",
+  "db_access": "read-only SELECT via Supabase Management API (MCP identity cannot see the clone); 0 writes; production not queried; 0 network settlement calls",
+  "observation_snapshot": {
+    "rule": "reservation_market_observations.created_at <= 2026-10-08T14:00:00Z",
+    "rows": 20384,
+    "physical_events": 216,
+    "note": "Reproduces the frozen RESEARCH_CORPUS_AUTHORITY_V1 corpus exactly (20,384 rows / 216 events). Live table has since grown (>=20,428 rows / 217 events)."
+  },
+  "settlement_source": "research_model_ready_rows.settlement_label = canonical_row.labelAsOf, produced by scripts/modeling/materialize-research-model-ready.ts from lib/modeling/research-corpus/rollingCorpus.ts (asOfLabel) over per-partition rows whose label is deriveLabel() in lib/modeling/forward-rich/materializeForwardRichResearch.ts; underlying terminal truth = Gamma terminal event state (RESEARCH_CORPUS_CONTRACT.md 5.2), persisted before this mission. generated_signal_pairs.signal_result is NOT used.",
+  "latest_authority_rule": "Per exact (provider_event_id, condition_id, selected_token_id): any persisted WIN/LOSS/VOID row is terminal and sticky (asOfLabel + MONOTONIC_SETTLEMENT_GUARD_V1: terminal never regresses to OPEN); otherwise OPEN. Terminal ties resolve by (model_date, decision_at, created_at) desc; no token has conflicting terminal labels (0), so the result is order-independent. Condition status is derived from token states: UNIQUE_WINNER (exactly 1 distinct WIN token, 0 conflicts), VOID (explicit only), AMBIGUOUS (>1 WIN token or WIN/LOSS conflict), LOSS_ONLY (terminal LOSS token(s) but no persisted winner), OPEN.",
+  "selection_before_settlement": "PASS",
+  "model_ready_scope": {
+    "rows_total": 114026,
+    "rows_with_null_provider_event_id": 34555,
+    "rows_valid_keyed": 79471,
+    "label_distribution_rows": {"WIN": 28580, "LOSS": 30110, "OPEN": 55336, "VOID": 0},
+    "model_date_range": ["2026-08-04", "2026-10-07"],
+    "token_identities": 65358,
+    "tokens_terminal_then_later_open_rows": 964,
+    "tokens_terminal_then_later_open_rows_in_observed_corpus": 0,
+    "tokens_with_conflicting_terminal_labels": 0
+  },
+  "condition_status_counts": {
+    "condition_n": 45936,
+    "unique_winner_condition_n": 20820,
+    "open_condition_n": 13201,
+    "void_condition_n": 0,
+    "loss_only_condition_n": 11915,
+    "ambiguous_condition_n": 0,
+    "ambiguous_winner_gate": "PASS (0)"
+  },
+  "observed_identity_coverage": {
+    "identity_key": "physical_event_id + provider_event_id + condition_id + token_id + canonical_market_type (DISTINCT; T30/T10/T3/LIVE_GUARD rows collapsed)",
+    "observed_physical_event_n": 216,
+    "observed_identity_n": 9722,
+    "win_identity_n": 225,
+    "loss_identity_n": 289,
+    "loss_via_condition_winner_n": 225,
+    "loss_via_exact_token_terminal_n": 64,
+    "void_identity_n": 0,
+    "open_identity_n": 294,
+    "unresolved_identity_n": 8914,
+    "unresolved_reasons": {
+      "CONDITION_NOT_IN_MODEL_READY": 8708,
+      "NULL_PROVIDER_EVENT_ID": 142,
+      "LOSS_ONLY_CONDITION_TOKEN_NOT_PERSISTED_LOSS": 64
+    },
+    "terminal_labelable_identity_n": 514,
+    "terminal_label_coverage_pct": 5.29,
+    "event_level": {
+      "terminal_labelable_event_n": 152,
+      "open_event_n": 33,
+      "unresolved_event_n": 31,
+      "fully_terminal_event_n": 0,
+      "terminal_labelable_event_definition": "event with >=1 terminal-labelled identity; open = no terminal identity but >=1 OPEN; unresolved = all identities unresolved. No event has all identities terminal.",
+      "terminal_label_coverage_pct": 70.37
+    },
+    "arithmetic": "225 + 289 + 0 + 294 + 8914 = 9722; 152 + 33 + 31 = 216"
+  },
+  "market_family_coverage": {
+    "MONEYLINE": {"observed_event_n": 198, "observed_identity_n": 1188, "terminal_labelable_event_n": 39, "terminal_labelable_identity_n": 74, "win": 26, "loss": 48, "open_event_n": 17, "unresolved_event_n": 142, "terminal_label_coverage_pct": 6.23},
+    "TOTAL": {"observed_event_n": 197, "observed_identity_n": 3546, "terminal_labelable_event_n": 72, "terminal_labelable_identity_n": 131, "win": 50, "loss": 81, "open_event_n": 30, "unresolved_event_n": 95, "terminal_label_coverage_pct": 3.69},
+    "SPREAD": {"observed_event_n": 197, "observed_identity_n": 3940, "terminal_labelable_event_n": 104, "terminal_labelable_identity_n": 301, "win": 145, "loss": 156, "open_event_n": 31, "unresolved_event_n": 62, "terminal_label_coverage_pct": 7.64, "status": "SETTLEMENT_ANALYTICALLY_QUARANTINED"},
+    "OTHER_STRUCTURED": {"observed_event_n": 6, "observed_identity_n": 272, "terminal_labelable_event_n": 0, "terminal_labelable_identity_n": 0, "win": 0, "loss": 0, "open_event_n": 0, "unresolved_event_n": 6, "terminal_label_coverage_pct": 0.0},
+    "UNKNOWN": {"observed_event_n": 142, "observed_identity_n": 776, "terminal_labelable_event_n": 2, "terminal_labelable_identity_n": 8, "win": 4, "loss": 4, "open_event_n": 2, "unresolved_event_n": 138, "terminal_label_coverage_pct": 1.03},
+    "reconciliation": "identities 1188+3546+3940+272+776 = 9722; terminal identities 74+131+301+0+8 = 514; per-family events: terminal+open+unresolved equals observed_event_n in every family (events appear in several families, so event counts are not summed)",
+    "total_corners_status": "SOURCE_SAMPLE_ABSENT"
+  },
+  "no_bet_coverage": {
+    "actual_execution_definition": "bet_execution_ledger row with exchange_order_id and status FILLED/WON/LOST, joined by exact (condition_id, token_id) -> event_execution_queue.reservation_id -> night_event_reservations.physical_event_id",
+    "actual_execution_event_n": 29,
+    "no_bet_observed_event_n": 187,
+    "no_bet_terminal_labelable_event_n": 131,
+    "no_bet_open_event_n": 29,
+    "no_bet_unresolved_event_n": 27,
+    "no_bet_terminal_label_coverage_pct": 70.05,
+    "no_bet_moneyline_labelable_event_n": 33,
+    "no_bet_total_labelable_event_n": 60,
+    "no_bet_spread_labelable_event_n_quarantined": 92,
+    "no_bet_family_observed_event_n": {"MONEYLINE": 170, "TOTAL": 169, "SPREAD": 169, "OTHER_STRUCTURED": 6, "UNKNOWN": 113},
+    "executed_population_identity_labels": {"WIN": 31, "LOSS": 42, "OPEN": 40, "UNRESOLVED": 1148},
+    "arithmetic": "131 + 29 + 27 = 187; 187 + 29 = 216"
+  },
+  "executed_consistency": {
+    "executed_ledger_rows": 31,
+    "executed_settled_with_ledger_winner_n": 27,
+    "executed_settled_comparable_n": 9,
+    "winner_match_n": 9,
+    "winner_mismatch_n": 0,
+    "persisted_loss_token_equals_ledger_winner_n": 0,
+    "persisted_win_token_differs_from_ledger_winner_n": 0,
+    "not_comparable_breakdown": "27 settled - 9 comparable = 18: 5 LOSS_ONLY conditions (no persisted winner), 2 OPEN conditions (model_ready lags ledger), 11 conditions absent from model_ready",
+    "bet_token_label_vs_ledger_status": {"WON/WIN": 7, "LOST/LOSS": 6, "WON/OPEN": 1, "LOST/OPEN": 1, "WON/UNRESOLVED": 5, "LOST/UNRESOLVED": 5, "LOST/NOT_IN_CORPUS": 2},
+    "executed_settlement_consistency": "PASS"
+  },
+  "temporal_safety": {
+    "no_settlement_leakage": "PASS",
+    "basis": [
+      "Observed identities are enumerated from reservation_market_observations alone; research_model_ready_rows is LEFT-joined afterwards and only supplies the label (label count 9722 == identity count 9722; no identity dropped, OPEN/UNRESOLVED retained in the denominator).",
+      "No label field is read by any selection, eligibility, phase or timing predicate; selection fields (live_policy_eligibility, observation_phase, observed_at, strategy SELECTED) are untouched.",
+      "Terminal labels never change a historical candidate row (the label layer is separate from immutable decision-time features, RESEARCH_CORPUS_CONTRACT.md 5.1).",
+      "Executed bets are used only as an independent witness, never as the source of shadow labels."
+    ],
+    "required_downstream_sequence": "SELECTION_BEFORE_SETTLEMENT_V1: decision-time candidate -> decision-time-only filter -> join label afterwards -> OPEN stays in sample accounting"
+  },
+  "authority_verdict": {
+    "shadow_settlement_label_authority": "READY_PARTIAL_COVERAGE",
+    "gates": {
+      "settlement_source_proven": "PASS",
+      "latest_state_rule_deterministic": "PASS",
+      "ambiguous_winner_condition_n_zero": "PASS",
+      "executed_cross_check_zero_mismatch": "PASS (9/9)",
+      "no_settlement_leakage": "PASS",
+      "no_network_needed_for_persisted_resolved_conditions": "PASS"
+    },
+    "business_result": "SHADOW_SETTLEMENT_LABEL_AUTHORITY_ESTABLISHED",
+    "next": "COUNTERFACTUAL_ECONOMICS_GATE_V1",
+    "next_2": "INPLAY_MULTI_DAY_MECHANISM_GATE_V1"
+  },
+  "known_limitations": [
+    "Coverage is low: 514 of 9,722 observed identities (5.29%) are terminal-labelable; 8,708 identities sit in conditions that research_model_ready_rows never materialized (its model_date range ends 2026-10-07 and it is a legacy signal-population space, not the observation corpus). This is a data limitation, not an authority failure.",
+    "Event-level coverage (152/216 events) counts events with at least one labelled identity; no event is fully labelled. Economics must be computed per labelled identity, not per event.",
+    "OPEN means 'latest persisted state is non-terminal', not 'proven unsettled': model_ready lags the ledger (both executed bets whose condition is OPEN in model_ready are already settled in the ledger: 1 WON, 1 LOST). OPEN is therefore an upper bound on genuinely open.",
+    "64 LOSS labels rest on the exact token's own persisted terminal LOSS in conditions with no persisted winner (LOSS_ONLY); the other 64 observed identities in those LOSS_ONLY conditions remain UNRESOLVED. Drop those 64 for a strict winner-only reading (LOSS 225, terminal 450).",
+    "142 identities (LIVE_GUARD, null provider_event_id / 3 sport-unresolved events) cannot be keyed; 34,555 model_ready rows have null provider_event_id and are unusable.",
+    "964 model_ready tokens have an earlier terminal row followed by a later OPEN row (terminal regression); sticky-terminal rule applied; none of them touches the observed corpus, so literal latest-wins would give identical results here.",
+    "Executed cross-check is 9 comparable conditions of 27 settled; 0 mismatch is strong but small-sample.",
+    "No VOID is persisted anywhere in research_model_ready_rows; VOID_IDENTITY_N=0 is absence of evidence, not proof that no voids occurred.",
+    "SPREAD remains SETTLEMENT_ANALYTICALLY_QUARANTINED; this mission did not lift it. TOTAL_CORNERS remains SOURCE_SAMPLE_ABSENT.",
+    "generated_signal_pairs.signal_result (non-authoritative per contract 5.2) adds 0 labels for unresolved identities, so no secondary persisted source closes the gap; only new settlement ingestion would."
+  ]
+}
