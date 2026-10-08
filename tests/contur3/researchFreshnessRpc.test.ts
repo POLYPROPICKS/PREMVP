@@ -10,7 +10,7 @@ import path from "node:path";
 import { validateApprovedMigrationRelease } from "../../scripts/control-plane/lib/premvp-application-migration-release.mjs";
 
 const OLD = "supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql";
-const NEW = "supabase/migrations/20261007100000_research_snapshot_runs_two_generation_freshness_v1.sql";
+const NEW = "supabase/migrations/20261007174425_research_snapshot_runs_two_generation_freshness_v1.sql";
 
 const BIN = ["/usr/lib/postgresql/16/bin", "/usr/lib/postgresql/17/bin", "/usr/lib/postgresql/15/bin", "/usr/local/bin"].find((d) =>
   existsSync(path.join(d, "initdb")),
