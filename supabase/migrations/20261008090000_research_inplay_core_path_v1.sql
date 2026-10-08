@@ -1,3 +1,4 @@
+-- PREMVP_APPLICATION_MIGRATION_V1
 -- INPLAY_CORE_PATH_TELEMETRY_V1. Research facts only; no money-path reader.
 CREATE TABLE public.research_inplay_core_path_observations (
   id uuid PRIMARY KEY,
