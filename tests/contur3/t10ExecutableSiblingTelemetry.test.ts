@@ -7,7 +7,9 @@ import {
   T10_EXECUTABLE_TELEMETRY_KEYS,
   T10_EXECUTABLE_TELEMETRY_NEW_COLUMNS,
   T10_EXECUTABLE_TELEMETRY_VERSION,
+  T30_PASSIVE_EXECUTABLE_TELEMETRY_VERSION,
   captureReservationMarketObservation,
+  classifyReservationMarketPhase,
   executableTelemetryFailureColumns,
   isMissingTelemetryColumnError,
   withoutNewTelemetryColumns,
@@ -361,20 +363,62 @@ test("FAILURE ISOLATION: a dead fee API never fails or alter the capture; every 
   assert.equal(syncThrow.rows.length, 8);
 });
 
-test("T10 ONLY: T_MINUS_30 captures carry no telemetry columns and never touch the fee API", async () => {
-  let touched = 0;
+test("T30 PASSIVE: T_MINUS_30 rows carry book-only executable scalars; fee is typed UNKNOWN; zero fee fetches, zero extra book fetches, zero extra rows", async () => {
+  let feeFetches = 0;
+  let bookFetches = 0;
   const snap = await captureT10({
     phase: "T_MINUS_30",
-    fetchFeeSchedule: async (t) => { touched++; return feeFail(t, "X"); },
+    fetchFeeSchedule: async (t) => { feeFetches++; return feeFail(t, "X"); },
+    fetchBooks: async (ids) => { bookFetches++; return ids.map((id) => T10_BOOKS[id]); },
   });
-  assert.equal(touched, 0);
-  assert.equal(snap.rows.length, 8);
+  assert.equal(feeFetches, 0, "no fee request on T30");
+  assert.equal(bookFetches, 1, "exactly the one existing bulk book fetch");
+  assert.equal(snap.rows.length, 8, "no extra rows: one row per supported token");
+  assert.equal(snap.strategies.length, 24, "no extra strategy rows (3 NOT_EVALUATED placeholders per token)");
+  assert.equal(T30_PASSIVE_EXECUTABLE_TELEMETRY_VERSION, "T30_PASSIVE_EXECUTABLE_BOOK_V1");
+  assert.notEqual(T30_PASSIVE_EXECUTABLE_TELEMETRY_VERSION, T10_EXECUTABLE_TELEMETRY_VERSION);
+  const byToken = new Map(snap.rows.map((r) => [String(r.token_id), r]));
   for (const row of snap.rows) {
-    for (const key of T10_EXECUTABLE_TELEMETRY_KEYS) {
-      if (key === "ask_depth_relevant_usd") assert.equal(row[key], null, "pre-existing column stays NULL on T30");
-      else assert.equal(key in row, false, `${key} must not exist on a T30 row`);
-    }
+    for (const key of T10_EXECUTABLE_TELEMETRY_KEYS) assert.equal(key in row, true, `${key} present (homogeneous key set)`);
+    assert.equal(row.executable_telemetry_version, T30_PASSIVE_EXECUTABLE_TELEMETRY_VERSION);
+    assert.equal(row.requested_stake_usd, QUEUE_DEFAULT_STAKE_USD);
+    assert.equal(row.execution_price_cap, QUEUE_MAX_ENTRY_PRICE);
+    assert.equal(row.taker_fee_state, "UNKNOWN");
+    assert.equal(row.taker_fee_reason, "FEE_NOT_ATTEMPTED_PASSIVE_RESEARCH");
+    for (const k of ["taker_fee_rate", "taker_fee_usd", "taker_effective_cost_per_share", "taker_fee_formula_version"]) assert.equal(row[k], null, k);
   }
+  // exact requested stake: 2.5 / 0.5 = 5 shares at VWAP 0.5, from the already-fetched book
+  const home = byToken.get("t-ml-home")!;
+  assert.equal(home.executable_full_stake, true);
+  assert.equal(home.executable_full_stake_state, "EXECUTABLE");
+  assert.equal(home.full_stake_executable_vwap, 0.5);
+  assert.equal(home.full_stake_shares, 5);
+  assert.equal(home.full_stake_worst_ask_price, 0.5);
+  assert.equal(home.ask_depth_relevant_usd, 50);
+  // insufficient depth: executable=false, never a fabricated VWAP
+  const thin = byToken.get("t-tot-over")!;
+  assert.equal(thin.executable_full_stake, false);
+  assert.equal(thin.executable_full_stake_state, "NOT_EXECUTABLE_DEPTH_AT_CAP");
+  assert.equal(thin.full_stake_executable_vwap, null);
+  assert.equal(thin.full_stake_shares, null);
+  // failed book: typed unknown, still NULL numbers
+  const failed = byToken.get("t-tot-under")!;
+  assert.equal(failed.executable_full_stake_state, "UNKNOWN_BOOK_UNAVAILABLE");
+  assert.equal(failed.executable_full_stake, null);
+  assert.equal(failed.full_stake_executable_vwap, null);
+});
+
+test("T30 PASSIVE: T10 stays fee-inclusive V1 and unchanged; no T_MINUS_3 phase is classified", async () => {
+  const t10 = await captureT10({ fetchFeeSchedule: async (t) => feeOk(t, 0.03, CONDITION_OF[t]) });
+  const home = t10.rows.find((r) => r.token_id === "t-ml-home")!;
+  assert.equal(home.executable_telemetry_version, T10_EXECUTABLE_TELEMETRY_VERSION);
+  assert.equal(home.taker_fee_state, "KNOWN");
+  assert.equal(home.taker_fee_usd, 0.0375);
+  assert.equal(home.taker_effective_cost_per_share, 0.5075);
+  const start = Date.parse(FIXTURE_START_ISO);
+  for (const m of [3, 5, 8]) assert.equal(classifyReservationMarketPhase(FIXTURE_START_ISO, start - m * 60_000), null);
+  assert.equal(classifyReservationMarketPhase(FIXTURE_START_ISO, start - 30 * 60_000), "T_MINUS_30");
+  assert.equal(classifyReservationMarketPhase(FIXTURE_START_ISO, start - 10 * 60_000), "T_MINUS_10");
 });
 
 test("NO MONEY-PATH CHANGE: telemetry columns cannot influence the A/B selection or the persisted universe", async () => {

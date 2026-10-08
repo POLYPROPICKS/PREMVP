@@ -30,6 +30,26 @@ export const T10_EXECUTABLE_TELEMETRY_KEYS = [
   "taker_effective_cost_per_share", "taker_fee_formula_version",
 ] as const;
 
+/**
+ * T30_PASSIVE_EXECUTABLE_BOOK_V1: the T_MINUS_30 (early, research-only) rows carry the BOOK-DERIVED executable scalars
+ * computed from the orderbook the capture ALREADY fetched. Hard gates: no fee request, no extra book request, no extra
+ * row. The taker fee is typed UNKNOWN (never assumed 0), so this is NOT a fee-inclusive executable cost and is never
+ * confused with T10_EXECUTABLE_SIBLING_TELEMETRY_V1. The stake and cap are the same canonical constants as T10
+ * (QUEUE_DEFAULT_STAKE_USD, QUEUE_MAX_ENTRY_PRICE), applied inside buildExecutableSiblingColumns.
+ */
+export const T30_PASSIVE_EXECUTABLE_TELEMETRY_VERSION = "T30_PASSIVE_EXECUTABLE_BOOK_V1" as const;
+export const T30_PASSIVE_FEE_REASON = "FEE_NOT_ATTEMPTED_PASSIVE_RESEARCH" as const;
+
+/** Pure: re-labels a book-only column set as passive T30 evidence with every fee fact explicitly unknown. */
+export function toPassiveT30Columns(columns: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...columns,
+    executable_telemetry_version: T30_PASSIVE_EXECUTABLE_TELEMETRY_VERSION,
+    taker_fee_state: "UNKNOWN", taker_fee_reason: T30_PASSIVE_FEE_REASON,
+    taker_fee_rate: null, taker_fee_usd: null, taker_effective_cost_per_share: null, taker_fee_formula_version: null,
+  };
+}
+
 /** Typed, honest failure row: the sibling still gets its telemetry row, with UNKNOWN and a reason. Never invents a number. */
 export function executableTelemetryFailureColumns(reason: string): Record<string, unknown> {
   return {
@@ -682,7 +702,9 @@ export async function captureReservationMarketObservation(
   const { tokens, expected, missingIdentity } = inventoryTokens(markets);
   // T10_EXECUTABLE_SIBLING_TELEMETRY_V1 (evidence only, T_MINUS_10 only). The fee schedules are fetched in
   // parallel with the books, bounded, and can never reject; a missing/failed schedule is typed UNKNOWN.
-  const telemetry = phase === FINAL_REBALANCE_PHASE && tokens.length > 0
+  // T_MINUS_30 loads the same module but only for the pure book-only computation: it never fetches a fee schedule.
+  const passiveEarly = phase === "T_MINUS_30";
+  const telemetry = (phase === FINAL_REBALANCE_PHASE || passiveEarly) && tokens.length > 0
     ? await import("./t10ExecutableSiblingTelemetry").catch((error: unknown) => {
       console.error("[reservation-market-baseline] T10_TELEMETRY_MODULE_UNAVAILABLE", error instanceof Error ? error.message : "unknown");
       return null;
@@ -691,12 +713,18 @@ export async function captureReservationMarketObservation(
   // time to the capture and can never hang it.
   const [books, feeByToken] = await Promise.all([
     (deps.fetchBooks ?? fetchOrderBooksConcurrent)(tokens.map((t) => t.tokenId), 5),
-    telemetry
+    telemetry && !passiveEarly
       ? withDeadline(Promise.resolve().then(() => telemetry.fetchFeeSchedulesBounded(tokens, { fetchFee: deps.fetchFeeSchedule })).catch(() => null),
         deps.telemetryDeadlineMs?.fee ?? T10_TELEMETRY_FEE_DEADLINE_MS)
       : Promise.resolve(null),
   ]);
-  const executableColumns = phase !== FINAL_REBALANCE_PHASE ? null : tokens.map((token, i) => {
+  const executableColumns = phase !== FINAL_REBALANCE_PHASE && !passiveEarly ? null : tokens.map((token, i) => {
+    if (passiveEarly) {
+      // Reuses books[i] (the fetch above); fee: null means "not attempted", no network.
+      if (!telemetry) return toPassiveT30Columns(executableTelemetryFailureColumns("TELEMETRY_MODULE_UNAVAILABLE"));
+      try { return toPassiveT30Columns(telemetry.buildExecutableSiblingColumns({ token, result: books[i], fee: null })); }
+      catch { return toPassiveT30Columns(executableTelemetryFailureColumns("TELEMETRY_COMPUTE_FAILED")); }
+    }
     if (!telemetry) return executableTelemetryFailureColumns("TELEMETRY_MODULE_UNAVAILABLE");
     try {
       return telemetry.buildExecutableSiblingColumns({
