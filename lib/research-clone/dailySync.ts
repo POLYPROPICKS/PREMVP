@@ -7,7 +7,7 @@ export const TELEMETRY_PURGE_ORDER = [
   "reservation_market_capture_runs",
 ] as const;
 export type TelemetryTable = typeof TELEMETRY_PURGE_ORDER[number];
-export type PurgeTable = TelemetryTable | "generated_signal_research_snapshots";
+export type PurgeTable = TelemetryTable | "generated_signal_research_snapshots" | "research_inplay_core_path_observations";
 export type TelemetryPurgeRow = { id: string; timestamp: string };
 export type TelemetryPurgeCursor = { timestamp: string; id: string };
 export interface TelemetryPurgePort {
@@ -24,12 +24,12 @@ export async function purgeConfirmedTelemetry(
   port: TelemetryPurgePort,
   pageSize = 200,
   maxPagesPerTable = 8,
-  options: { tables?: readonly PurgeTable[]; retentionDays?: number } = {},
+  options: { tables?: readonly PurgeTable[]; retentionDays?: number; retentionHours?: number } = {},
 ): Promise<Record<PurgeTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>> {
   if (pageSize < 1 || pageSize > 200 || maxPagesPerTable < 1 || maxPagesPerTable > 8) throw new Error("TELEMETRY_PURGE_BUDGET_INVALID");
-  const retentionDays = options.retentionDays ?? 1;
-  if (!Number.isInteger(retentionDays) || retentionDays < 1) throw new Error("TELEMETRY_PURGE_RETENTION_INVALID");
-  const cutoffMs = nowMs - retentionDays * 24 * 60 * 60 * 1000;
+  const retentionHours = options.retentionHours ?? (options.retentionDays ?? 1) * 24;
+  if (!Number.isInteger(retentionHours) || retentionHours < 1) throw new Error("TELEMETRY_PURGE_RETENTION_INVALID");
+  const cutoffMs = nowMs - retentionHours * 60 * 60 * 1000;
   const cutoff = new Date(cutoffMs).toISOString();
   const totals = {} as Record<PurgeTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>;
   for (const table of options.tables ?? TELEMETRY_PURGE_ORDER) {

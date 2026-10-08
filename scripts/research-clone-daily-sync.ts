@@ -49,6 +49,8 @@ const STRATEGY_OBSERVATION_PROJECTION = "id,market_observation_id,capture_run_id
 // no JSON, no diagnostics. Transport only: this table is deliberately NOT in TELEMETRY_PURGE_ORDER.
 const PRECONTRACT_T20_OBSERVATION_PROJECTION = "id,physical_event_id,provider_game_id,provider_event_id,source_id,source_version,event_start_iso,observed_at,observation_phase,parent_event_volume_24h,daily_volume_rank,sampling_bucket,provider_sport_family,provider_sport_code,provider_sport_source,condition_id,token_id,side,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_bid,best_ask,tick_size,minimum_order_size,orderbook_fetch_status,requested_stake_usd,execution_price_cap,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,executable_full_stake,executable_full_stake_state,taker_fee_state,taker_fee_usd";
 const PRECONTRACT_T20_BOOTSTRAP_SINCE = "2026-10-07T00:00:00.000Z";
+const INPLAY_CORE_PATH_PROJECTION = "id,physical_event_id,provider_game_id,provider_event_id,provider_sport_family,provider_sport_code,provider_sport_source,event_start_iso,observed_at,source_version,event_live_status,state_authority,state_phase,state_period_num,state_clock_seconds_remaining,side_a_score,side_b_score,side_a_red_cards,side_b_red_cards,condition_id,token_id,side,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_bid,best_ask,mid_price,spread_abs,tick_size,minimum_order_size,bid_depth_relevant_usd,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled,taker_fee_usd,orderbook_fetch_status,persistence_reason,sequence_in_event,created_at";
+const INPLAY_CORE_PATH_BOOTSTRAP_SINCE = "2026-10-08T00:00:00.000Z";
 const RESERVATION_PARENT_PROJECTION = [
   "id",
   "plan_run_id",
@@ -109,7 +111,8 @@ type TableName =
   | "reservation_market_capture_runs"
   | "reservation_market_observations"
   | "reservation_strategy_observations"
-  | "research_precontract_t20_observations";
+  | "research_precontract_t20_observations"
+  | "research_inplay_core_path_observations";
 
 export type TableSpec = {
   table: TableName;
@@ -204,6 +207,7 @@ export const SPECS: readonly TableSpec[] = [
   { table: "reservation_market_observations", fields: ["observed_at", "id"], appendOnly: true, projection: MARKET_OBSERVATION_PROJECTION, telemetry: true, optional: true },
   { table: "reservation_strategy_observations", fields: ["evaluated_at", "id"], appendOnly: true, projection: STRATEGY_OBSERVATION_PROJECTION, telemetry: true, optional: true },
   { table: "research_precontract_t20_observations", fields: ["observed_at", "id"], appendOnly: true, projection: PRECONTRACT_T20_OBSERVATION_PROJECTION, telemetry: true, optional: true, bootstrapSince: PRECONTRACT_T20_BOOTSTRAP_SINCE },
+  { table: "research_inplay_core_path_observations", fields: ["observed_at", "id"], appendOnly: true, projection: INPLAY_CORE_PATH_PROJECTION, telemetry: true, optional: true, bootstrapSince: INPLAY_CORE_PATH_BOOTSTRAP_SINCE },
   // primary_evidence_outbox is deliberately NOT a generic raw SYNC_SPEC: the
   // generic sourcePage() reads select("*") (full evidence_rows JSON) with no
   // bound. Current evidence is transported by syncResearchEvidencePage() below
@@ -886,7 +890,7 @@ function telemetryTimeField(table: PurgeTable): string {
   return table === "reservation_strategy_observations" ? "evaluated_at" : "observed_at";
 }
 
-async function purgeTelemetry(target: Client, source: Client, nowMs: number, researchSnapshots = false) {
+async function purgeTelemetry(target: Client, source: Client, nowMs: number, researchSnapshots = false, inplay = false) {
   return purgeConfirmedTelemetry(nowMs, {
     async readCursor(table) {
       const field = telemetryTimeField(table);
@@ -935,7 +939,7 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number, res
       return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
     },
     async withoutProductionChildren(table, ids) {
-      if (!ids.length || table === "reservation_strategy_observations" || table === "generated_signal_research_snapshots") return [...ids];
+      if (!ids.length || table === "reservation_strategy_observations" || table === "generated_signal_research_snapshots" || table === "research_inplay_core_path_observations") return [...ids];
       const childTable = table === "reservation_market_observations"
         ? "reservation_strategy_observations" : "reservation_market_observations";
       const childKey = table === "reservation_market_observations" ? "market_observation_id" : "capture_run_id";
@@ -948,7 +952,9 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number, res
     async deleteProductionIds(table, ids) {
       if (!ids.length) return;
       const deletion = source.from(table).delete().in("id", [...ids]);
-      const { error } = await (table === "generated_signal_research_snapshots"
+      const { error } = await (table === "research_inplay_core_path_observations"
+        ? deletion.lte("observed_at", new Date(nowMs - 48 * 60 * 60 * 1000).toISOString())
+        : table === "generated_signal_research_snapshots"
         ? deletion.lte("snapshot_at", new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString())
         : deletion);
       if (error) throw new Error(`TELEMETRY_PURGE_DELETE_${table}:${safeError(error)}`);
@@ -960,7 +966,9 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number, res
         id: cursor?.id ?? "00000000-0000-0000-0000-000000000000",
       });
     },
-  }, TELEMETRY_PAGE_SIZE, TELEMETRY_MAX_PAGES, researchSnapshots
+  }, TELEMETRY_PAGE_SIZE, TELEMETRY_MAX_PAGES, inplay
+    ? { tables: ["research_inplay_core_path_observations"], retentionHours: 48 }
+    : researchSnapshots
     ? { tables: ["generated_signal_research_snapshots"], retentionDays: 7 }
     : {});
 }
@@ -1187,9 +1195,14 @@ export async function main(): Promise<void> {
         const spec = SPECS.find((entry) => entry.table === table)!;
         tables[table] = await syncTable(target, source, spec, TELEMETRY_BOOTSTRAP_SINCE);
       }
+      const inplaySpec = SPECS.find((entry) => entry.table === "research_inplay_core_path_observations")!;
+      let inplaySchemaReady = true;
+      try { await syncTable(target, source, inplaySpec, INPLAY_CORE_PATH_BOOTSTRAP_SINCE); }
+      catch (error) { if (isMissingTableError(error)) inplaySchemaReady = false; else throw error; }
       const discoveryAudit = await repairDiscoveryAudit(target, source);
       const purge = await purgeTelemetry(target, source, Date.now());
       const researchSnapshotPurge = await purgeTelemetry(target, source, Date.now(), true);
+      const inplayPurge = inplaySchemaReady ? await purgeTelemetry(target, source, Date.now(), false, true) : null;
       // Execution analytics run strictly after telemetry copy + purge so a failure
       // here (left to throw to the outer handler) cannot skip or undo telemetry.
       const executionTables = {} as Record<HourlyExecutionTable, TableEvidence>;
@@ -1197,7 +1210,7 @@ export async function main(): Promise<void> {
         executionTables[spec.table as HourlyExecutionTable] = await syncTable(target, source, spec);
       }
       const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING);
-      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
+      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge, INPLAY_PURGE: inplayPurge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
       return;
     }
 
@@ -1263,6 +1276,8 @@ export async function main(): Promise<void> {
     const discoveryAudit = telemetrySchemasReady ? await repairDiscoveryAudit(target, source) : null;
     const telemetryPurge = telemetrySchemasReady ? await purgeTelemetry(target, source, Date.now()) : null;
     const researchSnapshotPurge = await purgeTelemetry(target, source, Date.now(), true);
+    const inplayPurge = !schemaPendingTables.includes("research_inplay_core_path_observations")
+      ? await purgeTelemetry(target, source, Date.now(), false, true) : null;
     const pendingTables: string[] = (Object.keys(tables) as TableName[]).filter(
       (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
     );
@@ -1282,6 +1297,7 @@ export async function main(): Promise<void> {
         DISCOVERY_AUDIT_REPAIR: discoveryAudit,
         TELEMETRY_PURGE: telemetryPurge,
         RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge,
+        INPLAY_PURGE: inplayPurge,
         PENDING_TABLES: pendingTables,
         RESUME_PENDING: pendingTables.length > 0,
         DURATION_MS: Date.now() - startedAt,
