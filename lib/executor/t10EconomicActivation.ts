@@ -71,6 +71,7 @@ import {
 } from "./executorQueueTypes";
 import { latestEntryIso } from "./nightWindow";
 import { bStrategySupportRegion, isBSupportFamilyEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
+import { isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
 import {
   decideEventAction,
   evaluateMakerPlacement,
@@ -299,7 +300,9 @@ export async function decideT10EconomicEvent(input: {
     const reference = evaluateExactMarketReference(identity, evidence);
     // Family/type admission is price-agnostic: a candidate whose CURRENT ASK sits outside the band may still
     // be a safe MAKER (the band is proven per action, on the price actually transacted).
-    const supportFamilyEligible = isBSupportFamilyEligible(row);
+    // LIVE_MONEY_FAMILY_AUTHORITY_V1: a non-live family (SPREADS) stays in the evaluated universe for telemetry
+    // but fails NOT_SUPPORT_ELIGIBLE, so it can never compete for or obtain live economic authority.
+    const supportFamilyEligible = isBSupportFamilyEligible(row) && isLiveMoneyFamilyEligible(row.canonical_market_family);
     const competes = supportFamilyEligible && beforeLatestEntry && !input.exposureExists;
     return { row, identity, t30Evidence, reference, supportFamilyEligible, competes };
   });
