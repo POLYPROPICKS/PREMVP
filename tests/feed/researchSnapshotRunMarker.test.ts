@@ -141,8 +141,8 @@ test("producer uses the generation writer for both the non-empty and the zero-ro
 test("9: safety surface unchanged - the T20 runtime never reads the marker table and the RPC body only gained the two run filters", () => {
   const runtime = readFileSync("lib/executor/precontractT20Research.ts", "utf8");
   assert.equal(runtime.includes("research_snapshot_runs"), false);
-  const oldSql = readFileSync("supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql", "utf8");
-  const newSql = readFileSync("supabase/migrations/20261007100000_research_snapshot_runs_two_generation_freshness_v1.sql", "utf8");
+  const oldSql = readFileSync("supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql", "utf8").replace(/\r\n/g, "\n");
+  const newSql = readFileSync("supabase/migrations/20261007174425_research_snapshot_runs_two_generation_freshness_v1.sql", "utf8").replace(/\r\n/g, "\n");
   const fn = (s: string) => s.slice(s.indexOf("CREATE OR REPLACE FUNCTION"), s.indexOf("$$;") + 3);
   const stripped = fn(newSql)
     .replace(/WITH completed_runs AS \([\s\S]*?LIMIT 2\n  \),\n  src AS \(/, "WITH src AS (")
