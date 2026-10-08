@@ -1,45 +1,44 @@
 // DAILY_INPLAY_COVERAGE_SCORECARD_V1: read-only. Prints deterministic JSON to stdout.
 // Run: npx tsx scripts/modeling/inplay-daily-scorecard.ts [--date YYYY-MM-DD] [--prod-relation-bytes N]
-// DBClone is the research authority (explicit narrow projections, no SELECT *). Production is read aggregate-only
-// (head counts, max timestamp, a narrow 24h key scan); it is skipped (UNKNOWN) when its config is absent. No writes.
+// AGGREGATE_FIRST: DBClone (the long-term research authority) answers coverage, freshness and 3-day readiness through ONE
+// server-side read-only aggregate statement; Production storage is ONE read-only aggregate statement. Transport is the
+// Supabase Management API SQL endpoint with read_only=true (same pattern as scripts/diagnostics/t10EconomicActionPolicyReplay.ts;
+// needs SUPABASE_ACCESS_TOKEN). The only raw observation read is the selected day's rows, hard-capped at RAW_ROW_CAP (200).
 import { pathToFileURL } from "node:url";
-import { createClient } from "@supabase/supabase-js";
-import { resolveCloneClient } from "./live-d1-research-corpus";
 import { PROBE_COLUMNS, type InplayObservation } from "../../lib/modeling/inplay-shadow/inplayShadowProbes";
 import {
-  KEY_COLUMNS, KEY_SCAN_CAP, RAW_ROW_CAP, SCORECARD_TASK, buildCoverage, cloneFreshness, mechanismReadiness, minskDayBounds, minskDayOf,
-  rowsInMinskDay, storageObservability, threeDayReadiness, type KeyRow,
+  AGGREGATE_AUTHORITY, RAW_ROW_CAP, SCORECARD_TASK, boundedDayRowsSql, buildCoverage, cloneFreshness, coverageAggregateSql, mechanismReadiness,
+  minskDayBounds, minskDayOf, parseCloneAggregate, storageAggregateSql, storageObservability, threeDayReadiness,
 } from "../../lib/modeling/inplay-shadow/dailyScorecard";
 
-const TABLE = "research_inplay_core_path_observations";
-const PAGE = 1000;
-type ReadClient = { from: (t: string) => any };
+/** Allowlisted research clone (pinned to lib `PREMVP_RESEARCH_CLONE_PROJECT_REFS` and live-d1 `EXPECTED_CLONE_REF` by a test). */
+export const CLONE_PROJECT_REF = "nppznoujvnyjargjkmnv";
+const NUMERIC_COLUMNS: ReadonlySet<string> = new Set([
+  "side_a_score", "side_b_score", "mid_price", "spread_abs", "bid_depth_relevant_usd", "ask_depth_relevant_usd", "full_stake_executable_vwap", "full_stake_exit_vwap",
+]);
+const TIMESTAMP_COLUMNS: ReadonlySet<string> = new Set(["observed_at"]);
 
-async function headCount(db: ReadClient, gteIso?: string): Promise<number> {
-  let q = db.from(TABLE).select("id", { count: "exact", head: true });
-  if (gteIso) q = q.gte("observed_at", gteIso);
-  const r = await q;
-  if (r.error) throw new Error(`SCORECARD_COUNT:${r.error.message}`);
-  return r.count ?? 0;
+let rawObservationRowsRead = 0;
+
+function refFromUrl(url: string | undefined): string | null {
+  const m = /^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/.exec((url ?? "").trim());
+  return m ? m[1] : null;
 }
-async function maxObservedAt(db: ReadClient): Promise<string | null> {
-  const r = await db.from(TABLE).select("observed_at").order("observed_at", { ascending: false }).limit(1);
-  if (r.error) throw new Error(`SCORECARD_MAX:${r.error.message}`);
-  return r.data?.[0]?.observed_at ?? null;
-}
-/** Paged narrow key scan. Returns null rows when the table exceeds the scan cap (never a silent truncation). */
-async function keyScan<T>(db: ReadClient, columns: readonly string[], total: number, gteIso?: string): Promise<{ rows: T[]; capBlocked: boolean }> {
-  if (total > KEY_SCAN_CAP) return { rows: [], capBlocked: true };
-  const rows: T[] = [];
-  for (let from = 0; from < total; from += PAGE) {
-    let q = db.from(TABLE).select(columns.join(","));
-    if (gteIso) q = q.gte("observed_at", gteIso);
-    const r = await q.order("observed_at", { ascending: true }).order("id", { ascending: true }).range(from, from + PAGE - 1);
-    if (r.error) throw new Error(`SCORECARD_SCAN:${r.error.message}`);
-    rows.push(...((r.data ?? []) as T[]));
-    if ((r.data ?? []).length < PAGE) break;
+
+async function readOnlySql(ref: string, query: string): Promise<Array<Record<string, unknown>>> {
+  const token = process.env.SUPABASE_ACCESS_TOKEN;
+  if (!token) {
+    console.error("REQUIRED_AGGREGATE_READ_AUTHORIZATION_UNAVAILABLE");
+    process.exit(3);
   }
-  return { rows, capBlocked: false };
+  const res = await fetch(`https://api.supabase.com/v1/projects/${ref}/database/query`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ query, read_only: true }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!res.ok) throw new Error(`SCORECARD_READ_ONLY_SQL_FAILED:${res.status}:${(await res.text()).slice(0, 160).replace(/\s+/g, " ")}`);
+  return (await res.json()) as Array<Record<string, unknown>>;
 }
 
 function argValue(name: string): string | undefined {
@@ -47,28 +46,23 @@ function argValue(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-async function productionStorage(nowMs: number, relationBytes: number | null) {
-  const url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) return { available: false as const };
-  const db = createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
+const num = (v: unknown): number => (typeof v === "string" ? Number(v) : (v as number));
+
+async function productionStorage(nowMs: number, relationBytesOverride: number | null) {
+  const ref = refFromUrl(process.env.SUPABASE_URL);
+  if (!ref) return { available: false as const };
+  if (ref === CLONE_PROJECT_REF) return { available: false as const, error: "PRODUCTION_URL_EQUALS_CLONE" };
   try {
     const since = new Date(nowMs - 86_400_000).toISOString();
-    const [rowN, maxAt, rows24h] = [await headCount(db), await maxObservedAt(db), await headCount(db, since)];
-    const scan = await keyScan<{ physical_event_id: string; token_id: string; observed_at: string }>(db, ["physical_event_id", "token_id", "observed_at"], rows24h, since);
-    const perEventRows = new Map<string, number>(), perEventTokens = new Map<string, Set<string>>();
-    let minT = Infinity, maxT = -Infinity;
-    for (const r of scan.rows) {
-      perEventRows.set(r.physical_event_id, (perEventRows.get(r.physical_event_id) ?? 0) + 1);
-      (perEventTokens.get(r.physical_event_id) ?? perEventTokens.set(r.physical_event_id, new Set()).get(r.physical_event_id)!).add(r.token_id);
-      const t = Date.parse(r.observed_at); if (t < minT) minT = t; if (t > maxT) maxT = t;
-    }
+    const row = (await readOnlySql(ref, storageAggregateSql(since)))[0];
+    if (!row) throw new Error("PROD_AGGREGATE_EMPTY");
+    const rowN = num(row.row_n), rows24h = num(row.rows_24h);
     return {
-      available: true as const, rowN, maxAt,
+      available: true as const, rowN, maxAt: typeof row.max_observed_at === "string" ? row.max_observed_at : null,
       storage: storageObservability({
-        relationBytes, productionRowN: rowN, rowsLast24h: rows24h,
-        eventsLast24h: scan.capBlocked ? 0 : perEventRows.size,
-        maxRowsPerEvent24h: Math.max(0, ...perEventRows.values()), maxTokensPerEvent24h: Math.max(0, ...[...perEventTokens.values()].map((s) => s.size)),
-        spanHours24h: scan.rows.length ? (maxT - minT) / 3_600_000 : 0,
+        relationBytes: relationBytesOverride ?? (Number.isFinite(num(row.relation_bytes)) ? num(row.relation_bytes) : null),
+        productionRowN: rowN, rowsLast24h: rows24h, eventsLast24h: num(row.events_24h),
+        maxRowsPerEvent24h: num(row.max_rows_per_event), maxTokensPerEvent24h: num(row.max_tokens_per_event), spanHours24h: num(row.span_hours),
       }),
     };
   } catch (e) {
@@ -83,21 +77,17 @@ async function main(): Promise<void> {
   const relArg = argValue("--prod-relation-bytes") ?? process.env.INPLAY_PROD_RELATION_BYTES;
   const relationBytes = relArg !== undefined && /^\d+$/.test(relArg) ? Number(relArg) : null;
 
-  const { client } = resolveCloneClient();
-  const cloneRowN = await headCount(client);
-  const cloneMax = await maxObservedAt(client);
-  const scan = await keyScan<KeyRow>(client, KEY_COLUMNS, cloneRowN);
-  const dayRows = rowsInMinskDay(scan.rows, date);
-  const coverage = buildCoverage(dayRows);
+  const agg = parseCloneAggregate((await readOnlySql(CLONE_PROJECT_REF, coverageAggregateSql(date)))[0]);
+  const coverage = buildCoverage(agg.coverage);
 
+  // Raw observations: only the selected day, only when the aggregate proves it fits the cap; never truncated.
   let fullRows: InplayObservation[] | null = null;
-  if (!scan.capBlocked && dayRows.length > 0 && dayRows.length <= RAW_ROW_CAP) {
-    const r = await client.from(TABLE).select(PROBE_COLUMNS.join(",")).gte("observed_at", startUtc).lt("observed_at", endUtc)
-      .order("observed_at", { ascending: true }).order("id", { ascending: true }).limit(RAW_ROW_CAP + 1);
-    if (r.error) throw new Error(`SCORECARD_FULL:${r.error.message}`);
-    fullRows = (r.data ?? []) as unknown as InplayObservation[];
-    if (fullRows.length > RAW_ROW_CAP) fullRows = null;
-  } else if (dayRows.length === 0) fullRows = [];
+  if (coverage.row_n === 0) fullRows = [];
+  else if (coverage.row_n <= RAW_ROW_CAP) {
+    const rows = await readOnlySql(CLONE_PROJECT_REF, boundedDayRowsSql(date, PROBE_COLUMNS, NUMERIC_COLUMNS, TIMESTAMP_COLUMNS));
+    rawObservationRowsRead += rows.length;
+    fullRows = rows.length === coverage.row_n ? (rows as unknown as InplayObservation[]) : null; // day grew/shrank between statements => blocked, not truncated
+  }
 
   const prod = await productionStorage(nowMs, relationBytes);
   const out = {
@@ -105,20 +95,24 @@ async function main(): Promise<void> {
     SCORECARD_DATE_MINSK: date,
     DAY_WINDOW_UTC: { start: startUtc, end: endUtc },
     GENERATED_AT_UTC: nowIso,
-    KEY_SCAN_STATUS: scan.capBlocked ? "KEY_SCAN_CAP_BLOCKED" : "COMPLETE",
+    AGGREGATE_AUTHORITY,
+    COVERAGE_SOURCE: "SERVER_SIDE_AGGREGATE",
+    RAW_OBSERVATIONS_READ: rawObservationRowsRead,
+    RAW_OBSERVATION_MAX: RAW_ROW_CAP,
     PROD_ROW_N: prod.available ? prod.rowN : null,
-    CLONE_ROW_N: cloneRowN,
+    CLONE_ROW_N: agg.cloneRowN,
     PROD_MAX_OBSERVED_AT: prod.available ? prod.maxAt : null,
-    CLONE_MAX_OBSERVED_AT: cloneMax,
-    ...cloneFreshness(prod.available ? prod.maxAt : null, cloneMax),
+    CLONE_MAX_OBSERVED_AT: agg.cloneMaxObservedAt,
+    ...cloneFreshness(prod.available ? prod.maxAt : null, agg.cloneMaxObservedAt),
     PROD_READ: prod.available ? "OK" : ("error" in prod ? `UNAVAILABLE:${prod.error}` : "UNAVAILABLE:PRODUCTION_DB_CONFIG_MISSING"),
     DAY_ROW_N: coverage.row_n, DAY_EVENT_N: coverage.event_n, DAY_TOKEN_N: coverage.token_n,
     COVERAGE: coverage,
     STORAGE: prod.available ? prod.storage : "UNAVAILABLE",
     MECHANISM_READINESS: mechanismReadiness(coverage.row_n, fullRows, coverage.CORE_MULTI_FAMILY_EVENT_CANDIDATE_N),
-    THREE_DAY: threeDayReadiness(scan.rows, nowIso),
+    THREE_DAY: threeDayReadiness(agg.daily, nowIso),
     claims: "COVERAGE_AND_READINESS_ONLY_NO_ALPHA_NO_THRESHOLD_FITTING",
   };
+  if (rawObservationRowsRead > RAW_ROW_CAP) throw new Error("SCORECARD_RAW_ROW_BUDGET_EXCEEDED");
   process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
 }
 
