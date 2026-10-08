@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { SPECS } from "../../scripts/research-clone-daily-sync";
-import { purgeConfirmedTelemetry, runAppendSync, TELEMETRY_PURGE_ORDER, type TelemetryTable, type TelemetryPurgeRow, type TelemetryPurgeCursor, type Watermark } from "../../lib/research-clone/dailySync";
+import { purgeConfirmedTelemetry, runAppendSync, TELEMETRY_PURGE_ORDER, type PurgeTable, type TelemetryPurgeRow, type TelemetryPurgeCursor, type Watermark } from "../../lib/research-clone/dailySync";
 
 test("all three telemetry datasets use narrow append-only keysets", () => {
   const expected = [
@@ -52,9 +52,9 @@ test("24h purge deletes only exact clone-confirmed old IDs and preserves recent 
     { id: `${table}:confirmed`, timestamp: old },
     { id: `${table}:missing`, timestamp: old },
     { id: `${table}:recent`, timestamp: recent },
-  ]])) as Record<TelemetryTable, TelemetryPurgeRow[]>;
+  ]])) as Record<PurgeTable, TelemetryPurgeRow[]>;
   const deleted: string[] = [];
-  const cursor = {} as Record<TelemetryTable, TelemetryPurgeCursor | null>;
+  const cursor = {} as Record<PurgeTable, TelemetryPurgeCursor | null>;
   const results = await purgeConfirmedTelemetry(now, {
     async readCursor(table) { return cursor[table] ?? null; },
     async fetchStalePage(table, cutoff, after, limit) {
@@ -72,6 +72,67 @@ test("24h purge deletes only exact clone-confirmed old IDs and preserves recent 
     assert.equal(rows[table].some((row) => row.id.endsWith(":missing")), true);
     assert.equal(rows[table].some((row) => row.id.endsWith(":recent")), true);
   }
+});
+
+test("GSRS purge uses a seven-day ordered keyset, exact clone IDs, and a durable cursor", async () => {
+  const now = Date.parse("2026-10-08T12:00:00.000Z");
+  const old = "2026-09-30T00:00:00.000Z";
+  const recent = "2026-10-07T00:00:00.000Z";
+  const rows = [
+    { id: "a", timestamp: old },
+    { id: "b", timestamp: old },
+    { id: "c", timestamp: recent },
+  ];
+  let cursor: TelemetryPurgeCursor | null = null;
+  const deleted: string[] = [];
+  const seenCursors: TelemetryPurgeCursor[] = [];
+  const port = {
+    async readCursor() { return cursor; },
+    async fetchStalePage(_table: string, cutoff: string, after: TelemetryPurgeCursor | null, limit: number) {
+      assert.equal(limit, 1);
+      assert.equal(cutoff, "2026-10-01T12:00:00.000Z");
+      return rows.filter((row) => row.timestamp <= cutoff && (!after || row.timestamp > after.timestamp || (row.timestamp === after.timestamp && row.id > after.id))).slice(0, limit);
+    },
+    async exactCloneIds(_table: string, ids: readonly string[]) { return ids.filter((id) => id === "a"); },
+    async withoutProductionChildren(_table: string, ids: readonly string[]) { return [...ids]; },
+    async deleteProductionIds(_table: string, ids: readonly string[]) { deleted.push(...ids); },
+    async writeCursor(_table: string, next: TelemetryPurgeCursor | null) { cursor = next; if (next) seenCursors.push(next); },
+  };
+  const options = { tables: ["generated_signal_research_snapshots"] as const, retentionDays: 7 };
+  const result = await purgeConfirmedTelemetry(now, port, 1, 2, options);
+  assert.deepEqual(deleted, ["a"]);
+  assert.equal(result.generated_signal_research_snapshots.not_confirmed_n, 1);
+  assert.deepEqual(seenCursors.map((item) => item.id), ["a", "b"]);
+  assert.deepEqual(cursor, { timestamp: old, id: "b" });
+});
+
+test("GSRS purge fails closed on clone failure, oversized or unordered pages, and duplicate IDs", async () => {
+  const now = Date.parse("2026-10-08T12:00:00.000Z");
+  const old = "2026-09-30T00:00:00.000Z";
+  const options = { tables: ["generated_signal_research_snapshots"] as const, retentionDays: 7 };
+  let deletes = 0;
+  const port = (sourceRows: Array<{ id: string; timestamp: string }>, cloneIds: () => Promise<string[]>) => ({
+    async readCursor() { return null; },
+    async fetchStalePage() { return sourceRows; },
+    async exactCloneIds() { return cloneIds(); },
+    async withoutProductionChildren(_table: string, ids: readonly string[]) { return [...ids]; },
+    async deleteProductionIds() { deletes++; },
+    async writeCursor() {},
+  });
+  await assert.rejects(purgeConfirmedTelemetry(now, port([{ id: "a", timestamp: old }], async () => { throw new Error("CLONE_UNAVAILABLE"); }), 1, 1, options), /CLONE_UNAVAILABLE/);
+  await assert.rejects(purgeConfirmedTelemetry(now, port(Array.from({ length: 201 }, (_, i) => ({ id: String(i), timestamp: old })), async () => []), 200, 1, options), /SOURCE_BOUND_VIOLATION/);
+  await assert.rejects(purgeConfirmedTelemetry(now, port([{ id: "b", timestamp: old }, { id: "a", timestamp: old }], async () => []), 2, 1, options), /SOURCE_ORDER_VIOLATION/);
+  await assert.rejects(purgeConfirmedTelemetry(now, port([{ id: "a", timestamp: old }, { id: "a", timestamp: old }], async () => []), 2, 1, options), /DUPLICATE_SOURCE_ID|SOURCE_ORDER_VIOLATION/);
+  await assert.rejects(purgeConfirmedTelemetry(now, port([{ id: "a", timestamp: old }], async () => ["a", "a"]), 1, 1, options), /DUPLICATE_CLONE_ID/);
+  assert.equal(deletes, 0);
+});
+
+test("GSRS purge source transport selects only id and snapshot_at", async () => {
+  const { readFileSync } = await import("node:fs");
+  const script = readFileSync("scripts/research-clone-daily-sync.ts", "utf8");
+  assert.match(script, /generated_signal_research_snapshots"\) return "snapshot_at"/);
+  assert.match(script, /source\.from\(table\)\.select\(`id,\$\{field\}`\)\.lte\(field, cutoff\)/);
+  assert.match(script, /\{ tables: \["generated_signal_research_snapshots"\], retentionDays: 7 \}/);
 });
 
 test("CLONE_PARITY_REPAIR_V1: capture projection carries discovery_audit_v1 and clone schema adds it", async () => {

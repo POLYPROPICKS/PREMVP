@@ -7,15 +7,16 @@ export const TELEMETRY_PURGE_ORDER = [
   "reservation_market_capture_runs",
 ] as const;
 export type TelemetryTable = typeof TELEMETRY_PURGE_ORDER[number];
+export type PurgeTable = TelemetryTable | "generated_signal_research_snapshots";
 export type TelemetryPurgeRow = { id: string; timestamp: string };
 export type TelemetryPurgeCursor = { timestamp: string; id: string };
 export interface TelemetryPurgePort {
-  readCursor(table: TelemetryTable): Promise<TelemetryPurgeCursor | null>;
-  fetchStalePage(table: TelemetryTable, cutoff: string, after: TelemetryPurgeCursor | null, limit: number): Promise<TelemetryPurgeRow[]>;
-  exactCloneIds(table: TelemetryTable, ids: readonly string[]): Promise<readonly string[]>;
-  withoutProductionChildren(table: TelemetryTable, ids: readonly string[]): Promise<readonly string[]>;
-  deleteProductionIds(table: TelemetryTable, ids: readonly string[]): Promise<void>;
-  writeCursor(table: TelemetryTable, cursor: TelemetryPurgeCursor | null): Promise<void>;
+  readCursor(table: PurgeTable): Promise<TelemetryPurgeCursor | null>;
+  fetchStalePage(table: PurgeTable, cutoff: string, after: TelemetryPurgeCursor | null, limit: number): Promise<TelemetryPurgeRow[]>;
+  exactCloneIds(table: PurgeTable, ids: readonly string[]): Promise<readonly string[]>;
+  withoutProductionChildren(table: PurgeTable, ids: readonly string[]): Promise<readonly string[]>;
+  deleteProductionIds(table: PurgeTable, ids: readonly string[]): Promise<void>;
+  writeCursor(table: PurgeTable, cursor: TelemetryPurgeCursor | null): Promise<void>;
 }
 
 export async function purgeConfirmedTelemetry(
@@ -23,21 +24,32 @@ export async function purgeConfirmedTelemetry(
   port: TelemetryPurgePort,
   pageSize = 200,
   maxPagesPerTable = 8,
-): Promise<Record<TelemetryTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>> {
+  options: { tables?: readonly PurgeTable[]; retentionDays?: number } = {},
+): Promise<Record<PurgeTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>> {
   if (pageSize < 1 || pageSize > 200 || maxPagesPerTable < 1 || maxPagesPerTable > 8) throw new Error("TELEMETRY_PURGE_BUDGET_INVALID");
-  const cutoff = new Date(nowMs - 24 * 60 * 60 * 1000).toISOString();
-  const totals = {} as Record<TelemetryTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>;
-  for (const table of TELEMETRY_PURGE_ORDER) {
+  const retentionDays = options.retentionDays ?? 1;
+  if (!Number.isInteger(retentionDays) || retentionDays < 1) throw new Error("TELEMETRY_PURGE_RETENTION_INVALID");
+  const cutoffMs = nowMs - retentionDays * 24 * 60 * 60 * 1000;
+  const cutoff = new Date(cutoffMs).toISOString();
+  const totals = {} as Record<PurgeTable, { eligible_stale_n: number; confirmed_in_clone_n: number; deleted_n: number; not_confirmed_n: number; purge_pending: boolean }>;
+  for (const table of options.tables ?? TELEMETRY_PURGE_ORDER) {
     const result = { eligible_stale_n: 0, confirmed_in_clone_n: 0, deleted_n: 0, not_confirmed_n: 0, purge_pending: false };
     let cursor = await port.readCursor(table);
     for (let page = 0; page < maxPagesPerTable; page++) {
       const rows = await port.fetchStalePage(table, cutoff, cursor, pageSize);
-      if (rows.length > pageSize || rows.some((row) => !Number.isFinite(Date.parse(row.timestamp)) || Date.parse(row.timestamp) > nowMs - 24 * 60 * 60 * 1000)) throw new Error("TELEMETRY_PURGE_SOURCE_BOUND_VIOLATION");
+      if (rows.length > pageSize || rows.some((row) => !row.id || !Number.isFinite(Date.parse(row.timestamp)) || Date.parse(row.timestamp) > cutoffMs)) throw new Error("TELEMETRY_PURGE_SOURCE_BOUND_VIOLATION");
       if (rows.length === 0) { await port.writeCursor(table, null); break; }
+      let previous = cursor;
+      for (const row of rows) {
+        if (previous && (row.timestamp < previous.timestamp || (row.timestamp === previous.timestamp && row.id <= previous.id))) throw new Error("TELEMETRY_PURGE_SOURCE_ORDER_VIOLATION");
+        previous = row;
+      }
       const ids = rows.map((row) => row.id);
       if (new Set(ids).size !== ids.length) throw new Error("TELEMETRY_PURGE_DUPLICATE_SOURCE_ID");
       result.eligible_stale_n += ids.length;
-      const confirmed = new Set(await port.exactCloneIds(table, ids));
+      const cloneIds = await port.exactCloneIds(table, ids);
+      if (new Set(cloneIds).size !== cloneIds.length) throw new Error("TELEMETRY_PURGE_DUPLICATE_CLONE_ID");
+      const confirmed = new Set(cloneIds);
       if ([...confirmed].some((id) => !ids.includes(id))) throw new Error("TELEMETRY_PURGE_CLONE_CONFIRMATION_MISMATCH");
       result.confirmed_in_clone_n += confirmed.size;
       result.not_confirmed_n += ids.length - confirmed.size;
