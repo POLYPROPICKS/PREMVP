@@ -14,7 +14,7 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash, randomUUID } from "crypto";
-import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, createFinalT3ReadPort, createReservationStrategyDecisionStore, persistLiveGuardTelemetry, readCompletedFinalT3Universe, readCompletedT30Universe, recordReservationStrategyDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
+import { FINAL_REBALANCE_PHASE, bStrategySupportRegion, createFinalT3ReadPort, createReservationStrategyDecisionStore, persistLiveGuardTelemetry, readCompletedFinalT3Universe, readCompletedT30Universe, recordReservationStrategyDecision, selectLiveMoneyBDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation, type LiveGuardTelemetryInput } from "./reservationMarketBaseline";
 import {
   decideT10EconomicEvent,
   isT10EconomicActivationOn,
@@ -1682,7 +1682,9 @@ async function selectQueueRowFromT3FinalIdentity(
     return selectQueueRowFromT10EconomicAction(reservation, universe, decisions.b, rebalanceRunId, nowMs,
       fetchExactTokenOrderbook, economic, writeGuardTelemetry);
   }
-  const live = decisions.b;
+  // LIVE_MONEY_FAMILY_AUTHORITY_V1: SPREADS is removed BEFORE the live choice (decisions.b above stays the
+  // unchanged telemetry arm), so an observation-only family can never win and starve an allowed one.
+  const live = selectLiveMoneyBDecision(universe, decisions.b);
   if (!live.selectedIdentity) return { outcome: "SKIPPED", reason: `T3_B_SKIP:${live.decisionReason}`, queueRow: null };
   const planningIdentity = extractPlanningFinalIdentityEvidence(reservation.diagnostics);
   if (!planningIdentity) return { outcome: "SKIPPED", reason: "PLANNING_FINAL_IDENTITY_EVIDENCE_MISSING", queueRow: null };
