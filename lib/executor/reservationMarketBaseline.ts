@@ -6,6 +6,7 @@ import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from 
 import { GAMMA_GAME_EVENTS_LIMIT, fetchPolymarketEventById, fetchPolymarketEventsByGameId } from "../feed/polymarketClient";
 import type { PolymarketRawEvent } from "../feed/types";
 import { compareExactIdentity } from "./exactIdentityOrder";
+import { isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
 import { physicalMatchId } from "./contractADecisions";
 import { CORNER_DERIVATIVE_RE } from "../contur3/taxonomy";
 
@@ -959,6 +960,50 @@ export function isBSupportEligible(row: FinalT3MarketObservation): boolean {
     row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max);
 }
 
+/** Priority walk over B_SUPPORT restricted to `familyAllowed`; the restriction applies BEFORE any candidate is chosen. */
+function chooseBCandidate(
+  universe: readonly FinalT3MarketObservation[],
+  hasBook: (row: FinalT3MarketObservation) => boolean,
+  familyAllowed: (family: string) => boolean,
+): { bSelected: FinalT3MarketObservation | null; bReason: string } {
+  let bSelected: FinalT3MarketObservation | null = null;
+  let bReason = "NO_SUPPORTED_T3_CANDIDATE";
+  for (const support of B_SUPPORT) {
+    if (!familyAllowed(support.family)) continue;
+    const qualifying = universe.filter((row) => row.canonical_market_family === support.family &&
+      row.canonical_market_type === support.type && hasBook(row) &&
+      row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max &&
+      (support.family !== "TOTAL_CORNERS" ||
+        (row.provider_market_type_raw?.trim().toLowerCase() === "total_corners" &&
+          classifyExactEventMarket(row.provider_market_type_raw, row.market_slug).family === "TOTAL_CORNERS")));
+    if (qualifying.length === 0) continue;
+    qualifying.sort(compareExactIdentity);
+    if (qualifying.length > 1 && compareExactIdentity(qualifying[0], qualifying[1]) === 0) {
+      bReason = "AMBIGUOUS_EXACT_IDENTITY_ORDER";
+      break;
+    }
+    bSelected = qualifying[0];
+    bReason = `PRIORITY_${support.family}_IN_SUPPORT`;
+    break;
+  }
+  return { bSelected, bReason };
+}
+
+/**
+ * LIVE_MONEY_FAMILY_AUTHORITY_V1 -- released/OFF live choice. Same B priority walk and bands, but families that
+ * may not carry live money (SPREADS) are removed BEFORE the choice, so they can never win and starve an allowed
+ * family. The telemetry/research decision (selectReservationT3AbDecisions) is unchanged and still sees SPREADS.
+ */
+export function selectLiveMoneyBDecision(
+  universe: readonly FinalT3MarketObservation[],
+  telemetryB: ReservationStrategyDecisionInput,
+): ReservationStrategyDecisionInput {
+  const { bSelected, bReason } = chooseBCandidate(universe, hasT3Book, isLiveMoneyFamilyEligible);
+  return { ...telemetryB,
+    selectedIdentity: bSelected ? { conditionId: bSelected.condition_id, tokenId: bSelected.token_id, side: bSelected.side } : null,
+    decisionReason: bReason };
+}
+
 export function selectReservationT3AbDecisions(
   reservation: NightEventReservationRow,
   universe: readonly FinalT3MarketObservation[],
@@ -987,25 +1032,7 @@ export function selectReservationT3AbDecisions(
     ? "PLANNING_IDENTITY_NOT_IN_T3" : planningMatches.length > 1
       ? "PLANNING_IDENTITY_AMBIGUOUS" : !aSelected ? "PLANNING_T3_BOOK_UNAVAILABLE" : "PLANNING_EXACT_T3_BOOK_SUPPORTED";
 
-  let bSelected: FinalT3MarketObservation | null = null;
-  let bReason = "NO_SUPPORTED_T3_CANDIDATE";
-  for (const support of B_SUPPORT) {
-    const qualifying = universe.filter((row) => row.canonical_market_family === support.family &&
-      row.canonical_market_type === support.type && hasBook(row) &&
-      row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max &&
-      (support.family !== "TOTAL_CORNERS" ||
-        (row.provider_market_type_raw?.trim().toLowerCase() === "total_corners" &&
-          classifyExactEventMarket(row.provider_market_type_raw, row.market_slug).family === "TOTAL_CORNERS")));
-    if (qualifying.length === 0) continue;
-    qualifying.sort(compareExactIdentity);
-    if (qualifying.length > 1 && compareExactIdentity(qualifying[0], qualifying[1]) === 0) {
-      bReason = "AMBIGUOUS_EXACT_IDENTITY_ORDER";
-      break;
-    }
-    bSelected = qualifying[0];
-    bReason = `PRIORITY_${support.family}_IN_SUPPORT`;
-    break;
-  }
+  const { bSelected, bReason } = chooseBCandidate(universe, hasBook, () => true);
   return {
     a: { captureRunId, strategyVariant: "A_CURRENT_CONTROL", strategyVersion: AB_VERSION,
       selectedIdentity: aSelected ? identity(aSelected) : null, decisionReason: aReason },
