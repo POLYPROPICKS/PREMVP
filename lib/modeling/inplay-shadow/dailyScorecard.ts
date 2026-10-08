@@ -1,6 +1,8 @@
 // DAILY_INPLAY_COVERAGE_SCORECARD_V1. Pure, deterministic, read-only. No I/O, no clock (callers pass `nowIso`).
 // Answers one question: has the live in-play corpus expanded beyond tennis/MONEYLINE? Natural persisted rows are
 // the only authority; classifier or test readiness can never move a state.
+// AGGREGATE_FIRST: coverage, freshness and 3-day readiness come from ONE server-side read-only aggregate statement
+// (COUNT / COUNT DISTINCT / MIN / MAX / GROUP BY); no history of raw rows is ever pulled into the process.
 import { runInplayShadowProbes, type InplayObservation } from "./inplayShadowProbes";
 
 export const SCORECARD_TASK = "DAILY_INPLAY_COVERAGE_SCORECARD_V1";
@@ -9,7 +11,6 @@ export const SPORTS = ["soccer", "tennis", "basketball", "hockey", "baseball", "
 export const MARKETS = ["MONEYLINE", "SPREAD", "TOTAL", "TOTAL_CORNERS"] as const;
 const EXCLUDED_SPORTS = new Set(["esports"]);
 export const RAW_ROW_CAP = 200;
-export const KEY_SCAN_CAP = 50_000;
 export const CLONE_FRESH_MAX_MINUTES = 90;
 export const MIN_EVENTS_PER_COMPLETE_DAY = 5;
 export const THREE_DAY_GATE_DAYS = 3;
@@ -19,10 +20,12 @@ export const HARD_CAPS = Object.freeze({
   mb_per_day: 20, rows_per_day: 20_000, events_per_day: 100, rows_per_event: 192, tokens_per_event: 16, retention_hours: 48,
 });
 export const STORAGE_WARN_FRACTION = 0.5;
-
-/** Narrow aggregate projection: the only columns the coverage scan reads. */
-export const KEY_COLUMNS = ["physical_event_id", "token_id", "provider_sport_family", "canonical_market_type", "observed_at"] as const;
-export type KeyRow = { physical_event_id: string; token_id: string; provider_sport_family: string; canonical_market_type: string; observed_at: string };
+/** The retention window governs PRODUCTION (source) only. DBClone is the long-term research authority. */
+export const RETENTION_SEMANTICS =
+  `${HARD_CAPS.retention_hours}h retention deletes already-confirmed rows from PRODUCTION (source) after they are verified on DBClone; ` +
+  "DBClone keeps the full history, so completed Minsk days older than that window still count toward the gate";
+export const AGGREGATE_AUTHORITY = "DBCLONE_READ_ONLY_SERVER_SIDE_AGGREGATE_V1";
+const TABLE = "public.research_inplay_core_path_observations";
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const sortedObj = <T>(o: Record<string, T>): Record<string, T> => Object.fromEntries(Object.entries(o).sort(([a], [b]) => cmp(a, b)));
@@ -44,52 +47,139 @@ export function minskDayOf(iso: string): string {
 export function toMinsk(iso: string | null): string | null {
   return iso && Number.isFinite(Date.parse(iso)) ? `${new Date(Date.parse(iso) + MINSK_UTC_OFFSET_HOURS * 3_600_000).toISOString().slice(0, 19).replace("T", " ")} Minsk` : null;
 }
-export function rowsInMinskDay<T extends { observed_at: string }>(rows: readonly T[], date: string): T[] {
+
+// ---------------------------------------------------------------- aggregate statements (read-only SELECT only)
+const iso = (expr: string) => `to_char(${expr} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')`;
+const MINSK_DAY_SQL = `to_char(((observed_at AT TIME ZONE 'UTC') + INTERVAL '${MINSK_UTC_OFFSET_HOURS} hours'), 'YYYY-MM-DD')`;
+
+/** ONE compact aggregate row: selected-day matrix, multi-family candidates and the per-Minsk-day history. No raw observations. */
+export function coverageAggregateSql(date: string): string {
   const { startUtc, endUtc } = minskDayBounds(date);
-  const s = Date.parse(startUtc), e = Date.parse(endUtc);
-  return rows.filter((r) => { const t = Date.parse(r.observed_at); return t >= s && t < e; });
+  return `WITH d AS (
+  SELECT physical_event_id, token_id, provider_sport_family AS sport, canonical_market_type AS market, observed_at
+  FROM ${TABLE}
+  WHERE observed_at >= TIMESTAMPTZ '${startUtc}' AND observed_at < TIMESTAMPTZ '${endUtc}'
+), g AS (
+  SELECT sport, market, GROUPING(sport) AS gs, GROUPING(market) AS gm,
+    count(*)::int AS row_n, count(DISTINCT physical_event_id)::int AS event_n, count(DISTINCT token_id)::int AS token_n,
+    ${iso("min(observed_at)")} AS min_at, ${iso("max(observed_at)")} AS max_at
+  FROM d GROUP BY GROUPING SETS ((), (sport), (sport, market))
+), m AS (
+  SELECT count(*)::int AS n FROM (
+    SELECT 1 FROM d WHERE market IN ('MONEYLINE', 'SPREAD', 'TOTAL') OR (market = 'TOTAL_CORNERS' AND sport = 'soccer')
+    GROUP BY physical_event_id HAVING count(DISTINCT market) >= 2
+  ) x
+), h AS (
+  SELECT ${MINSK_DAY_SQL} AS minsk_date, count(*)::int AS row_n, count(DISTINCT physical_event_id)::int AS event_n, ${iso("max(observed_at)")} AS max_at
+  FROM ${TABLE} GROUP BY 1
+)
+SELECT
+  (SELECT coalesce(jsonb_agg(to_jsonb(g)), '[]'::jsonb) FROM g) AS cells,
+  (SELECT n FROM m) AS multi_n,
+  (SELECT coalesce(jsonb_agg(to_jsonb(h) ORDER BY h.minsk_date), '[]'::jsonb) FROM h) AS daily,
+  (SELECT coalesce(sum(row_n), 0)::int FROM h) AS clone_row_n,
+  (SELECT max(max_at) FROM h) AS clone_max_observed_at`;
+}
+
+/** Production storage aggregate over the trailing 24h (rows/events/per-event maxima/span) plus the real relation size. */
+export function storageAggregateSql(sinceIso: string): string {
+  if (!Number.isFinite(Date.parse(sinceIso))) throw new Error(`SCORECARD_BAD_TIMESTAMP:${sinceIso}`);
+  const since = new Date(sinceIso).toISOString();
+  return `WITH w AS (
+  SELECT physical_event_id, token_id, observed_at FROM ${TABLE} WHERE observed_at >= TIMESTAMPTZ '${since}'
+), pe AS (
+  SELECT count(*)::int AS rows_n, count(DISTINCT token_id)::int AS tokens_n FROM w GROUP BY physical_event_id
+)
+SELECT
+  (SELECT count(*)::int FROM ${TABLE}) AS row_n,
+  (SELECT ${iso("max(observed_at)")} FROM ${TABLE}) AS max_observed_at,
+  (SELECT count(*)::int FROM w) AS rows_24h,
+  (SELECT count(*)::int FROM pe) AS events_24h,
+  (SELECT coalesce(max(rows_n), 0)::int FROM pe) AS max_rows_per_event,
+  (SELECT coalesce(max(tokens_n), 0)::int FROM pe) AS max_tokens_per_event,
+  (SELECT coalesce(extract(epoch FROM (max(observed_at) - min(observed_at))) / 3600, 0)::float8 FROM w) AS span_hours,
+  pg_total_relation_size('${TABLE}'::regclass)::float8 AS relation_bytes`;
+}
+
+/** Bounded raw read (hard LIMIT RAW_ROW_CAP) used only for mechanism evaluation of one selected day. Explicit columns, no SELECT *. */
+export function boundedDayRowsSql(date: string, columns: readonly string[], numericColumns: ReadonlySet<string>, timestampColumns: ReadonlySet<string>): string {
+  const { startUtc, endUtc } = minskDayBounds(date);
+  if (!columns.every((c) => /^[a-z_]+$/.test(c))) throw new Error("SCORECARD_BAD_COLUMN");
+  const list = columns.map((c) => (numericColumns.has(c) ? `${c}::float8 AS ${c}` : timestampColumns.has(c) ? `${iso(c)} AS ${c}` : c)).join(", ");
+  return `SELECT ${list} FROM ${TABLE} WHERE observed_at >= TIMESTAMPTZ '${startUtc}' AND observed_at < TIMESTAMPTZ '${endUtc}' ORDER BY observed_at ASC, id ASC LIMIT ${RAW_ROW_CAP}`;
 }
 
 // ---------------------------------------------------------------- coverage
 export type MatrixCell = { row_n: number; event_n: number; token_n: number };
+export type CoverageAggregate = {
+  day: MatrixCell & { min_observed_at: string | null; max_observed_at: string | null };
+  sport_event_n: Record<string, number>;
+  cells: Array<{ sport: string; market: string } & MatrixCell>;
+  core_multi_family_event_candidate_n: number;
+};
+export type DailyRow = { minsk_date: string; event_n: number; row_n: number };
+export type CloneAggregate = { coverage: CoverageAggregate; daily: DailyRow[]; cloneRowN: number; cloneMaxObservedAt: string | null };
 
-function aggregate(rows: readonly KeyRow[]): MatrixCell {
-  return { row_n: rows.length, event_n: new Set(rows.map((r) => r.physical_event_id)).size, token_n: new Set(rows.map((r) => r.token_id)).size };
-}
-function groupBy(rows: readonly KeyRow[], key: (r: KeyRow) => string): Map<string, KeyRow[]> {
-  const m = new Map<string, KeyRow[]>();
-  for (const r of rows) { const k = key(r); const l = m.get(k); if (l) l.push(r); else m.set(k, [r]); }
-  return m;
-}
+const count = (v: unknown, what: string): number => {
+  const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
+  if (typeof n !== "number" || !Number.isInteger(n) || n < 0) throw new Error(`SCORECARD_AGGREGATE_SHAPE:${what}`);
+  return n;
+};
+const asJsonArray = (v: unknown, what: string): unknown[] => {
+  const parsed = typeof v === "string" ? JSON.parse(v) : v;
+  if (!Array.isArray(parsed)) throw new Error(`SCORECARD_AGGREGATE_SHAPE:${what}`);
+  return parsed;
+};
 
-export function buildCoverage(dayRows: readonly KeyRow[]) {
-  const matrix: Record<string, MatrixCell> = {};
-  for (const [k, v] of [...groupBy(dayRows, (r) => `${r.provider_sport_family}|${r.canonical_market_type}`).entries()].sort(([a], [b]) => cmp(a, b))) matrix[k] = aggregate(v);
-  const eventN = (sport: string, market?: string) =>
-    new Set(dayRows.filter((r) => r.provider_sport_family === sport && (market === undefined || r.canonical_market_type === market)).map((r) => r.physical_event_id)).size;
-  const times = dayRows.map((r) => Date.parse(r.observed_at)).filter(Number.isFinite).sort((a, b) => a - b);
-  const sportsWithRows = new Set(dayRows.map((r) => r.provider_sport_family).filter((s) => !EXCLUDED_SPORTS.has(s)));
-  const marketsWithRows = new Set(dayRows.map((r) => r.canonical_market_type));
-  const cornersN = eventN("soccer", "TOTAL_CORNERS");
-  const coreTypes = new Set(["MONEYLINE", "SPREAD", "TOTAL"]);
-  const byEvent = groupBy(dayRows, (r) => r.physical_event_id);
-  const multiCandidates = [...byEvent.values()].filter((l) => new Set(l.filter((r) => coreTypes.has(r.canonical_market_type) || (r.canonical_market_type === "TOTAL_CORNERS" && r.provider_sport_family === "soccer")).map((r) => r.canonical_market_type)).size >= 2).length;
+/** Validates and normalises the single row returned by `coverageAggregateSql`. Fails closed on any shape drift. */
+export function parseCloneAggregate(row: unknown): CloneAggregate {
+  if (!row || typeof row !== "object") throw new Error("SCORECARD_AGGREGATE_SHAPE:row");
+  const r = row as Record<string, unknown>;
+  const day: CoverageAggregate["day"] = { row_n: 0, event_n: 0, token_n: 0, min_observed_at: null, max_observed_at: null };
+  const sport_event_n: Record<string, number> = {};
+  const cells: CoverageAggregate["cells"] = [];
+  for (const c of asJsonArray(r.cells, "cells") as Array<Record<string, unknown>>) {
+    const m = { row_n: count(c.row_n, "row_n"), event_n: count(c.event_n, "event_n"), token_n: count(c.token_n, "token_n") };
+    if (c.gs === 1 && c.gm === 1) Object.assign(day, m, { min_observed_at: (c.min_at as string) ?? null, max_observed_at: (c.max_at as string) ?? null });
+    else if (c.gs === 0 && c.gm === 1) sport_event_n[String(c.sport)] = m.event_n;
+    else if (c.gs === 0 && c.gm === 0) cells.push({ sport: String(c.sport), market: String(c.market), ...m });
+    else throw new Error("SCORECARD_AGGREGATE_SHAPE:grouping");
+  }
+  const daily = (asJsonArray(r.daily, "daily") as Array<Record<string, unknown>>).map((d) => {
+    const minsk_date = String(d.minsk_date);
+    assertMinskDate(minsk_date);
+    return { minsk_date, event_n: count(d.event_n, "daily.event_n"), row_n: count(d.row_n, "daily.row_n") };
+  });
   return {
-    ...aggregate(dayRows),
-    observed_from_minsk: times.length ? toMinsk(new Date(times[0]).toISOString()) : null,
-    observed_to_minsk: times.length ? toMinsk(new Date(times[times.length - 1]).toISOString()) : null,
+    coverage: { day, sport_event_n, cells, core_multi_family_event_candidate_n: count(r.multi_n, "multi_n") },
+    daily, cloneRowN: count(r.clone_row_n, "clone_row_n"), cloneMaxObservedAt: typeof r.clone_max_observed_at === "string" ? r.clone_max_observed_at : null,
+  };
+}
+
+export function buildCoverage(a: CoverageAggregate) {
+  const matrix: Record<string, MatrixCell> = {};
+  for (const c of [...a.cells].sort((x, y) => cmp(`${x.sport}|${x.market}`, `${y.sport}|${y.market}`))) matrix[`${c.sport}|${c.market}`] = { row_n: c.row_n, event_n: c.event_n, token_n: c.token_n };
+  const sportN = (sport: string) => a.sport_event_n[sport] ?? 0;
+  const cellN = (sport: string, market: string) => a.cells.find((c) => c.sport === sport && c.market === market)?.event_n ?? 0;
+  const sportsWithRows = new Set(Object.keys(a.sport_event_n).filter((s) => !EXCLUDED_SPORTS.has(s)));
+  const marketsWithRows = new Set(a.cells.map((c) => c.market));
+  const cornersN = cellN("soccer", "TOTAL_CORNERS");
+  return {
+    row_n: a.day.row_n, event_n: a.day.event_n, token_n: a.day.token_n,
+    observed_from_minsk: toMinsk(a.day.min_observed_at),
+    observed_to_minsk: toMinsk(a.day.max_observed_at),
     sport_market_matrix: matrix,
-    SOCCER_EVENT_N: eventN("soccer"), SOCCER_MONEYLINE_EVENT_N: eventN("soccer", "MONEYLINE"), SOCCER_SPREAD_EVENT_N: eventN("soccer", "SPREAD"),
-    SOCCER_TOTAL_EVENT_N: eventN("soccer", "TOTAL"), SOCCER_TOTAL_CORNERS_EVENT_N: cornersN,
-    BASKETBALL_EVENT_N: eventN("basketball"), BASKETBALL_MONEYLINE_EVENT_N: eventN("basketball", "MONEYLINE"),
-    BASKETBALL_SPREAD_EVENT_N: eventN("basketball", "SPREAD"), BASKETBALL_TOTAL_EVENT_N: eventN("basketball", "TOTAL"),
-    HOCKEY_EVENT_N: eventN("hockey"), HOCKEY_MONEYLINE_EVENT_N: eventN("hockey", "MONEYLINE"),
-    HOCKEY_SPREAD_EVENT_N: eventN("hockey", "SPREAD"), HOCKEY_TOTAL_EVENT_N: eventN("hockey", "TOTAL"),
-    BASEBALL_EVENT_N: eventN("baseball"), AMERICAN_FOOTBALL_EVENT_N: eventN("american-football"), CRICKET_EVENT_N: eventN("cricket"), TENNIS_EVENT_N: eventN("tennis"),
+    SOCCER_EVENT_N: sportN("soccer"), SOCCER_MONEYLINE_EVENT_N: cellN("soccer", "MONEYLINE"), SOCCER_SPREAD_EVENT_N: cellN("soccer", "SPREAD"),
+    SOCCER_TOTAL_EVENT_N: cellN("soccer", "TOTAL"), SOCCER_TOTAL_CORNERS_EVENT_N: cornersN,
+    BASKETBALL_EVENT_N: sportN("basketball"), BASKETBALL_MONEYLINE_EVENT_N: cellN("basketball", "MONEYLINE"),
+    BASKETBALL_SPREAD_EVENT_N: cellN("basketball", "SPREAD"), BASKETBALL_TOTAL_EVENT_N: cellN("basketball", "TOTAL"),
+    HOCKEY_EVENT_N: sportN("hockey"), HOCKEY_MONEYLINE_EVENT_N: cellN("hockey", "MONEYLINE"),
+    HOCKEY_SPREAD_EVENT_N: cellN("hockey", "SPREAD"), HOCKEY_TOTAL_EVENT_N: cellN("hockey", "TOTAL"),
+    BASEBALL_EVENT_N: sportN("baseball"), AMERICAN_FOOTBALL_EVENT_N: sportN("american-football"), CRICKET_EVENT_N: sportN("cricket"), TENNIS_EVENT_N: sportN("tennis"),
     MULTISPORT_STATE: sportsWithRows.size >= 2 ? "READY" : "SINGLE_SPORT_ONLY",
     MULTIMARKET_STATE: marketsWithRows.size >= 2 ? "READY" : marketsWithRows.size === 1 && marketsWithRows.has("MONEYLINE") ? "MONEYLINE_ONLY" : "OTHER_INCOMPLETE",
     SOCCER_CORNERS_STATE: cornersN >= 1 ? "PROVEN" : "NO_SAMPLE",
-    CORE_MULTI_FAMILY_EVENT_CANDIDATE_N: multiCandidates,
+    CORE_MULTI_FAMILY_EVENT_CANDIDATE_N: a.core_multi_family_event_candidate_n,
   };
 }
 
@@ -154,24 +244,18 @@ export function mechanismReadiness(dayRowN: number, fullRows: readonly InplayObs
 }
 
 // ---------------------------------------------------------------- three-day readiness
-/** Only fully elapsed Minsk days count. The day containing `nowIso` is partial and never counted. */
-export function threeDayReadiness(allRows: readonly KeyRow[], nowIso: string) {
+/** DBClone history (not the 48h Production window). Only fully elapsed Minsk days count; the day containing `nowIso` is partial and never counted. */
+export function threeDayReadiness(daily: readonly DailyRow[], nowIso: string) {
   const today = minskDayOf(nowIso);
-  const byDay = new Map<string, Set<string>>();
-  for (const r of allRows) {
-    if (!Number.isFinite(Date.parse(r.observed_at))) continue;
-    const d = minskDayOf(r.observed_at);
-    (byDay.get(d) ?? byDay.set(d, new Set()).get(d)!).add(r.physical_event_id);
-  }
-  const days = [...byDay.entries()].sort(([a], [b]) => cmp(a, b));
-  const complete = days.filter(([d]) => d < today);
-  const qualifying = complete.filter(([, ev]) => ev.size >= MIN_EVENTS_PER_COMPLETE_DAY);
+  const days = [...daily].sort((a, b) => cmp(a.minsk_date, b.minsk_date));
+  const complete = days.filter((d) => d.minsk_date < today);
+  const qualifying = complete.filter((d) => d.event_n >= MIN_EVENTS_PER_COMPLETE_DAY);
   return {
     TODAY_MINSK_PARTIAL: today,
-    DAYS: Object.fromEntries(days.map(([d, ev]) => [d, { event_n: ev.size, status: d < today ? "COMPLETE" : "PARTIAL_NOT_COUNTED" }])),
+    DAYS: Object.fromEntries(days.map((d) => [d.minsk_date, { event_n: d.event_n, row_n: d.row_n, status: d.minsk_date < today ? "COMPLETE" : "PARTIAL_NOT_COUNTED" }])) as Record<string, { event_n: number; row_n: number; status: string }>,
     COMPLETE_DAYS_WITH_DATA: complete.length,
     COMPLETE_DAYS_WITH_MIN_5_EVENTS: qualifying.length,
     THREE_DAY_GATE_READY: qualifying.length >= THREE_DAY_GATE_DAYS ? "YES" : "NO",
-    RETENTION_NOTE: `clone purges in-play telemetry beyond ${HARD_CAPS.retention_hours}h; the gate can only reach YES if completed days are retained elsewhere`,
+    RETENTION_NOTE: RETENTION_SEMANTICS,
   };
 }
