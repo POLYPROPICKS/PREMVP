@@ -1,5 +1,5 @@
 -- INPLAY_CORE_PATH_TELEMETRY_V1. Research facts only; no money-path reader.
-CREATE TABLE public.research_inplay_core_path_observations (
+CREATE TABLE IF NOT EXISTS public.research_inplay_core_path_observations (
   id uuid PRIMARY KEY,
   physical_event_id text NOT NULL,
   provider_game_id text,
@@ -48,8 +48,8 @@ CREATE TABLE public.research_inplay_core_path_observations (
     AND octet_length(condition_id) <= 100 AND octet_length(side) <= 100
     AND (market_slug IS NULL OR octet_length(market_slug) <= 180))
 );
-CREATE INDEX research_inplay_core_path_event_time_idx ON public.research_inplay_core_path_observations (physical_event_id, observed_at);
-CREATE INDEX research_inplay_core_path_retention_idx ON public.research_inplay_core_path_observations (observed_at, id);
+CREATE INDEX IF NOT EXISTS research_inplay_core_path_event_time_idx ON public.research_inplay_core_path_observations (physical_event_id, observed_at);
+CREATE INDEX IF NOT EXISTS research_inplay_core_path_retention_idx ON public.research_inplay_core_path_observations (observed_at, id);
 ALTER TABLE public.research_inplay_core_path_observations ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.research_inplay_core_path_observations FROM anon, authenticated;
 
