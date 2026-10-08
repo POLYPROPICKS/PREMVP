@@ -890,6 +890,36 @@ function telemetryTimeField(table: PurgeTable): string {
   return table === "reservation_strategy_observations" ? "evaluated_at" : "observed_at";
 }
 
+/**
+ * One keyset page of stale production telemetry ordered by (timestamp, id), at most `limit` rows.
+ * With a cursor (T, I) the same-timestamp remainder (timestamp = T, id > I) is read first; when it does not
+ * fill the page the page is topped up with later timestamps, so a short tie remainder can never be mistaken
+ * by the purge loop for the end of the backlog.
+ */
+export async function fetchStaleTelemetryPage(
+  source: Client,
+  table: PurgeTable,
+  cutoff: string,
+  after: TelemetryPurgeCursor | null,
+  limit: number,
+): Promise<Array<{ id: string; timestamp: string }>> {
+  const field = telemetryTimeField(table);
+  const base = () => source.from(table).select(`id,${field}`).lte(field, cutoff);
+  let rows: Array<Record<string, string>> = [];
+  if (after) {
+    const tie = await base().eq(field, after.timestamp).gt("id", after.id).order("id").limit(limit);
+    if (tie.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(tie.error)}`);
+    rows = tie.data ?? [];
+  }
+  if (rows.length < limit) {
+    const page = await (after ? base().gt(field, after.timestamp) : base())
+      .order(field).order("id").limit(limit - rows.length);
+    if (page.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(page.error)}`);
+    rows = rows.concat(page.data ?? []);
+  }
+  return rows.map((row) => ({ id: row.id, timestamp: row[field] }));
+}
+
 async function purgeTelemetry(target: Client, source: Client, nowMs: number, researchSnapshots = false, inplay = false) {
   return purgeConfirmedTelemetry(nowMs, {
     async readCursor(table) {
@@ -898,23 +928,7 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number, res
       return watermark ? { timestamp: watermark[field], id: watermark.id } : null;
     },
     async fetchStalePage(table, cutoff, after, limit) {
-      const field = telemetryTimeField(table);
-      const base = () => source.from(table).select(`id,${field}`).lte(field, cutoff);
-      let data: Array<Record<string, string>> | null = null;
-      let error: unknown = null;
-      if (after) {
-        const tie = await base().eq(field, after.timestamp).gt("id", after.id).order("id").limit(limit);
-        if (tie.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(tie.error)}`);
-        if ((tie.data ?? []).length) data = tie.data;
-      }
-      if (!data) {
-        const page = await (after ? base().gt(field, after.timestamp) : base())
-          .order(field).order("id").limit(limit);
-        data = page.data;
-        error = page.error;
-      }
-      if (error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(error)}`);
-      return (data ?? []).map((row) => ({ id: row.id, timestamp: row[field] }));
+      return fetchStaleTelemetryPage(source, table, cutoff, after, limit);
     },
     async exactCloneIds(table, ids) {
       if (!ids.length) return [];

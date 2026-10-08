@@ -191,3 +191,104 @@ test("T10_EXECUTABLE_SIBLING_TELEMETRY_V1: purge never confirms a telemetered pr
   );
   assert.deepEqual(confirmed, ["a", "c"], "b is telemetered in production but not in the clone -> stays unconfirmed; c has no telemetry anywhere");
 });
+
+// Minimal PostgREST-like builder over an in-memory table: select/lte/eq/gt/order/limit, awaitable.
+function fakeSource(rows: Array<{ id: string; snapshot_at: string }>, selects: string[] = []) {
+  return {
+    from(_table: string) {
+      const filters: Array<(row: { id: string; snapshot_at: string }) => boolean> = [];
+      const orders: string[] = [];
+      let max = Infinity;
+      const builder: any = {
+        select(columns: string) { selects.push(columns); return builder; },
+        lte(column: string, value: string) { filters.push((row) => (row as any)[column] <= value); return builder; },
+        eq(column: string, value: string) { filters.push((row) => (row as any)[column] === value); return builder; },
+        gt(column: string, value: string) { filters.push((row) => (row as any)[column] > value); return builder; },
+        order(column: string) { orders.push(column); return builder; },
+        limit(n: number) { max = n; return builder; },
+        then(resolve: (value: unknown) => unknown) {
+          const data = rows.filter((row) => filters.every((f) => f(row)))
+            .sort((a: any, b: any) => { for (const c of orders) { if (a[c] !== b[c]) return a[c] < b[c] ? -1 : 1; } return 0; })
+            .slice(0, max);
+          return Promise.resolve({ data, error: null }).then(resolve);
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+test("GSRS stale page crosses the timestamp boundary when the same-timestamp remainder is short", async () => {
+  const { fetchStaleTelemetryPage } = await import("../../scripts/research-clone-daily-sync");
+  const pad = (n: number) => String(n).padStart(4, "0");
+  const tsA = "2026-09-01T00:00:00.000Z";
+  const tsB = "2026-09-02T00:00:00.000Z";
+  const rows = [
+    ...Array.from({ length: 242 }, (_, i) => ({ id: `a${pad(i)}`, snapshot_at: tsA })),
+    ...Array.from({ length: 300 }, (_, i) => ({ id: `b${pad(i)}`, snapshot_at: tsB })),
+  ];
+  const selects: string[] = [];
+  const cutoff = "2026-10-01T00:00:00.000Z";
+  // Cursor leaves a 42-row remainder inside timestamp A.
+  const page = await fetchStaleTelemetryPage(fakeSource(rows, selects), "generated_signal_research_snapshots", cutoff, { timestamp: tsA, id: `a${pad(199)}` }, 200);
+  assert.equal(page.length, 200);
+  assert.equal(page.filter((row) => row.timestamp === tsA).length, 42);
+  assert.equal(page.filter((row) => row.timestamp === tsB).length, 158);
+  assert.deepEqual(page, [...page].sort((x, y) => (x.timestamp === y.timestamp ? (x.id < y.id ? -1 : 1) : x.timestamp < y.timestamp ? -1 : 1)));
+  assert.equal(page[0].id, `a${pad(200)}`);
+  assert.equal(page[199].id, `b${pad(157)}`);
+  assert.ok(selects.every((columns) => columns === "id,snapshot_at"), "projection stays id,snapshot_at");
+  // A full same-timestamp remainder returns without a second read; no cursor reads from the start.
+  const full = await fetchStaleTelemetryPage(fakeSource(rows), "generated_signal_research_snapshots", cutoff, { timestamp: tsA, id: `a${pad(10)}` }, 200);
+  assert.equal(full.length, 200);
+  assert.ok(full.every((row) => row.timestamp === tsA));
+  const first = await fetchStaleTelemetryPage(fakeSource(rows), "generated_signal_research_snapshots", cutoff, null, 200);
+  assert.equal(first.length, 200);
+  // Genuine end of backlog still returns a short page.
+  const tail = await fetchStaleTelemetryPage(fakeSource(rows), "generated_signal_research_snapshots", cutoff, { timestamp: tsB, id: `b${pad(280)}` }, 200);
+  assert.equal(tail.length, 19);
+  // Fresh rows (after cutoff) are never returned.
+  const fresh = await fetchStaleTelemetryPage(fakeSource([{ id: "z", snapshot_at: "2026-10-05T00:00:00.000Z" }]), "generated_signal_research_snapshots", cutoff, null, 200);
+  assert.equal(fresh.length, 0);
+});
+
+test("GSRS backlog larger than 1600 consumes the full 8 x 200 budget in one run across timestamp ties", async () => {
+  const { fetchStaleTelemetryPage } = await import("../../scripts/research-clone-daily-sync");
+  const now = Date.parse("2026-10-08T12:00:00.000Z");
+  const pad = (n: number) => String(n).padStart(5, "0");
+  // 3000 stale rows in timestamp groups of 137 (never aligned with the 200-row page), plus fresh rows.
+  const table: Array<{ id: string; snapshot_at: string }> = Array.from({ length: 3000 }, (_, i) => ({
+    id: `r${pad(i)}`, snapshot_at: new Date(Date.parse("2026-09-01T00:00:00.000Z") + Math.floor(i / 137) * 60_000).toISOString(),
+  }));
+  const fresh = Array.from({ length: 50 }, (_, i) => ({ id: `f${pad(i)}`, snapshot_at: "2026-10-07T00:00:00.000Z" }));
+  const all = [...table, ...fresh];
+  const state = { rows: all.slice() };
+  let cursor: TelemetryPurgeCursor | null = { timestamp: table[60].snapshot_at, id: table[60].id }; // starts mid-tie
+  const confirmAll = async (_t: string, ids: readonly string[]) => [...ids];
+  const makePort = (confirm: (t: string, ids: readonly string[]) => Promise<readonly string[]>) => ({
+    async readCursor() { return cursor; },
+    async fetchStalePage(t: string, cutoff: string, after: TelemetryPurgeCursor | null, limit: number) {
+      return fetchStaleTelemetryPage(fakeSource(state.rows), t as PurgeTable, cutoff, after, limit);
+    },
+    exactCloneIds: confirm,
+    async withoutProductionChildren(_t: string, ids: readonly string[]) { return [...ids]; },
+    async deleteProductionIds(_t: string, ids: readonly string[]) { state.rows = state.rows.filter((row) => !ids.includes(row.id)); },
+    async writeCursor(_t: string, next: TelemetryPurgeCursor | null) { cursor = next; },
+  });
+  const options = { tables: ["generated_signal_research_snapshots"] as const, retentionDays: 7 };
+  const result = await purgeConfirmedTelemetry(now, makePort(confirmAll), 200, 8, options);
+  const r = result.generated_signal_research_snapshots;
+  assert.equal(r.eligible_stale_n, 1600);
+  assert.equal(r.confirmed_in_clone_n, 1600);
+  assert.equal(r.deleted_n, 1600);
+  assert.equal(r.purge_pending, true);
+  assert.equal(state.rows.length, all.length - 1600);
+  assert.equal(state.rows.filter((row) => row.id.startsWith("f")).length, 50, "fresh rows never delete");
+  // Rows before the starting cursor were never in scope; none of them was deleted.
+  assert.equal(state.rows.filter((row) => row.id <= table[60].id && row.id.startsWith("r")).length, 61);
+  // Unconfirmed IDs never delete even when the page is full.
+  const before = state.rows.length;
+  const none = await purgeConfirmedTelemetry(now, makePort(async () => []), 200, 8, options);
+  assert.equal(none.generated_signal_research_snapshots.deleted_n, 0);
+  assert.equal(state.rows.length, before);
+});
