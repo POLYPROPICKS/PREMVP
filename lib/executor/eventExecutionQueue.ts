@@ -36,6 +36,7 @@ import {
   type ShadowEconomicActionMarker,
 } from "./t10RealMoneyPause";
 import { LiveMoneyFamilyNotAuthorizedError, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
+import { liveEconomicPhysicalEventKey } from "./liveEconomicPhysicalEventKey";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
   physicalIdUnderStoredFormat,
@@ -814,7 +815,7 @@ export interface RebalanceRepoPort {
    * Every Queue row (any status) already bound to this Reservation or its physical event. The T10
    * activation ON path requires it (absent -> exposure unproven -> fail closed).
    */
-  loadEventExposureQueueRows?(reservation: NightEventReservationRow): Promise<EventExecutionQueueRow[]>;
+  loadEventExposureQueueRows?(reservation: NightEventReservationRow, liveKey?: string): Promise<EventExecutionQueueRow[]>;
   // Optional so existing normal-mode repo fakes (constructed before this method
   // existed) keep compiling unchanged. Required in practice by the controlled
   // one-shot live-intent seam, which throws if it is absent (see
@@ -1062,12 +1063,18 @@ export function createSupabaseRebalanceRepoPort(getClient: () => RuntimeSupabase
       if (error) throw new Error(`reservation due-query failed: ${error.message}`);
       return (data ?? []) as unknown as NightEventReservationRow[];
     },
-    async loadEventExposureQueueRows(reservation) {
+    async loadEventExposureQueueRows(reservation, liveKey) {
       const supabaseAdmin = await getClient();
       const filters: Array<[string, string]> = [];
       if (reservation.id) filters.push(["reservation_id", reservation.id]);
       if (reservation.match_family_key) filters.push(["match_family_key", reservation.match_family_key]);
       if (reservation.physical_event_id) filters.push(["diagnostics->>physical_event_id", reservation.physical_event_id]);
+      // LIVE_PHYSICAL_EVENT_GAME_IDENTITY_V1: the canonical live match key reaches sibling Reservations of the
+      // same match whether their rows persisted it as physical_event_id (root) or as live_physical_event_key.
+      if (liveKey) {
+        if (liveKey !== reservation.physical_event_id) filters.push(["diagnostics->>physical_event_id", liveKey]);
+        filters.push(["diagnostics->>live_physical_event_key", liveKey]);
+      }
       const byId = new Map<string, EventExecutionQueueRow>();
       for (const [column, value] of filters) {
         const { data, error } = await supabaseAdmin.from("event_execution_queue").select("*").eq(column, value).limit(200);
@@ -1780,7 +1787,7 @@ type T10EconomicActivationDeps = {
    * Existing exposure authority: every Queue row already bound to this Reservation / physical event.
    * null (loader unavailable) is unproven exposure and fails closed.
    */
-  loadEventExposureQueueRows: ((reservation: NightEventReservationRow) => Promise<EventExecutionQueueRow[]>) | null;
+  loadEventExposureQueueRows: ((reservation: NightEventReservationRow, liveKey: string) => Promise<EventExecutionQueueRow[]>) | null;
 };
 
 /**
@@ -1808,6 +1815,45 @@ export function eventExposureNotProvenZero(rows: readonly EventExecutionQueueRow
   });
 }
 
+export const PHYSICAL_EVENT_EXPOSURE_PLANNED_THIS_RUN = "PHYSICAL_EVENT_EXPOSURE_PLANNED_THIS_RUN";
+export const PHYSICAL_EVENT_SIBLING_EXPOSURE_EXISTS = "PHYSICAL_EVENT_SIBLING_EXPOSURE_EXISTS";
+export const PHYSICAL_EVENT_SIBLING_EXPOSURE_UNREADABLE = "PHYSICAL_EVENT_SIBLING_EXPOSURE_UNREADABLE";
+
+/**
+ * LIVE_PHYSICAL_EVENT_GAME_IDENTITY_V1: last gate before a live Queue write. A sibling Reservation of the SAME
+ * physical match (same live match key: proven provider gameId, else persisted physical_event_id) that already
+ * holds exposure -- in Queue state, or as a QUEUE action planned earlier in this run -- blocks this one.
+ * This Reservation's own prior rows keep their existing per-Reservation rules. Unreadable = exposure exists.
+ * Returns the block reason, or null and stamps the live key onto the row.
+ */
+async function physicalEventSiblingExposureBlock(
+  reservation: NightEventReservationRow,
+  row: EventExecutionQueueRow,
+  universe: readonly FinalT3MarketObservation[],
+  plannedLiveKeys: Set<string>,
+  repo: RebalanceRepoPort,
+): Promise<string | null> {
+  const liveKey = liveEconomicPhysicalEventKey({
+    persistedPhysicalEventId: reservation.physical_event_id, eventStartIso: reservation.event_start_iso,
+    providerEventId: text((reservation.diagnostics?.source_lineage as { provider_event_id?: unknown } | undefined)?.provider_event_id),
+    universe,
+  });
+  if (!liveKey.ok) return liveKey.reason;
+  if (plannedLiveKeys.has(liveKey.key)) return PHYSICAL_EVENT_EXPOSURE_PLANNED_THIS_RUN;
+  if (repo.loadEventExposureQueueRows) {
+    try {
+      const siblings = (await repo.loadEventExposureQueueRows(reservation, liveKey.key))
+        .filter((q) => !reservation.id || q.reservation_id !== reservation.id);
+      if (eventExposureNotProvenZero(siblings)) return PHYSICAL_EVENT_SIBLING_EXPOSURE_EXISTS;
+    } catch {
+      return PHYSICAL_EVENT_SIBLING_EXPOSURE_UNREADABLE;
+    }
+  }
+  plannedLiveKeys.add(liveKey.key);
+  row.diagnostics = { ...row.diagnostics, live_physical_event_key: liveKey.key };
+  return null;
+}
+
 /**
  * T10_EXACT_MARKET_EXECUTION_EVIDENCE_AND_MONEY_ACTIVATION_V1 -- activation ON path.
  * All supported T10 siblings compete under the frozen economic policy; exactly one action or SKIP.
@@ -1833,13 +1879,21 @@ async function selectQueueRowFromT10EconomicAction(
   // The Reservation-level planning authorization still applies (it never names the money market here).
   const policy = reservation.diagnostics?.planning_policy_verdict as { allowed?: boolean } | undefined;
   if (policy && policy.allowed !== true) return { outcome: "SKIPPED", reason: "PLANNING_MARKET_POLICY_NOT_ALLOWED", queueRow: null };
+  // LIVE_PHYSICAL_EVENT_GAME_IDENTITY_V1: the live match key (proven provider gameId when the capture proved
+  // one) is the exposure identity; the persisted physical_event_id above stays the lineage identity.
+  const liveKey = liveEconomicPhysicalEventKey({
+    persistedPhysicalEventId: physicalEventId, eventStartIso,
+    providerEventId: text((reservation.diagnostics?.source_lineage as { provider_event_id?: unknown } | undefined)?.provider_event_id),
+    universe,
+  });
+  if (!liveKey.ok) return { outcome: "SKIPPED", reason: liveKey.reason, queueRow: null };
   let t30: FinalT3MarketObservation[] | null = null;
   try { t30 = await economic.readT30Universe(reservation); } catch { t30 = null; }
   // Exposure is read from the existing Queue state at decision time; unreadable = exposure exists.
   let exposureExists = true;
   try {
     exposureExists = economic.loadEventExposureQueueRows === null ||
-      eventExposureNotProvenZero(await economic.loadEventExposureQueueRows(reservation));
+      eventExposureNotProvenZero(await economic.loadEventExposureQueueRows(reservation, liveKey.key));
   } catch { exposureExists = true; }
   const event = await decideT10EconomicEvent({
     physicalEventId, eventStartIso, t10Universe: universe, t30Universe: t30, nowMs,
@@ -1901,6 +1955,7 @@ async function selectQueueRowFromT10EconomicAction(
     status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
     diagnostics: {
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
+      live_physical_event_key: liveKey.key,
       final_identity: finalIdentity, live_strategy: contract.execution_policy_version,
       shadow_strategy: "B_FOUR_MARKET_PRIORITY_V1",
       // VALUE_RANKING_V1 scalars (telemetry only; never a gate). Unproven fair stays VALUE_REFERENCE_UNPROVEN.
@@ -2481,6 +2536,8 @@ export async function runEventRebalance(
     | { kind: "PAUSED_SHADOW"; reservation: NightEventReservationRow; marker: ShadowEconomicActionMarker; repeat: boolean };
 
   const plannedActions: PlannedAction[] = [];
+  // LIVE_PHYSICAL_EVENT_GAME_IDENTITY_V1: live match keys already holding a planned QUEUE action this run.
+  const plannedLiveKeys = new Set<string>();
   for (const reservation of due) {
     if (reservation.id && alreadyQueued.has(reservation.id)) {
       plannedActions.push({ kind: "ALREADY_QUEUED", reservation });
@@ -2533,7 +2590,7 @@ export async function runEventRebalance(
             t10EconomicActivation ? {
               readT30Universe, fetchTokenFeeSchedule: readFeeSchedule,
               loadEventExposureQueueRows: repo.loadEventExposureQueueRows
-                ? (r: NightEventReservationRow) => repo.loadEventExposureQueueRows!(r)
+                ? (r: NightEventReservationRow, liveKey: string) => repo.loadEventExposureQueueRows!(r, liveKey)
                 : null,
             } : undefined,
           )
@@ -2589,7 +2646,11 @@ export async function runEventRebalance(
         }),
       });
     } else {
-      plannedActions.push({ kind: "QUEUE", reservation, row: selection.queueRow!, reason: selection.reason });
+      const siblingBlock = write && finalSiblingUniverse
+        ? await physicalEventSiblingExposureBlock(reservation, selection.queueRow!, finalSiblingUniverse, plannedLiveKeys, repo)
+        : null;
+      if (siblingBlock) plannedActions.push({ kind: "SKIPPED", reservation, reason: siblingBlock });
+      else plannedActions.push({ kind: "QUEUE", reservation, row: selection.queueRow!, reason: selection.reason });
     }
   }
 

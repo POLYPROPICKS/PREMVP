@@ -484,7 +484,20 @@ export type FinalT3MarketObservation = {
   orderbook_fetch_status: string | null;
   /** Persisted on every observation; read for exact-market reference witnesses. */
   best_bid?: number | null; observed_at?: string | null;
+  /**
+   * In-memory only (never persisted on an observation): the provider gameId this capture run's discovery
+   * audit proved deterministically. Absent when the run carries no valid audit.
+   */
+  discovery_provider_game_id?: string | null;
 };
+
+/** The exact provider gameId a COMPLETE capture run's discovery audit proved; null when absent/invalid. */
+function runProvenGameId(run: Record<string, unknown>): string | null {
+  const audit = run.discovery_audit_v1 as { version?: unknown; provider_game_id?: unknown; audit_overflow?: unknown } | null | undefined;
+  if (!audit || typeof audit !== "object" || audit.version !== DISCOVERY_AUDIT_VERSION || audit.audit_overflow === true) return null;
+  const gameId = typeof audit.provider_game_id === "string" ? audit.provider_game_id.trim() : "";
+  return gameId === "" ? null : gameId;
+}
 
 type FinalT3ReadPort = {
   /** `phase` defaults to FINAL_REBALANCE_PHASE (T_MINUS_10). */
@@ -550,7 +563,8 @@ async function readCompletedPhaseUniverse(
     row.observation_phase !== phase ||
     ![row.condition_id, row.token_id, row.side].every((value) => typeof value === "string" && value.trim() !== "")
   )) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
-  return rows as FinalT3MarketObservation[];
+  const provenGameId = runProvenGameId(run);
+  return (provenGameId ? rows.map((row) => ({ ...row, discovery_provider_game_id: provenGameId })) : rows) as FinalT3MarketObservation[];
 }
 
 export type RuntimeClientGetter = () => RuntimeSupabaseClient | Promise<RuntimeSupabaseClient>;
@@ -565,7 +579,7 @@ export function createFinalT3ReadPort(getClient: RuntimeClientGetter = defaultPr
   async readRuns(reservationId, phase = FINAL_REBALANCE_PHASE) {
     const supabaseAdmin = await getClient();
     const { data, error } = await supabaseAdmin.from("reservation_market_capture_runs")
-      .select("id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,source_version,capture_complete,capture_status,market_tokens_expected_n,market_tokens_observed_n")
+      .select("id,reservation_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,source_version,capture_complete,capture_status,market_tokens_expected_n,market_tokens_observed_n,discovery_audit_v1")
       .eq("reservation_id", reservationId).eq("observation_phase", phase)
       .eq("source_version", MARKET_SOURCE_VERSION).limit(2);
     if (error) throw new Error("FINAL_T3_SOURCE_UNAVAILABLE");
