@@ -797,8 +797,9 @@ function eventStartMatches(event: { endDate?: string; endDateIso?: string; start
   return times.includes(Date.parse(eventStartIso));
 }
 
-function inventoryMarketsFromEvent(event: PolymarketRawEvent, providerEventId: string, eventStartIso: string): InventoryMarket[] {
+function inventoryMarketsFromEvent(event: PolymarketRawEvent, providerEventId: string, eventStartIso: string, gameIdOverride?: string | null): InventoryMarket[] {
   const observedAt = new Date().toISOString();
+  const eventGameId = event.gameId === undefined || event.gameId === null ? null : String(event.gameId).trim() || null;
   return event.markets.map((market) => ({
     provider_event_id: providerEventId,
     event_start_iso: eventStartIso,
@@ -809,15 +810,43 @@ function inventoryMarketsFromEvent(event: PolymarketRawEvent, providerEventId: s
     provider_market_slug: market.slug ?? null,
     sibling_market_count: event.markets.length,
     last_observed_at: observedAt,
-    provider_game_id: event.gameId === undefined || event.gameId === null ? null : String(event.gameId).trim() || null,
+    provider_game_id: eventGameId ?? gameIdOverride ?? null,
   }));
 }
 
-export async function defaultExactEventReader(providerEventId: string, eventStartIso: string): Promise<InventoryMarket[]> {
-  const event = await fetchPolymarketEventById(providerEventId);
+/**
+ * Deterministic provider lineage for a derivative event that carries no gameId of its own (e.g. a
+ * `... - Total Corners` sub-event): its provider-authored `parentEventId` names the main event, fetched by that exact
+ * ID. The parent's gameId is accepted ONLY when the parent is a root event (no parentEventId of its own), starts at
+ * the Reservation start and states a non-empty gameId. Anything else returns null (typed UNRESOLVED upstream).
+ * Never title, slug or start-time matching.
+ */
+async function parentProvidedGameId(
+  event: PolymarketRawEvent,
+  eventStartIso: string,
+  fetchEvent: (eventId: string) => Promise<PolymarketRawEvent | null>,
+): Promise<string | null> {
+  const parentId = event.parentEventId === undefined || event.parentEventId === null ? "" : String(event.parentEventId).trim();
+  if (!/^\d+$/.test(parentId) || parentId === String(event.id)) return null;
+  const parent = await fetchEvent(parentId).catch(() => null);
+  if (!parent || String(parent.id) !== parentId) return null;
+  if (parent.parentEventId !== undefined && parent.parentEventId !== null) return null;
+  if (!eventStartMatches(parent, eventStartIso)) return null;
+  return parent.gameId === undefined || parent.gameId === null ? null : String(parent.gameId).trim() || null;
+}
+
+export async function defaultExactEventReader(
+  providerEventId: string,
+  eventStartIso: string,
+  fetchEvent: (eventId: string) => Promise<PolymarketRawEvent | null> = fetchPolymarketEventById,
+): Promise<InventoryMarket[]> {
+  const event = await fetchEvent(providerEventId);
   if (!event) throw new Error("RESERVED_EVENT_MARKET_SET_UNAVAILABLE");
   if (!eventStartMatches(event, eventStartIso)) throw new Error("RESERVED_EVENT_START_MISMATCH");
-  return inventoryMarketsFromEvent(event, providerEventId, eventStartIso);
+  const ownGameId = event.gameId === undefined || event.gameId === null ? null : String(event.gameId).trim() || null;
+  const derivedGameId = ownGameId === null && event.parentEventId !== undefined && event.parentEventId !== null
+    ? await parentProvidedGameId(event, eventStartIso, fetchEvent) : null;
+  return inventoryMarketsFromEvent(event, providerEventId, eventStartIso, derivedGameId);
 }
 
 /** The event's start as the provider states it; the Reservation start when any provider time matches it. */
