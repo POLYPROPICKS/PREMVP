@@ -104,11 +104,11 @@ async function rebalance(rows: Row[], activation: boolean) {
 }
 
 test("1: predicate — TOTALS + Over (any line / casing) is OFF; Under, MONEYLINE, TOTAL_CORNERS family, SPREADS are not decided here", () => {
-  for (const s of ["Over", "OVER", " over ", "Over 0.5", "Over 1.5", "Over 2.5", "Over 3.5", "Over 4.5", "Over 5.5"]) {
+  for (const s of ["Over", "OVER", " over ", "Over 0.5", "Over 1.5", "Over 2.5", "Over 3.5", "Over 4.5", "Over 5.5", "Over2.5", "OVER_2_5"]) {
     assert.equal(isFounderLiveOffTotalsOver("TOTALS", s), true, s);
     assert.equal(isFounderLiveOffTotalsOver("totals", s), true, s);
   }
-  for (const [f, s] of [["TOTALS", "Under"], ["TOTALS", "Under 2.5"], ["TOTALS", "Yes"], ["TOTALS", null], ["MONEYLINE", "Over"], ["TOTAL_CORNERS", "Over"], ["SPREADS", "Over"], [null, "Over"]] as const) {
+  for (const [f, s] of [["TOTALS", "Under"], ["TOTALS", "Under 2.5"], ["TOTALS", "Yes"], ["TOTALS", "Overtime"], ["TOTALS", null], ["MONEYLINE", "Over"], ["TOTAL_CORNERS", "Over"], ["SPREADS", "Over"], [null, "Over"]] as const) {
     assert.equal(isFounderLiveOffTotalsOver(f, s), false, `${f}/${s}`);
   }
 });
