@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { deriveStructuredState, deriveSportState, STATE_MAX_AGE_MS, admitPhysicalEvent, selectPrimaryCoreMarkets, decidePersistenceReason, MAX_DAILY_PHYSICAL_EVENTS,
   MAX_TRACKED_TOKENS_PER_EVENT, MAX_PERSISTED_OBSERVATIONS_PER_EVENT, MAX_TOTAL_ROWS_PER_DAY,
-  MAX_INPLAY_LOGICAL_MB_PER_DAY, PRODUCTION_RETENTION_HOURS } from "../../lib/research/inplayCorePath";
-import { admitResearchMarket } from "../../lib/executor/precontractT20Research";
+  MAX_INPLAY_LOGICAL_MB_PER_DAY, PRODUCTION_RETENTION_HOURS, captureInplayCorePath, decideInplayAdmission, resetInplayAdmissionCache,
+  type InplayAdmissionReason } from "../../lib/research/inplayCorePath";
+import { admitResearchMarket, buildResearchEvents, selectResearchCohort, type ResearchEventCandidateRow } from "../../lib/executor/precontractT20Research";
+import { physicalMatchId } from "../../lib/executor/contractADecisions";
 import { purgeConfirmedTelemetry, type TelemetryPurgePort } from "../../lib/research-clone/dailySync";
 
 const migration = readFileSync("supabase/migrations/20261008090000_research_inplay_core_path_v1.sql", "utf8");
@@ -158,5 +160,132 @@ test("typed fields reach the persisted row, migration, clone DDL and clone proje
   assert.match(clone, /state_clock_seconds_elapsed integer/);
   assert.match(clone, /state_received_at timestamptz/);
   assert.match(sync, /INPLAY_CORE_PATH_PROJECTION = "[^"]*state_clock_seconds_elapsed,state_received_at,side_a_score,side_b_score/);
-  assert.match(readFileSync("scripts/research-inplay-core-path.ts", "utf8"), /receivedAtMs\);/);
+  assert.match(readFileSync("scripts/research-inplay-core-path.ts", "utf8"), /receivedAtMs, countAdmission\);/);
+});
+
+// ---- TOP-100 cohort alignment: in-play admission follows the persisted Founder 40/20/40 liquidity cohort, never arrival order.
+const DAY = "2026-10-10";
+const cand = (n: number, family: string, volume: number | null, over: Partial<ResearchEventCandidateRow> = {}): ResearchEventCandidateRow => ({
+  provider_event_id: String(5000 + n), provider_game_id: String(9000 + n), event_start_iso: `${DAY}T15:00:00.000Z`,
+  snapshot_run_id: `run-${n}`, snapshot_at: `${DAY}T14:00:00Z`, provider_sport_family: family, provider_sport_family_n: 1,
+  provider_sport_code: family, provider_sport_code_n: 1, provider_sport_source: "structured_sports_tag", provider_sport_source_n: 1,
+  parent_event_volume_24h: volume, volume_contradiction: false, ...over });
+let n = 0;
+const supply = (family: string, count: number, base: number) => Array.from({ length: count }, (_, i) => cand(++n, family, base + i));
+
+test("admission verdict: prior rows stay admitted; membership admits; absence rejects; unreadable cohort fails closed", () => {
+  const id = "provider:polymarket:game:1:2026-10-10";
+  assert.deepEqual(decideInplayAdmission({ priorRowCount: 3, membership: null, physicalEventId: id }), { admitted: true, reason: "ALREADY_ADMITTED" });
+  assert.deepEqual(decideInplayAdmission({ priorRowCount: 0, membership: [{ physical_event_id: id }], physicalEventId: id }), { admitted: true, reason: "T20_COHORT_MEMBER" });
+  assert.deepEqual(decideInplayAdmission({ priorRowCount: 0, membership: [], physicalEventId: id }), { admitted: false, reason: "NOT_IN_T20_COHORT" });
+  assert.deepEqual(decideInplayAdmission({ priorRowCount: 0, membership: [{ physical_event_id: "other" }], physicalEventId: id }), { admitted: false, reason: "NOT_IN_T20_COHORT" });
+  assert.deepEqual(decideInplayAdmission({ priorRowCount: 0, membership: null, physicalEventId: id }), { admitted: false, reason: "COHORT_READ_FAILED" });
+});
+
+test("sufficient supply: the admitted in-play set is exactly the 40/20/40 liquidity cohort, independent of arrival order", () => {
+  const candidates = [...supply("soccer", 70, 1000), ...supply("tennis", 40, 500), ...supply("basketball", 30, 300), ...supply("baseball", 20, 200),
+    ...supply("hockey", 10, 100), ...supply("cricket", 10, 50),
+    ...Array.from({ length: 10 }, (_, i) => cand(++n, "nfl-code-only", 400 + i, { provider_sport_family: null, provider_sport_family_n: 0, provider_sport_code: "nfl" }))];
+  const { selected, diagnostics } = selectResearchCohort(buildResearchEvents(candidates));
+  const persisted = new Set(selected.map((s) => s.event.physicalEventId));    // what T20 persists
+  assert.equal(persisted.size, 100);
+  assert.equal(diagnostics.soccer_selected_n, 40);
+  assert.equal(diagnostics.tennis_selected_n, 20);
+  assert.equal(diagnostics.american_football_selected_n >= 4, true, "structured NFL code counts toward the diversity floor");
+  assert.equal(diagnostics.global_backfill_n, 0);
+  // In-play arrival order = ascending volume (worst case for first-come): lowest-liquidity events arrive first.
+  const arrival = buildResearchEvents(candidates).sort((a, b) => (a.volume ?? 0) - (b.volume ?? 0));
+  const admitted = arrival.filter((e) => decideInplayAdmission({ priorRowCount: 0, physicalEventId: e.physicalEventId,
+    membership: persisted.has(e.physicalEventId) ? [{ physical_event_id: e.physicalEventId }] : [] }).admitted);
+  assert.deepEqual(new Set(admitted.map((e) => e.physicalEventId)), persisted);
+  assert.equal(admitted.length, 100);
+  const rank101 = selectResearchCohort(buildResearchEvents(candidates)).selected.length;
+  assert.equal(rank101, 100, "daily cap holds; arrival order cannot admit a 101st or a low-volume event");
+});
+
+test("underfill is reallocated by GLOBAL_BACKFILL, never invented; contradictory/missing volume and duplicates are not admitted", () => {
+  const candidates = [...supply("soccer", 10, 1000), ...supply("tennis", 60, 500), ...supply("basketball", 5, 300),
+    cand(++n, "soccer", null), cand(++n, "soccer", 9999, { volume_contradiction: true }),
+    cand(900, "tennis", 777, { provider_game_id: "DUP" }), cand(901, "tennis", 778, { provider_game_id: "dup", snapshot_at: `${DAY}T14:30:00Z` })];
+  const { selected, diagnostics } = selectResearchCohort(buildResearchEvents(candidates));
+  assert.equal(diagnostics.soccer_quota_underfill_n, 30);
+  assert.ok(diagnostics.global_backfill_n > 0 && selected.some((s) => s.bucket === "GLOBAL_BACKFILL"));
+  assert.ok(selected.length < 100, "no invented events to fill the cap");
+  const ids = selected.map((s) => s.event.physicalEventId);
+  assert.equal(new Set(ids).size, ids.length, "one slot per physical event");
+  assert.equal(diagnostics.volume_unknown_event_n, 1);
+  assert.equal(diagnostics.volume_contradiction_event_n, 1);
+});
+
+type Row = Record<string, unknown>;
+function fakeDb(opts: { inplay?: Row[]; cohort?: Row[] | "ERROR" }) {
+  const reads: string[] = [];
+  let rpcCalls = 0;
+  const chain = (table: string) => {
+    const result = table === "research_inplay_core_path_observations" ? { data: opts.inplay ?? [], error: null }
+      : opts.cohort === "ERROR" ? { data: null, error: { message: "boom" } } : { data: opts.cohort ?? [], error: null };
+    const q: any = { select: () => q, eq: () => q, order: () => q, limit: () => { reads.push(table); return Promise.resolve(result); } };
+    return q;
+  };
+  return { db: { from: chain, rpc: () => { rpcCalls++; return Promise.resolve({ data: true, error: null }); } } as any, reads, rpcCalls: () => rpcCalls };
+}
+const T = Date.parse("2026-10-10T15:01:00Z");
+const gammaEvent = { id: "45", gameId: 123, startTime: "2026-10-10T15:00:00Z", tags: [{ slug: "tennis" }], markets: [{}] };
+const socketState = { gameId: 123, status: "InProgress", live: true, period: "S1" };
+const memberId = physicalMatchId({ gameId: "123", eventId: "45", eventStartIso: "2026-10-10T15:00:00.000Z" });
+
+async function runCapture(db: any, calls: string[]): Promise<{ n: number; reasons: InplayAdmissionReason[] }> {
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: unknown) => {
+    calls.push(String(url));
+    return new Response(JSON.stringify(String(url).includes("game_id=123") ? [gammaEvent] : []), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  const reasons: InplayAdmissionReason[] = [];
+  try { return { n: await captureInplayCorePath(socketState, db, T, () => true, T, (r) => reasons.push(r)).catch(() => 0), reasons }; }
+  finally { globalThis.fetch = original; }
+}
+
+test("capture gate: non-cohort game is rejected before any market/orderbook read or write and is not retried within the TTL", async () => {
+  resetInplayAdmissionCache();
+  const f = fakeDb({ cohort: [] });
+  const calls: string[] = [];
+  const first = await runCapture(f.db, calls);
+  assert.deepEqual(first, { n: 0, reasons: ["NOT_IN_T20_COHORT"] });
+  assert.equal(calls.length, 1, "only the structured Gamma identity read happened");
+  assert.equal(f.rpcCalls(), 0);
+  const second = await runCapture(f.db, calls);
+  assert.deepEqual(second.reasons, ["NOT_IN_T20_COHORT"]);
+  assert.equal(calls.length, 1, "cached verdict: no further provider request for a rejected game");
+});
+
+test("capture gate: unreadable cohort fails closed, is not cached, and never degrades to first-come", async () => {
+  resetInplayAdmissionCache();
+  const f = fakeDb({ cohort: "ERROR" });
+  const calls: string[] = [];
+  assert.deepEqual(await runCapture(f.db, calls), { n: 0, reasons: ["COHORT_READ_FAILED"] });
+  assert.equal(f.rpcCalls(), 0);
+  const healthy = fakeDb({ cohort: [{ physical_event_id: memberId }] });
+  assert.deepEqual((await runCapture(healthy.db, calls)).reasons, ["T20_COHORT_MEMBER"]);
+});
+
+test("capture gate: cohort member proceeds past the gate; already-admitted event never re-queries the cohort (no retrospective mutation)", async () => {
+  resetInplayAdmissionCache();
+  const member = fakeDb({ cohort: [{ physical_event_id: memberId }] });
+  const calls: string[] = [];
+  const out = await runCapture(member.db, calls);
+  assert.deepEqual(out.reasons, ["T20_COHORT_MEMBER"]);
+  assert.ok(calls.length > 1, "market reads continue after admission");
+  resetInplayAdmissionCache();
+  const prior = { token_id: "t", observed_at: "2026-10-10T15:00:30Z", mid_price: 0.5, spread_abs: 0.02, state_phase: "S1", event_live_status: "LIVE" };
+  const admitted = fakeDb({ inplay: [prior], cohort: [] });
+  assert.deepEqual((await runCapture(admitted.db, [])).reasons, ["ALREADY_ADMITTED"]);
+  assert.ok(!admitted.reads.includes("research_precontract_t20_observations"));
+});
+
+test("no second ranking algorithm, no new budgets: gate precedes provider market reads; caps, cadence and SQL writer untouched", () => {
+  assert.ok(collector.indexOf("decideInplayAdmission({") < collector.indexOf("defaultExactEventReader(String"));
+  assert.doesNotMatch(collector, /import[^;]*selectResearchCohort|OTHER_QUOTA|SOCCER_QUOTA|TENNIS_QUOTA/);
+  assert.match(collector, /MAX_DAILY_PHYSICAL_EVENTS = 100/);
+  assert.match(collector, /HEARTBEAT_MS = 5 \* 60_000/);
+  assert.match(migration, /v_events >= 100/);
 });

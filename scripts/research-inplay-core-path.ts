@@ -1,6 +1,6 @@
 // Dedicated, research-only sports state listener. Run with: npx tsx scripts/research-inplay-core-path.ts
 import { createClient } from "@supabase/supabase-js";
-import { captureInplayCorePath, deriveStructuredState, STATE_MAX_AGE_MS, type SportsState } from "../lib/research/inplayCorePath";
+import { captureInplayCorePath, deriveStructuredState, STATE_MAX_AGE_MS, type InplayAdmissionReason, type SportsState } from "../lib/research/inplayCorePath";
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -13,6 +13,10 @@ const processing = new Set<string>();
 let socket: WebSocket | null = null;
 let stopped = false;
 let busy = false;
+// Aggregate admission diagnostics (T20-cohort gate): rejection and cohort-read failures stay visible.
+const admissionCounts: Record<InplayAdmissionReason, number> = { ALREADY_ADMITTED: 0, T20_COHORT_MEMBER: 0, NOT_IN_T20_COHORT: 0, COHORT_READ_FAILED: 0 };
+let lastAdmissionLogAt = 0;
+const countAdmission = (reason: InplayAdmissionReason): void => { admissionCounts[reason]++; };
 
 function connect(): void {
   if (stopped) return;
@@ -53,13 +57,16 @@ async function loop(): Promise<void> {
     }
     await Promise.allSettled(work.map(async ({ id, state, receivedAtMs }) => {
       try {
-        await captureInplayCorePath(state, db, Date.now(), () => !stopped && Date.now() < deadline, receivedAtMs);
+        await captureInplayCorePath(state, db, Date.now(), () => !stopped && Date.now() < deadline, receivedAtMs, countAdmission);
         if (state.ended === true) { latest.delete(id); receivedAt.delete(id); }
         else if (!pending.includes(id)) pending.push(id);
       } catch (error) { console.error("INPLAY_CAPTURE_FAILED", error instanceof Error ? error.message : "UNKNOWN"); }
       finally { processing.delete(id); }
     }));
-  } finally { busy = false; }
+  } finally {
+    busy = false;
+    if (Date.now() - lastAdmissionLogAt >= 5 * 60_000) { lastAdmissionLogAt = Date.now(); console.log("INPLAY_ADMISSION_COUNTS", JSON.stringify(admissionCounts)); }
+  }
 }
 
 function shutdown(): void {
