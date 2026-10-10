@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   CONTROL_STRATEGIES, ALPHA_PROGRAMS, evaluateEvent, rankCandidates, inRange, exclusionReason, classifyProvenance, buildDecision,
-  decisionId, strategyDefinitionHash, factReadiness, toFreezePatch, entryWindowEndMs, runPaperDecisionCycle,
+  decisionId, strategyDefinitionHash, factReadiness, toFreezePatch, entryWindowEndMs, runPaperDecisionCycle, TIMELY_SOURCE_PATH_PROVEN, PAGE_SIZE,
   type Observation, type Strategy, type ExistingDecision,
 } from "../../lib/research/inplayPaperDecisions";
 
@@ -35,6 +35,8 @@ test("A/B/C price boundaries are inclusive and exact", () => {
     assert.equal(inRange(lo - 0.000002, s.range!), false); assert.equal(inRange(hi + 0.000002, s.range!), false);
   }
   assert.equal(inRange(0.1 + 0.2 + 0.18, A.range!), true); // 0.48000000000000004 float noise stays inside
+  assert.equal(inRange(0.5200004, A.range!), false); assert.equal(inRange(0.5299999, B.range!), false); assert.equal(inRange(0.4399999999, C.range!), true);
+  assert.equal(inRange(0.4400004, C.range!), false);
   assert.equal(exclusionReason(B, obs({ at: 1, full_stake_executable_vwap: 0.5 }), entryWindowEndMs(START)), "PRICE_OUT_OF_RANGE");
 });
 
@@ -123,8 +125,12 @@ test("no later outcome influence: result visible at evaluation can never produce
 
 test("provenance: LIVE_PROSPECTIVE only with timely proven timing; otherwise DELAYED_PAPER or TIMING_UNPROVEN", () => {
   const o = T(1), r = new Date(Date.parse(o) + 1000).toISOString(), now = Date.parse(o) + 5_000;
-  const base = { observedAt: o, receiptAt: r, evaluatedAtMs: now, resultVisible: false, live: true };
+  const base = { observedAt: o, receiptAt: r, evaluatedAtMs: now, resultVisible: false, live: true, timelyPathProven: true };
   assert.equal(classifyProvenance(base), "LIVE_PROSPECTIVE");
+  // no timely source->DBClone path is proven (hourly cron): a 5-second lag still cannot be called prospective
+  assert.equal(TIMELY_SOURCE_PATH_PROVEN, false);
+  assert.equal(classifyProvenance({ ...base, timelyPathProven: undefined }), "DELAYED_PAPER");
+  assert.equal(run(A, [obs({ at: 1 })], { at: evalAt(1) + 5_000 }).decision!.provenance_class, "DELAYED_PAPER");
   assert.equal(classifyProvenance({ ...base, evaluatedAtMs: Date.parse(o) + 3_600_000 }), "DELAYED_PAPER");
   assert.equal(classifyProvenance({ ...base, resultVisible: true }), "DELAYED_PAPER");
   assert.equal(classifyProvenance({ ...base, receiptAt: null }), "TIMING_UNPROVEN");
@@ -162,6 +168,7 @@ test("schema: DBClone-only, unique scope, alpha-never-bets, frozen guard, least 
   assert.match(sql, /enable row level security/); assert.match(sql, /revoke all on public\.research_inplay_paper_decisions from anon, authenticated/);
   assert.doesNotMatch(sql, /grant[^;]*delete/i); assert.doesNotMatch(sql, /grant[^;]*to (anon|authenticated|public)/i);
   assert.match(sql, /create table if not exists/); assert.match(sql, /drop trigger if exists/);
+  assert.match(sql, /bootstrap_cursor_observed_at timestamptz not null/); assert.match(sql, /inplay_paper_live_prospective_pre_result/);
   const migrations = readFileSync("package.json", "utf8");
   assert.match(migrations, /research-clone:inplay-paper-decisions/);
 });
@@ -176,12 +183,12 @@ test("runner and CLI: DBClone only; collector, live-money and Ireland paths not 
 
 // ── runner behaviour against an in-memory PostgREST-shaped fake ──
 type Row = Record<string, any>;
-function fakeDb(tables: Record<string, Row[]>, failOn?: { table: string; op: string }) {
+function fakeDb(tables: Record<string, Row[]>, failOn?: { table: string; op: string; once?: boolean }) {
   const log: string[] = [];
   const from = (table: string) => {
     const st: { op: string; filters: Array<(r: Row) => boolean>; payload?: any; lim: number; order?: string; single: boolean; opts?: any } = { op: "select", filters: [], lim: 1e9, single: false };
     const exec = (): { data: any; error: any } => {
-      if (failOn && failOn.table === table && failOn.op === st.op) return { data: null, error: { message: "boom" } };
+      if (failOn && failOn.table === table && failOn.op === st.op) { if (failOn.once) { const f = failOn; failOn = undefined; void f; } return { data: null, error: { message: "boom" } }; }
       const rows = (tables[table] ??= []);
       log.push(`${st.op}:${table}`);
       if (st.op === "select") {
@@ -224,66 +231,122 @@ function fakeDb(tables: Record<string, Row[]>, failOn?: { table: string; op: str
   return { db: { from } as any, tables, log };
 }
 
-test("runner: first run only bootstraps; no history is turned into forward decisions", async () => {
-  const hist = [obs({ at: -20, physical_event_id: "old" })];
-  const f = fakeDb({ research_inplay_core_path_observations: hist });
+const tailRow = (at: number) => obs({ at, physical_event_id: "tail", token_id: "tail_t", full_stake_executable_vwap: 0.9 }); // releases the held-back newest group
+const withHistory = () => fakeDb({ research_inplay_core_path_observations: [obs({ at: -20, physical_event_id: "old" })] });
+
+test("runner: first run only bootstraps and records the bootstrap cursor; no history becomes a forward decision", async () => {
+  const f = withHistory();
   const r = await runPaperDecisionCycle(f.db, evalAt(5));
   assert.equal(r.bootstrapped, true);
   assert.equal((f.tables.research_inplay_paper_decisions ?? []).length, 0);
   assert.equal(f.tables.research_inplay_paper_checkpoints.length, 1);
+  assert.equal(f.tables.research_inplay_paper_checkpoints[0].bootstrap_cursor_observed_at, T(-20));
+  assert.equal(f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at, T(-20));
 });
 
 test("runner: new live rows freeze one BET per strategy, idempotent on re-run, checkpoint advances after writes", async () => {
-  const f = fakeDb({ research_inplay_core_path_observations: [obs({ at: -20, physical_event_id: "old" })] });
-  const boot = evalAt(-10);
-  await runPaperDecisionCycle(f.db, boot);
-  f.tables.research_inplay_paper_checkpoints[0].bootstrapped_at = new Date(boot).toISOString();
+  const f = withHistory();
+  await runPaperDecisionCycle(f.db, evalAt(-10));
   f.tables.research_inplay_core_path_observations.push(
     obs({ at: 1, token_id: "tA", full_stake_executable_vwap: 0.5 }),   // A
     obs({ at: 1, token_id: "tB", full_stake_executable_vwap: 0.55 }),  // B
     obs({ at: 1, token_id: "tC", full_stake_executable_vwap: 0.4 }),   // C
+    tailRow(2),
   );
   const r1 = await runPaperDecisionCycle(f.db, evalAt(1.1));
   const decisions = f.tables.research_inplay_paper_decisions;
   assert.equal(decisions.length, 3); assert.deepEqual(decisions.map((d) => d.status), ["BET", "BET", "BET"]);
   assert.deepEqual(Object.fromEntries(decisions.map((d) => [d.strategy_id, d.token_id])), { CONTROL_PRICE_BUCKET_A: "tA", CONTROL_PRICE_BUCKET_B: "tB", CONTROL_PRICE_BUCKET_C: "tC" });
-  assert.equal(r1.cursor_advanced, true);
+  assert.ok(decisions.every((d) => d.provenance_class === "DELAYED_PAPER" && d.result_visible_at_freeze === false));
+  assert.equal(r1.cursor_advanced, true); assert.equal(f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at, T(1));
   const before = JSON.stringify(decisions);
   await runPaperDecisionCycle(f.db, evalAt(1.2));
   assert.equal(JSON.stringify(f.tables.research_inplay_paper_decisions), before); // duplicate-free, nothing rewritten
   assert.equal(new Set(decisions.map((d) => d.decision_id)).size, 3);
 });
 
+test("runner: the newest observed_at group is held back until a newer group proves it complete", async () => {
+  const f = withHistory();
+  await runPaperDecisionCycle(f.db, evalAt(-10));
+  f.tables.research_inplay_core_path_observations.push(obs({ at: 1, token_id: "tA", full_stake_executable_vwap: 0.5 }));
+  await runPaperDecisionCycle(f.db, evalAt(1.1));
+  assert.equal((f.tables.research_inplay_paper_decisions ?? []).length, 0);
+  assert.equal(f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at, T(-20));
+  f.tables.research_inplay_core_path_observations.push(tailRow(2));
+  await runPaperDecisionCycle(f.db, evalAt(2.1));
+  assert.equal(f.tables.research_inplay_paper_decisions.filter((d) => d.status === "BET").length, 1);
+});
+
+test("runner: an observation group straddling the page boundary is never split", async () => {
+  const f = withHistory();
+  await runPaperDecisionCycle(f.db, evalAt(-10));
+  const rows = f.tables.research_inplay_core_path_observations;
+  for (let i = 0; i < PAGE_SIZE - 2; i++) rows.push(obs({ at: 0.1 + i * 0.001, physical_event_id: `f${i}`, full_stake_executable_vwap: 0.9 }));
+  // 3-row group: the first two rows fit in page 1, the best candidate (highest id) would be cut off
+  rows.push(obs({ at: 1, physical_event_id: "X", token_id: "t1", full_stake_executable_vwap: 0.52 }));
+  rows.push(obs({ at: 1, physical_event_id: "X", token_id: "t2", full_stake_executable_vwap: 0.5 }));
+  rows.push(obs({ at: 1, physical_event_id: "X", token_id: "t3", full_stake_executable_vwap: 0.5 })); // ties t2, token_id decides
+  rows.push(tailRow(2));
+  await runPaperDecisionCycle(f.db, evalAt(1.1));
+  const x = f.tables.research_inplay_paper_decisions.find((d) => d.physical_event_id === "X" && d.strategy_id === "CONTROL_PRICE_BUCKET_A")!;
+  assert.equal(x.status, "BET"); assert.equal(x.token_id, "t2"); assert.equal(x.admitted_candidate_n, 3);
+  assert.equal(f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at, T(1));
+});
+
 test("runner: events first seen before bootstrap are never turned into forward decisions", async () => {
   const f = fakeDb({ research_inplay_core_path_observations: [obs({ at: -20, physical_event_id: "mid" })] });
-  const boot = evalAt(0);
-  await runPaperDecisionCycle(f.db, boot);
-  f.tables.research_inplay_paper_checkpoints[0].bootstrapped_at = new Date(boot).toISOString();
-  f.tables.research_inplay_core_path_observations.push(obs({ at: 2, physical_event_id: "mid" }));
+  await runPaperDecisionCycle(f.db, evalAt(0));
+  f.tables.research_inplay_core_path_observations.push(obs({ at: 2, physical_event_id: "mid" }), tailRow(3));
   const r = await runPaperDecisionCycle(f.db, evalAt(2.1));
-  assert.equal(r.pre_bootstrap_events_skipped, 1); assert.equal((f.tables.research_inplay_paper_decisions ?? []).length, 0);
+  assert.equal(r.pre_bootstrap_events_skipped, 1);
+  assert.equal((f.tables.research_inplay_paper_decisions ?? []).some((d) => d.physical_event_id === "mid"), false);
 });
 
-test("runner: a failed decision write never advances the checkpoint", async () => {
-  const f = fakeDb({ research_inplay_core_path_observations: [obs({ at: -20, physical_event_id: "old" })] }, { table: "research_inplay_paper_decisions", op: "insert" });
-  const boot = evalAt(-10);
-  await runPaperDecisionCycle(f.db, boot);
-  f.tables.research_inplay_paper_checkpoints[0].bootstrapped_at = new Date(boot).toISOString();
-  const cursorBefore = f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at;
-  f.tables.research_inplay_core_path_observations.push(obs({ at: 1 }));
-  await assert.rejects(() => runPaperDecisionCycle(f.db, evalAt(1.1)), /INPLAY_PAPER_DECISION_INSERT:boom/);
-  assert.equal(f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at, cursorBefore);
-});
-
-test("runner: elapsed WAITING decisions sweep to SKIP with an exact reason", async () => {
-  const f = fakeDb({ research_inplay_core_path_observations: [obs({ at: -20, physical_event_id: "old" })] });
+test("runner: a failed decision write never advances the checkpoint; a re-run yields no loss and no duplicate", async () => {
+  const f = fakeDb({ research_inplay_core_path_observations: [obs({ at: -20, physical_event_id: "old" })] }, { table: "research_inplay_paper_decisions", op: "insert", once: true });
   await runPaperDecisionCycle(f.db, evalAt(-10));
-  f.tables.research_inplay_paper_checkpoints[0].bootstrapped_at = new Date(evalAt(-10)).toISOString();
-  f.tables.research_inplay_core_path_observations.push(obs({ at: 1, full_stake_executable_vwap: 0.9 }));
+  f.tables.research_inplay_core_path_observations.push(obs({ at: 1, physical_event_id: "E1" }), obs({ at: 1.1, physical_event_id: "E2" }), tailRow(3));
+  await assert.rejects(() => runPaperDecisionCycle(f.db, evalAt(1.5)), /INPLAY_PAPER_DECISION_INSERT:boom/);
+  assert.equal(f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at, T(-20));
+  await runPaperDecisionCycle(f.db, evalAt(1.6));
+  const keys = f.tables.research_inplay_paper_decisions.map((d) => `${d.physical_event_id}|${d.strategy_id}`);
+  assert.equal(keys.length, 6); assert.equal(new Set(keys).size, 6);
+  assert.equal(f.tables.research_inplay_paper_checkpoints[0].cursor_observed_at, T(1.1));
+});
+
+test("runner: a result already visible in DBClone can never produce a BET (delayed cohort stays pre-result)", async () => {
+  const f = withHistory();
+  await runPaperDecisionCycle(f.db, evalAt(-10));
+  f.tables.research_inplay_core_path_observations.push(obs({ at: 1, physical_event_id: "E1" }), obs({ at: 40, physical_event_id: "E1", event_live_status: "FINAL" }), tailRow(60));
+  await runPaperDecisionCycle(f.db, evalAt(61));
+  const d = f.tables.research_inplay_paper_decisions.filter((x) => x.physical_event_id === "E1");
+  assert.equal(d.length, 3); assert.ok(d.every((x) => x.status === "SKIP"));
+  const a = d.find((x) => x.strategy_id === "CONTROL_PRICE_BUCKET_A")!; // the only strategy whose band the 0.50 candidate satisfies
+  assert.equal(a.reject_reason, "RESULT_VISIBLE_AT_EVALUATION"); assert.equal(a.result_visible_at_freeze, true); assert.equal(a.provenance_class, "DELAYED_PAPER");
+  assert.ok(d.filter((x) => x !== a).every((x) => x.reject_reason === "ENTRY_WINDOW_ELAPSED_NO_QUALIFYING_CANDIDATE"));
+});
+
+test("runner: elapsed WAITING decisions freeze to SKIP with an exact reason, by evaluation or by sweep", async () => {
+  const f = withHistory();
+  await runPaperDecisionCycle(f.db, evalAt(-10));
+  f.tables.research_inplay_core_path_observations.push(obs({ at: 1, full_stake_executable_vwap: 0.9 }), tailRow(2));
   await runPaperDecisionCycle(f.db, evalAt(1.1));
-  assert.equal(f.tables.research_inplay_paper_decisions[0].status, "WAITING");
+  assert.ok(f.tables.research_inplay_paper_decisions.every((d) => d.status === "WAITING"));
+  // a WAITING row whose event produced no further observations is closed by the sweep
+  f.tables.research_inplay_paper_decisions.push({ decision_id: "sweep-1", physical_event_id: "Z", strategy_id: "CONTROL_PRICE_BUCKET_A", strategy_version: "v1", scope_key: "MONEYLINE_FULL_GAME", status: "WAITING", admission_observed_at: T(0), entry_window_end: T(30) });
   const r = await runPaperDecisionCycle(f.db, evalAt(45));
-  assert.equal(r.swept >= 1 || f.tables.research_inplay_paper_decisions.every((d) => d.status === "SKIP"), true);
-  assert.equal(f.tables.research_inplay_paper_decisions[0].status, "SKIP");
-  assert.equal(f.tables.research_inplay_paper_decisions[0].reject_reason, "ENTRY_WINDOW_ELAPSED_NO_QUALIFYING_CANDIDATE");
+  assert.equal(r.swept, 1);
+  const z = f.tables.research_inplay_paper_decisions.find((d) => d.physical_event_id === "Z")!;
+  assert.equal(z.status, "SKIP"); assert.equal(z.provenance_class, "TIMING_UNPROVEN");
+  assert.ok(f.tables.research_inplay_paper_decisions.every((d) => d.status === "SKIP" && d.reject_reason === "ENTRY_WINDOW_ELAPSED_NO_QUALIFYING_CANDIDATE"));
+});
+
+test("scheduling: the runner is chained into the live hourly clone-sync cron and no timely path exists", () => {
+  const toml = readFileSync("ops/railway/research-clone-daily-sync.toml", "utf8");
+  const start = toml.split("\n").find((l) => l.startsWith("startCommand"))!;
+  assert.match(toml, /cronSchedule\s*=\s*"0 \* \* \* \*"/); // hourly: source->DBClone latency >= one cron interval
+  assert.equal((start.match(/research-clone:inplay-paper-decisions/g) ?? []).length, 2); // both the 02:00 and hourly branches
+  assert.match(start, /research-clone:sync -- --telemetry-only; npm run research-clone:inplay-paper-decisions/);
+  assert.match(start, /research-clone:modeling-dashboard-refresh -- --runtime-only; npm run research-clone:inplay-paper-decisions/);
+  assert.equal(TIMELY_SOURCE_PATH_PROVEN, false);
 });

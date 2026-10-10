@@ -63,6 +63,7 @@ create table if not exists public.research_inplay_paper_decisions (
   frozen_at timestamptz,
   processing_lag_ms bigint,
   provenance_class text check (provenance_class is null or provenance_class in ('LIVE_PROSPECTIVE', 'DELAYED_PAPER', 'TIMING_UNPROVEN')),
+  result_visible_at_freeze boolean,
   created_at timestamptz not null default now(),
   -- structural invariants
   constraint inplay_paper_unique_scope unique (physical_event_id, strategy_id, strategy_version, scope_key),
@@ -73,6 +74,7 @@ create table if not exists public.research_inplay_paper_decisions (
     and entry_cost_authority is not null and observed_at is not null and frozen_at is not null
     and provenance_class is not null and processing_lag_ms is not null)),
   constraint inplay_paper_skip_reason check (status <> 'SKIP' or (reject_reason is not null and frozen_at is not null and provenance_class is not null)),
+  constraint inplay_paper_live_prospective_pre_result check (provenance_class is distinct from 'LIVE_PROSPECTIVE' or result_visible_at_freeze = false),
   constraint inplay_paper_waiting_unfrozen check (status <> 'WAITING' or (frozen_at is null and entry_vwap is null and token_id is null)),
   constraint inplay_paper_size check (octet_length(physical_event_id) <= 100 and octet_length(strategy_id) <= 100
     and (token_id is null or octet_length(token_id) <= 100) and (condition_id is null or octet_length(condition_id) <= 100))
@@ -119,6 +121,7 @@ create table if not exists public.research_inplay_paper_checkpoints (
   cursor_observed_at timestamptz not null,
   cursor_id uuid not null,
   bootstrapped_at timestamptz not null,
+  bootstrap_cursor_observed_at timestamptz not null,
   last_batch_rows integer not null default 0,
   updated_at timestamptz not null default now()
 );

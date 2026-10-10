@@ -13,6 +13,13 @@ export const SCOPE_KEY = "MONEYLINE_FULL_GAME";
 export const ENTRY_WINDOW_MINUTES_AFTER_SCHEDULED_START = 30;
 /** Source -> first-evaluation lag within which a decision may be called LIVE_PROSPECTIVE. */
 export const MAX_LIVE_PROSPECTIVE_LAG_MS = 10 * 60_000;
+/**
+ * The only authorized source->DBClone path is the hourly `research-clone-daily-sync` Railway cron
+ * (ops/railway/research-clone-daily-sync.toml, cronSchedule "0 * * * *"), so a decision is always frozen at least a
+ * sync interval after the observation. A timely path has NOT been demonstrated; until it is, no decision may be
+ * called LIVE_PROSPECTIVE regardless of the lag of an individual row.
+ */
+export const TIMELY_SOURCE_PATH_PROVEN = false;
 export const COST_AUTHORITY = "FULL_STAKE_EXECUTABLE_BUY_VWAP";
 
 export type PriceRange = { min: number; max: number };
@@ -75,10 +82,9 @@ export const decisionId = (physicalEventId: string, s: Strategy) => uuidFrom(phy
 
 export const entryWindowEndMs = (eventStartIso: string) => Date.parse(eventStartIso) + ENTRY_WINDOW_MINUTES_AFTER_SCHEDULED_START * 60_000;
 
-/** Inclusive on both bounds at 1e-6 precision so float noise cannot move a boundary price. */
+/** Inclusive on both bounds; the 1e-9 slack only absorbs binary-float noise and cannot admit a real 1e-6 deviation. */
 export function inRange(vwap: number, r: PriceRange): boolean {
-  const v = micro(vwap);
-  return v >= micro(r.min) && v <= micro(r.max);
+  return vwap >= r.min - 1e-9 && vwap <= r.max + 1e-9;
 }
 
 /** Why one observation row cannot be a candidate for a strategy, or null when it qualifies. */
@@ -118,10 +124,10 @@ export function rankCandidates(s: Strategy, rows: readonly Observation[]): Obser
  * the first evaluation, a result not visible at evaluation and source->evaluation lag within the configured bound.
  * Evaluation time is an upper bound on DBClone availability (the row was read from the clone).
  */
-export function classifyProvenance(i: { observedAt: string | null; receiptAt: string | null; evaluatedAtMs: number; resultVisible: boolean; live: boolean }): Provenance {
+export function classifyProvenance(i: { observedAt: string | null; receiptAt: string | null; evaluatedAtMs: number; resultVisible: boolean; live: boolean; timelyPathProven?: boolean }): Provenance {
   const o = ms(i.observedAt), r = ms(i.receiptAt);
   if (!Number.isFinite(o) || !Number.isFinite(r) || r < o - 1_000 || r > i.evaluatedAtMs || o > i.evaluatedAtMs) return "TIMING_UNPROVEN";
-  if (i.resultVisible || !i.live) return "DELAYED_PAPER";
+  if (i.resultVisible || !i.live || !(i.timelyPathProven ?? TIMELY_SOURCE_PATH_PROVEN)) return "DELAYED_PAPER";
   return i.evaluatedAtMs - o <= MAX_LIVE_PROSPECTIVE_LAG_MS ? "LIVE_PROSPECTIVE" : "DELAYED_PAPER";
 }
 
@@ -145,6 +151,7 @@ export type EvaluateInput = {
   /** Earliest FINAL observed_at for the event currently visible in DBClone, if any. */
   finalSeenAtMs: number | null;
   evaluatedAtMs: number;
+  timelyPathProven?: boolean;
 };
 export type EvaluateOutput = { action: "NONE" | "INSERT" | "FREEZE"; decision: DecisionRecord | null };
 
@@ -167,7 +174,7 @@ const isoMs = (v: string) => new Date(v).toISOString();
  * qualifying candidate freezes the BET; later observations and outcomes are never consulted for that choice.
  */
 export function evaluateEvent(input: EvaluateInput): EvaluateOutput {
-  const { strategy: s, rows, existing, finalSeenAtMs, evaluatedAtMs } = input;
+  const { strategy: s, rows, existing, finalSeenAtMs, evaluatedAtMs, timelyPathProven } = input;
   if (!s.canEmitBet || s.kind !== "CONTROL") return { action: "NONE", decision: null };
   if (existing && existing.status !== "WAITING") return { action: "NONE", decision: null };
   if (!rows.length) return { action: "NONE", decision: null };
@@ -188,12 +195,12 @@ export function evaluateEvent(input: EvaluateInput): EvaluateOutput {
 
   const freezeSkip = (reason: string, ref: Observation | null): EvaluateOutput => {
     const provenance = ref
-      ? classifyProvenance({ observedAt: ref.observed_at, receiptAt: ref.created_at, evaluatedAtMs, resultVisible, live: ref.event_live_status === "LIVE" })
+      ? classifyProvenance({ observedAt: ref.observed_at, receiptAt: ref.created_at, evaluatedAtMs, resultVisible, live: ref.event_live_status === "LIVE", timelyPathProven })
       : "TIMING_UNPROVEN";
     return { action: existing ? "FREEZE" : "INSERT", decision: buildDecision(s, "SKIP", {
       ...base, reject_reason: reason, exclusion_summary: exclusions, observed_at: ref?.observed_at ?? null,
       collector_receipt_at: ref?.created_at ?? null, frozen_at: new Date(evaluatedAtMs).toISOString(),
-      processing_lag_ms: ref ? evaluatedAtMs - ms(ref.observed_at) : null, provenance_class: provenance,
+      processing_lag_ms: ref ? evaluatedAtMs - ms(ref.observed_at) : null, provenance_class: provenance, result_visible_at_freeze: resultVisible,
       admitted_candidate_n: 0,
     }) };
   };
@@ -235,7 +242,8 @@ export function evaluateEvent(input: EvaluateInput): EvaluateOutput {
       admitted_candidate_n: qualified.length, exclusion_summary: exclusions, reject_reason: null,
       observed_at: winner.observed_at, collector_receipt_at: winner.created_at, frozen_at: new Date(evaluatedAtMs).toISOString(),
       processing_lag_ms: evaluatedAtMs - ms(winner.observed_at),
-      provenance_class: classifyProvenance({ observedAt: winner.observed_at, receiptAt: winner.created_at, evaluatedAtMs, resultVisible: false, live: true }),
+      provenance_class: classifyProvenance({ observedAt: winner.observed_at, receiptAt: winner.created_at, evaluatedAtMs, resultVisible: false, live: true, timelyPathProven }),
+      result_visible_at_freeze: false,
     }) };
   }
   if (evaluatedAtMs > windowEnd) return freezeSkip("ENTRY_WINDOW_ELAPSED_NO_QUALIFYING_CANDIDATE", lastLive);
@@ -262,113 +270,129 @@ export function factReadiness(rows: readonly Observation[]) {
 
 // ───────────────────────────── bounded runner ─────────────────────────────
 export const PAGE_SIZE = 500;
-export const MAX_PAGES_PER_CYCLE = 4;
+/** 12 x 500 rows covers the 20,000 rows/UTC-day Production cap with room for a multi-hour catch-up. */
+export const MAX_PAGES_PER_CYCLE = 12;
 export const CURSOR_OVERLAP_MS = 120_000;
+const EVENT_CHECK_CONCURRENCY = 10;
 const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
 const COLUMNS = "id,physical_event_id,provider_game_id,provider_event_id,provider_sport_family,event_start_iso,observed_at,created_at,event_live_status,state_authority,state_phase,state_period_num,state_clock_seconds_remaining,side_a_score,side_b_score,condition_id,token_id,side,canonical_market_family,canonical_market_type,market_slug,best_bid,best_ask,bid_depth_relevant_usd,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled,taker_fee_usd,orderbook_fetch_status";
 const CONFLICT = "physical_event_id,strategy_id,strategy_version,scope_key";
 
 export type CycleResult = {
   bootstrapped: boolean; pages: number; rows_read: number; events_seen: number; pre_bootstrap_events_skipped: number;
-  inserted: number; frozen: number; swept: number; cursor_advanced: boolean;
+  inserted: number; frozen: number; swept: number; cursor_advanced: boolean; queries: number;
 };
 
-function chunk<T>(a: readonly T[], n: number): T[][] { const o: T[][] = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; }
 function fail(stage: string, error: { message: string } | null) { if (error) throw new Error(`INPLAY_PAPER_${stage}:${error.message}`); }
+async function inBatches<T>(items: readonly T[], n: number, fn: (item: T) => Promise<void>): Promise<void> {
+  for (let i = 0; i < items.length; i += n) await Promise.all(items.slice(i, i + n).map(fn));
+}
 
-/** Bounded incremental cursor cycle. Checkpoint advances only after every decision write of the page succeeded. */
-export async function runPaperDecisionCycle(db: SupabaseClient, nowMs = Date.now(), strategies: readonly Strategy[] = CONTROL_STRATEGIES): Promise<CycleResult> {
-  const result: CycleResult = { bootstrapped: false, pages: 0, rows_read: 0, events_seen: 0, pre_bootstrap_events_skipped: 0, inserted: 0, frozen: 0, swept: 0, cursor_advanced: false };
+/**
+ * Bounded incremental cursor cycle. The checkpoint advances only after every decision write of the page succeeded.
+ * The newest observed_at group is never evaluated: the clone sync appends in (observed_at, id) order, so only the
+ * tail group can still be partial, and a partial group could change the ranked winner.
+ */
+export async function runPaperDecisionCycle(db: SupabaseClient, nowMs = Date.now(), strategies: readonly Strategy[] = CONTROL_STRATEGIES, timelyPathProven = TIMELY_SOURCE_PATH_PROVEN): Promise<CycleResult> {
+  const result: CycleResult = { bootstrapped: false, pages: 0, rows_read: 0, events_seen: 0, pre_bootstrap_events_skipped: 0, inserted: 0, frozen: 0, swept: 0, cursor_advanced: false, queries: 0 };
   const nowIso = new Date(nowMs).toISOString();
-  const cp = await db.from(CHECKPOINT_TABLE).select("cursor_observed_at,cursor_id,bootstrapped_at").eq("processor_id", PROCESSOR_ID).maybeSingle();
-  fail("CHECKPOINT_READ", cp.error);
+  const cp = await db.from(CHECKPOINT_TABLE).select("cursor_observed_at,cursor_id,bootstrap_cursor_observed_at").eq("processor_id", PROCESSOR_ID).maybeSingle();
+  result.queries++; fail("CHECKPOINT_READ", cp.error);
   if (!cp.data) {
-    // Bootstrap: history is never processed. The cursor starts at the newest row existing now.
+    // Bootstrap: history is never processed. The cursor starts at the newest row existing now, and every event that
+    // already has a row at or before it is permanently excluded (its true admission is unknown).
     const newest = await db.from(OBSERVATION_TABLE).select("observed_at,id").order("observed_at", { ascending: false }).order("id", { ascending: false }).limit(1);
-    fail("BOOTSTRAP_READ", newest.error);
+    result.queries++; fail("BOOTSTRAP_READ", newest.error);
     const top = (newest.data ?? [])[0] as { observed_at: string; id: string } | undefined;
-    const w = await db.from(CHECKPOINT_TABLE).upsert({ processor_id: PROCESSOR_ID, cursor_observed_at: top?.observed_at ?? nowIso, cursor_id: top?.id ?? ZERO_UUID, bootstrapped_at: nowIso, updated_at: nowIso }, { onConflict: "processor_id", ignoreDuplicates: true });
-    fail("BOOTSTRAP_WRITE", w.error);
+    const at = top ? isoMs(top.observed_at) : nowIso;
+    const w = await db.from(CHECKPOINT_TABLE).upsert({ processor_id: PROCESSOR_ID, cursor_observed_at: at, cursor_id: top?.id ?? ZERO_UUID, bootstrap_cursor_observed_at: at, bootstrapped_at: nowIso, updated_at: nowIso }, { onConflict: "processor_id", ignoreDuplicates: true });
+    result.queries++; fail("BOOTSTRAP_WRITE", w.error);
     return { ...result, bootstrapped: true };
   }
   let cursor = { at: isoMs(cp.data.cursor_observed_at as string), id: cp.data.cursor_id as string };
-  const bootstrappedAt = isoMs(cp.data.bootstrapped_at as string);
+  const bootstrapCursorAt = isoMs(cp.data.bootstrap_cursor_observed_at as string);
   // First page re-reads a short overlap window so a late-arriving clone row is not lost; decisions are idempotent.
   let from = { at: new Date(ms(cursor.at) - CURSOR_OVERLAP_MS).toISOString(), id: ZERO_UUID };
+  const keyOf = (eventId: string, s: Strategy) => `${eventId}|${s.id}|${s.version}|${s.scopeKey}`;
 
   for (let page = 0; page < MAX_PAGES_PER_CYCLE; page++) {
     const q = await db.from(OBSERVATION_TABLE).select(COLUMNS)
       .or(`observed_at.gt.${from.at},and(observed_at.eq.${from.at},id.gt.${from.id})`)
       .order("observed_at", { ascending: true }).order("id", { ascending: true }).limit(PAGE_SIZE);
-    fail("OBSERVATION_READ", q.error);
-    let rows = (q.data ?? []) as unknown as Observation[];
+    result.queries++; fail("OBSERVATION_READ", q.error);
+    const fetched = (q.data ?? []) as unknown as Observation[];
+    if (!fetched.length) break;
+    const full = fetched.length === PAGE_SIZE;
+    const tailAt = fetched[fetched.length - 1].observed_at;
+    const rows = fetched.filter((r) => r.observed_at !== tailAt); // hold back the newest, possibly partial, group
     if (!rows.length) break;
-    const full = rows.length === PAGE_SIZE;
-    if (full) { // never split an observed_at group across pages
-      const lastAt = rows[rows.length - 1].observed_at;
-      const kept = rows.filter((r) => r.observed_at !== lastAt);
-      if (kept.length) rows = kept;
-    }
     result.pages++; result.rows_read += rows.length;
     const byEvent = new Map<string, Observation[]>();
-    for (const r of rows) (byEvent.get(r.physical_event_id) ?? byEvent.set(r.physical_event_id, []).get(r.physical_event_id)!).push(r);
+    for (const r of rows) { const g = byEvent.get(r.physical_event_id); if (g) g.push(r); else byEvent.set(r.physical_event_id, [r]); }
     const eventIds = [...byEvent.keys()];
     result.events_seen += eventIds.length;
 
     const existing = new Map<string, ExistingDecision>();
-    const finalSeen = new Map<string, number>();
-    const preBootstrap = new Set<string>();
-    for (const ids of chunk(eventIds, 50)) {
-      const d = await db.from(DECISION_TABLE).select("decision_id,physical_event_id,strategy_id,strategy_version,scope_key,status,admission_observed_at,entry_window_end").in("physical_event_id", ids).limit(1000);
-      fail("DECISION_READ", d.error);
+    for (let i = 0; i < eventIds.length; i += 25) {
+      const d = await db.from(DECISION_TABLE).select("decision_id,physical_event_id,strategy_id,strategy_version,scope_key,status,admission_observed_at,entry_window_end").in("physical_event_id", eventIds.slice(i, i + 25)).limit(1000);
+      result.queries++; fail("DECISION_READ", d.error);
       for (const e of (d.data ?? []) as Array<ExistingDecision & { physical_event_id: string; strategy_id: string; strategy_version: string; scope_key: string }>)
         existing.set(`${e.physical_event_id}|${e.strategy_id}|${e.strategy_version}|${e.scope_key}`, e);
-      const f = await db.from(OBSERVATION_TABLE).select("physical_event_id,observed_at").in("physical_event_id", ids).eq("event_live_status", "FINAL").order("observed_at", { ascending: true }).limit(1000);
-      fail("FINAL_READ", f.error);
-      for (const e of (f.data ?? []) as Array<{ physical_event_id: string; observed_at: string }>) if (!finalSeen.has(e.physical_event_id)) finalSeen.set(e.physical_event_id, ms(e.observed_at));
-      const p = await db.from(OBSERVATION_TABLE).select("physical_event_id").in("physical_event_id", ids).lte("observed_at", bootstrappedAt).limit(1000);
-      fail("PRE_BOOTSTRAP_READ", p.error);
-      for (const e of (p.data ?? []) as Array<{ physical_event_id: string }>) preBootstrap.add(e.physical_event_id);
     }
+    // Per-event facts, one indexed single-row lookup each, only for events that can still change.
+    const open = eventIds.filter((id) => strategies.some((s) => { const e = existing.get(keyOf(id, s)); return !e || e.status === "WAITING"; }));
+    const finalSeen = new Map<string, number>();
+    const preBootstrap = new Set<string>();
+    await inBatches(open, EVENT_CHECK_CONCURRENCY, async (id) => {
+      const f = await db.from(OBSERVATION_TABLE).select("observed_at").eq("physical_event_id", id).eq("event_live_status", "FINAL").order("observed_at", { ascending: true }).limit(1);
+      result.queries++; fail("FINAL_READ", f.error);
+      const fr = (f.data ?? [])[0] as { observed_at: string } | undefined;
+      if (fr) finalSeen.set(id, ms(fr.observed_at));
+      if (!strategies.some((s) => existing.has(keyOf(id, s)))) { // an event already holding a decision was admitted after bootstrap
+        const p = await db.from(OBSERVATION_TABLE).select("id").eq("physical_event_id", id).lte("observed_at", bootstrapCursorAt).limit(1);
+        result.queries++; fail("PRE_BOOTSTRAP_READ", p.error);
+        if ((p.data ?? []).length) preBootstrap.add(id);
+      }
+    });
 
     for (const [eventId, eventRows] of byEvent) {
       // Admission before processor start cannot be proven: never create retroactive forward decisions.
       if (preBootstrap.has(eventId)) { result.pre_bootstrap_events_skipped++; continue; }
       for (const s of strategies) {
-        const key = `${eventId}|${s.id}|${s.version}|${s.scopeKey}`;
-        const out = evaluateEvent({ strategy: s, rows: eventRows, existing: existing.get(key) ?? null, finalSeenAtMs: finalSeen.get(eventId) ?? null, evaluatedAtMs: nowMs });
+        const out = evaluateEvent({ strategy: s, rows: eventRows, existing: existing.get(keyOf(eventId, s)) ?? null, finalSeenAtMs: finalSeen.get(eventId) ?? null, evaluatedAtMs: nowMs, timelyPathProven });
         if (out.action === "NONE" || !out.decision) continue;
         if (out.action === "INSERT") {
           const w = await db.from(DECISION_TABLE).upsert(out.decision, { onConflict: CONFLICT, ignoreDuplicates: true });
-          fail("DECISION_INSERT", w.error); result.inserted++;
+          result.queries++; fail("DECISION_INSERT", w.error); result.inserted++;
         } else {
           const w = await db.from(DECISION_TABLE).update(toFreezePatch(out.decision)).eq("decision_id", out.decision.decision_id).eq("status", "WAITING");
-          fail("DECISION_FREEZE", w.error); result.frozen++;
+          result.queries++; fail("DECISION_FREEZE", w.error); result.frozen++;
         }
       }
     }
     const last = rows[rows.length - 1];
-    cursor = { at: isoMs(last.observed_at), id: last.id };
-    from = cursor;
-    const adv = await db.from(CHECKPOINT_TABLE).update({ cursor_observed_at: cursor.at, cursor_id: cursor.id, last_batch_rows: rows.length, updated_at: nowIso })
-      .eq("processor_id", PROCESSOR_ID).or(`cursor_observed_at.lt.${cursor.at},and(cursor_observed_at.eq.${cursor.at},cursor_id.lt.${cursor.id})`);
-    fail("CHECKPOINT_WRITE", adv.error); result.cursor_advanced = true;
+    const next = { at: isoMs(last.observed_at), id: last.id };
+    const adv = await db.from(CHECKPOINT_TABLE).update({ cursor_observed_at: next.at, cursor_id: next.id, last_batch_rows: rows.length, updated_at: nowIso })
+      .eq("processor_id", PROCESSOR_ID).or(`cursor_observed_at.lt.${next.at},and(cursor_observed_at.eq.${next.at},cursor_id.lt.${next.id})`);
+    result.queries++; fail("CHECKPOINT_WRITE", adv.error);
+    if (next.at > cursor.at || (next.at === cursor.at && next.id > cursor.id)) { cursor = next; result.cursor_advanced = true; }
+    from = next;
     if (!full) break;
   }
 
   // Sweep: windows that elapsed with no further observation freeze as SKIP with an exact reason.
-  const waiting = await db.from(DECISION_TABLE).select("decision_id,physical_event_id,strategy_id,strategy_version,scope_key,admission_observed_at,entry_window_end,event_start_iso")
+  const waiting = await db.from(DECISION_TABLE).select("decision_id,strategy_id")
     .eq("status", "WAITING").lt("entry_window_end", nowIso).order("entry_window_end", { ascending: true }).limit(200);
-  fail("SWEEP_READ", waiting.error);
+  result.queries++; fail("SWEEP_READ", waiting.error);
   for (const w of (waiting.data ?? []) as Array<{ decision_id: string; strategy_id: string }>) {
     const s = strategies.find((x) => x.id === w.strategy_id);
     if (!s) continue;
     const rec = buildDecision(s, "SKIP", {
       reject_reason: "ENTRY_WINDOW_ELAPSED_NO_QUALIFYING_CANDIDATE", exclusion_summary: {}, frozen_at: nowIso,
-      provenance_class: "TIMING_UNPROVEN", admitted_candidate_n: 0,
+      provenance_class: "TIMING_UNPROVEN", admitted_candidate_n: 0, result_visible_at_freeze: null,
     });
     const u = await db.from(DECISION_TABLE).update(toFreezePatch(rec)).eq("decision_id", w.decision_id).eq("status", "WAITING");
-    fail("SWEEP_WRITE", u.error); result.swept++;
+    result.queries++; fail("SWEEP_WRITE", u.error); result.swept++;
   }
   return result;
 }

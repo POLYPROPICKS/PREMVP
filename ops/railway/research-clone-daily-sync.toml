@@ -33,7 +33,12 @@ buildCommand = "npm ci --ignore-scripts"
 # it has no dependency on that run's sync/legacy-pipeline exit code, so it is
 # separated with `;` and always attempts to run, even when the legacy sync or
 # legacy pipeline step fails or is still catching up.
-startCommand = "sh -c 'if [ \"$(date -u +%H)\" = \"02\" ]; then npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only; else npm run research-clone:sync -- --telemetry-only; fi'"
+# INPLAY_PAPER_DECISIONS_V1: the research-only paper-decision cycle (DBClone reads/writes only, bounded keyset
+# cursor, scripts/research-inplay-paper-decisions.ts) runs after the sync in BOTH branches. It is separated with `;`
+# because it only reads rows already in the clone, so it has no dependency on this run's sync exit code, and its own
+# failure cannot suppress the sync (it is the last command). Source->DBClone latency is at least one cron interval, so
+# its decisions are never LIVE_PROSPECTIVE.
+startCommand = "sh -c 'if [ \"$(date -u +%H)\" = \"02\" ]; then npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only; npm run research-clone:inplay-paper-decisions; else npm run research-clone:sync -- --telemetry-only; npm run research-clone:inplay-paper-decisions; fi'"
 #
 # AUTOMATED_D1_MODELING_CONVEYOR_V1: the two final steps are chained with `&&`
 # to the DIRECT model-ready step ONLY, so they run exclusively after it
