@@ -1,6 +1,6 @@
 // Dedicated, research-only sports state listener. Run with: npx tsx scripts/research-inplay-core-path.ts
 import { createClient } from "@supabase/supabase-js";
-import { captureInplayCorePath, deriveStructuredState, type SportsState } from "../lib/research/inplayCorePath";
+import { captureInplayCorePath, deriveStructuredState, STATE_MAX_AGE_MS, type SportsState } from "../lib/research/inplayCorePath";
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -41,18 +41,19 @@ async function loop(): Promise<void> {
   busy = true;
   const deadline = Date.now() + 25_000;
   try {
-    const work: Array<{ id: string; state: SportsState }> = [];
+    const work: Array<{ id: string; state: SportsState; receivedAtMs: number }> = [];
     while (pending.length && work.length < 3) {
       const id = pending.shift()!;
       const state = latest.get(id);
       if (!state) continue;
-      if (Date.now() - (receivedAt.get(id) ?? 0) > 90_000) { latest.delete(id); receivedAt.delete(id); continue; }
+      const receivedAtMs = receivedAt.get(id) ?? 0;
+      if (Date.now() - receivedAtMs > STATE_MAX_AGE_MS) { latest.delete(id); receivedAt.delete(id); continue; }
       processing.add(id);
-      work.push({ id, state });
+      work.push({ id, state, receivedAtMs });
     }
-    await Promise.allSettled(work.map(async ({ id, state }) => {
+    await Promise.allSettled(work.map(async ({ id, state, receivedAtMs }) => {
       try {
-        await captureInplayCorePath(state, db, Date.now(), () => !stopped && Date.now() < deadline);
+        await captureInplayCorePath(state, db, Date.now(), () => !stopped && Date.now() < deadline, receivedAtMs);
         if (state.ended === true) { latest.delete(id); receivedAt.delete(id); }
         else if (!pending.includes(id)) pending.push(id);
       } catch (error) { console.error("INPLAY_CAPTURE_FAILED", error instanceof Error ? error.message : "UNKNOWN"); }
