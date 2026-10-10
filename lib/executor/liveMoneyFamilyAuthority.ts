@@ -37,3 +37,23 @@ export class LiveMoneyFamilyNotAuthorizedError extends Error {
     this.name = "LiveMoneyFamilyNotAuthorizedError";
   }
 }
+
+// FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10 -- Founder decision: NO NEW real-money bet on TOTALS Over (any line).
+// Side-level live authority, evaluated alongside the family authority above. Research / shadow / telemetry stay
+// free to see TOTALS Over; only NEW live economic selection, Queue admission, executor handoff and fallback
+// exposure are refused. Already-executed positions, settlement and callbacks are untouched.
+export const FOUNDER_TOTALS_OVER_LIVE_OFF = "FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10" as const;
+
+/** TOTALS family + an Over side (e.g. "Over", "Over 2.5", "OVER"), regardless of line. TOTAL_CORNERS is a different family. */
+export function isFounderLiveOffTotalsOver(family: string | null | undefined, side: string | null | undefined): boolean {
+  return norm(family) === "TOTALS" && /^over(?![a-z])/i.test(typeof side === "string" ? side.trim() : "");
+}
+
+/** Thrown at the executable Queue money boundary when a TOTALS Over row is attempted. */
+export class FounderTotalsOverLiveOffError extends Error {
+  readonly code = FOUNDER_TOTALS_OVER_LIVE_OFF;
+  constructor(surface: string) {
+    super(`${FOUNDER_TOTALS_OVER_LIVE_OFF}: ${surface}`);
+    this.name = "FounderTotalsOverLiveOffError";
+  }
+}

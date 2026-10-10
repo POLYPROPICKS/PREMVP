@@ -26,7 +26,7 @@ import {
   t10FrozenExecutionMode,
   type EventExecutionQueueRow,
 } from "./executorQueueTypes";
-import { isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
+import { FOUNDER_TOTALS_OVER_LIVE_OFF, isFounderLiveOffTotalsOver, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
 
 export const EXECUTION_ATTEMPTS_KEY = "execution_attempts_v1" as const;
 export const TAKER_ATTEMPT_1 = "TAKER_ATTEMPT_1" as const;
@@ -204,7 +204,8 @@ export type MakerBlockReason =
   | "IDENTITY_MISMATCH"
   | "DEADLINE_PASSED"
   | "PRIMARY_MAKER_ROW_NO_FALLBACK"
-  | "LIVE_MONEY_FAMILY_NOT_AUTHORIZED";
+  | "LIVE_MONEY_FAMILY_NOT_AUTHORIZED"
+  | typeof FOUNDER_TOTALS_OVER_LIVE_OFF;
 
 export interface MakerEligibilityInput {
   result: IrelandExecutionResult | null;
@@ -274,6 +275,8 @@ export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEli
   if (frozenMode === "INVALID" || frozenMode === "MAKER_FIRST") reasons.push("PRIMARY_MAKER_ROW_NO_FALLBACK");
   // LIVE_MONEY_FAMILY_AUTHORITY_V1: a non-live family (SPREADS) never opens fallback exposure.
   if (isObservationOnlyMoneyFamily(queue.market_family)) reasons.push("LIVE_MONEY_FAMILY_NOT_AUTHORIZED");
+  // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: a TOTALS Over parent never opens a NEW fallback order.
+  if (isFounderLiveOffTotalsOver(queue.market_family, queue.side)) reasons.push(FOUNDER_TOTALS_OVER_LIVE_OFF);
 
   return { eligible: reasons.length === 0, reasons, deadline_iso: deadline };
 }
@@ -868,6 +871,7 @@ export function selectExecutorMakerFallbackCommands(
     if (c.parent_attempt_id !== TAKER_ATTEMPT_1) continue;
     // Handoff defense in depth: a command authorized for a non-live family is never surfaced to the executor.
     if (isObservationOnlyMoneyFamily(c.market_family)) continue;
+    if (isFounderLiveOffTotalsOver(c.market_family, c.side)) continue;
     const start = typeof r.game_start_iso === "string" ? Date.parse(r.game_start_iso) : null;
     if (start !== null && !Number.isFinite(start)) continue;
     const stated = Date.parse(c.deadline_iso);

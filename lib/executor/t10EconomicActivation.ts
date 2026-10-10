@@ -71,7 +71,7 @@ import {
 } from "./executorQueueTypes";
 import { latestEntryIso } from "./nightWindow";
 import { bStrategySupportRegion, isBSupportFamilyEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
-import { isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
+import { FOUNDER_TOTALS_OVER_LIVE_OFF, isFounderLiveOffTotalsOver, isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
 import {
   decideEventAction,
   evaluateMakerPlacement,
@@ -302,9 +302,13 @@ export async function decideT10EconomicEvent(input: {
     // be a safe MAKER (the band is proven per action, on the price actually transacted).
     // LIVE_MONEY_FAMILY_AUTHORITY_V1: a non-live family (SPREADS) stays in the evaluated universe for telemetry
     // but fails NOT_SUPPORT_ELIGIBLE, so it can never compete for or obtain live economic authority.
-    const supportFamilyEligible = isBSupportFamilyEligible(row) && isLiveMoneyFamilyEligible(row.canonical_market_family);
+    // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: TOTALS Over is removed from the live competition BEFORE the winner is
+    // chosen (siblings such as Under / MONEYLINE / TOTAL_CORNERS win through the normal selector); it stays evaluated
+    // with an explicit reason for telemetry.
+    const liveOffReason = isFounderLiveOffTotalsOver(row.canonical_market_family, row.side) ? FOUNDER_TOTALS_OVER_LIVE_OFF : null;
+    const supportFamilyEligible = isBSupportFamilyEligible(row) && isLiveMoneyFamilyEligible(row.canonical_market_family) && !liveOffReason;
     const competes = supportFamilyEligible && beforeLatestEntry && !input.exposureExists;
-    return { row, identity, t30Evidence, reference, supportFamilyEligible, competes };
+    return { row, identity, t30Evidence, reference, supportFamilyEligible, liveOffReason, competes };
   });
 
   const executions = new Map<string, CandidateExecution>();
@@ -350,7 +354,7 @@ export async function decideT10EconomicEvent(input: {
     return {
       identity: b.identity, family: b.row.canonical_market_family ?? "",
       // TAKER initial support = the CURRENT executable ask of the fresh book (never the capture-time row).
-      supportFamilyEligible: b.supportFamilyEligible, takerSupportEligible: b.supportFamilyEligible && !!ev?.ok && priceInBand(ev.bestAsk, supportBand),
+      supportFamilyEligible: b.supportFamilyEligible, liveOffReason: b.liveOffReason, takerSupportEligible: b.supportFamilyEligible && !!ev?.ok && priceInBand(ev.bestAsk, supportBand),
       supportBand, reference: b.reference, t30Evidence: b.t30Evidence,
       t10: ev ? {
         bestBid: ev.bestBid, bestAsk: ev.bestAsk, bookFresh: ev.ok, observedAtMs: Date.parse(ev.observedAtIso),
