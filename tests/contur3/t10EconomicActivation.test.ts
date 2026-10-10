@@ -339,7 +339,7 @@ test("22: real rank-4 evidence: the bid-less Under (0.02/0.51) is never a MAKER;
   assert.equal(event.decision.action, "TAKER_FIRST", "ask 0.51 is in band, full stake + fee proven on the current ladder");
   assert.equal(event.decision.selected!.candidateIdentity.tokenId, "under");
   assert.ok(event.decision.selected!.taker.effectiveCost! <= 0.54);
-  assert.equal(event.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "over")!.taker.rejectReason, "TAKER_SUPPORT_PRICE_OUTSIDE_BAND");
+  assert.equal(event.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "over")!.taker.rejectReason, "FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10", "TOTALS Over is live-OFF (Founder); still evaluated for telemetry");
 });
 
 // ── real decision path (runEventRebalance) ──────────────────────────────────

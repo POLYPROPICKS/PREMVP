@@ -6,7 +6,7 @@ import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from 
 import { GAMMA_GAME_EVENTS_LIMIT, fetchPolymarketEventById, fetchPolymarketEventsByGameId } from "../feed/polymarketClient";
 import type { PolymarketRawEvent } from "../feed/types";
 import { compareExactIdentity } from "./exactIdentityOrder";
-import { isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
+import { isFounderLiveOffTotalsOver, isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
 import { physicalMatchId } from "./contractADecisions";
 import { CORNER_DERIVATIVE_RE } from "../contur3/taxonomy";
 
@@ -1008,13 +1008,14 @@ function chooseBCandidate(
   universe: readonly FinalT3MarketObservation[],
   hasBook: (row: FinalT3MarketObservation) => boolean,
   familyAllowed: (family: string) => boolean,
+  rowAllowed: (row: FinalT3MarketObservation) => boolean = () => true,
 ): { bSelected: FinalT3MarketObservation | null; bReason: string } {
   let bSelected: FinalT3MarketObservation | null = null;
   let bReason = "NO_SUPPORTED_T3_CANDIDATE";
   for (const support of B_SUPPORT) {
     if (!familyAllowed(support.family)) continue;
     const qualifying = universe.filter((row) => row.canonical_market_family === support.family &&
-      row.canonical_market_type === support.type && hasBook(row) &&
+      row.canonical_market_type === support.type && hasBook(row) && rowAllowed(row) &&
       row.ask_decimal_odds! >= support.min && row.ask_decimal_odds! <= support.max &&
       (support.family !== "TOTAL_CORNERS" ||
         (row.provider_market_type_raw?.trim().toLowerCase() === "total_corners" &&
@@ -1041,7 +1042,9 @@ export function selectLiveMoneyBDecision(
   universe: readonly FinalT3MarketObservation[],
   telemetryB: ReservationStrategyDecisionInput,
 ): ReservationStrategyDecisionInput {
-  const { bSelected, bReason } = chooseBCandidate(universe, hasT3Book, isLiveMoneyFamilyEligible);
+  const { bSelected, bReason } = chooseBCandidate(universe, hasT3Book, isLiveMoneyFamilyEligible,
+    // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: removed BEFORE the choice so it cannot win and starve a TOTALS Under sibling.
+    (row) => !isFounderLiveOffTotalsOver(row.canonical_market_family, row.side));
   return { ...telemetryB,
     selectedIdentity: bSelected ? { conditionId: bSelected.condition_id, tokenId: bSelected.token_id, side: bSelected.side } : null,
     decisionReason: bReason };

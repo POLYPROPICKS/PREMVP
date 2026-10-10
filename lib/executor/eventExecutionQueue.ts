@@ -35,7 +35,7 @@ import {
   readValidShadowMarker,
   type ShadowEconomicActionMarker,
 } from "./t10RealMoneyPause";
-import { LiveMoneyFamilyNotAuthorizedError, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
+import { FounderTotalsOverLiveOffError, LiveMoneyFamilyNotAuthorizedError, isFounderLiveOffTotalsOver, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
 import { liveEconomicPhysicalEventKey } from "./liveEconomicPhysicalEventKey";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import {
@@ -776,6 +776,10 @@ export async function admitExecutableQueueRow(
   // LIVE_MONEY_FAMILY_AUTHORITY_V1: every executable Queue row (T10 economic, controlled, legacy seam) passes here.
   if (isObservationOnlyMoneyFamily(row.market_family)) {
     throw new LiveMoneyFamilyNotAuthorizedError("EXECUTABLE_QUEUE_ROW_ADMISSION", row.market_family);
+  }
+  // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: backstop for every writer; the selectors already exclude TOTALS Over.
+  if (isFounderLiveOffTotalsOver(row.market_family, row.side)) {
+    throw new FounderTotalsOverLiveOffError("EXECUTABLE_QUEUE_ROW_ADMISSION");
   }
   // T10_REAL_MONEY_EXECUTION_ENABLED=false (or malformed): no NEW executable authority, defense in depth for any
   // caller that did not divert to the shadow path first.

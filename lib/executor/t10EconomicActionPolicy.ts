@@ -51,6 +51,8 @@ export type PolicyCandidateInput = {
   family: string;
   /** CANDIDATE authority (price-agnostic): family/type/book proof only. Gates both TAKER and MAKER. */
   supportFamilyEligible: boolean;
+  /** Explicit founder live-off reason: the candidate stays evaluated (telemetry) but can never win live authority. */
+  liveOffReason?: string | null;
   /** Canonical support band of the family (one authority: bStrategySupportRegion). null => unsupported family. */
   supportBand: SupportBand | null;
   /** TAKER initial support evidence: the CURRENT executable ask lies inside the band (caller-decided). */
@@ -267,7 +269,8 @@ export function evaluateT10EconomicAction(input: PolicyCandidateInput): PolicyEv
   };
 
   // Event-level gates only: family admission, exposure, deadline, fresh current book. No T30 / reference gate.
-  const gate = !input.supportFamilyEligible ? "NOT_SUPPORT_ELIGIBLE"
+  const gate = input.liveOffReason ? input.liveOffReason
+    : !input.supportFamilyEligible ? "NOT_SUPPORT_ELIGIBLE"
     : input.exposureExists ? "EXPOSURE_EXISTS"
     : !input.beforeLatestEntry ? "AFTER_LATEST_ENTRY"
     : !t10.bookFresh || !num(ask) ? "T10_BOOK_NOT_FRESH" : null;
