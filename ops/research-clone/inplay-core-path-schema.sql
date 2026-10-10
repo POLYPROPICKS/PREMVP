@@ -15,6 +15,8 @@ CREATE TABLE IF NOT EXISTS public.research_inplay_core_path_observations (
   state_phase text,
   state_period_num integer,
   state_clock_seconds_remaining integer,
+  state_clock_seconds_elapsed integer,
+  state_received_at timestamptz,
   side_a_score numeric,
   side_b_score numeric,
   side_a_red_cards integer,
@@ -48,6 +50,9 @@ CREATE TABLE IF NOT EXISTS public.research_inplay_core_path_observations (
     AND octet_length(condition_id) <= 100 AND octet_length(side) <= 100
     AND (market_slug IS NULL OR octet_length(market_slug) <= 180))
 );
+-- INPLAY_STATE_FIELDS_V2: additive, applied to an already-created clone table.
+ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS state_clock_seconds_elapsed integer;
+ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS state_received_at timestamptz;
 CREATE INDEX IF NOT EXISTS research_inplay_core_path_event_time_idx ON public.research_inplay_core_path_observations (physical_event_id, observed_at);
 CREATE INDEX IF NOT EXISTS research_inplay_core_path_retention_idx ON public.research_inplay_core_path_observations (observed_at, id);
 ALTER TABLE public.research_inplay_core_path_observations ENABLE ROW LEVEL SECURITY;

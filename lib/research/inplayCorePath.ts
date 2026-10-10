@@ -19,10 +19,47 @@ export const PRODUCTION_RETENTION_HOURS = 48;
 export const HEARTBEAT_MS = 5 * 60_000;
 const SPORT_FAMILIES = new Set(["soccer", "tennis", "basketball", "baseball", "hockey", "cricket", "american-football"]);
 
-export type SportsState = { gameId?: unknown; live?: unknown; ended?: unknown; status?: unknown; period?: unknown; score?: unknown; leagueAbbreviation?: unknown };
+export type SportsState = { gameId?: unknown; live?: unknown; ended?: unknown; status?: unknown; period?: unknown; score?: unknown; elapsed?: unknown; leagueAbbreviation?: unknown };
 export type StructuredState = { gameId: string; eventLiveStatus: "LIVE" | "FINAL"; phase: string | null; sportCode: string | null };
 
-/** The sports socket's score is a formatted string; it is never parsed into numeric sides. */
+/** Used by the live-socket loop; a state older than this at capture time is not authoritative for the row. */
+export const STATE_MAX_AGE_MS = 90_000;
+
+export type SportState = {
+  periodNum: number | null; clockSecondsElapsed: number | null;
+  sideAScore: number | null; sideBScore: number | null; receivedAt: string | null;
+};
+const NO_SPORT_STATE: SportState = { periodNum: null, clockSecondsElapsed: null, sideAScore: null, sideBScore: null, receivedAt: null };
+
+/**
+ * Typed state from the provider sports socket, soccer only (the one admitted family whose payload carries
+ * score + period + elapsed minute; tennis carries a multi-set score and no clock, so it stays null).
+ * Provider contract: score is "<home>-<away>" (side A = home, side B = away); elapsed is the count-up match
+ * minute (verified live: +1 per wall-clock minute) so it is stored as elapsed seconds and the "remaining"
+ * column is never populated. Anything unparseable, inconsistent, stale or without a receipt time yields null.
+ * Nothing is derived from prices.
+ */
+export function deriveSportState(raw: SportsState, family: string, eventLiveStatus: "LIVE" | "FINAL",
+  receivedAtMs: number | undefined, nowMs: number): SportState {
+  if (family !== "soccer" || receivedAtMs === undefined || !Number.isFinite(receivedAtMs)
+    || receivedAtMs > nowMs || nowMs - receivedAtMs > STATE_MAX_AGE_MS) return NO_SPORT_STATE;
+  const sides = typeof raw.score === "string" ? /^(\d{1,3})-(\d{1,3})$/.exec(raw.score) : null;
+  const period = typeof raw.period === "string" ? raw.period : "";
+  let periodNum: number | null = null;
+  let clockSecondsElapsed: number | null = null;
+  if (eventLiveStatus === "LIVE") {
+    periodNum = period === "1H" ? 1 : period === "2H" ? 2 : null;
+    const minute = typeof raw.elapsed === "string" && /^\d{1,3}$/.test(raw.elapsed) ? Number.parseInt(raw.elapsed, 10) : null;
+    const consistent = minute !== null && (periodNum === 1 ? minute <= 60 : periodNum === 2 ? minute >= 45 && minute <= 130 : false);
+    if (consistent) clockSecondsElapsed = minute * 60;
+  } else if (period !== "FT") return NO_SPORT_STATE;
+  const sideAScore = sides ? Number.parseInt(sides[1], 10) : null;
+  const sideBScore = sides ? Number.parseInt(sides[2], 10) : null;
+  if (sideAScore === null && periodNum === null && clockSecondsElapsed === null) return NO_SPORT_STATE;
+  return { periodNum, clockSecondsElapsed, sideAScore, sideBScore, receivedAt: new Date(receivedAtMs).toISOString() };
+}
+
+/** The sports socket's score is a formatted string; typed sides come only from deriveSportState (soccer). */
 export function deriveStructuredState(input: SportsState): StructuredState | null {
   const gameId = typeof input.gameId === "number" && Number.isSafeInteger(input.gameId) && input.gameId > 0
     ? String(input.gameId) : typeof input.gameId === "string" && /^\d+$/.test(input.gameId) ? input.gameId : null;
@@ -94,7 +131,7 @@ type Client = { from: (table: string) => any; rpc: (name: string, args: Record<s
 type LastRow = { observed_at: string; mid_price: number | null; spread_abs: number | null; state_phase: string | null; event_live_status: string };
 
 /** A single message/poll captures at most one physical game and sixteen tokens. */
-export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs = Date.now(), isLive: () => boolean = () => true): Promise<number> {
+export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs = Date.now(), isLive: () => boolean = () => true, stateReceivedAtMs?: number): Promise<number> {
   const state = deriveStructuredState(raw);
   if (!state || !isLive()) return 0;
   const events = await fetchPolymarketEventsByGameId(state.gameId);
@@ -129,6 +166,7 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
   const fees = await fetchFeeSchedulesBounded(tokens);
   if (!isLive()) return 0;
   const observedAt = new Date(nowMs).toISOString();
+  const sport = deriveSportState(raw, family, state.eventLiveStatus, stateReceivedAtMs, nowMs);
   let saved = 0;
   for (let i = 0; i < tokens.length; i++) {
     if (!isLive()) return saved;
@@ -151,7 +189,8 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
       provider_sport_family: family, provider_sport_code: state.sportCode, provider_sport_source: "gamma_event_structured_tag",
       event_start_iso: start, observed_at: observedAt, source_version: SOURCE_VERSION,
       event_live_status: state.eventLiveStatus, state_authority: "SPORTS_WS_STRUCTURED_STATUS", state_phase: state.phase,
-      state_period_num: null, state_clock_seconds_remaining: null, side_a_score: null, side_b_score: null,
+      state_period_num: sport.periodNum, state_clock_seconds_remaining: null, state_clock_seconds_elapsed: sport.clockSecondsElapsed,
+      side_a_score: sport.sideAScore, side_b_score: sport.sideBScore, state_received_at: sport.receivedAt,
       side_a_red_cards: null, side_b_red_cards: null,
       condition_id: token.conditionId, token_id: token.tokenId, side: token.side,
       canonical_market_family: market.family, canonical_market_type: market.type,
