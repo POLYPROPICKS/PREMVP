@@ -5,7 +5,7 @@ import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
 import { computeDepthWithinPct, computeExecutableExit, computeMidPrice, computeSpread, getBestBidAsk } from "../liquidity/orderbookMath";
 import { physicalMatchId } from "../executor/contractADecisions";
 import { defaultExactEventReader, defaultGameEventsReader, inventoryTokens, sameGameLiveUniverse, stableTelemetryId } from "../executor/reservationMarketBaseline";
-import { admitResearchMarket } from "../executor/precontractT20Research";
+import { admitResearchMarket, RESEARCH_TABLE as T20_COHORT_TABLE } from "../executor/precontractT20Research";
 import { buildExecutableSiblingColumns, fetchFeeSchedulesBounded } from "../executor/t10ExecutableSiblingTelemetry";
 
 export const TABLE = "research_inplay_core_path_observations";
@@ -18,6 +18,37 @@ export const MAX_INPLAY_LOGICAL_MB_PER_DAY = 20;
 export const PRODUCTION_RETENTION_HOURS = 48;
 export const HEARTBEAT_MS = 5 * 60_000;
 const SPORT_FAMILIES = new Set(["soccer", "tennis", "basketball", "baseball", "hockey", "cricket", "american-football"]);
+
+/**
+ * COHORT AUTHORITY. The Founder-approved TOP-100 40/20/40 liquidity cohort (parentEventVolume24hr DESC, event_start_iso ASC,
+ * physical_event_id ASC) is computed ONLY by selectResearchCohort in precontractT20Research.ts. Its output is persisted
+ * per physical event in research_precontract_t20_observations before the event starts. The sports socket carries no
+ * volume and no ranked universe, so arrival order must never stand in for liquidity rank: a NEW physical event is
+ * admitted here only if that persisted cohort already contains it. Events already carrying in-play rows stay admitted
+ * (no retrospective mutation); this module has no ranking algorithm of its own.
+ */
+export type InplayAdmissionReason = "ALREADY_ADMITTED" | "T20_COHORT_MEMBER" | "NOT_IN_T20_COHORT" | "COHORT_READ_FAILED";
+export type InplayAdmission = { admitted: boolean; reason: InplayAdmissionReason };
+/** How long a "not in cohort" verdict is reused for a socket game id (T20 cannot capture an event after it starts). */
+export const NOT_ADMITTED_TTL_MS = 30 * 60_000;
+const NOT_ADMITTED_CACHE_MAX = 1000;
+const notAdmittedUntil = new Map<string, number>();
+export function resetInplayAdmissionCache(): void { notAdmittedUntil.clear(); }
+function rememberNotAdmitted(gameId: string, nowMs: number): void {
+  if (notAdmittedUntil.size >= NOT_ADMITTED_CACHE_MAX) {
+    for (const [key, until] of notAdmittedUntil) if (until <= nowMs) notAdmittedUntil.delete(key);
+    if (notAdmittedUntil.size >= NOT_ADMITTED_CACHE_MAX) notAdmittedUntil.delete(notAdmittedUntil.keys().next().value as string);
+  }
+  notAdmittedUntil.set(gameId, nowMs + NOT_ADMITTED_TTL_MS);
+}
+
+/** Pure verdict. `membership === null` means the cohort could not be read: fail closed, never first-come. */
+export function decideInplayAdmission(input: { priorRowCount: number; membership: ReadonlyArray<{ physical_event_id?: unknown }> | null; physicalEventId: string }): InplayAdmission {
+  if (input.priorRowCount > 0) return { admitted: true, reason: "ALREADY_ADMITTED" };
+  if (input.membership === null) return { admitted: false, reason: "COHORT_READ_FAILED" };
+  return input.membership.some((row) => row.physical_event_id === input.physicalEventId)
+    ? { admitted: true, reason: "T20_COHORT_MEMBER" } : { admitted: false, reason: "NOT_IN_T20_COHORT" };
+}
 
 export type SportsState = { gameId?: unknown; live?: unknown; ended?: unknown; status?: unknown; period?: unknown; score?: unknown; elapsed?: unknown; leagueAbbreviation?: unknown };
 export type StructuredState = { gameId: string; eventLiveStatus: "LIVE" | "FINAL"; phase: string | null; sportCode: string | null };
@@ -131,15 +162,38 @@ type Client = { from: (table: string) => any; rpc: (name: string, args: Record<s
 type LastRow = { observed_at: string; mid_price: number | null; spread_abs: number | null; state_phase: string | null; event_live_status: string };
 
 /** A single message/poll captures at most one physical game and sixteen tokens. */
-export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs = Date.now(), isLive: () => boolean = () => true, stateReceivedAtMs?: number): Promise<number> {
+export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs = Date.now(), isLive: () => boolean = () => true, stateReceivedAtMs?: number,
+  onAdmission?: (reason: InplayAdmissionReason) => void): Promise<number> {
   const state = deriveStructuredState(raw);
   if (!state || !isLive()) return 0;
+  if ((notAdmittedUntil.get(state.gameId) ?? 0) > nowMs) { onAdmission?.("NOT_IN_T20_COHORT"); return 0; }
   const events = await fetchPolymarketEventsByGameId(state.gameId);
   if (!events || !isLive()) return 0;
   const admitted = admitPhysicalEvent(events, state);
   if (!admitted) return 0;
   const { event, family, start } = admitted;
   if (nowMs < Date.parse(start) - 5 * 60_000 || nowMs >= Date.parse(start) + 47 * 60 * 60_000) return 0;
+  const physicalEventId = physicalMatchId({ gameId: state.gameId, eventId: String(event.id), eventStartIso: start });
+  const prior = await db.from(TABLE).select("token_id,observed_at,mid_price,spread_abs,state_phase,event_live_status")
+    .eq("physical_event_id", physicalEventId)
+    .order("observed_at", { ascending: false }).limit(MAX_PERSISTED_OBSERVATIONS_PER_EVENT);
+  if (prior.error) throw new Error(`INPLAY_PRIOR_READ:${prior.error.message}`);
+  if (!isLive()) return 0;
+  const rows = (prior.data ?? []) as Array<LastRow & { token_id: string }>;
+  let membership: Array<{ physical_event_id?: unknown }> | null = [];
+  if (rows.length === 0) {
+    const cohort = await db.from(T20_COHORT_TABLE).select("physical_event_id").eq("physical_event_id", physicalEventId).limit(1);
+    membership = cohort.error ? null : ((cohort.data ?? []) as Array<{ physical_event_id?: unknown }>);
+    if (!isLive()) return 0;
+  }
+  const admission = decideInplayAdmission({ priorRowCount: rows.length, membership, physicalEventId });
+  onAdmission?.(admission.reason);
+  if (!admission.admitted) {
+    if (admission.reason === "NOT_IN_T20_COHORT") rememberNotAdmitted(state.gameId, nowMs);
+    return 0;
+  }
+  if (rows.length >= MAX_PERSISTED_OBSERVATIONS_PER_EVENT) return 0;
+  if (state.eventLiveStatus === "LIVE" && rows.length >= MAX_PERSISTED_OBSERVATIONS_PER_EVENT - MAX_TRACKED_TOKENS_PER_EVENT) return 0;
   const own = await defaultExactEventReader(String(event.id), start);
   if (!isLive()) return 0;
   const discovered = await defaultGameEventsReader(state.gameId, start);
@@ -150,15 +204,6 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
   const inventory = inventoryTokens(markets);
   if (inventory.missingIdentity || inventory.tokens.length === 0 || inventory.tokens.length > MAX_TRACKED_TOKENS_PER_EVENT) return 0;
   const tokens = inventory.tokens;
-  const physicalEventId = physicalMatchId({ gameId: state.gameId, eventId: String(event.id), eventStartIso: start });
-  const prior = await db.from(TABLE).select("token_id,observed_at,mid_price,spread_abs,state_phase,event_live_status")
-    .eq("physical_event_id", physicalEventId)
-    .order("observed_at", { ascending: false }).limit(MAX_PERSISTED_OBSERVATIONS_PER_EVENT);
-  if (prior.error) throw new Error(`INPLAY_PRIOR_READ:${prior.error.message}`);
-  if (!isLive()) return 0;
-  const rows = (prior.data ?? []) as Array<LastRow & { token_id: string }>;
-  if (rows.length >= MAX_PERSISTED_OBSERVATIONS_PER_EVENT) return 0;
-  if (state.eventLiveStatus === "LIVE" && rows.length >= MAX_PERSISTED_OBSERVATIONS_PER_EVENT - MAX_TRACKED_TOKENS_PER_EVENT) return 0;
   const last = new Map<string, LastRow>();
   for (const row of rows) if (!last.has(row.token_id)) last.set(row.token_id, row);
   const books = await fetchOrderBooksConcurrent(tokens.map((t) => t.tokenId), 5);
