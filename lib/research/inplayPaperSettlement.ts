@@ -188,6 +188,10 @@ export type SellPathResult = {
   max_proven_sell_value_usd: number | null;
   /** Context only, NOT executable: entry_quantity x best_bid ignores depth. */
   max_best_bid_upper_bound_usd: number | null;
+  /** max_proven_sell_value_usd / entry_notional_usd: conservative full-position return multiple. null when nothing proven. */
+  max_proven_return_multiple: number | null;
+  /** Exit-fee authority is never available for a paper position: proceeds above are gross of any exit fee. */
+  exit_fee_authority: "UNKNOWN_PROCEEDS_GROSS_OF_EXIT_FEE";
   multiples: Record<`x${SellMultiple}`, MultipleResult>;
   max_gap_between_samples_s: number | null;
   sampling_caveat: "SPARSE_SAMPLES_NO_CONTINUOUS_WINDOW_DURATION_CLAIM";
@@ -229,7 +233,8 @@ export function evaluateSellPath(bet: FrozenBet, observations: readonly SellObse
     if (seen.has(o.id)) continue; // idempotent over overlapping pages
     seen.add(o.id);
     const exact = o.token_id === bet.token_id && o.condition_id.toLowerCase() === bet.condition_id.toLowerCase() && o.physical_event_id === bet.physical_event_id;
-    if (!exact || !(ms(o.observed_at) > entryAt) || o.orderbook_fetch_status !== "SUCCESS") { excluded++; continue; }
+    // LIVE-only: a post-game (non-LIVE) book prices a known result and is never a hypothetical exit.
+    if (!exact || !(ms(o.observed_at) > entryAt) || o.orderbook_fetch_status !== "SUCCESS" || o.event_live_status !== "LIVE") { excluded++; continue; }
     samples.push(o);
   }
   const multiples = {} as Record<`x${SellMultiple}`, MultipleResult>;
@@ -254,6 +259,8 @@ export function evaluateSellPath(bet: FrozenBet, observations: readonly SellObse
     max_sellable_fraction_proven: proofs.length ? Math.max(...proofs.map((x) => x.p.fraction)) : null,
     max_proven_sell_value_usd: lowers.length ? Math.max(...lowers) : null,
     max_best_bid_upper_bound_usd: uppers.length ? Math.max(...uppers) : null,
+    max_proven_return_multiple: lowers.length ? r6(Math.max(...lowers) / notional) : null,
+    exit_fee_authority: "UNKNOWN_PROCEEDS_GROSS_OF_EXIT_FEE",
     multiples, max_gap_between_samples_s: gaps.length ? Math.max(...gaps) : null,
     sampling_caveat: "SPARSE_SAMPLES_NO_CONTINUOUS_WINDOW_DURATION_CLAIM",
   };
@@ -276,6 +283,13 @@ export function sellPathSummary(rows: readonly (SellPathResult | null)[]) {
 export const BET_PAGE_SIZE = 200;
 export const OBS_PAGE_SIZE = 500;
 export const MAX_OBS_PAGES_PER_BET = 4;
+/** Half-open UTC-day window on the decision's admission_observed_at: [from, to). Both ISO strings. */
+export type UtcWindow = { from: string; to: string } | null;
+export function utcDayWindow(day: string): UtcWindow {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(`${day}T00:00:00Z`))) throw new Error(`INPLAY_SETTLEMENT_BAD_UTC_DAY:${day}`);
+  const from = new Date(`${day}T00:00:00.000Z`);
+  return { from: from.toISOString(), to: new Date(from.getTime() + 86_400_000).toISOString() };
+}
 const BET_COLUMNS = "decision_id,strategy_id,physical_event_id,provider_game_id,condition_id,token_id,side,market_family,market_slug,entry_vwap,entry_quantity,entry_notional_usd,entry_fee_usd,entry_fee_state,observed_at,provenance_class,source_observation_id";
 const OBS_COLUMNS = "id,physical_event_id,condition_id,token_id,observed_at,event_live_status,orderbook_fetch_status,best_bid,mid_price,bid_depth_relevant_usd,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled";
 
@@ -310,10 +324,12 @@ export function buildSettlementReport(input: { bets: readonly FrozenBet[]; marke
 }
 
 /** Frozen BET rows only (immutable after freeze); WAITING/SKIP are never read. Read-only. */
-export async function readFrozenBets(db: SupabaseClient): Promise<FrozenBet[]> {
+export async function readFrozenBets(db: SupabaseClient, window: UtcWindow = null): Promise<FrozenBet[]> {
   const out: FrozenBet[] = [];
   for (let from = 0; ; from += BET_PAGE_SIZE) {
-    const q = await db.from(DECISION_TABLE).select(BET_COLUMNS).eq("status", "BET").order("decision_id", { ascending: true }).range(from, from + BET_PAGE_SIZE - 1);
+    let sel = db.from(DECISION_TABLE).select(BET_COLUMNS).eq("status", "BET");
+    if (window) sel = sel.gte("admission_observed_at", window.from).lt("admission_observed_at", window.to);
+    const q = await sel.order("decision_id", { ascending: true }).range(from, from + BET_PAGE_SIZE - 1);
     fail("BET_READ", q.error);
     const page = (q.data ?? []) as unknown as Record<string, unknown>[];
     out.push(...page.map(toBet));
@@ -339,8 +355,8 @@ export async function readSubsequentObservations(db: SupabaseClient, bet: Frozen
   return out;
 }
 
-export async function runSettlementReport(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency = 4) {
-  const bets = dedupeBets(await readFrozenBets(db));
+async function collectInputs(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency: number, window: UtcWindow) {
+  const bets = dedupeBets(await readFrozenBets(db, window));
   const conditions = new Map<string, string>(); // lower-cased key -> provider-cased id, one provider lookup per condition
   for (const b of bets) if (b.condition_id && !conditions.has(b.condition_id.toLowerCase())) conditions.set(b.condition_id.toLowerCase(), b.condition_id);
   const markets = new Map<string, GammaMarket | null>();
@@ -350,5 +366,96 @@ export async function runSettlementReport(db: SupabaseClient, fetchMarket: (cond
   const observationsByDecision = new Map<string, SellObservation[]>();
   for (let i = 0; i < bets.length; i += concurrency)
     await Promise.all(bets.slice(i, i + concurrency).map(async (b) => { observationsByDecision.set(b.decision_id, await readSubsequentObservations(db, b)); }));
-  return buildSettlementReport({ bets, markets, observationsByDecision });
+  return { bets, markets, observationsByDecision };
+}
+
+export async function runSettlementReport(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency = 4, window: UtcWindow = null) {
+  return buildSettlementReport(await collectInputs(db, fetchMarket, concurrency, window));
+}
+
+// ───────────────────────────── daily A/B/C report ─────────────────────────────
+export type DecisionRow = { decision_id: string; strategy_id: string; status: string; physical_event_id: string; provenance_class: string | null; admission_observed_at: string | null };
+export const STRATEGY_BANDS: Record<string, string> = {
+  CONTROL_PRICE_BUCKET_A: "0.48-0.52", CONTROL_PRICE_BUCKET_B: "0.53-0.58", CONTROL_PRICE_BUCKET_C: "0.35-0.44",
+};
+const DECISION_COLUMNS = "decision_id,strategy_id,status,physical_event_id,provenance_class,admission_observed_at";
+
+/** Frozen decision counts per strategy. Counted per decision row; physical games are the independent unit. Read-only, aggregated in-process. */
+export function strategyDecisionSummary(rows: readonly DecisionRow[]) {
+  const uniq = [...new Map(rows.map((r) => [r.decision_id, r])).values()];
+  const out: Record<string, unknown> = {};
+  for (const id of [...new Set(uniq.map((r) => r.strategy_id))].sort()) {
+    const mine = uniq.filter((r) => r.strategy_id === id);
+    const n = (st: string) => mine.filter((r) => r.status === st).length;
+    const bets = mine.filter((r) => r.status === "BET");
+    const prov: Record<string, number> = {};
+    for (const r of bets) { const k = r.provenance_class ?? "UNCLASSIFIED"; prov[k] = (prov[k] ?? 0) + 1; }
+    out[id] = {
+      price_band_entry_vwap: STRATEGY_BANDS[id] ?? "UNKNOWN_STRATEGY_BAND", bet_n: n("BET"), skip_n: n("SKIP"), waiting_n: n("WAITING"),
+      distinct_games: new Set(mine.map((r) => r.physical_event_id)).size, distinct_games_with_bet: new Set(bets.map((r) => r.physical_event_id)).size,
+      bet_provenance: Object.fromEntries(Object.entries(prov).sort()),
+    };
+  }
+  return out;
+}
+
+/** Explicit missing-authority flags. Absence of evidence is reported as a count, never as zero cost or zero return. */
+export function missingEvidence(bets: readonly FrozenBet[], positions: readonly PositionSettlement[], sell: readonly (SellPathResult | null)[]) {
+  const edge = (...e: MappingEdge[]) => positions.filter((p) => e.includes(p.broken_edge)).length;
+  return {
+    fees_unknown_n: bets.filter((b) => !(b.entry_fee_state === "KNOWN" && finite(b.entry_fee_usd))).length,
+    exit_fees_unknown_n: bets.length, // exit fee authority never exists for a paper position
+    settlement_unavailable_n: positions.filter((p) => p.outcome === "OPEN").length,
+    snapshot_delayed_n: bets.filter((b) => b.provenance_class === "DELAYED_PAPER").length,
+    timing_unproven_n: bets.filter((b) => b.provenance_class !== "DELAYED_PAPER" && b.provenance_class !== "LIVE_PROSPECTIVE").length,
+    insufficient_depth_n: sell.filter((s) => s !== null && !s.full_position_exit_proven).length,
+    ambiguous_market_identity_n: edge("CONDITION_TO_GAME", "MARKET_TO_CONDITION", "GAME_TO_MARKET", "UNSUPPORTED_MARKET_FAMILY"),
+    missing_token_linkage_n: edge("DECISION_TO_TOKEN", "MARKET_TO_TOKEN"),
+    missing_executable_exit_n: sell.filter((s) => s === null || !s.full_position_exit_proven).length,
+    unevaluable_sell_path_n: sell.filter((s) => s === null).length,
+  };
+}
+
+export function independenceBlock(positions: readonly PositionSettlement[]) {
+  const g = economicsByPhysicalGame(positions);
+  return {
+    unique_physical_games: g.games_n, correlated_token_observations: positions.length, independent_settled_games: g.settled_games_n,
+    sample_limitation: g.settled_games_n < 30 ? "SAMPLE_TOO_SMALL_NO_ALPHA_INFERENCE" : "SAMPLE_SIZE_NOT_THE_BINDING_LIMIT_FEES_STILL_UNKNOWN",
+  };
+}
+
+export function buildDailyReport(input: { window: UtcWindow; decisions: readonly DecisionRow[]; bets: readonly FrozenBet[]; markets: ReadonlyMap<string, GammaMarket | null>; observationsByDecision: ReadonlyMap<string, readonly SellObservation[]> }) {
+  const bets = dedupeBets(input.bets);
+  const core = buildSettlementReport({ bets, markets: input.markets, observationsByDecision: input.observationsByDecision });
+  const sell = bets.map((b) => evaluateSellPath(b, input.observationsByDecision.get(b.decision_id) ?? []));
+  return {
+    report: "INPLAY_PAPER_DAILY_ECONOMICS_V1",
+    utc_window_half_open_on_admission_observed_at: input.window ?? "ALL_FROZEN_DECISIONS_NO_DAY_FILTER",
+    decision_timestamp_authority: "FROZEN_AT_AND_OBSERVED_AT_FROM_research_inplay_paper_decisions_IMMUTABLE",
+    data_provenance: "DBClone nppznoujvnyjargjkmnv, research_inplay_paper_decisions + research_inplay_core_path_observations, provider settlement via existing resolver",
+    strategies: strategyDecisionSummary(input.decisions),
+    settlement: core.economics, settlement_by_strategy: core.by_strategy, settlement_by_provenance: core.by_provenance,
+    independence: independenceBlock(core.positions),
+    executable_exits: core.sell_path, missing_evidence: missingEvidence(bets, core.positions, sell),
+    missing_outcome_reasons: core.missing_outcome_reasons, positions: core.positions, sell_paths: core.sell_paths,
+    disclaimer: core.disclaimer,
+  };
+}
+
+export async function readDecisionRows(db: SupabaseClient, window: UtcWindow = null): Promise<DecisionRow[]> {
+  const out: DecisionRow[] = [];
+  for (let from = 0; ; from += BET_PAGE_SIZE * 5) {
+    let sel = db.from(DECISION_TABLE).select(DECISION_COLUMNS);
+    if (window) sel = sel.gte("admission_observed_at", window.from).lt("admission_observed_at", window.to);
+    const q = await sel.order("decision_id", { ascending: true }).range(from, from + BET_PAGE_SIZE * 5 - 1);
+    fail("DECISION_READ", q.error);
+    const page = (q.data ?? []) as unknown as DecisionRow[];
+    out.push(...page);
+    if (page.length < BET_PAGE_SIZE * 5) return out;
+  }
+}
+
+export async function runDailyReport(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, window: UtcWindow = null) {
+  const decisions = await readDecisionRows(db, window);
+  return buildDailyReport({ window, decisions, ...(await collectInputs(db, fetchMarket, 4, window)) });
 }

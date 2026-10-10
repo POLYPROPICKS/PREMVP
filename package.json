@@ -11,6 +11,7 @@
     "generate:signals": "tsx scripts/generate-signals.ts",
     "research-clone:sync": "tsx scripts/research-clone-daily-sync.ts",
     "research-clone:inplay-paper-decisions": "tsx scripts/research-inplay-paper-decisions.ts",
+    "research-clone:inplay-paper-settlement": "tsx scripts/research-inplay-paper-settlement.ts",
     "research-clone:model-ready": "tsx scripts/modeling/clone-model-ready-pipeline.ts",
     "research-clone:model-ready-direct": "tsx scripts/modeling/materialize-research-model-ready.ts",
     "research-clone:modeling-conveyor": "tsx scripts/modeling/run-d1-modeling-conveyor.ts",

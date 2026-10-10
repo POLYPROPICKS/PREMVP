@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   settlePosition, grossPnlU, economics, economicsByProvenance, economicsByPhysicalGame, dedupeBets, conditionEventIndex,
-  sampleSellProof, evaluateSellPath, sellPathSummary, buildSettlementReport, readSubsequentObservations,
+  sampleSellProof, evaluateSellPath, buildDailyReport, utcDayWindow, strategyDecisionSummary, sellPathSummary, buildSettlementReport, readSubsequentObservations,
   type FrozenBet, type SellObservation, type PositionSettlement,
 } from "../../lib/research/inplayPaperSettlement";
 
@@ -171,4 +171,33 @@ test("observation reader pages by (observed_at,id) on the exact event+token and 
   const rows = await readSubsequentObservations({ from: () => chain } as any, bet());
   assert.equal(rows.length, 1); assert.equal(rows[0].best_bid, 0.5);
   assert.deepEqual(calls, ["physical_event_id=ev1", `token_id=${WIN_TOKEN}`]);
+});
+
+test("SELL: post-game (non-LIVE) books are never hypothetical exits", () => {
+  const post = sobs(5, { event_live_status: "FINAL", best_bid: 0.99, mid_price: 0.99, bid_depth_relevant_usd: 500, full_stake_exit_vwap: 0.98, full_stake_shares: 20 });
+  const r = evaluateSellPath(cheap(), [post])!;
+  assert.equal(r.subsequent_samples_n, 0); assert.equal(r.excluded_samples_n, 1); assert.equal(r.multiples.x5.status, "NO_SUBSEQUENT_SAMPLES");
+  assert.equal(r.max_proven_return_multiple, null); assert.equal(r.exit_fee_authority, "UNKNOWN_PROCEEDS_GROSS_OF_EXIT_FEE");
+});
+
+test("utcDayWindow is half-open UTC and rejects malformed days", () => {
+  assert.deepEqual(utcDayWindow("2026-10-10"), { from: "2026-10-10T00:00:00.000Z", to: "2026-10-11T00:00:00.000Z" });
+  assert.throws(() => utcDayWindow("10/10/2026"));
+});
+
+test("daily report: A/B/C counts, independence, null ROI when nothing settled, explicit missing-evidence flags", () => {
+  const mk = (id: string, st: string, strat: string, ev: string, prov: string | null = "DELAYED_PAPER") => ({ decision_id: id, strategy_id: strat, status: st, physical_event_id: ev, provenance_class: prov, admission_observed_at: "2026-10-10T07:00:00Z" });
+  const decisions = [mk("a1", "BET", "CONTROL_PRICE_BUCKET_A", "e1"), mk("a2", "SKIP", "CONTROL_PRICE_BUCKET_A", "e2", null), mk("b1", "BET", "CONTROL_PRICE_BUCKET_B", "e1"), mk("c1", "WAITING", "CONTROL_PRICE_BUCKET_C", "e3", null)];
+  const sum = strategyDecisionSummary(decisions) as any;
+  assert.deepEqual([sum.CONTROL_PRICE_BUCKET_A.bet_n, sum.CONTROL_PRICE_BUCKET_A.skip_n, sum.CONTROL_PRICE_BUCKET_A.distinct_games, sum.CONTROL_PRICE_BUCKET_A.distinct_games_with_bet], [1, 1, 2, 1]);
+  assert.equal(sum.CONTROL_PRICE_BUCKET_C.waiting_n, 1); assert.equal(sum.CONTROL_PRICE_BUCKET_B.price_band_entry_vwap, "0.53-0.58");
+  const bets = [bet({ physical_event_id: "e1", strategy_id: "CONTROL_PRICE_BUCKET_A" }), bet({ physical_event_id: "e1", strategy_id: "CONTROL_PRICE_BUCKET_B", token_id: LOSE_TOKEN, entry_fee_state: "UNKNOWN", entry_fee_usd: null })];
+  const open = new Map([["0xc1", market({ closed: false }) as any]]);
+  const rep = buildDailyReport({ window: utcDayWindow("2026-10-10"), decisions, bets, markets: open, observationsByDecision: new Map() });
+  assert.equal(rep.settlement.settled_n, 0); assert.equal(rep.settlement.settled_roi, null); assert.equal(rep.settlement.gross_pnl_u, null);
+  assert.deepEqual([rep.independence.unique_physical_games, rep.independence.correlated_token_observations, rep.independence.independent_settled_games], [1, 2, 0]);
+  assert.equal(rep.independence.sample_limitation, "SAMPLE_TOO_SMALL_NO_ALPHA_INFERENCE");
+  assert.equal(rep.missing_evidence.settlement_unavailable_n, 2); assert.equal(rep.missing_evidence.snapshot_delayed_n, 2);
+  assert.equal(rep.missing_evidence.fees_unknown_n, 1); assert.equal(rep.missing_evidence.missing_executable_exit_n, 2);
+  assert.equal(rep.executable_exits.executable_x2_n, 0);
 });
