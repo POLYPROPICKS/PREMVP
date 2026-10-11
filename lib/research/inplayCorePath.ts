@@ -2,6 +2,7 @@
 import { fetchPolymarketEventsByGameId, GAMMA_GAME_EVENTS_LIMIT } from "../feed/polymarketClient";
 import type { PolymarketRawEvent } from "../feed/types";
 import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
+import type { FetchOrderBookResult } from "../liquidity/types";
 import { computeDepthWithinPct, computeExecutableExit, computeMidPrice, computeSpread, getBestBidAsk } from "../liquidity/orderbookMath";
 import { physicalMatchId } from "../executor/contractADecisions";
 import { classifyObservationalMarket, defaultExactEventReader, defaultGameEventsReader, inventoryTokens, sameGameLiveUniverse, stableTelemetryId } from "../executor/reservationMarketBaseline";
@@ -280,11 +281,73 @@ export function selectCoreCaptureMarkets<T extends CoreMarket>(universe: readonl
   return sibling ? [...primary, sibling] : primary;
 }
 
+/** An acquisition longer than this is not a plausible single /book request (the client times out at 8s). */
+export const ORDERBOOK_MAX_ACQUISITION_MS = 60_000;
+/** Provider clock may lead our receipt clock by at most this; a later provider timestamp is unverifiable. */
+export const PROVIDER_TS_MAX_LEAD_MS = 2_000;
+/** Provider snapshot may precede the request start by at most this (live probe: ~1s); an older one is unverifiable. */
+export const PROVIDER_TS_MAX_LAG_MS = 60_000;
+const MIN_PLAUSIBLE_EPOCH_MS = Date.UTC(2020, 0, 1);
+
+export type OrderbookTimingColumns = {
+  orderbook_fetch_started_at: string | null;
+  orderbook_fetch_completed_at: string | null;
+  orderbook_provider_timestamp_at: string | null;
+};
+const NO_TIMING: OrderbookTimingColumns = { orderbook_fetch_started_at: null, orderbook_fetch_completed_at: null, orderbook_provider_timestamp_at: null };
+
 /**
- * All legs of one capture share a single poll-cycle `observed_at`; individual orderbook acquisition instants are
- * not persisted. Synchronization is therefore UNPROVEN unless every leg carries its own acquisition time and the
- * whole span is within the bound. Never assign a shared synthetic timestamp to satisfy this.
+ * Validated acquisition interval of ONE token's own /book request, or null. Only a successful fetch for exactly the
+ * expected token qualifies; failed, timed-out, malformed, mismatched or impossible intervals (completed < started,
+ * implausibly long, outside epoch-ms range, in the future of the wall clock) yield null. Nothing is reconstructed
+ * from the shared poll time.
  */
+export function validateAcquisitionWindow(result: FetchOrderBookResult | null | undefined, expectedTokenId: string,
+  wallNowMs: number = Date.now()): { startedAtMs: number; completedAtMs: number } | null {
+  if (!result || result.ok !== true || !result.book || result.tokenId !== expectedTokenId) return null;
+  const s = result.requestStartedAtMs;
+  const c = result.responseCompletedAtMs;
+  if (typeof s !== "number" || typeof c !== "number" || !Number.isSafeInteger(s) || !Number.isSafeInteger(c)) return null;
+  if (s < MIN_PLAUSIBLE_EPOCH_MS || c < s || c - s > ORDERBOOK_MAX_ACQUISITION_MS || c > wallNowMs + PROVIDER_TS_MAX_LEAD_MS) return null;
+  return { startedAtMs: s, completedAtMs: c };
+}
+
+/**
+ * Persisted per-token timing. The provider `timestamp` is kept only when it is an integer epoch in MILLISECONDS
+ * (verified live: string of 13 digits, within about one second before the response) and lies inside
+ * [started - PROVIDER_TS_MAX_LAG_MS, completed + PROVIDER_TS_MAX_LEAD_MS]. A seconds-unit, stale, future or
+ * missing value stays null. A null window nulls all three columns.
+ */
+export function orderbookTimingColumns(result: FetchOrderBookResult | null | undefined, expectedTokenId: string,
+  wallNowMs: number = Date.now()): OrderbookTimingColumns {
+  const window = validateAcquisitionWindow(result, expectedTokenId, wallNowMs);
+  if (!window) return NO_TIMING;
+  const p = result?.book?.providerTimestampMs;
+  const providerOk = typeof p === "number" && Number.isSafeInteger(p)
+    && p >= window.startedAtMs - PROVIDER_TS_MAX_LAG_MS && p <= window.completedAtMs + PROVIDER_TS_MAX_LEAD_MS;
+  return {
+    orderbook_fetch_started_at: new Date(window.startedAtMs).toISOString(),
+    orderbook_fetch_completed_at: new Date(window.completedAtMs).toISOString(),
+    orderbook_provider_timestamp_at: providerOk ? new Date(p).toISOString() : null,
+  };
+}
+
+/**
+ * Legs of one capture share a single poll-cycle `observed_at`, which is NOT proof of simultaneous prices. Quote
+ * synchronization is UNPROVEN unless every leg carries its own validated acquisition window and the whole span
+ * (earliest request start to latest response completion) is within the bound. BOUNDED only limits observation
+ * freshness; it never asserts that the legs could be executed atomically. Never assign a shared synthetic time.
+ */
+export function assessLinkedQuoteWindows(windows: ReadonlyArray<{ startedAtMs: number; completedAtMs: number } | null | undefined>,
+  maxSpanMs: number): "BOUNDED" | "UNPROVEN" {
+  if (windows.length < 2 || !Number.isFinite(maxSpanMs) || maxSpanMs < 0) return "UNPROVEN";
+  const valid = windows.filter((w): w is { startedAtMs: number; completedAtMs: number } => !!w
+    && Number.isFinite(w.startedAtMs) && Number.isFinite(w.completedAtMs) && w.completedAtMs >= w.startedAtMs);
+  if (valid.length !== windows.length) return "UNPROVEN";
+  return Math.max(...valid.map((w) => w.completedAtMs)) - Math.min(...valid.map((w) => w.startedAtMs)) <= maxSpanMs ? "BOUNDED" : "UNPROVEN";
+}
+
+/** Point-time variant for callers that hold one instant per leg; null/undefined instants are UNPROVEN. */
 export function assessLinkedQuoteSynchronization(legAcquiredAtMs: ReadonlyArray<number | null | undefined>, maxSpanMs: number): "BOUNDED" | "UNPROVEN" {
   if (legAcquiredAtMs.length < 2 || !Number.isFinite(maxSpanMs) || maxSpanMs < 0) return "UNPROVEN";
   const times = legAcquiredAtMs.filter((t): t is number => typeof t === "number" && Number.isFinite(t));
@@ -380,7 +443,7 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
       full_stake_executable_vwap: exec.full_stake_executable_vwap ?? null,
       full_stake_shares: shares, full_stake_exit_vwap: exit?.fullyFilled ? exit.avgPrice : null,
       full_stake_exit_fully_filled: exit?.fullyFilled ?? null, taker_fee_usd: exec.taker_fee_usd ?? null,
-      orderbook_fetch_status: result?.ok ? "SUCCESS" : "FAILED", persistence_reason: reason,
+      orderbook_fetch_status: result?.ok ? "SUCCESS" : "FAILED", ...orderbookTimingColumns(result, token.tokenId), persistence_reason: reason,
       sequence_in_event: 0, created_at: observedAt,
     };
     const write = await db.rpc("research_insert_inplay_core_path", { p_row: row });

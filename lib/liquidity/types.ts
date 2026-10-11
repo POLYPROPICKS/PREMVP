@@ -125,6 +125,13 @@ export interface FetchOrderBookResult {
   tokenId: string;
   latencyMs: number;
   book?: ParsedOrderBook;
+  /**
+   * Wall-clock epoch ms measured around THIS token's own /book request: taken immediately before the request is
+   * issued and immediately after its parsed body is accepted. Present only on a successful fetch whose interval is
+   * possible (completed >= started); never present on a failed, timed-out or malformed fetch.
+   */
+  requestStartedAtMs?: number;
+  responseCompletedAtMs?: number;
   errorCode?: string;
   errorMessage?: string;
   httpStatus?: number;
