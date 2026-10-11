@@ -18,6 +18,12 @@ export const MAX_INPLAY_LOGICAL_MB_PER_DAY = 20;
 export const PRODUCTION_RETENTION_HOURS = 48;
 export const HEARTBEAT_MS = 5 * 60_000;
 const SPORT_FAMILIES = new Set(["soccer", "tennis", "basketball", "baseball", "hockey", "cricket", "american-football"]);
+/**
+ * Gamma tags an NFL game with the league slug only (verified live, gameId 19518: ["sports","nfl","games"]) and never
+ * with "american-football". The league slug counts as a family tag only when the sports socket's own
+ * leagueAbbreviation names the same league, so two independent structured sources must agree.
+ */
+const LEAGUE_TAG_FAMILY: Readonly<Record<string, string>> = { nfl: "american-football" };
 
 export type SportsState = { gameId?: unknown; live?: unknown; ended?: unknown; status?: unknown; period?: unknown; score?: unknown; elapsed?: unknown; leagueAbbreviation?: unknown };
 export type StructuredState = { gameId: string; eventLiveStatus: "LIVE" | "FINAL"; phase: string | null; sportCode: string | null };
@@ -95,8 +101,12 @@ export function admitPhysicalEvent(events: readonly PolymarketRawEvent[], state:
   const candidates = events.filter((e) => String(e.gameId ?? "") === state.gameId && !e.parentEventId && Array.isArray(e.markets));
   if (candidates.length !== 1) return null;
   const event = candidates[0];
-  const families = new Set((event.tags as Array<{ slug?: unknown }> | undefined ?? [])
-    .map((tag) => tag.slug).filter((slug): slug is string => typeof slug === "string" && SPORT_FAMILIES.has(slug)));
+  const families = new Set<string>();
+  for (const tag of (event.tags as Array<{ slug?: unknown }> | undefined ?? [])) {
+    if (typeof tag.slug !== "string") continue;
+    if (SPORT_FAMILIES.has(tag.slug)) families.add(tag.slug);
+    else if (Object.hasOwn(LEAGUE_TAG_FAMILY, tag.slug) && state.sportCode === tag.slug) families.add(LEAGUE_TAG_FAMILY[tag.slug]);
+  }
   const start = event.startTime;
   if (families.size !== 1 || !start || !Number.isFinite(Date.parse(start))) return null;
   return { event, family: [...families][0], start: new Date(start).toISOString() };
