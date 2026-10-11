@@ -245,6 +245,46 @@ const EMPTY_TABLE_EVIDENCE: TableEvidence = {
   RECONCILIATION_PENDING: false,
 };
 
+/**
+ * TELEMETRY_05_T20_HOURLY_DBCLONE_PARITY_V1: the hourly `--telemetry-only` run also
+ * transports the append-only T20 carrier through its existing SPECS entry (same
+ * keyset, projection, bootstrap and page bounds as the FULL daily sync). The T20
+ * table is transport-only: it is never part of TELEMETRY_PURGE_ORDER, so no
+ * Production delete path can name it.
+ */
+export const HOURLY_T20_TABLE = "research_precontract_t20_observations" as const;
+
+export function hourlyT20Spec(): TableSpec {
+  const spec = SPECS.find((entry) => entry.table === HOURLY_T20_TABLE);
+  if (!spec) throw new Error(`HOURLY_T20_SPEC_MISSING:${HOURLY_T20_TABLE}`);
+  return spec;
+}
+
+export type HourlyT20Transport = {
+  TABLE: typeof HOURLY_T20_TABLE;
+  /** SYNCED = caught up to the Production watermark; APPEND_PENDING = page budget spent, resumes next run; SCHEMA_PENDING = optional clone table absent. */
+  STATUS: "SYNCED" | "APPEND_PENDING" | "SCHEMA_PENDING";
+  PARITY_COMPLETE: boolean;
+  EVIDENCE: TableEvidence;
+};
+
+/** Real (non-missing-table) errors propagate; only the optional-schema gap degrades. */
+export async function runHourlyT20Transport(
+  sync: (spec: TableSpec) => Promise<TableEvidence>,
+): Promise<HourlyT20Transport> {
+  const spec = hourlyT20Spec();
+  try {
+    const evidence = await sync(spec);
+    const pending = evidence.APPEND_PENDING || evidence.RECONCILIATION_PENDING;
+    return { TABLE: HOURLY_T20_TABLE, STATUS: pending ? "APPEND_PENDING" : "SYNCED", PARITY_COMPLETE: !pending, EVIDENCE: evidence };
+  } catch (error) {
+    if (spec.optional && isMissingTableError(error)) {
+      return { TABLE: HOURLY_T20_TABLE, STATUS: "SCHEMA_PENDING", PARITY_COMPLETE: false, EVIDENCE: EMPTY_TABLE_EVIDENCE };
+    }
+    throw error;
+  }
+}
+
 function projectRef(url: string): string {
   return new URL(url).hostname.split(".")[0];
 }
@@ -1223,8 +1263,11 @@ export async function main(): Promise<void> {
       for (const spec of hourlyExecutionSpecs()) {
         executionTables[spec.table as HourlyExecutionTable] = await syncTable(target, source, spec);
       }
-      const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING);
-      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge, INPLAY_PURGE: inplayPurge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
+      // T20 transport runs last and never touches purge: a failure here cannot skip
+      // telemetry copy, purge or execution analytics, and is never reported as parity.
+      const t20Transport = await runHourlyT20Transport((spec) => syncTable(target, source, spec, PRECONTRACT_T20_BOOTSTRAP_SINCE));
+      const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING) || t20Transport.STATUS === "APPEND_PENDING";
+      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, T20_TRANSPORT: t20Transport, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge, INPLAY_PURGE: inplayPurge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
       return;
     }
 
