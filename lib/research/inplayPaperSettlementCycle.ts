@@ -148,7 +148,7 @@ export async function runSettlementCycle(db: SupabaseClient, fetchMarket: (condi
   for (const day of targets) {
     if (Date.now() >= deadline) { days.push({ day, outcome: "DEFERRED_RUNTIME_BUDGET" }); continue; }
     const prev = existing.find((r) => r.utc_day === day) ?? null;
-    const nowIso = new Date().toISOString();
+    const nowIso = new Date(nowMs).toISOString();
     const stats: ProviderStats = { calls: 0, non_null: 0, budget_exhausted: false };
     const budgeted = async (id: string) => {
       if (totalCalls >= gammaCap) { stats.budget_exhausted = exhausted = true; return null; }
