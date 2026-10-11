@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   resolveLineAuthority, validateGameState, findScoreInconsistencies, validateExecutableBuy, validateEvAuthority, assessTailRow,
   freezeContractDecision, summarizeCoverage, replayTotalsPayoff, reconcileSettlement, lineFromSlug, lineFromLabel, tailDecisionId,
-  TAIL_CAN_EMIT_BET, MAX_STATE_AGE_MS, type ProbabilityModel, type ProbabilityEstimate, type LineAuthority, type TailRowAssessment,
+  TAIL_CAN_EMIT_BET, MAX_STATE_AGE_MS, MIN_HOLDOUT_INDEPENDENT_GAMES, PROVISIONAL_RESEARCH_GATES, selectExactConditionMarket, parseContractHandoff, RawRowBudget, type ProbabilityModel, type ProbabilityEstimate, type LineAuthority, type TailRowAssessment,
 } from "../../lib/research/tailRepricing";
 import { ALPHA_PROGRAMS, buildDecision, type Observation } from "../../lib/research/inplayPaperDecisions";
 
@@ -57,9 +57,9 @@ test("line: ambiguous cases never prove a line", () => {
 test("line: unsupported scopes and payoff shapes", () => {
   assert.equal(lineOf({ sportsMarketType: "first_half_totals" }).status, "UNSUPPORTED");
   assert.equal(lineOf({ sportsMarketType: "spreads" }).status, "UNSUPPORTED");
-  const integer = lineOf({ line: 3, slug: "x-total-3pt0", question: "O/U 3", groupItemTitle: "O/U 3" }, OVER, "Over", null);
+  const integer = lineOf({ line: 3, slug: "x-2026-10-10-total-3pt0", question: "O/U 3", groupItemTitle: "O/U 3" }, OVER, "Over", null);
   assert.equal(integer.reason, "NON_HALF_LINE_PAYOFF_NOT_TWO_WAY");
-  const quarter = lineOf({ line: 2.25, slug: "x-total-2pt25", question: "O/U 2.25", groupItemTitle: "O/U 2.25" }, OVER, "Over", null);
+  const quarter = lineOf({ line: 2.25, slug: "x-2026-10-10-total-2pt25", question: "O/U 2.25", groupItemTitle: "O/U 2.25" }, OVER, "Over", null);
   assert.equal(quarter.status, "UNSUPPORTED");
 });
 test("line: unavailable provider metadata is UNAVAILABLE, not guessed from slug/title", () => {
@@ -67,8 +67,8 @@ test("line: unavailable provider metadata is UNAVAILABLE, not guessed from slug/
   const noMeta = lineOf({ sportsMarketType: undefined, line: undefined });
   assert.deepEqual([noMeta.status, noMeta.reason, noMeta.line], ["UNAVAILABLE", "PROVIDER_MARKET_TYPE_METADATA_ABSENT", null]);
   assert.equal(lineOf({ line: undefined }).reason, "PROVIDER_LINE_ABSENT");
-  assert.equal(lineFromSlug("a-total-2pt5"), 2.5);
-  assert.equal(lineFromSlug("a-total-2pt5-first-half"), null);
+  assert.equal(lineFromSlug("a-2026-10-10-total-2pt5"), 2.5);
+  assert.equal(lineFromSlug("a-2026-10-10-total-2pt5-first-half"), null);
   assert.equal(lineFromLabel("A vs. B: O/U 2.5"), 2.5);
 });
 
@@ -192,4 +192,54 @@ test("settlement: replay from final score + line and reconcile with provider", (
   assert.equal(reconcileSettlement({ conditionId: COND, tokenId: UNDER, market: closed, replay: { state: "WIN", reason: "" } }).state, "CONTRADICTION");
   assert.equal(reconcileSettlement({ conditionId: COND, tokenId: OVER, market: market({ closed: false, active: true }), replay: over }).state, "PROVIDER_UNSETTLED");
   assert.equal(reconcileSettlement({ conditionId: COND, tokenId: OVER, market: closed, replay: { state: "NOT_REPLAYABLE", reason: "FINAL_SCORE_UNAVAILABLE" } }).state, "NOT_REPLAYABLE");
+});
+
+// ── PR #514 corrective: strict provider shape, exact-identity pick, provisional gates, raw-row budget ──
+const CONDITION = "0x50dc400003564d9ac8586961f43a735c27441e9d68752784a975b05f131f7eae";
+test("line: strict Gamma shapes fail closed (string/NaN/zero line, wrong-case label, non-array outcomes)", () => {
+  assert.equal(lineOf({ line: "2.5" }).reason, "PROVIDER_LINE_ABSENT");
+  assert.equal(lineOf({ line: Number.NaN }).reason, "PROVIDER_LINE_ABSENT");
+  assert.equal(lineOf({ line: 0 }).reason, "PROVIDER_LINE_ABSENT");
+  assert.equal(lineOf({ sportsMarketType: "Totals" }).status, "UNSUPPORTED");
+  assert.equal(lineOf({ outcomes: "not-json" }).reason, "OUTCOME_TOKEN_STRUCTURE_NOT_OVER_UNDER");
+  // Real Gamma shapes observed for settled soccer totals: question "A vs. B: O/U 2.5", groupItemTitle "O/U 2.5".
+  assert.equal(lineFromLabel("Oldham Athletic AFC vs. Accrington Stanley FC: O/U 2.5"), 2.5);
+  assert.equal(lineFromLabel("O/U 0.5"), 0.5);
+  assert.equal(lineFromLabel("Both Teams to Score"), null);
+  assert.equal(lineFromSlug("el2-old-ast-2026-10-10-total-2pt5"), 2.5);
+  assert.equal(lineFromSlug("el2-old-ast-2026-10-10-first-half-total-1pt5"), null);
+  assert.equal(lineOf({ slug: "el2-old-ast-2026-10-10-first-half-total-1pt5", question: "O/U 1.5", groupItemTitle: "O/U 1.5", line: 1.5 }, OVER, "Over", null).reason, "SCOPE_SUFFIX_NOT_FULL_GAME_MAIN_TOTAL");
+});
+test("provider pick: exact condition id only, case-insensitive, no blind first element", () => {
+  const a = { conditionId: CONDITION, slug: "a" }, b = { conditionId: "0x" + "1".repeat(64), slug: "b" };
+  assert.equal(selectExactConditionMarket([b, a], CONDITION.toUpperCase().replace("0X", "0x"))?.slug, "a");
+  assert.equal(selectExactConditionMarket([b], CONDITION), null);
+  assert.equal(selectExactConditionMarket([], CONDITION), null);
+  assert.equal(selectExactConditionMarket({ markets: [a] }, CONDITION)?.slug, "a");
+  assert.equal(selectExactConditionMarket(null, CONDITION), null);
+  assert.equal(selectExactConditionMarket([{ slug: "no-condition" }], CONDITION), null);
+});
+test("provisional gates are labelled pending Founder approval and still drive the validators", () => {
+  assert.equal(PROVISIONAL_RESEARCH_GATES.status, "PROVISIONAL_RESEARCH_GATE_PENDING_FOUNDER_APPROVAL");
+  assert.equal(MAX_STATE_AGE_MS, PROVISIONAL_RESEARCH_GATES.max_state_age_ms);
+  assert.equal(MIN_HOLDOUT_INDEPENDENT_GAMES, PROVISIONAL_RESEARCH_GATES.min_holdout_independent_games);
+});
+test("raw-row budget: 50 per stage, 200 per mission, reserved before the read", () => {
+  const b = new RawRowBudget();
+  assert.throws(() => b.reserve("s", 51), /STAGE_CAP/);
+  for (const s of ["a", "b", "c", "d"]) b.reserve(s, 50);
+  assert.throws(() => b.reserve("e", 1), /MISSION_CAP/);
+  b.release("d", 30);
+  assert.equal(b.reserve("e", 30), 30);
+  assert.equal(b.snapshot().total, 200);
+  assert.throws(() => b.reserve("x", -1), /INVALID/);
+});
+test("handoff csv: exact public identifiers only; malformed or duplicate rows are rejected", () => {
+  const good = `physical_event_id,condition_id,token_id,side,slug,eligible_observation_count\nprovider:polymarket:game:1:2026-10-10,${CONDITION},123,Over,x-total-2pt5,16\n`;
+  const rows = parseContractHandoff(good);
+  assert.deepEqual([rows.length, rows[0].side, rows[0].eligible_observation_count], [1, "Over", 16]);
+  assert.throws(() => parseContractHandoff(good.replace("Over", "Yes")), /MALFORMED/);
+  assert.throws(() => parseContractHandoff(good.replace(CONDITION, "0xabc")), /MALFORMED/);
+  const dup = good + good.split("\n")[1] + "\n";
+  assert.throws(() => parseContractHandoff(dup), /DUPLICATE/);
 });

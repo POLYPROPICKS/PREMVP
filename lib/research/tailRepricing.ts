@@ -12,13 +12,19 @@ export const TAIL_PROGRAM_ID = "VALUE_BACKED_TAIL_REPRICING";
 export const TAIL_VERSION = "v1-totals-line-authority";
 export const TAIL_SCOPE_KEY = "SOCCER_TOTALS_FULL_GAME";
 /** Policy configuration (not alpha claims). */
-export const MAX_STATE_AGE_MS = 90_000;
+/** PROVISIONAL_RESEARCH_GATES: values below were chosen by the executor, not approved by the Founder. Never read them as production policy. */
+export const PROVISIONAL_RESEARCH_GATES = {
+  status: "PROVISIONAL_RESEARCH_GATE_PENDING_FOUNDER_APPROVAL",
+  max_state_age_ms: 90_000,
+  min_holdout_independent_games: 100,
+} as const;
+export const MAX_STATE_AGE_MS = PROVISIONAL_RESEARCH_GATES.max_state_age_ms; // PROVISIONAL_RESEARCH_GATE
 export const MAX_STATE_FUTURE_SKEW_MS = 2_000;
 export const MAX_ELAPSED_SECONDS = 9_000;
 export const MAX_SOCCER_PERIOD = 5;
 /** Sanity bounds for the BUY price a tail candidate may sit at; outside it the contract is not a tail/sane quote. */
 export const TAIL_PRICE_RANGE: PriceRange = { min: 0.02, max: 0.35 };
-export const MIN_HOLDOUT_INDEPENDENT_GAMES = 100;
+export const MIN_HOLDOUT_INDEPENDENT_GAMES = PROVISIONAL_RESEARCH_GATES.min_holdout_independent_games; // PROVISIONAL_RESEARCH_GATE
 export const MIN_EV_LCB_MARGIN = 0.05;
 /** An EV this large on a liquid market is evidence of a broken model/line/state, not of alpha. */
 export const SUSPECT_EV_CEILING = 1.0;
@@ -45,10 +51,10 @@ function parseArray(v: unknown): unknown[] | null {
   if (typeof v === "string") { try { const p = JSON.parse(v); return Array.isArray(p) ? p : null; } catch { return null; } }
   return null;
 }
-/** "…-total-2pt5" -> 2.5. Only the exact full-game main-totals suffix counts; sub-scope suffixes never match. */
+/** "…-YYYY-MM-DD-total-2pt5" -> 2.5. Only the date-anchored full-game main-totals suffix counts; "-first-half-total-…" style sub-scope slugs never match. */
 export function lineFromSlug(slug: unknown): number | null {
   if (typeof slug !== "string") return null;
-  const m = /-total-(\d+)pt(\d+)$/.exec(slug);
+  const m = /\d{4}-\d{2}-\d{2}-total-(\d+)pt(\d+)$/.exec(slug);
   return m ? Number(`${m[1]}.${m[2]}`) : null;
 }
 /** "A vs. B: O/U 2.5" or "O/U 2.5" -> 2.5. */
@@ -59,6 +65,56 @@ export function lineFromLabel(label: unknown): number | null {
 }
 
 export type ProviderMarketRaw = GammaMarket & { sportsMarketType?: unknown; line?: unknown; groupItemTitle?: unknown };
+
+/**
+ * Exact-identity pick from a provider `/markets?condition_ids=` payload: only an element whose own conditionId equals the
+ * requested one is returned (never `arr[0]` blindly). Gamma omits settled markets unless `closed=true`, so a settled
+ * soccer game needs the closed query; the CLOB fallback carries no sportsMarketType and can never prove a line.
+ */
+export function selectExactConditionMarket(payload: unknown, conditionId: string): ProviderMarketRaw | null {
+  const arr = Array.isArray(payload) ? payload : Array.isArray((payload as { markets?: unknown } | null)?.markets) ? (payload as { markets: unknown[] }).markets : null;
+  const want = conditionId.trim().toLowerCase();
+  const hit = arr?.find((m) => typeof (m as ProviderMarketRaw | null)?.conditionId === "string" && ((m as ProviderMarketRaw).conditionId as string).toLowerCase() === want);
+  return (hit as ProviderMarketRaw | undefined) ?? null;
+}
+
+// ───────────────────────────── bounded diagnostic reads ─────────────────────────────
+export const RAW_ROWS_PER_STAGE_CAP = 50;
+export const RAW_ROWS_PER_MISSION_CAP = 200;
+/** Hard raw-row budget for diagnostic DB reads; a read is reserved BEFORE it is issued so an over-budget read never happens. */
+export class RawRowBudget {
+  private readonly perStage: Record<string, number> = {};
+  private total = 0;
+  reserve(stage: string, rows: number): number {
+    if (!Number.isInteger(rows) || rows < 0) throw new Error("RAW_ROW_BUDGET_INVALID_REQUEST");
+    if (rows > RAW_ROWS_PER_STAGE_CAP) throw new Error(`RAW_ROW_BUDGET_STAGE_CAP_EXCEEDED:${stage}`);
+    if (this.total + rows > RAW_ROWS_PER_MISSION_CAP) throw new Error("RAW_ROW_BUDGET_MISSION_CAP_EXCEEDED");
+    this.perStage[stage] = (this.perStage[stage] ?? 0) + rows;
+    this.total += rows;
+    return rows;
+  }
+  /** Return unused reservation after a read came back short. */
+  release(stage: string, rows: number) { const r = Math.min(rows, this.perStage[stage] ?? 0); this.perStage[stage] = (this.perStage[stage] ?? 0) - r; this.total -= r; }
+  snapshot() { return { stages: { ...this.perStage }, total: this.total, per_stage_cap: RAW_ROWS_PER_STAGE_CAP, mission_cap: RAW_ROWS_PER_MISSION_CAP }; }
+}
+
+export type ContractHandoff = { physical_event_id: string; condition_id: string; token_id: string; side: string; slug: string; eligible_observation_count: number };
+/** Public-identifier handoff `physical_event_id,condition_id,token_id,side,slug,eligible_observation_count` (header optional). Malformed rows are rejected, not repaired. */
+export function parseContractHandoff(csv: string): ContractHandoff[] {
+  const out: ContractHandoff[] = [], seen = new Set<string>();
+  for (const line of csv.split(/\r?\n/)) {
+    const s = line.trim();
+    if (!s || s.startsWith("physical_event_id,")) continue;
+    const [physical_event_id, condition_id, token_id, side, slug, n] = s.split(",").map((x) => x.trim());
+    const count = Number(n);
+    if (!physical_event_id || !/^0x[0-9a-fA-F]{64}$/.test(condition_id ?? "") || !/^\d+$/.test(token_id ?? "") || !/^(Over|Under)$/.test(side ?? "") || !slug || !Number.isInteger(count) || count < 0) throw new Error(`CONTRACT_HANDOFF_MALFORMED_ROW:${s.slice(0, 40)}`);
+    const k = `${physical_event_id}|${condition_id.toLowerCase()}|${token_id}`;
+    if (seen.has(k)) throw new Error("CONTRACT_HANDOFF_DUPLICATE_CONTRACT");
+    seen.add(k);
+    out.push({ physical_event_id, condition_id, token_id, side, slug, eligible_observation_count: count });
+  }
+  return out;
+}
 
 /**
  * Exact condition/token -> payoff line. The ONLY accepted authority is the provider market fetched BY CONDITION ID:
@@ -87,7 +143,7 @@ export function resolveLineAuthority(input: { conditionId: string; tokenId: stri
   ];
   const stated = corroborations.filter(([, v]) => v !== null) as Array<[string, number]>;
   if (stated.some(([, v]) => Math.abs(v - line) > 1e-9)) return lineAuth("AMBIGUOUS", "LINE_SOURCES_DISAGREE", line, direction);
-  if (typeof market.slug === "string" && !/-total-\d+pt\d+$/.test(market.slug)) return lineAuth("UNSUPPORTED", "SCOPE_SUFFIX_NOT_FULL_GAME_MAIN_TOTAL", line, direction);
+  if (typeof market.slug === "string" && !/\d{4}-\d{2}-\d{2}-total-\d+pt\d+$/.test(market.slug)) return lineAuth("UNSUPPORTED", "SCOPE_SUFFIX_NOT_FULL_GAME_MAIN_TOTAL", line, direction);
   if (observationSlug && typeof market.slug === "string" && observationSlug !== market.slug) return lineAuth("AMBIGUOUS", "OBSERVATION_SLUG_DIFFERS_FROM_PROVIDER_SLUG", line, direction);
   if (!stated.length) return lineAuth("AMBIGUOUS", "LINE_UNCORROBORATED", line, direction);
   // Two-way unambiguous payoff only: x.5 lines. Integer lines can push, quarter lines split stakes.
