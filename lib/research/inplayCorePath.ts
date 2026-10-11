@@ -26,40 +26,57 @@ export type StructuredState = { gameId: string; eventLiveStatus: "LIVE" | "FINAL
 export const STATE_MAX_AGE_MS = 90_000;
 
 export type SportState = {
-  periodNum: number | null; clockSecondsElapsed: number | null;
+  periodNum: number | null; clockSecondsElapsed: number | null; clockSecondsRemaining: number | null;
   sideAScore: number | null; sideBScore: number | null; receivedAt: string | null;
 };
-const NO_SPORT_STATE: SportState = { periodNum: null, clockSecondsElapsed: null, sideAScore: null, sideBScore: null, receivedAt: null };
+const NO_SPORT_STATE: SportState = { periodNum: null, clockSecondsElapsed: null, clockSecondsRemaining: null, sideAScore: null, sideBScore: null, receivedAt: null };
 
 /**
- * Typed state from the provider sports socket, soccer only (the one admitted family whose payload carries
- * score + period + elapsed minute; tennis carries a multi-set score and no clock, so it stays null).
- * Provider contract: score is "<home>-<away>" (side A = home, side B = away); elapsed is the count-up match
- * minute (verified live: +1 per wall-clock minute) so it is stored as elapsed seconds and the "remaining"
- * column is never populated. Anything unparseable, inconsistent, stale or without a receipt time yields null.
- * Nothing is derived from prices.
+ * Typed state from the provider sports socket for the families whose payload is proven to carry a
+ * single-pair score plus a period and clock: soccer and american-football. Every other family (tennis: multi-set
+ * score and no clock; cricket: runs-wickets of one batting side and no gameId; basketball/baseball/hockey: no provider
+ * payload observed) stays null. Side A = home team, side B = away team in both. Soccer score is "<home>-<away>".
+ * American football score is "<away>-<home>" (verified live: provider "0-7" for homeTeam JAX / awayTeam PHI while an
+ * independent scoreboard showed home JAX 7, away PHI 0), so its numbers are swapped into side A / side B.
+ * Soccer: elapsed is the count-up match minute (verified live: +1 per wall-clock minute), stored as elapsed seconds.
+ * American football: elapsed is "m:ss" COUNTING DOWN the quarter (verified live: 8:59 -> 8:17 -> 7:46, and against an
+ * independent scoreboard), so it is stored only as remaining seconds; the elapsed column stays null.
+ * Anything unparseable, inconsistent, stale or without a receipt time yields null. Nothing is derived from prices.
  */
 export function deriveSportState(raw: SportsState, family: string, eventLiveStatus: "LIVE" | "FINAL",
   receivedAtMs: number | undefined, nowMs: number): SportState {
-  if (family !== "soccer" || receivedAtMs === undefined || !Number.isFinite(receivedAtMs)
+  if ((family !== "soccer" && family !== "american-football") || receivedAtMs === undefined || !Number.isFinite(receivedAtMs)
     || receivedAtMs > nowMs || nowMs - receivedAtMs > STATE_MAX_AGE_MS) return NO_SPORT_STATE;
   const sides = typeof raw.score === "string" ? /^(\d{1,3})-(\d{1,3})$/.exec(raw.score) : null;
   const period = typeof raw.period === "string" ? raw.period : "";
   let periodNum: number | null = null;
   let clockSecondsElapsed: number | null = null;
-  if (eventLiveStatus === "LIVE") {
+  let clockSecondsRemaining: number | null = null;
+  if (family === "american-football") {
+    // The final-state period token is unobserved for this family, so FINAL stays null rather than guessed.
+    if (eventLiveStatus !== "LIVE") return NO_SPORT_STATE;
+    const quarter = /^Q([1-4])$/.exec(period);
+    periodNum = quarter ? Number.parseInt(quarter[1], 10) : null;
+    const clock = typeof raw.elapsed === "string" ? /^(\d{1,2}):([0-5]\d)$/.exec(raw.elapsed) : null;
+    const seconds = clock ? Number.parseInt(clock[1], 10) * 60 + Number.parseInt(clock[2], 10) : null;
+    if (periodNum === null) return NO_SPORT_STATE; // a payload without a valid quarter is not trusted for this family at all
+    if (seconds !== null && seconds <= 15 * 60) clockSecondsRemaining = seconds;
+  } else if (eventLiveStatus === "LIVE") {
     periodNum = period === "1H" ? 1 : period === "2H" ? 2 : null;
     const minute = typeof raw.elapsed === "string" && /^\d{1,3}$/.test(raw.elapsed) ? Number.parseInt(raw.elapsed, 10) : null;
     const consistent = minute !== null && (periodNum === 1 ? minute <= 60 : periodNum === 2 ? minute >= 45 && minute <= 130 : false);
     if (consistent) clockSecondsElapsed = minute * 60;
   } else if (period !== "FT") return NO_SPORT_STATE;
-  const sideAScore = sides ? Number.parseInt(sides[1], 10) : null;
-  const sideBScore = sides ? Number.parseInt(sides[2], 10) : null;
-  if (sideAScore === null && periodNum === null && clockSecondsElapsed === null) return NO_SPORT_STATE;
-  return { periodNum, clockSecondsElapsed, sideAScore, sideBScore, receivedAt: new Date(receivedAtMs).toISOString() };
+  const first = sides ? Number.parseInt(sides[1], 10) : null;
+  const second = sides ? Number.parseInt(sides[2], 10) : null;
+  const awayFirst = family === "american-football";
+  const sideAScore = awayFirst ? second : first;
+  const sideBScore = awayFirst ? first : second;
+  if (sideAScore === null && periodNum === null && clockSecondsElapsed === null && clockSecondsRemaining === null) return NO_SPORT_STATE;
+  return { periodNum, clockSecondsElapsed, clockSecondsRemaining, sideAScore, sideBScore, receivedAt: new Date(receivedAtMs).toISOString() };
 }
 
-/** The sports socket's score is a formatted string; typed sides come only from deriveSportState (soccer). */
+/** The sports socket's score is a formatted string; typed sides come only from deriveSportState. */
 export function deriveStructuredState(input: SportsState): StructuredState | null {
   const gameId = typeof input.gameId === "number" && Number.isSafeInteger(input.gameId) && input.gameId > 0
     ? String(input.gameId) : typeof input.gameId === "string" && /^\d+$/.test(input.gameId) ? input.gameId : null;
@@ -341,7 +358,7 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
       provider_sport_family: family, provider_sport_code: state.sportCode, provider_sport_source: "gamma_event_structured_tag",
       event_start_iso: start, observed_at: observedAt, source_version: SOURCE_VERSION,
       event_live_status: state.eventLiveStatus, state_authority: "SPORTS_WS_STRUCTURED_STATUS", state_phase: state.phase,
-      state_period_num: sport.periodNum, state_clock_seconds_remaining: null, state_clock_seconds_elapsed: sport.clockSecondsElapsed,
+      state_period_num: sport.periodNum, state_clock_seconds_remaining: sport.clockSecondsRemaining, state_clock_seconds_elapsed: sport.clockSecondsElapsed,
       side_a_score: sport.sideAScore, side_b_score: sport.sideBScore, state_received_at: sport.receivedAt,
       side_a_red_cards: null, side_b_red_cards: null,
       condition_id: token.conditionId, token_id: token.tokenId, side: token.side,

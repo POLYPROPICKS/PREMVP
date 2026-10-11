@@ -25,7 +25,7 @@ test("structured live identity admits one exact event and core moneyline without
 test("text cannot create structured score or live status; derivative market rejected", () => {
   assert.equal(deriveStructuredState({ gameId: 123, score: "2-1", period: "S1" }), null);
   assert.equal(admitResearchMarket("tennis", "tennis_first_set_winner", "first-set").admitted, false);
-  assert.doesNotMatch(collector, /state_clock_seconds_remaining: (?!null)/);
+  assert.doesNotMatch(collector, /state_clock_seconds_remaining: (?!sport\.clockSecondsRemaining)/);
   assert.equal(deriveSportState({ score: "6-3, 2-1", period: "S2" }, "tennis", "LIVE", NOW, NOW).sideAScore, null);
 });
 
@@ -121,7 +121,7 @@ test("soccer socket payload -> typed state with receipt provenance (home=side A,
   const state = deriveStructuredState(soccer);
   assert.deepEqual(state, { gameId: "90123180", eventLiveStatus: "LIVE", phase: "1H", sportCode: "auc" });
   assert.deepEqual(deriveSportState(soccer, "soccer", "LIVE", NOW - 20_000, NOW),
-    { periodNum: 1, clockSecondsElapsed: 34 * 60, sideAScore: 2, sideBScore: 1, receivedAt: new Date(NOW - 20_000).toISOString() });
+    { periodNum: 1, clockSecondsElapsed: 34 * 60, clockSecondsRemaining: null, sideAScore: 2, sideBScore: 1, receivedAt: new Date(NOW - 20_000).toISOString() });
   assert.equal(deriveSportState({ ...soccer, period: "2H", elapsed: "47" }, "soccer", "LIVE", NOW, NOW).periodNum, 2);
 });
 
@@ -143,13 +143,57 @@ test("invalid, inconsistent, stale and non-soccer state never fabricates fields"
   assert.equal(s({}, "tennis").sideAScore, null);
   assert.equal(s({ score: "bad", period: "ET", elapsed: "x" }).receivedAt, null);     // nothing valid -> no provenance either
   assert.deepEqual(deriveSportState({ ...soccer, status: "Final", period: "FT", elapsed: "", live: false, ended: true, score: "3-1" }, "soccer", "FINAL", NOW, NOW),
-    { periodNum: null, clockSecondsElapsed: null, sideAScore: 3, sideBScore: 1, receivedAt: new Date(NOW).toISOString() });
+    { periodNum: null, clockSecondsElapsed: null, clockSecondsRemaining: null, sideAScore: 3, sideBScore: 1, receivedAt: new Date(NOW).toISOString() });
   assert.equal(deriveSportState({ ...soccer, ended: true, period: "2H" }, "soccer", "FINAL", NOW, NOW).sideAScore, null);
+});
+
+// Real provider payloads (sports-api.polymarket.com/ws, 2026-10-11 ~14:00 UTC; independent scoreboard showed JAX 7 - PHI 0, Q1 5:17).
+const nfl = { gameId: 19518, leagueAbbreviation: "nfl", turn: "jax", homeTeam: "JAX", awayTeam: "PHI", turnProviderId: "26",
+  status: "InProgress", score: "0-7", elapsed: "5:26", period: "Q1", live: true, ended: false };
+const tennis = { gameId: 6416843, leagueAbbreviation: "atp", homeTeam: "Alejandro Davidovich Fokina", awayTeam: "Frances Tiafoe",
+  status: "inprogress", score: "7-6(7-4), 2-1", period: "S2", live: true, ended: false };
+const cricket = { metadataGameId: "id2702676671040592", leagueAbbreviation: "cricket", score: "87-0", period: "Live", live: true, ended: false };
+
+test("american-football: score is away-home (swapped into home=A), quarter, countdown clock stored as REMAINING only", () => {
+  assert.deepEqual(deriveStructuredState(nfl), { gameId: "19518", eventLiveStatus: "LIVE", phase: "Q1", sportCode: "nfl" });
+  assert.deepEqual(deriveSportState(nfl, "american-football", "LIVE", NOW - 5_000, NOW),
+    { periodNum: 1, clockSecondsElapsed: null, clockSecondsRemaining: 5 * 60 + 26, sideAScore: 7, sideBScore: 0, receivedAt: new Date(NOW - 5_000).toISOString() });
+  assert.equal(deriveSportState({ ...nfl, period: "Q4", elapsed: "0:00" }, "american-football", "LIVE", NOW, NOW).clockSecondsRemaining, 0);
+  assert.equal(deriveSportState({ ...nfl, period: "Q3", elapsed: "15:00" }, "american-football", "LIVE", NOW, NOW).clockSecondsRemaining, 900);
+});
+
+test("american-football fails closed: stale, future, no receipt, malformed period/clock/score, FINAL, cross-sport payloads", () => {
+  const n = (raw: object, received: number | undefined = NOW - 1_000, status: "LIVE" | "FINAL" = "LIVE") =>
+    deriveSportState({ ...nfl, ...raw }, "american-football", status, received, NOW);
+  for (const stale of [NOW - STATE_MAX_AGE_MS - 1, NOW + 1, Number.NaN]) assert.equal(n({}, stale).receivedAt, null);
+  assert.equal(deriveSportState(nfl, "american-football", "LIVE", undefined, NOW).receivedAt, null);   // no receipt time
+  for (const period of ["Q5", "Q0", "OT", "HT", "1H", "S1", "Live", "", 1]) assert.deepEqual(n({ period }).sideAScore, null);   // no valid quarter -> nothing at all
+  assert.equal(n({ elapsed: "15:01" }).clockSecondsRemaining, null);
+  assert.equal(n({ elapsed: "8:60" }).clockSecondsRemaining, null);
+  assert.equal(n({ elapsed: "34" }).clockSecondsRemaining, null);     // soccer-style minute is not an NFL clock
+  assert.equal(n({ elapsed: "" }).clockSecondsRemaining, null);
+  assert.equal(n({ elapsed: "" }).sideAScore, 7);                       // valid score + quarter survive a missing clock
+  assert.equal(n({ elapsed: "8:17" }).clockSecondsElapsed, null);        // never written to the count-up column
+  for (const score of ["0-6, 1-0", "6", "-1-3", "a-b", "7-6(7-4), 2-1", 7, null]) assert.equal(n({ score }).sideAScore, null);
+  assert.deepEqual(n({}, NOW, "FINAL"), deriveSportState({}, "basketball", "LIVE", NOW, NOW));        // FINAL token unobserved -> null
+  assert.equal(n({ score: "x" }).periodNum, 1);                          // bad score does not discard a valid quarter
+});
+
+test("tennis, cricket, basketball, baseball, hockey stay NULL; cricket cannot even be admitted (no gameId)", () => {
+  for (const family of ["tennis", "cricket", "basketball", "baseball", "hockey"]) {
+    assert.deepEqual(deriveSportState(tennis, family, "LIVE", NOW, NOW), deriveSportState({}, family, "LIVE", NOW, NOW));
+    assert.deepEqual(deriveSportState(nfl, family, "LIVE", NOW, NOW).sideAScore, null);
+    assert.deepEqual(deriveSportState({ ...tennis, score: "2-1", period: "Q1", elapsed: "8:17" }, family, "LIVE", NOW, NOW).clockSecondsRemaining, null);
+  }
+  assert.equal(deriveSportState(tennis, "tennis", "LIVE", NOW, NOW).receivedAt, null);   // set scores are never collapsed into a match total
+  assert.equal(deriveStructuredState(cricket), null);                                      // metadataGameId only
+  assert.equal(deriveSportState(cricket, "cricket", "LIVE", NOW, NOW).sideAScore, null);   // "87-0" is runs-wickets of one batting side
 });
 
 test("typed fields reach the persisted row, migration, clone DDL and clone projection; caps unchanged", () => {
   const newMigration = readFileSync("supabase/migrations/20261010100000_research_inplay_state_fields_v2.sql", "utf8");
   assert.match(collector, /state_period_num: sport\.periodNum/);
+  assert.match(collector, /state_clock_seconds_remaining: sport\.clockSecondsRemaining/);
   assert.match(collector, /state_clock_seconds_elapsed: sport\.clockSecondsElapsed/);
   assert.match(collector, /side_a_score: sport\.sideAScore, side_b_score: sport\.sideBScore, state_received_at: sport\.receivedAt/);
   assert.match(newMigration, /ADD COLUMN IF NOT EXISTS state_clock_seconds_elapsed integer/);
