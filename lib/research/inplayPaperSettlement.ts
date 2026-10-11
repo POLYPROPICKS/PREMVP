@@ -355,7 +355,7 @@ export async function readSubsequentObservations(db: SupabaseClient, bet: Frozen
   return out;
 }
 
-async function collectInputs(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency: number, window: UtcWindow) {
+export async function collectInputs(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency: number, window: UtcWindow) {
   const bets = dedupeBets(await readFrozenBets(db, window));
   const conditions = new Map<string, string>(); // lower-cased key -> provider-cased id, one provider lookup per condition
   for (const b of bets) if (b.condition_id && !conditions.has(b.condition_id.toLowerCase())) conditions.set(b.condition_id.toLowerCase(), b.condition_id);
