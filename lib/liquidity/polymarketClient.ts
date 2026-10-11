@@ -28,6 +28,18 @@ function resolveBase(opts: FetchOrderBookOptions): string {
 }
 
 /**
+ * Timing is attached only to a payload that really is this token's book: a JSON object whose bids and asks are
+ * arrays and whose asset_id, when the provider states one, equals the requested token. Anything else still parses
+ * exactly as before but carries no acquisition timing (fail closed).
+ */
+function isTokenBookPayload(payload: unknown, tokenId: string): boolean {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return false;
+  const p = payload as Record<string, unknown>;
+  if (!Array.isArray(p.bids) || !Array.isArray(p.asks)) return false;
+  return p.asset_id === undefined || String(p.asset_id) === tokenId;
+}
+
+/**
  * Fetch a single read-only orderbook for `tokenId`. Returns a structured
  * result; transport/HTTP/parse failures are reported via errorCode, never
  * thrown. latencyMs is always populated.
@@ -105,7 +117,11 @@ export async function fetchOrderBook(
         errorMessage: "Could not parse orderbook payload",
       };
     }
-    return { ok: true, tokenId, latencyMs: Date.now() - started, book, httpStatus: res.status };
+    const completed = Date.now();
+    const ok: FetchOrderBookResult = { ok: true, tokenId, latencyMs: completed - started, book, httpStatus: res.status };
+    // Per-request acquisition interval of this token only. A stepped-back wall clock yields no timing, never a guess.
+    if (completed >= started && isTokenBookPayload(payload, tokenId)) { ok.requestStartedAtMs = started; ok.responseCompletedAtMs = completed; }
+    return ok;
   } catch (err) {
     const aborted = err instanceof Error && err.name === "AbortError";
     return {

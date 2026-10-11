@@ -49,7 +49,7 @@ const STRATEGY_OBSERVATION_PROJECTION = "id,market_observation_id,capture_run_id
 // no JSON, no diagnostics. Transport only: this table is deliberately NOT in TELEMETRY_PURGE_ORDER.
 const PRECONTRACT_T20_OBSERVATION_PROJECTION = "id,physical_event_id,provider_game_id,provider_event_id,source_id,source_version,event_start_iso,observed_at,observation_phase,parent_event_volume_24h,daily_volume_rank,sampling_bucket,provider_sport_family,provider_sport_code,provider_sport_source,condition_id,token_id,side,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_bid,best_ask,tick_size,minimum_order_size,orderbook_fetch_status,requested_stake_usd,execution_price_cap,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,executable_full_stake,executable_full_stake_state,taker_fee_state,taker_fee_usd";
 const PRECONTRACT_T20_BOOTSTRAP_SINCE = "2026-10-07T00:00:00.000Z";
-const INPLAY_CORE_PATH_PROJECTION = "id,physical_event_id,provider_game_id,provider_event_id,provider_sport_family,provider_sport_code,provider_sport_source,event_start_iso,observed_at,source_version,event_live_status,state_authority,state_phase,state_period_num,state_clock_seconds_remaining,state_clock_seconds_elapsed,state_received_at,side_a_score,side_b_score,side_a_red_cards,side_b_red_cards,condition_id,token_id,side,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_bid,best_ask,mid_price,spread_abs,tick_size,minimum_order_size,bid_depth_relevant_usd,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled,taker_fee_usd,orderbook_fetch_status,persistence_reason,sequence_in_event,created_at";
+const INPLAY_CORE_PATH_PROJECTION = "id,physical_event_id,provider_game_id,provider_event_id,provider_sport_family,provider_sport_code,provider_sport_source,event_start_iso,observed_at,source_version,event_live_status,state_authority,state_phase,state_period_num,state_clock_seconds_remaining,state_clock_seconds_elapsed,state_received_at,side_a_score,side_b_score,side_a_red_cards,side_b_red_cards,condition_id,token_id,side,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_bid,best_ask,mid_price,spread_abs,tick_size,minimum_order_size,bid_depth_relevant_usd,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled,taker_fee_usd,orderbook_fetch_status,orderbook_fetch_started_at,orderbook_fetch_completed_at,orderbook_provider_timestamp_at,persistence_reason,sequence_in_event,created_at";
 const INPLAY_CORE_PATH_BOOTSTRAP_SINCE = "2026-10-08T00:00:00.000Z";
 const RESERVATION_PARENT_PROJECTION = [
   "id",
@@ -268,6 +268,16 @@ export type HourlyT20Transport = {
   EVIDENCE: TableEvidence;
 };
 
+/**
+ * A missing optional TABLE degrades to SCHEMA_PENDING. A missing COLUMN (clone or Production schema behind the
+ * projection) is a real error and must propagate: PostgREST/Postgres column messages such as
+ * `column "x" of relation "t" does not exist` would otherwise match the table pattern and hide a schema gap.
+ */
+export function isOptionalTableAbsent(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return isMissingTableError(error) && !/PGRST204|42703|\bcolumn\b[^]*does not exist|could not find the .* column/i.test(message);
+}
+
 /** Real (non-missing-table) errors propagate; only the optional-schema gap degrades. */
 export async function runHourlyT20Transport(
   sync: (spec: TableSpec) => Promise<TableEvidence>,
@@ -278,7 +288,7 @@ export async function runHourlyT20Transport(
     const pending = evidence.APPEND_PENDING || evidence.RECONCILIATION_PENDING;
     return { TABLE: HOURLY_T20_TABLE, STATUS: pending ? "APPEND_PENDING" : "SYNCED", PARITY_COMPLETE: !pending, EVIDENCE: evidence };
   } catch (error) {
-    if (spec.optional && isMissingTableError(error)) {
+    if (spec.optional && isOptionalTableAbsent(error)) {
       return { TABLE: HOURLY_T20_TABLE, STATUS: "SCHEMA_PENDING", PARITY_COMPLETE: false, EVIDENCE: EMPTY_TABLE_EVIDENCE };
     }
     throw error;
@@ -1252,7 +1262,7 @@ export async function main(): Promise<void> {
       const inplaySpec = SPECS.find((entry) => entry.table === "research_inplay_core_path_observations")!;
       let inplaySchemaReady = true;
       try { await syncTable(target, source, inplaySpec, INPLAY_CORE_PATH_BOOTSTRAP_SINCE); }
-      catch (error) { if (isMissingTableError(error)) inplaySchemaReady = false; else throw error; }
+      catch (error) { if (isOptionalTableAbsent(error)) inplaySchemaReady = false; else throw error; }
       const discoveryAudit = await repairDiscoveryAudit(target, source);
       const purge = await purgeTelemetry(target, source, Date.now());
       const researchSnapshotPurge = await purgeTelemetry(target, source, Date.now(), true);
@@ -1319,7 +1329,7 @@ export async function main(): Promise<void> {
         // (The dedicated outboxProbe above already made this condition
         // explicitly observable via SYNC_STAGE/CLONE_OUTBOX_TABLE_EXISTS; this
         // still degrades gracefully so partial-schema deploys never crash.)
-        if (spec.optional && isMissingTableError(error)) {
+        if (spec.optional && isOptionalTableAbsent(error)) {
           tables[spec.table] = EMPTY_TABLE_EVIDENCE;
           schemaPendingTables.push(spec.table);
           continue;

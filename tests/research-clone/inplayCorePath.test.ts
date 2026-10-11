@@ -446,3 +446,214 @@ test("quote synchronization is never claimed without per-leg acquisition timing;
   assert.match(collector, /const observedAt = new Date\(nowMs\)\.toISOString\(\);/);   // one poll-cycle instant, not a per-leg time
   assert.doesNotMatch(collector, /synchron\w*\s*[:=]\s*["']?(BOUNDED|PROVEN)/i);
 });
+
+// ── TELEMETRY-06: authoritative per-token orderbook timing ──────────────────────────────────────────────────
+import { fetchOrderBook, fetchOrderBooksConcurrent } from "../../lib/liquidity/polymarketClient";
+import { parseOrderBook } from "../../lib/liquidity/orderbookMath";
+import type { FetchOrderBookResult } from "../../lib/liquidity/types";
+import { orderbookTimingColumns, validateAcquisitionWindow, assessLinkedQuoteWindows, ORDERBOOK_MAX_ACQUISITION_MS } from "../../lib/research/inplayCorePath";
+import { isOptionalTableAbsent } from "../../scripts/research-clone-daily-sync";
+
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const bookPayload = (token: string, ts?: unknown) => ({ market: "0xabc", asset_id: token, timestamp: ts, tick_size: "0.01", min_order_size: "5",
+  bids: [{ price: "0.40", size: "100" }], asks: [{ price: "0.45", size: "100" }] });
+/** fetch double: per-token delay, then JSON. The token comes from the request URL, never from call order. */
+const fakeFetch = (plan: Record<string, { delay: number; ts?: () => unknown; status?: number; json?: () => unknown }>): typeof fetch =>
+  (async (url: string, init?: { signal?: AbortSignal }) => {
+    const token = new URL(url).searchParams.get("token_id")!;
+    const p = plan[token];
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, p.delay);
+      init?.signal?.addEventListener("abort", () => { clearTimeout(t); reject(Object.assign(new Error("aborted"), { name: "AbortError" })); });
+    });
+    return { ok: (p.status ?? 200) < 400, status: p.status ?? 200, json: async () => (p.json ? p.json() : bookPayload(token, p.ts?.())) } as unknown as Response;
+  }) as unknown as typeof fetch;
+
+test("TELEMETRY-06: concurrent requests keep distinct per-token intervals and token identity under out-of-order completion", async () => {
+  const tokens = ["tA", "tB", "tC", "tD"];
+  const results = await fetchOrderBooksConcurrent(tokens, 4, { fetchImpl: fakeFetch({ tA: { delay: 160 }, tB: { delay: 20 }, tC: { delay: 90 }, tD: { delay: 50 } }) });
+  assert.deepEqual(results.map((r) => r.tokenId), tokens);
+  assert.deepEqual(results.map((r) => r.book?.tokenId), tokens);
+  for (const r of results) {
+    assert.equal(r.ok, true);
+    assert.ok(typeof r.requestStartedAtMs === "number" && typeof r.responseCompletedAtMs === "number");
+    assert.ok(r.responseCompletedAtMs! >= r.requestStartedAtMs!);
+    assert.equal(r.latencyMs, r.responseCompletedAtMs! - r.requestStartedAtMs!);
+  }
+  const done = results.map((r) => r.responseCompletedAtMs!);
+  assert.equal(new Set(done).size, 4, "no synthetic identical completion time");
+  assert.ok(done[1] < done[3] && done[3] < done[2] && done[2] < done[0], "completion order follows each request's own latency, not input order");
+  assert.ok(results[0].responseCompletedAtMs! - results[0].requestStartedAtMs! >= 150);
+  assert.ok(results[1].responseCompletedAtMs! - results[1].requestStartedAtMs! < 120);
+  // Persisted columns are per token and ISO-exact to the measured milliseconds.
+  const col = orderbookTimingColumns(results[0], "tA");
+  assert.equal(col.orderbook_fetch_started_at, new Date(results[0].requestStartedAtMs!).toISOString());
+  assert.equal(col.orderbook_fetch_completed_at, new Date(results[0].responseCompletedAtMs!).toISOString());
+  assert.deepEqual(orderbookTimingColumns(results[0], "tB"), { orderbook_fetch_started_at: null, orderbook_fetch_completed_at: null, orderbook_provider_timestamp_at: null }, "wrong-token result never lends its timing");
+});
+
+test("TELEMETRY-06: concurrency 1 keeps fetch order with strictly sequential windows", async () => {
+  const r = await fetchOrderBooksConcurrent(["t1", "t2", "t3"], 1, { fetchImpl: fakeFetch({ t1: { delay: 15 }, t2: { delay: 15 }, t3: { delay: 15 } }) });
+  assert.deepEqual(r.map((x) => x.tokenId), ["t1", "t2", "t3"]);
+  assert.ok(r[1].requestStartedAtMs! >= r[0].responseCompletedAtMs! && r[2].requestStartedAtMs! >= r[1].responseCompletedAtMs!);
+});
+
+test("TELEMETRY-06: failed, timed-out, malformed and non-JSON fetches carry no timing and persist NULL", async () => {
+  const noBook: unknown = null;
+  const r = await fetchOrderBooksConcurrent(["http500", "slow", "bad", "nojson", "ok", "arr", "wrongId", "noAsks"], 8, { timeoutMs: 60, fetchImpl: fakeFetch({
+    http500: { delay: 1, status: 500 }, slow: { delay: 500 }, bad: { delay: 1, json: () => noBook },
+    nojson: { delay: 1, json: () => { throw new SyntaxError("bad json"); } }, ok: { delay: 1 },
+    arr: { delay: 1, json: () => [bookPayload("arr")] }, wrongId: { delay: 1, json: () => bookPayload("someOtherToken") },
+    noAsks: { delay: 1, json: () => ({ asset_id: "noAsks", bids: [] }) },
+  }) });
+  assert.deepEqual(r.map((x) => x.errorCode ?? "OK"), ["HTTP_ERROR", "TIMEOUT", "OK", "PARSE_FAILED", "OK", "OK", "OK", "OK"]);
+  // HTTP/timeout/non-JSON are failures; a payload that parses but is not this token's book keeps its legacy parse result yet has no timing.
+  for (const x of r.filter((y) => y.tokenId !== "ok")) {
+    assert.equal(x.requestStartedAtMs, undefined, x.tokenId);
+    assert.equal(x.responseCompletedAtMs, undefined, x.tokenId);
+    assert.deepEqual(orderbookTimingColumns(x, x.tokenId), { orderbook_fetch_started_at: null, orderbook_fetch_completed_at: null, orderbook_provider_timestamp_at: null });
+  }
+  for (const x of r.filter((y) => ["http500", "slow", "nojson"].includes(y.tokenId))) {
+    assert.equal(x.ok, false);
+    assert.equal(x.requestStartedAtMs, undefined);
+    assert.equal(x.responseCompletedAtMs, undefined);
+    assert.deepEqual(orderbookTimingColumns(x, x.tokenId), { orderbook_fetch_started_at: null, orderbook_fetch_completed_at: null, orderbook_provider_timestamp_at: null });
+  }
+  assert.notEqual(orderbookTimingColumns(r[4], "ok").orderbook_fetch_started_at, null);
+  assert.equal((await fetchOrderBook("", {})).requestStartedAtMs, undefined);
+});
+
+test("TELEMETRY-06: price parsing and return shape are unchanged by timing capture", async () => {
+  const payload = bookPayload("tP", "1791738982842");
+  const r = await fetchOrderBook("tP", { fetchImpl: fakeFetch({ tP: { delay: 1, json: () => payload } }) });
+  assert.deepEqual(r.book, parseOrderBook(payload, "tP"));
+  assert.equal(r.httpStatus, 200);
+  assert.equal(r.ok, true);
+});
+
+test("TELEMETRY-06: impossible or unverifiable intervals are rejected", () => {
+  const base = parseOrderBook(bookPayload("t"), "t")!;
+  const T = Date.UTC(2026, 9, 11, 12, 0, 0);
+  const ok = (s: unknown, c: unknown): FetchOrderBookResult => ({ ok: true, tokenId: "t", latencyMs: 1, book: base, requestStartedAtMs: s as number, responseCompletedAtMs: c as number });
+  assert.deepEqual(validateAcquisitionWindow(ok(T, T + 250), "t", T + 300), { startedAtMs: T, completedAtMs: T + 250 });
+  assert.equal(validateAcquisitionWindow(ok(T, T), "t", T + 10)?.completedAtMs, T, "zero-length is possible at ms resolution");
+  assert.equal(validateAcquisitionWindow(ok(T + 5, T), "t", T + 10), null, "completed before started");
+  assert.equal(validateAcquisitionWindow(ok(T, T + ORDERBOOK_MAX_ACQUISITION_MS + 1), "t", T + 10 ** 6), null, "implausibly long");
+  assert.equal(validateAcquisitionWindow(ok(T, T + 100), "t", T - 10_000), null, "completed in the wall-clock future");
+  assert.equal(validateAcquisitionWindow(ok(1_700_000_000, 1_700_000_001), "t", T), null, "seconds-unit or pre-2020 epoch");
+  assert.equal(validateAcquisitionWindow(ok(T + 0.5, T + 100), "t", T + 200), null, "non-integer ms");
+  assert.equal(validateAcquisitionWindow(ok(undefined, T), "t", T + 10), null);
+  assert.equal(validateAcquisitionWindow(ok(T, T + 1), "other", T + 10), null, "token mismatch");
+  assert.equal(validateAcquisitionWindow({ ...ok(T, T + 1), ok: false }, "t", T + 10), null);
+  assert.equal(validateAcquisitionWindow({ ...ok(T, T + 1), book: undefined }, "t", T + 10), null);
+  assert.equal(validateAcquisitionWindow(null, "t"), null);
+});
+
+test("TELEMETRY-06: provider timestamp is optional, epoch-ms only, and must sit inside the request neighbourhood", () => {
+  const T = Date.UTC(2026, 9, 11, 12, 0, 0);
+  const withTs = (ts: unknown): FetchOrderBookResult => ({ ok: true, tokenId: "t", latencyMs: 400, requestStartedAtMs: T, responseCompletedAtMs: T + 400,
+    book: parseOrderBook(bookPayload("t", ts), "t")! });
+  const p = (ts: unknown) => orderbookTimingColumns(withTs(ts), "t", T + 500).orderbook_provider_timestamp_at;
+  assert.equal(p(String(T + 100)), new Date(T + 100).toISOString(), "provider sends the epoch ms as a string (verified live)");
+  assert.equal(p(T - 900), new Date(T - 900).toISOString(), "snapshot a moment before the request");
+  assert.equal(p(undefined), null, "absent");
+  assert.equal(p(Math.floor((T + 100) / 1000)), null, "seconds unit is not milliseconds");
+  assert.equal(p(T + 400 + 2_001), null, "future of receipt");
+  assert.equal(p(T - 60_001), null, "stale beyond the lag bound");
+  assert.equal(p("not-a-number"), null);
+  assert.equal(p(-5), null);
+  // The window stays valid when the provider value is unverifiable.
+  assert.equal(orderbookTimingColumns(withTs(undefined), "t", T + 500).orderbook_fetch_started_at, new Date(T).toISOString());
+  // No window → no provider timestamp either.
+  const broken = { ...withTs(String(T)), responseCompletedAtMs: T - 1 };
+  assert.deepEqual(orderbookTimingColumns(broken, "t", T + 500), { orderbook_fetch_started_at: null, orderbook_fetch_completed_at: null, orderbook_provider_timestamp_at: null });
+});
+
+test("TELEMETRY-06: old results/rows without timing stay readable as NULL; legacy rows keep persistence decisions", () => {
+  const legacy: FetchOrderBookResult = { ok: true, tokenId: "t", latencyMs: 10, book: parseOrderBook(bookPayload("t"), "t")! };
+  assert.deepEqual(orderbookTimingColumns(legacy, "t"), { orderbook_fetch_started_at: null, orderbook_fetch_completed_at: null, orderbook_provider_timestamp_at: null });
+  assert.deepEqual(orderbookTimingColumns(undefined, "t"), { orderbook_fetch_started_at: null, orderbook_fetch_completed_at: null, orderbook_provider_timestamp_at: null });
+  const state = { gameId: "1", eventLiveStatus: "LIVE" as const, phase: "1H", sportCode: null };
+  const previous = { observed_at: "2026-10-11T12:00:00.000Z", mid_price: 0.4, spread_abs: 0.02, state_phase: "1H", event_live_status: "LIVE" };
+  assert.equal(decidePersistenceReason({ previous, nowMs: Date.parse("2026-10-11T12:00:10Z"), mid: 0.4, spread: 0.02, state }), null);
+  assert.equal(decidePersistenceReason({ previous, nowMs: Date.parse("2026-10-11T12:06:00Z"), mid: 0.4, spread: 0.02, state }), "HEARTBEAT");
+  assert.match(collector, /select\("token_id,observed_at,mid_price,spread_abs,state_phase,event_live_status"\)/, "prior-row read does not depend on the new columns");
+});
+
+test("TELEMETRY-06: structural timing assessment is UNPROVEN without time authority and never claims atomic execution", () => {
+  const w = (s: number, c: number) => ({ startedAtMs: s, completedAtMs: c });
+  assert.equal(assessLinkedQuoteWindows([], 5_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100)], 5_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100), null], 5_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100), undefined], 5_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100), w(200, 100)], 5_000), "UNPROVEN", "impossible interval");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100), w(9_000, 9_100)], 5_000), "UNPROVEN", "span wider than the bound");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100), w(50, 3_000)], 5_000), "BOUNDED", "bound is earliest start to latest completion");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100), w(50, 6_000)], 5_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteWindows([w(0, 100), w(50, 150)], Number.NaN), "UNPROVEN");
+  assert.equal(assessLinkedQuoteSynchronization([1000, null], 10_000), "UNPROVEN");
+  assert.doesNotMatch(collector, /ATOMIC_EXECUTION_PROVEN/);
+});
+
+test("TELEMETRY-06: capture wires per-token timing into the row; observed_at, id and economics are untouched", () => {
+  assert.match(collector, /\.\.\.orderbookTimingColumns\(result, token\.tokenId\), persistence_reason: reason,/);
+  assert.match(collector, /id: stableTelemetryId\(physicalEventId, token\.tokenId, observedAt, reason\),/);
+  assert.match(collector, /const books = await fetchOrderBooksConcurrent\(tokens\.map\(\(t\) => t\.tokenId\), 5\);/);
+  assert.match(collector, /const exec = buildExecutableSiblingColumns\(\{ token, result, fee: fees\.get\(token\.tokenId\) \?\? null \}\);/);
+  assert.match(collector, /const exit = book && shares !== null \? computeExecutableExit\(book\.bids, shares, 0\.02\) : null;/);
+  assert.match(collector, /full_stake_executable_vwap: exec\.full_stake_executable_vwap \?\? null,/);
+  assert.match(collector, /taker_fee_usd: exec\.taker_fee_usd \?\? null,/);
+  // The timing helpers import nothing from the executor money path and the capture cannot derive timing from nowMs.
+  assert.doesNotMatch(collector, /orderbook_fetch_(started|completed)_at\s*:\s*observedAt/);
+  assert.doesNotMatch(collector, /orderbook_fetch_(started|completed)_at\s*:\s*new Date\(nowMs\)/);
+});
+
+const newMigration = readFileSync("supabase/migrations/20261011120000_research_inplay_orderbook_timing_v3.sql", "utf8");
+const TIMING_COLS = ["orderbook_fetch_started_at", "orderbook_fetch_completed_at", "orderbook_provider_timestamp_at"];
+const PRE_EXISTING_PROJECTION = "id,physical_event_id,provider_game_id,provider_event_id,provider_sport_family,provider_sport_code,provider_sport_source,event_start_iso,observed_at,source_version,event_live_status,state_authority,state_phase,state_period_num,state_clock_seconds_remaining,state_clock_seconds_elapsed,state_received_at,side_a_score,side_b_score,side_a_red_cards,side_b_red_cards,condition_id,token_id,side,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_bid,best_ask,mid_price,spread_abs,tick_size,minimum_order_size,bid_depth_relevant_usd,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled,taker_fee_usd,orderbook_fetch_status,persistence_reason,sequence_in_event,created_at".split(",");
+
+test("TELEMETRY-06: migration is additive-nullable only and leaves the writer RPC, caps and retention alone", () => {
+  for (const c of TIMING_COLS) assert.match(newMigration, new RegExp(`ADD COLUMN IF NOT EXISTS ${c} timestamptz;`));
+  const migrationSql = newMigration.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
+  assert.doesNotMatch(migrationSql, /ADD COLUMN[^;]*(NOT NULL|DEFAULT)|DROP|UPDATE |DELETE |INSERT |CREATE (OR REPLACE )?FUNCTION|CREATE INDEX|research_insert_inplay_core_path|pg_column_size/i);
+  assert.match(migration, /pg_column_size\(p_row\) > 1000/, "original writer guard still the 1000-byte limit and is not redefined");
+  assert.equal((newMigration.match(/ADD COLUMN/g) ?? []).length, 3);
+  assert.match(newMigration, /\(orderbook_fetch_started_at IS NULL\) = \(orderbook_fetch_completed_at IS NULL\)/);
+  assert.match(newMigration, /orderbook_fetch_completed_at >= orderbook_fetch_started_at/);
+});
+
+test("TELEMETRY-06: row size stays within the 1000-byte writer limit", () => {
+  // Largest stored Production row measured on 2026-10-11: 608 bytes. Three timestamptz are 8 fixed bytes each (8-aligned),
+  // so the growth is at most 24 + 7 alignment padding + 1 null-bitmap byte.
+  const largestStored = 608, growth = 3 * 8 + 7 + 1;
+  assert.ok(largestStored + growth <= 650);
+  assert.ok(largestStored + growth < 1000);
+  // Fixed-width only: no new variable-length column that could grow past the bound.
+  for (const c of TIMING_COLS) assert.doesNotMatch(newMigration, new RegExp(`${c} (text|jsonb?|numeric|varchar)`));
+});
+
+test("TELEMETRY-06: timing fields survive Production→DBClone projection and clone DDL declares every projected column", () => {
+  const projection = /INPLAY_CORE_PATH_PROJECTION = "([^"]*)"/.exec(sync)![1].split(",");
+  for (const c of TIMING_COLS) assert.ok(projection.includes(c), `${c} projected`);
+  for (const c of PRE_EXISTING_PROJECTION) assert.ok(projection.includes(c), `${c} still projected`);
+  assert.equal(projection.length, PRE_EXISTING_PROJECTION.length + 3);
+  assert.equal(new Set(projection).size, projection.length);
+  assert.ok(projection.indexOf("orderbook_fetch_status") < projection.indexOf("orderbook_fetch_started_at"));
+  const createBlock = /CREATE TABLE IF NOT EXISTS[^(]*\(([\s\S]*?)\n\);/.exec(clone)![1];
+  const declared = new Set([...createBlock.matchAll(/^  ([a-z_]+) [a-z]+/gm)].map((m) => m[1]));
+  for (const c of projection) assert.ok(declared.has(c), `clone CREATE TABLE declares ${c}`);
+  for (const c of TIMING_COLS) assert.match(clone, new RegExp(`ADD COLUMN IF NOT EXISTS ${c} timestamptz;`));
+  // Unchanged sync mechanism.
+  assert.match(sync, /table: "research_inplay_core_path_observations", fields: \["observed_at", "id"\], appendOnly: true, projection: INPLAY_CORE_PATH_PROJECTION, telemetry: true, optional: true, bootstrapSince: INPLAY_CORE_PATH_BOOTSTRAP_SINCE/);
+});
+
+test("TELEMETRY-06: a missing clone/Production COLUMN is a loud error, never a silent SCHEMA_PENDING or false parity", () => {
+  assert.equal(isOptionalTableAbsent(new Error("PGRST205: Could not find the table 'public.research_inplay_core_path_observations' in the schema cache")), true);
+  assert.equal(isOptionalTableAbsent(new Error('relation "public.research_inplay_core_path_observations" does not exist')), true);
+  assert.equal(isOptionalTableAbsent(new Error("42P01 undefined_table")), true);
+  assert.equal(isOptionalTableAbsent(new Error("PGRST204: Could not find the 'orderbook_fetch_started_at' column of 'research_inplay_core_path_observations' in the schema cache")), false);
+  assert.equal(isOptionalTableAbsent(new Error('column "orderbook_fetch_started_at" of relation "research_inplay_core_path_observations" does not exist')), false);
+  assert.equal(isOptionalTableAbsent(new Error("column research_inplay_core_path_observations.orderbook_fetch_started_at does not exist")), false);
+  assert.equal(isOptionalTableAbsent(new Error("42703 undefined_column")), false);
+  assert.equal(isOptionalTableAbsent(new Error("connection reset")), false);
+});
