@@ -11,6 +11,7 @@ import { validateApprovedMigrationRelease } from "../../scripts/control-plane/li
 
 const OLD = "supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql";
 const NEW = "supabase/migrations/20261007174425_research_snapshot_runs_two_generation_freshness_v1.sql";
+const IDX = "supabase/migrations/20261011100000_gsrs_t20_event_candidates_partial_index_v1.sql";
 
 const BIN = ["/usr/lib/postgresql/16/bin", "/usr/lib/postgresql/17/bin", "/usr/lib/postgresql/15/bin", "/usr/local/bin"].find((d) =>
   existsSync(path.join(d, "initdb")),
@@ -58,6 +59,7 @@ before(() => {
     GRANT SELECT ON public.generated_signal_research_snapshots TO service_role;`);
   psqlFile(OLD);
   psqlFile(NEW);
+  psqlFile(IDX); // T20-01: CONCURRENTLY, one statement per psql autocommit exactly like the approved migration runner
 });
 after(() => {
   if (!CAN_RUN || !dir) return;
@@ -142,4 +144,67 @@ test("RPC contract: signature, return columns, ceiling sentinel and grants prese
   assert.equal(psql("SELECT count(*) FROM public.research_precontract_t20_event_candidates('2026-10-08T00:00:00Z','2026-10-09T00:00:00Z',3)"), "4", "p_ceiling + 1 sentinel");
   assert.equal(psql("SELECT has_table_privilege('service_role','public.research_snapshot_runs','SELECT'), has_table_privilege('service_role','public.research_snapshot_runs','INSERT'), has_table_privilege('service_role','public.research_snapshot_runs','DELETE'), has_table_privilege('service_role','public.research_snapshot_runs','UPDATE'), has_table_privilege('anon','public.research_snapshot_runs','SELECT'), has_table_privilege('authenticated','public.research_snapshot_runs','INSERT')"), "t|t|f|f|f|f");
   assert.equal(psql("SELECT relrowsecurity FROM pg_class WHERE relname='research_snapshot_runs'"), "t");
+});
+
+// ---- MISSION T20-01: partial access-path index (index only, RPC untouched) -------------------------------------------------
+const rows = (extra = "") => psql(`${extra}SELECT provider_event_id, provider_game_id, snapshot_run_id, source_row_n, parent_event_volume_24h, volume_contradiction FROM public.research_precontract_t20_event_candidates('${FROM}','${TO}',800) ORDER BY provider_game_id`);
+const withoutIndexes = (q: string) => psql(`BEGIN; SET LOCAL enable_indexscan=off; SET LOCAL enable_bitmapscan=off; SET LOCAL enable_indexonlyscan=off; ${q}; COMMIT`).split("\n").filter((l) => l && !["BEGIN", "SET", "COMMIT"].includes(l)).join("\n");
+
+test("T20-01: index is valid, partial, two-column (run, game start) and does not change the RPC text", opts, () => {
+  assert.equal(psql("SELECT indisvalid FROM pg_index i JOIN pg_class c ON c.oid=i.indexrelid WHERE c.relname='idx_gsrs_t20_event_candidates'"), "t");
+  const def = psql("SELECT pg_get_indexdef('public.idx_gsrs_t20_event_candidates'::regclass)");
+  assert.match(def, /\(snapshot_run_id, game_start_iso\)/);
+  assert.match(def, /WHERE .*NULLIF\(btrim\(\(\(diagnostics -> 'providerEventContext'::text\) ->> 'eventId'::text\)\), ''::text\) IS NOT NULL/);
+});
+
+test("T20-01: sparse identities / multiple generations / contradictory volumes return identical rows with and without the index", opts, () => {
+  reset();
+  const noId = (run: number, snap: string, start: string) => `INSERT INTO public.generated_signal_research_snapshots VALUES ('${R(run)}','${snap}','${start}','{"parentEventVolume24hr": 99999}');`;
+  const blankId = (run: number, snap: string, start: string) => `INSERT INTO public.generated_signal_research_snapshots VALUES ('${R(run)}','${snap}','${start}','{"providerEventContext":{"eventId":"   ","gameId":"GB"},"parentEventVolume24hr":88888}');`;
+  psql([
+    // sparse: many rows with no / blank structured identity must never become candidates
+    ...Array.from({ length: 40 }, () => noId(1, "2026-10-07T10:00:00Z", "2026-10-08T16:30:00Z")), blankId(1, "2026-10-07T10:00:00Z", "2026-10-08T16:30:00Z"),
+    gsrs(1, "2026-10-07T10:00:00Z", "11", "G1", "2026-10-08T16:30:00Z", 500),
+    gsrs(2, "2026-10-07T10:30:00Z", "11", "G1", "2026-10-08T16:50:00Z", 650),
+    gsrs(2, "2026-10-07T10:30:00Z", "12", "G2", "2026-10-08T17:00:00Z", 400),
+    gsrs(2, "2026-10-07T10:30:00Z", "12", "G2", "2026-10-08T17:00:00Z", 410), // contradictory volumes within one physical event
+    gsrs(2, "2026-10-07T10:30:00Z", "13", "G3", "2026-10-09T00:00:00Z", 900), // outside the requested UTC day
+    gsrs(3, "2026-10-07T11:00:00Z", "14", "G4", "2026-10-08T18:00:00Z", 300), // run 3 never completed
+    mark(1, "2026-10-07T10:01:00Z", "2026-10-07T10:00:00Z"), mark(2, "2026-10-07T10:31:00Z", "2026-10-07T10:30:00Z"),
+  ].join("\n"));
+  const withIdx = rows("SET enable_seqscan=off; ").split("\n").filter((l) => l !== "SET").join("\n");
+  const base = withoutIndexes(`SELECT provider_event_id, provider_game_id, snapshot_run_id, source_row_n, parent_event_volume_24h, volume_contradiction FROM public.research_precontract_t20_event_candidates('${FROM}','${TO}',800) ORDER BY provider_game_id`);
+  assert.equal(withIdx, base);
+  const lines = base.split("\n");
+  assert.deepEqual(lines.map((l) => l.split("|")[1]), ["G1", "G2"]);
+  assert.equal(lines.find((l) => l.includes("|G2|"))!.endsWith("|t"), true, "contradiction flag preserved");
+  assert.equal(lines.find((l) => l.includes("|G1|"))!.split("|")[2], R(2), "newest run owns the physical event");
+});
+
+test("T20-01: >800 physical events keep the p_ceiling+1 sentinel and a stable volume-first ranking", opts, () => {
+  reset();
+  psql(`INSERT INTO public.generated_signal_research_snapshots
+          SELECT ('${R(1)}')::uuid, '2026-10-07T10:00:00Z', '2026-10-08T16:30:00Z',
+                 jsonb_build_object('providerEventContext', jsonb_build_object('eventId', (1000 + n)::text, 'gameId', 'Q' || lpad(n::text, 4, '0')),
+                   'parentEventVolume24hr', 10 + (n % 97), 'providerSportFamily', 'soccer')
+          FROM generate_series(1, 820) n;`);
+  psql([mark(1, "2026-10-07T10:01:00Z", "2026-10-07T10:00:00Z"), mark(2, "2026-10-07T10:31:00Z", "2026-10-07T10:30:00Z")].join("\n"));
+  const q = `SELECT provider_game_id FROM public.research_precontract_t20_event_candidates('${FROM}','${TO}',800)`;
+  const a = psql(q).split("\n"), b = psql(q).split("\n");
+  assert.equal(a.length, 801, "ceiling sentinel");
+  assert.deepEqual(a, b, "repeat calls rank identically");
+  assert.deepEqual(withoutIndexes(q).split("\n"), a, "same ordered rows without the index");
+});
+
+test("T20-01: the planner seeks the partial index for the latest two runs (bounded buffers, no full-table scan)", opts, () => {
+  reset();
+  // 20k unidentified rows per generation + a few identified ones; ANALYZE so the planner has real statistics.
+  psql(`INSERT INTO public.generated_signal_research_snapshots SELECT ('${R(1)}')::uuid, '2026-10-07T10:00:00Z', '2026-10-08T16:30:00Z'::timestamptz + (n % 500) * interval '1 minute', '{"k":1}'::jsonb FROM generate_series(1,20000) n;
+        INSERT INTO public.generated_signal_research_snapshots SELECT ('${R(2)}')::uuid, '2026-10-07T10:30:00Z', '2026-10-08T16:30:00Z'::timestamptz + (n % 500) * interval '1 minute', '{"k":1}'::jsonb FROM generate_series(1,20000) n;`);
+  psql([gsrs(1, "2026-10-07T10:00:00Z", "11", "G1", "2026-10-08T16:30:00Z", 500), gsrs(2, "2026-10-07T10:30:00Z", "12", "G2", "2026-10-08T17:00:00Z", 400),
+    mark(1, "2026-10-07T10:01:00Z", "2026-10-07T10:00:00Z"), mark(2, "2026-10-07T10:31:00Z", "2026-10-07T10:30:00Z")].join("\n"));
+  psql("ANALYZE public.generated_signal_research_snapshots; ANALYZE public.research_snapshot_runs");
+  const plan = psql(`EXPLAIN (COSTS OFF) SELECT count(*) FROM public.generated_signal_research_snapshots g WHERE g.game_start_iso >= '${FROM}' AND g.game_start_iso < '${TO}' AND NULLIF(btrim(g.diagnostics -> 'providerEventContext' ->> 'eventId'), '') IS NOT NULL AND g.snapshot_run_id IN ('${R(1)}','${R(2)}')`);
+  assert.match(plan, /idx_gsrs_t20_event_candidates/);
+  assert.doesNotMatch(plan, /Seq Scan on generated_signal_research_snapshots/);
 });
