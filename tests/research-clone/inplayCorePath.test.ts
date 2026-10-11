@@ -22,6 +22,29 @@ test("structured live identity admits one exact event and core moneyline without
   assert.doesNotMatch(collector, /night_event_reservations|current_signal_pair_serving|model_score|planning_score/);
 });
 
+test("NFL admission: Gamma league tag 'nfl' (no 'american-football' tag) admits only when the socket league agrees", () => {
+  const nflState = deriveStructuredState({ gameId: 19518, status: "InProgress", live: true, period: "Q2", score: "7-7", elapsed: "8:46", leagueAbbreviation: "nfl" })!;
+  const event = { id: "941330", gameId: 19518, startTime: "2026-10-11T13:30:00Z", tags: [{ slug: "sports" }, { slug: "nfl" }, { slug: "games" }], markets: [{}] } as any;
+  assert.equal(nflState.sportCode, "nfl");
+  assert.equal(admitPhysicalEvent([event], nflState)?.family, "american-football");
+  // The same Gamma tags with no or a different socket league never admit.
+  assert.equal(admitPhysicalEvent([event], { ...nflState, sportCode: null }), null);
+  assert.equal(admitPhysicalEvent([event], { ...nflState, sportCode: "nba" }), null);
+  // A league slug that is not an alias never becomes a family, including inherited object keys.
+  const proto = { ...event, tags: [{ slug: "constructor" }] };
+  assert.equal(admitPhysicalEvent([proto], { ...nflState, sportCode: "constructor" }), null);
+  const nba = { ...event, tags: [{ slug: "nba" }] };
+  assert.equal(admitPhysicalEvent([nba], { ...nflState, sportCode: "nba" }), null);
+  // Two different families on one event stay ambiguous; the direct family tag keeps working and cannot double count.
+  assert.equal(admitPhysicalEvent([{ ...event, tags: [{ slug: "nfl" }, { slug: "soccer" }] }], nflState), null);
+  assert.equal(admitPhysicalEvent([{ ...event, tags: [{ slug: "nfl" }, { slug: "american-football" }] }], nflState)?.family, "american-football");
+  assert.equal(admitPhysicalEvent([{ ...event, tags: [{ slug: "american-football" }] }], { ...nflState, sportCode: null })?.family, "american-football");
+  // The three real events of the game: only the parent is admissible (children carry parentEventId).
+  const children = [{ ...event, id: "1131004", parentEventId: 941330 }, { ...event, id: "1148383", parentEventId: 941330 }];
+  assert.equal(admitPhysicalEvent([event, ...children], nflState)?.event.id, "941330");
+  assert.equal(admitPhysicalEvent(children, nflState), null);
+});
+
 test("text cannot create structured score or live status; derivative market rejected", () => {
   assert.equal(deriveStructuredState({ gameId: 123, score: "2-1", period: "S1" }), null);
   assert.equal(admitResearchMarket("tennis", "tennis_first_set_winner", "first-set").admitted, false);
