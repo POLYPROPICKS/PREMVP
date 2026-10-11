@@ -4,7 +4,7 @@ import type { PolymarketRawEvent } from "../feed/types";
 import { fetchOrderBooksConcurrent } from "../liquidity/polymarketClient";
 import { computeDepthWithinPct, computeExecutableExit, computeMidPrice, computeSpread, getBestBidAsk } from "../liquidity/orderbookMath";
 import { physicalMatchId } from "../executor/contractADecisions";
-import { defaultExactEventReader, defaultGameEventsReader, inventoryTokens, sameGameLiveUniverse, stableTelemetryId } from "../executor/reservationMarketBaseline";
+import { classifyObservationalMarket, defaultExactEventReader, defaultGameEventsReader, inventoryTokens, sameGameLiveUniverse, stableTelemetryId } from "../executor/reservationMarketBaseline";
 import { admitResearchMarket } from "../executor/precontractT20Research";
 import { buildExecutableSiblingColumns, fetchFeeSchedulesBounded } from "../executor/t10ExecutableSiblingTelemetry";
 
@@ -85,16 +85,21 @@ export function admitPhysicalEvent(events: readonly PolymarketRawEvent[], state:
   return { event, family: [...families][0], start: new Date(start).toISOString() };
 }
 
-/** One highest-volume condition per core family. Ties without a unique leader are excluded. */
-export function selectPrimaryCoreMarkets<T extends { condition_id: string | null; sports_market_type: string | null; provider_market_slug: string | null }>(
-  markets: readonly T[], events: readonly PolymarketRawEvent[], family: string,
-): T[] {
+function conditionVolumes(events: readonly PolymarketRawEvent[]): Map<string, number> {
   const volumes = new Map<string, number>();
   for (const event of events) for (const raw of event.markets ?? []) {
     const value = typeof raw.volume24hr === "number" && Number.isFinite(raw.volume24hr) ? raw.volume24hr
       : typeof raw.volume === "number" && Number.isFinite(raw.volume) ? raw.volume : null;
     if (raw.conditionId && value !== null) volumes.set(raw.conditionId, Math.max(value, volumes.get(raw.conditionId) ?? 0));
   }
+  return volumes;
+}
+
+/** One highest-volume condition per core family. Ties without a unique leader are excluded. */
+export function selectPrimaryCoreMarkets<T extends { condition_id: string | null; sports_market_type: string | null; provider_market_slug: string | null }>(
+  markets: readonly T[], events: readonly PolymarketRawEvent[], family: string,
+): T[] {
+  const volumes = conditionVolumes(events);
   const groups = new Map<string, T[]>();
   for (const market of markets) {
     const verdict = admitResearchMarket(family, market.sports_market_type, market.provider_market_slug);
@@ -111,6 +116,117 @@ export function selectPrimaryCoreMarkets<T extends { condition_id: string | null
     if (ordered.length && (ordered.length === 1 || volumes.get(ordered[0].condition_id!)! > volumes.get(ordered[1].condition_id!)!)) chosen.push(ordered[0]);
   }
   return chosen;
+}
+
+type CoreMarket = Parameters<typeof inventoryTokens>[0][number];
+type RawTotalFact = { line: number | null; gameId: string; typeIsTotal: boolean };
+
+/** Provider-structured half-goal line only (x.5). Integers, quarter lines and non-numbers are not a covering line. */
+function halfGoalLine(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value < 20 && (value * 2) % 2 === 1 ? value : null;
+}
+
+// Fail-closed scope rejectors. These only ever REJECT; a line is never derived from a slug or title.
+const NON_FULL_GAME_SLUG = /(?:^|-)(?:1h|2h|ht|half|halves|team|corners?|cards?)(?:-|$)/i;
+const SLUG_LINE = /-total-(\d+)pt(\d+)$/;
+
+/** Structured line facts keyed by condition. A condition reported twice with differing facts is "CONFLICT". */
+function rawTotalFacts(events: readonly PolymarketRawEvent[]): Map<string, RawTotalFact | "CONFLICT"> {
+  const facts = new Map<string, RawTotalFact | "CONFLICT">();
+  for (const event of events) for (const raw of event.markets ?? []) {
+    if (!raw.conditionId) continue;
+    const fact: RawTotalFact = {
+      line: halfGoalLine((raw as { line?: unknown }).line), gameId: String(event.gameId ?? ""),
+      typeIsTotal: classifyObservationalMarket(raw.sportsMarketType).type === "TOTAL",
+    };
+    const seen = facts.get(raw.conditionId);
+    if (seen === undefined) facts.set(raw.conditionId, fact);
+    else if (seen === "CONFLICT" || seen.line !== fact.line || seen.gameId !== fact.gameId || seen.typeIsTotal !== fact.typeIsTotal) facts.set(raw.conditionId, "CONFLICT");
+  }
+  return facts;
+}
+
+function fullGameTotalLine(market: CoreMarket, facts: Map<string, RawTotalFact | "CONFLICT">): { line: number; gameId: string } | null {
+  const fact = market.condition_id ? facts.get(market.condition_id) : undefined;
+  if (!fact || fact === "CONFLICT" || fact.line === null || !fact.typeIsTotal || !fact.gameId) return null;
+  if (admitResearchMarket("soccer", market.sports_market_type, market.provider_market_slug).type !== "TOTAL") return null;
+  const slug = market.provider_market_slug ?? "";
+  if (NON_FULL_GAME_SLUG.test(slug)) return null;
+  const slugLine = SLUG_LINE.exec(slug);
+  if (slugLine && Number(`${slugLine[1]}.${slugLine[2]}`) !== fact.line) return null; // metadata disagrees
+  return { line: fact.line, gameId: fact.gameId };
+}
+
+/** Exactly one Over and one Under token for the condition, nothing missing, nothing extra. */
+function hasOverUnderLinkage(inv: ReturnType<typeof inventoryTokens>): boolean {
+  const sides = inv.tokens.map((t) => t.side.trim().toLowerCase()).sort();
+  return inv.missingIdentity === 0 && inv.tokens.length === 2 && sides[0] === "over" && sides[1] === "under";
+}
+
+/**
+ * Soccer research only: at most ONE additional full-game TOTALS condition beside the primary TOTALS condition,
+ * so two lines of the same physical game can be observed in the same capture cycle. The nearest distinct
+ * half-goal line is chosen (Over lower line + Under higher line always pays at least 1 in every score state,
+ * and adjacent lines minimise the price of the extra coverage). Selection is by structured provider `line`
+ * only and is independent of input order. Any missing/contradictory identity, line, scope, volume or token
+ * linkage, or any capacity overflow of MAX_TRACKED_TOKENS_PER_EVENT, yields null and the primaries stay intact.
+ * Selection is co-capture only: it makes no claim that the quotes are simultaneously executable.
+ */
+export function selectLinkedSoccerTotals<T extends CoreMarket>(
+  universe: readonly T[], events: readonly PolymarketRawEvent[], family: string, primary: readonly T[],
+): T | null {
+  if (family !== "soccer") return null;
+  const facts = rawTotalFacts(events);
+  const anchors = primary.filter((m) => admitResearchMarket(family, m.sports_market_type, m.provider_market_slug).type === "TOTAL");
+  if (anchors.length !== 1) return null;
+  const anchor = anchors[0];
+  const anchorLine = fullGameTotalLine(anchor, facts);
+  if (!anchorLine) return null;
+  const primaryTokens = inventoryTokens(primary);
+  if (primaryTokens.missingIdentity > 0 || !hasOverUnderLinkage(inventoryTokens([anchor]))) return null;
+  const volumes = conditionVolumes(events);
+  const startMs = Date.parse(anchor.event_start_iso);
+  const byCondition = new Map<string, T[]>();
+  for (const market of universe) {
+    if (!market.condition_id || market.condition_id === anchor.condition_id) continue;
+    const group = byCondition.get(market.condition_id) ?? [];
+    group.push(market);
+    byCondition.set(market.condition_id, group);
+  }
+  const candidates: Array<{ market: T; line: number; conditionId: string }> = [];
+  for (const [conditionId, group] of byCondition) {
+    const found = fullGameTotalLine(group[0], facts);
+    if (!found || found.gameId !== anchorLine.gameId || found.line === anchorLine.line || !volumes.has(conditionId)) continue;
+    // Duplicate rows of one condition are one market; any disagreement between them is ambiguity.
+    if (group.some((m) => m.provider_game_id !== anchor.provider_game_id || Date.parse(m.event_start_iso) !== startMs
+      || fullGameTotalLine(m, facts)?.line !== found.line)) continue;
+    const linked = inventoryTokens(group);
+    if (!hasOverUnderLinkage(linked)) continue;
+    if (primaryTokens.tokens.length + linked.tokens.length > MAX_TRACKED_TOKENS_PER_EVENT) continue;
+    candidates.push({ market: group[0], line: found.line, conditionId });
+  }
+  candidates.sort((a, b) => Math.abs(a.line - anchorLine.line) - Math.abs(b.line - anchorLine.line)
+    || a.line - b.line || (a.conditionId < b.conditionId ? -1 : a.conditionId > b.conditionId ? 1 : 0));
+  return candidates[0]?.market ?? null;
+}
+
+/** Primary core markets plus, for soccer, at most one linked full-game TOTALS sibling. Token caps are unchanged. */
+export function selectCoreCaptureMarkets<T extends CoreMarket>(universe: readonly T[], events: readonly PolymarketRawEvent[], family: string): T[] {
+  const primary = selectPrimaryCoreMarkets(universe, events, family);
+  const sibling = selectLinkedSoccerTotals(universe, events, family, primary);
+  return sibling ? [...primary, sibling] : primary;
+}
+
+/**
+ * All legs of one capture share a single poll-cycle `observed_at`; individual orderbook acquisition instants are
+ * not persisted. Synchronization is therefore UNPROVEN unless every leg carries its own acquisition time and the
+ * whole span is within the bound. Never assign a shared synthetic timestamp to satisfy this.
+ */
+export function assessLinkedQuoteSynchronization(legAcquiredAtMs: ReadonlyArray<number | null | undefined>, maxSpanMs: number): "BOUNDED" | "UNPROVEN" {
+  if (legAcquiredAtMs.length < 2 || !Number.isFinite(maxSpanMs) || maxSpanMs < 0) return "UNPROVEN";
+  const times = legAcquiredAtMs.filter((t): t is number => typeof t === "number" && Number.isFinite(t));
+  if (times.length !== legAcquiredAtMs.length) return "UNPROVEN";
+  return Math.max(...times) - Math.min(...times) <= maxSpanMs ? "BOUNDED" : "UNPROVEN";
 }
 
 export function decidePersistenceReason(input: {
@@ -146,7 +262,7 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
   if (!isLive()) return 0;
   const universe = sameGameLiveUniverse(state.gameId, start, own, discovered);
   if (universe.audit.audit_overflow || !universe.eventSetsComplete) return 0;
-  const markets = selectPrimaryCoreMarkets(universe.markets, events, family);
+  const markets = selectCoreCaptureMarkets(universe.markets, events, family);
   const inventory = inventoryTokens(markets);
   if (inventory.missingIdentity || inventory.tokens.length === 0 || inventory.tokens.length > MAX_TRACKED_TOKENS_PER_EVENT) return 0;
   const tokens = inventory.tokens;
