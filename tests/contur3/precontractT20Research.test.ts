@@ -558,3 +558,24 @@ test("SOFT-H: money-path code never reads research output; the soft guard import
   assert.equal((hook.match(/runPrecontractT20ResearchFailSoft\(/g) ?? []).length, 1);
   assert.match(readFileSync("lib/executor/precontractT20Research.ts", "utf8"), /export const RESEARCH_TICK_BUDGET_MS = 8_000;/);
 });
+
+// ---- MISSION T20-01: candidate-RPC access path (partial index) -------------------------------------------------------------
+test("T20-01: partial index migration is index-only, concurrent, matches the RPC eventId expression, and every safety cap is unchanged", () => {
+  const file = "supabase/migrations/20261011100000_gsrs_t20_event_candidates_partial_index_v1.sql";
+  const sql = readFileSync(file, "utf8");
+  assert.equal(sql.split("\n")[0], "-- pg-delta: transaction=false");
+  assert.deepEqual(validateApprovedMigrationRelease({
+    declaration: { mode: "PREMVP_APPLICATION_SCHEMA_MIGRATION_V1", migration_files: [file], safety_class: "ADDITIVE_COMPATIBLE", direct_raw_mutation: false, rollback_strategy: "COMPATIBILITY_RETAINED" },
+    changedFiles: [file], readFile: () => sql,
+  }), { ok: true, errors: [] });
+  const code = sql.replace(/--.*$/gm, "");
+  assert.equal(/CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gsrs_t20_event_candidates\s+ON public\.generated_signal_research_snapshots \(snapshot_run_id, game_start_iso\)\s+WHERE NULLIF\(btrim\(diagnostics -> 'providerEventContext' ->> 'eventId'\), ''\) IS NOT NULL;/.test(code), true);
+  assert.equal(/ALTER\s+TABLE|\bDROP\b|\bINSERT\b|\bUPDATE\b|\bDELETE\b|\bFUNCTION\b/i.test(code), false);
+  // The predicate is the exact expression the (unchanged) RPC already applies, so the planner can prove the implication.
+  const rpc = readFileSync("supabase/migrations/20261007174425_research_snapshot_runs_two_generation_freshness_v1.sql", "utf8");
+  assert.equal(rpc.includes("NULLIF(btrim(g.diagnostics -> 'providerEventContext' ->> 'eventId'), '')"), true);
+  assert.equal(rpc.includes("WHERE s.event_id IS NOT NULL"), true);
+  assert.equal(rpc.includes("g.snapshot_run_id IN (SELECT c.snapshot_run_id FROM completed_runs c)"), true);
+  assert.deepEqual([RESEARCH_TICK_BUDGET_MS, EVENT_UNIVERSE_CEILING, MAX_RESEARCH_EVENTS_PER_DAY, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, MAX_NEW_EVENTS_PER_TICK, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT],
+    [8_000, 800, 100, 40, 20, 40, 5, 128]);
+});
