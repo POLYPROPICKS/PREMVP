@@ -157,10 +157,44 @@ function fullGameTotalLine(market: CoreMarket, facts: Map<string, RawTotalFact |
   return { line: fact.line, gameId: fact.gameId };
 }
 
-/** Exactly one Over and one Under token for the condition, nothing missing, nothing extra. */
-function hasOverUnderLinkage(inv: ReturnType<typeof inventoryTokens>): boolean {
-  const sides = inv.tokens.map((t) => t.side.trim().toLowerCase()).sort();
-  return inv.missingIdentity === 0 && inv.tokens.length === 2 && sides[0] === "over" && sides[1] === "under";
+/** Provider list as supplied (array or JSON string of one). Anything not a list of strings / `{name}` objects is malformed. */
+function rawIdentityList(value: unknown, allowNamed: boolean): string[] | null {
+  let list = value;
+  if (typeof list === "string") {
+    try { list = JSON.parse(list); } catch { return null; }
+  }
+  if (!Array.isArray(list)) return null;
+  const out: string[] = [];
+  for (const item of list) {
+    if (typeof item === "string") out.push(item);
+    else if (allowNamed && item && typeof item === "object" && typeof (item as { name?: unknown }).name === "string") out.push((item as { name: string }).name);
+    else return null;
+  }
+  return out;
+}
+
+/** Index-aligned `token|outcome` signature of ONE raw market row, or null unless it is an exact two-way Over/Under. */
+function overUnderSignature(market: CoreMarket): string | null {
+  if (!market.condition_id?.trim()) return null;
+  const tokenIds = rawIdentityList(market.clob_token_ids, false);
+  const outcomes = rawIdentityList(market.outcomes, true);
+  if (!tokenIds || !outcomes || tokenIds.length !== 2 || outcomes.length !== 2) return null;
+  const ids = tokenIds.map((t) => t.trim());
+  const sides = outcomes.map((o) => o.trim().toLowerCase());
+  if (ids.some((t) => !t) || ids[0] === ids[1]) return null;
+  if (!((sides[0] === "over" && sides[1] === "under") || (sides[0] === "under" && sides[1] === "over"))) return null;
+  return `${ids[0]}\u0000${sides[0]}\u0001${ids[1]}\u0000${sides[1]}`;
+}
+
+/**
+ * Exactly one Over and one Under token for the condition, nothing missing, nothing extra. Validated on the raw
+ * provider arrays BEFORE any deduplication (inventoryTokens() would collapse [a,a,b]/[Over,Over,Under] into two
+ * tokens), and every supplied row of the condition must carry the identical index-aligned identity.
+ */
+function hasExactOverUnderLinkage(rows: readonly CoreMarket[]): boolean {
+  if (rows.length === 0) return false;
+  const first = overUnderSignature(rows[0]);
+  return first !== null && rows.every((row) => overUnderSignature(row) === first);
 }
 
 /**
@@ -183,7 +217,9 @@ export function selectLinkedSoccerTotals<T extends CoreMarket>(
   const anchorLine = fullGameTotalLine(anchor, facts);
   if (!anchorLine) return null;
   const primaryTokens = inventoryTokens(primary);
-  if (primaryTokens.missingIdentity > 0 || !hasOverUnderLinkage(inventoryTokens([anchor]))) return null;
+  // The anchor condition (every universe row reporting it) must itself be an exact two-way Over/Under market.
+  const anchorRows = universe.filter((m) => m.condition_id === anchor.condition_id);
+  if (primaryTokens.missingIdentity > 0 || !hasExactOverUnderLinkage([anchor, ...anchorRows])) return null;
   const volumes = conditionVolumes(events);
   const startMs = Date.parse(anchor.event_start_iso);
   const byCondition = new Map<string, T[]>();
@@ -200,8 +236,8 @@ export function selectLinkedSoccerTotals<T extends CoreMarket>(
     // Duplicate rows of one condition are one market; any disagreement between them is ambiguity.
     if (group.some((m) => m.provider_game_id !== anchor.provider_game_id || Date.parse(m.event_start_iso) !== startMs
       || fullGameTotalLine(m, facts)?.line !== found.line)) continue;
+    if (!hasExactOverUnderLinkage(group)) continue;
     const linked = inventoryTokens(group);
-    if (!hasOverUnderLinkage(linked)) continue;
     if (primaryTokens.tokens.length + linked.tokens.length > MAX_TRACKED_TOKENS_PER_EVENT) continue;
     candidates.push({ market: group[0], line: found.line, conditionId });
   }

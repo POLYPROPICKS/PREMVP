@@ -235,9 +235,64 @@ test("same-condition duplicate tokens/rows are one market; not a second line", (
   assert.equal(selectLinkedSoccerTotals([...prim, tot("t25", 2.5)], evs, "soccer", prim), null);   // duplicate of the anchor
   const dupTokens = tot("t35", 3.5, { clob_token_ids: JSON.stringify(["a", "a", "b"]), outcomes: JSON.stringify(["Over", "Over", "Under"]) });
   const evs2 = ev([rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
-  assert.equal(selectLinkedSoccerTotals([...prim, dupTokens], evs2, "soccer", prim)?.condition_id, "t35");
+  // inventoryTokens() dedups [a,a,b] to two tokens; the raw provider triple is still malformed and must be rejected.
+  assert.equal(inventoryTokensOf([dupTokens]), 2);
+  assert.equal(selectLinkedSoccerTotals([...prim, dupTokens], evs2, "soccer", prim), null);
   assert.equal(inventoryTokensOf([dupTokens, dupTokens]), 2);
+  const validDup = selectLinkedSoccerTotals([...prim, tot("t35", 3.5), tot("t35", 3.5)], evs2, "soccer", prim);
+  assert.equal(validDup?.condition_id, "t35");                                                      // identical duplicate rows are one valid market
   assert.equal(selectLinkedSoccerTotals([...prim, tot("t35", 3.5), tot("t35", 3.5, { clob_token_ids: JSON.stringify(["z1", "z2"]) })], evs2, "soccer", prim), null);   // same condition, contradictory tokens
+});
+
+test("exact raw token/outcome linkage: malformed sibling or primary anchor identity is rejected, primaries preserved", () => {
+  const evs = ev([{ conditionId: "ml", volume24hr: 9 }, rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+  const ml = mkt("ml", "moneyline", null);
+  const sibling = (o: Record<string, unknown>) => tot("t35", 3.5, o);
+  const run = (anchor: any, extra: any) => selectLinkedSoccerTotals([ml, anchor, extra], evs, "soccer", [ml, anchor]);
+  assert.equal(run(tot("t25", 2.5), sibling({})) ?.condition_id, "t35");                              // control: valid two-way pair
+  assert.equal(run(tot("t25", 2.5), sibling({ clob_token_ids: ["x", "y"], outcomes: ["under", " OVER "] }))?.condition_id, "t35");   // arrays, case/order tolerant, index-aligned
+  const malformed: Array<Record<string, unknown>> = [
+    { clob_token_ids: JSON.stringify(["a", "a", "b"]), outcomes: JSON.stringify(["Over", "Over", "Under"]) },   // proven defect
+    { clob_token_ids: JSON.stringify(["a", "b", "c"]), outcomes: JSON.stringify(["Over", "Under"]) },          // 3 ids / 2 outcomes
+    { clob_token_ids: JSON.stringify(["a", "b"]), outcomes: JSON.stringify(["Over", "Under", "Push"]) },       // 2 ids / 3 outcomes
+    { clob_token_ids: JSON.stringify(["a", "a"]), outcomes: JSON.stringify(["Over", "Under"]) },               // same token twice
+    { clob_token_ids: JSON.stringify(["a", " "]), outcomes: JSON.stringify(["Over", "Under"]) },               // empty id
+    { clob_token_ids: JSON.stringify(["a", "b"]), outcomes: JSON.stringify(["Over", "Over"]) },
+    { clob_token_ids: JSON.stringify(["a", "b"]), outcomes: JSON.stringify(["Yes", "No"]) },
+    { clob_token_ids: JSON.stringify(["a", 7]), outcomes: JSON.stringify(["Over", "Under"]) },                 // non-string id
+    { clob_token_ids: "not-json", outcomes: JSON.stringify(["Over", "Under"]) },
+    { clob_token_ids: null, outcomes: null },
+  ];
+  for (const bad of malformed) {
+    assert.equal(run(tot("t25", 2.5), sibling(bad)), null, `sibling ${JSON.stringify(bad)}`);
+    assert.equal(run(tot("t25", 2.5, bad), sibling({})), null, `anchor ${JSON.stringify(bad)}`);            // malformed primary anchor -> no sibling at all
+  }
+  // Rejection never discards the existing primaries.
+  const bad = malformed[0];
+  const universe = [ml, mkt("sp", "spreads", null), tot("t25", 2.5, bad), tot("t35", 3.5)];
+  const events = ev([{ conditionId: "ml", volume24hr: 9 }, { conditionId: "sp", volume24hr: 9 }, rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+  assert.deepEqual(ids(selectCoreCaptureMarkets(universe, events, "soccer")), ids(selectPrimaryCoreMarkets(universe, events, "soccer")));
+  assert.deepEqual(ids(selectCoreCaptureMarkets(universe, events, "soccer")), ["ml", "sp", "t25"]);
+});
+
+test("contradictory duplicate representations of one condition are rejected (sibling and anchor)", () => {
+  const evs = ev([rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+  const prim = [tot("t25", 2.5)];
+  const other = (o: Record<string, unknown>) => tot("t35", 3.5, o);
+  const variants: Array<Record<string, unknown>> = [
+    { clob_token_ids: JSON.stringify(["z1", "z2"]) },                                          // different tokens
+    { clob_token_ids: JSON.stringify(["t35-b", "t35-a"]) },                                    // same tokens, swapped index alignment vs outcomes
+    { outcomes: JSON.stringify(["Under", "Over"]) },                                           // same tokens, flipped outcomes
+    { clob_token_ids: JSON.stringify(["t35-a", "t35-b", "t35-c"]), outcomes: JSON.stringify(["Over", "Under", "Under"]) },
+  ];
+  for (const v of variants) {
+    assert.equal(selectLinkedSoccerTotals([...prim, tot("t35", 3.5), other(v)], evs, "soccer", prim), null, `sibling dup ${JSON.stringify(v)}`);
+    assert.equal(selectLinkedSoccerTotals([...prim, other(v), tot("t35", 3.5)], evs, "soccer", prim), null, `sibling dup (reordered) ${JSON.stringify(v)}`);
+    const anchorEvs = ev([rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+    const conflictingAnchor = tot("t25", 2.5, { clob_token_ids: JSON.stringify(["t25-b", "t25-a"]) });
+    assert.equal(selectLinkedSoccerTotals([...prim, conflictingAnchor, tot("t35", 3.5)], anchorEvs, "soccer", prim), null);   // anchor reported twice, contradictorily
+  }
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("t35", 3.5), tot("t35", 3.5)], evs, "soccer", prim)?.condition_id, "t35");   // identical duplicates stay valid
 });
 
 test("ambiguous or missing structured line is rejected; the slug never supplies a line", () => {
