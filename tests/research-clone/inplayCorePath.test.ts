@@ -160,3 +160,222 @@ test("typed fields reach the persisted row, migration, clone DDL and clone proje
   assert.match(sync, /INPLAY_CORE_PATH_PROJECTION = "[^"]*state_clock_seconds_elapsed,state_received_at,side_a_score,side_b_score/);
   assert.match(readFileSync("scripts/research-inplay-core-path.ts", "utf8"), /receivedAtMs\);/);
 });
+
+// ── Linked soccer TOTALS co-capture (research-only; caps unchanged) ─────────────────────────────────────────
+import { selectLinkedSoccerTotals, selectCoreCaptureMarkets, assessLinkedQuoteSynchronization } from "../../lib/research/inplayCorePath";
+
+const START = "2026-10-10T09:00:00Z";
+const mkt = (cond: string, type: string, slug: string | null, o: Record<string, unknown> = {}) => ({
+  provider_event_id: "45", event_start_iso: START, condition_id: cond, clob_token_ids: JSON.stringify([`${cond}-a`, `${cond}-b`]),
+  outcomes: JSON.stringify(type === "totals" ? ["Over", "Under"] : ["Yes", "No"]), sports_market_type: type,
+  provider_market_slug: slug, sibling_market_count: 5, last_observed_at: START, provider_game_id: "123", ...o,
+}) as any;
+const tot = (cond: string, line: number, o: Record<string, unknown> = {}) => mkt(cond, "totals", `g-total-${String(line).replace(".", "pt")}`, o);
+const rawTot = (cond: string, line: unknown, volume: number | undefined, o: Record<string, unknown> = {}) =>
+  ({ conditionId: cond, sportsMarketType: "totals", line, ...(volume === undefined ? {} : { volume24hr: volume }), ...o });
+const ev = (markets: unknown[], gameId: unknown = 123) => [{ id: "45", gameId, markets }] as any;
+const base = () => ({
+  universe: [mkt("ml", "moneyline", null), mkt("sp", "spreads", null), tot("t25", 2.5), tot("t35", 3.5), tot("t15", 1.5)],
+  events: ev([{ conditionId: "ml", volume24hr: 9 }, { conditionId: "sp", volume24hr: 9 }, rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40), rawTot("t15", 1.5, 30)]),
+});
+const ids = (m: any[]) => m.map((x) => x.condition_id);
+
+test("no valid sibling -> output identical to selectPrimaryCoreMarkets", () => {
+  const { universe, events } = base();
+  const solo = [universe[0], universe[1], universe[2]];
+  const soloEvents = ev([{ conditionId: "ml", volume24hr: 9 }, { conditionId: "sp", volume24hr: 9 }, rawTot("t25", 2.5, 100)]);
+  assert.deepEqual(ids(selectCoreCaptureMarkets(solo, soloEvents, "soccer")), ids(selectPrimaryCoreMarkets(solo, soloEvents, "soccer")));
+  assert.equal(selectLinkedSoccerTotals(solo, soloEvents, "soccer", selectPrimaryCoreMarkets(solo, soloEvents, "soccer")), null);
+  assert.equal(selectCoreCaptureMarkets(universe, events, "soccer").length, selectPrimaryCoreMarkets(universe, events, "soccer").length + 1);
+});
+
+test("one extra soccer TOTALS (nearest distinct line) is added; MONEYLINE/SPREADS primaries preserved; token budget respected", () => {
+  const { universe, events } = base();
+  const primary = selectPrimaryCoreMarkets(universe, events, "soccer");
+  assert.deepEqual(ids(primary), ["ml", "sp", "t25"]);               // t25 wins on volume
+  const out = selectCoreCaptureMarkets(universe, events, "soccer");
+  assert.deepEqual(ids(out), ["ml", "sp", "t25", "t15"]);            // 1.5 and 3.5 tie on distance -> lower line, one extra only
+  assert.deepEqual(ids(out.slice(0, 3)), ids(primary));
+  const tokens = inventoryTokensOf(out);
+  assert.equal(tokens, 8);
+  assert.ok(tokens <= MAX_TRACKED_TOKENS_PER_EVENT);
+});
+import { inventoryTokens } from "../../lib/executor/reservationMarketBaseline";
+const inventoryTokensOf = (m: any[]) => inventoryTokens(m).tokens.length;
+
+test("different physical games are never mixed", () => {
+  const { universe, events } = base();
+  const other = universe.map((m: any) => m.condition_id === "t15" ? { ...m, provider_game_id: "999" } : m);
+  assert.equal(selectCoreCaptureMarkets(other, events, "soccer").some((m: any) => m.condition_id === "t15"), false);
+  assert.equal(selectCoreCaptureMarkets(other, events, "soccer").length, 4);   // t35 takes the slot instead
+  const otherRawGame = [{ id: "46", gameId: 999, markets: [rawTot("t15", 1.5, 30), rawTot("t35", 3.5, 40)] }, { id: "45", gameId: 123, markets: events[0].markets.filter((r: any) => !["t15", "t35"].includes(r.conditionId)) }] as any;
+  assert.deepEqual(ids(selectCoreCaptureMarkets(universe, otherRawGame, "soccer")), ["ml", "sp", "t25"]);
+  const otherStart = universe.map((m: any) => m.condition_id === "t35" || m.condition_id === "t15" ? { ...m, event_start_iso: "2026-10-10T10:00:00Z" } : m);
+  assert.deepEqual(ids(selectCoreCaptureMarkets(otherStart, events, "soccer")), ["ml", "sp", "t25"]);
+});
+
+test("first-half, team, corner and non-totals scopes are rejected", () => {
+  const { events } = base();
+  const prim = [mkt("t25", "totals", "g-total-2pt5")];
+  const only = (extra: any, rawExtra: any = rawTot(extra.condition_id, 3.5, 40)) =>
+    selectLinkedSoccerTotals([...prim, extra], ev([rawTot("t25", 2.5, 100), rawExtra]), "soccer", prim);
+  assert.equal(only(mkt("fh", "soccer_first_half_total", "g-total-3pt5")), null);
+  assert.equal(only(mkt("fh", "totals", "g-1h-total-3pt5")), null);
+  assert.equal(only(mkt("tm", "totals", "g-team-total-3pt5")), null);
+  assert.equal(only(mkt("co", "total_corners", "g-total-corners-3pt5")), null);
+  assert.equal(only(mkt("ml2", "moneyline", null)), null);
+  assert.equal(only(mkt("x", "totals", "g-total-3pt5"), { ...rawTot("x", 3.5, 40), sportsMarketType: "soccer_first_half_total" }), null);
+  assert.equal(only(mkt("x", "totals", "g-total-3pt5")) !== null, true);       // control: genuine full-game sibling is accepted
+  assert.ok(events);
+});
+
+test("same-condition duplicate tokens/rows are one market; not a second line", () => {
+  const prim = [tot("t25", 2.5)];
+  const evs = ev([rawTot("t25", 2.5, 100)]);
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("t25", 2.5)], evs, "soccer", prim), null);   // duplicate of the anchor
+  const dupTokens = tot("t35", 3.5, { clob_token_ids: JSON.stringify(["a", "a", "b"]), outcomes: JSON.stringify(["Over", "Over", "Under"]) });
+  const evs2 = ev([rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+  // inventoryTokens() dedups [a,a,b] to two tokens; the raw provider triple is still malformed and must be rejected.
+  assert.equal(inventoryTokensOf([dupTokens]), 2);
+  assert.equal(selectLinkedSoccerTotals([...prim, dupTokens], evs2, "soccer", prim), null);
+  assert.equal(inventoryTokensOf([dupTokens, dupTokens]), 2);
+  const validDup = selectLinkedSoccerTotals([...prim, tot("t35", 3.5), tot("t35", 3.5)], evs2, "soccer", prim);
+  assert.equal(validDup?.condition_id, "t35");                                                      // identical duplicate rows are one valid market
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("t35", 3.5), tot("t35", 3.5, { clob_token_ids: JSON.stringify(["z1", "z2"]) })], evs2, "soccer", prim), null);   // same condition, contradictory tokens
+});
+
+test("exact raw token/outcome linkage: malformed sibling or primary anchor identity is rejected, primaries preserved", () => {
+  const evs = ev([{ conditionId: "ml", volume24hr: 9 }, rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+  const ml = mkt("ml", "moneyline", null);
+  const sibling = (o: Record<string, unknown>) => tot("t35", 3.5, o);
+  const run = (anchor: any, extra: any) => selectLinkedSoccerTotals([ml, anchor, extra], evs, "soccer", [ml, anchor]);
+  assert.equal(run(tot("t25", 2.5), sibling({})) ?.condition_id, "t35");                              // control: valid two-way pair
+  assert.equal(run(tot("t25", 2.5), sibling({ clob_token_ids: ["x", "y"], outcomes: ["under", " OVER "] }))?.condition_id, "t35");   // arrays, case/order tolerant, index-aligned
+  const malformed: Array<Record<string, unknown>> = [
+    { clob_token_ids: JSON.stringify(["a", "a", "b"]), outcomes: JSON.stringify(["Over", "Over", "Under"]) },   // proven defect
+    { clob_token_ids: JSON.stringify(["a", "b", "c"]), outcomes: JSON.stringify(["Over", "Under"]) },          // 3 ids / 2 outcomes
+    { clob_token_ids: JSON.stringify(["a", "b"]), outcomes: JSON.stringify(["Over", "Under", "Push"]) },       // 2 ids / 3 outcomes
+    { clob_token_ids: JSON.stringify(["a", "a"]), outcomes: JSON.stringify(["Over", "Under"]) },               // same token twice
+    { clob_token_ids: JSON.stringify(["a", " "]), outcomes: JSON.stringify(["Over", "Under"]) },               // empty id
+    { clob_token_ids: JSON.stringify(["a", "b"]), outcomes: JSON.stringify(["Over", "Over"]) },
+    { clob_token_ids: JSON.stringify(["a", "b"]), outcomes: JSON.stringify(["Yes", "No"]) },
+    { clob_token_ids: JSON.stringify(["a", 7]), outcomes: JSON.stringify(["Over", "Under"]) },                 // non-string id
+    { clob_token_ids: "not-json", outcomes: JSON.stringify(["Over", "Under"]) },
+    { clob_token_ids: null, outcomes: null },
+  ];
+  for (const bad of malformed) {
+    assert.equal(run(tot("t25", 2.5), sibling(bad)), null, `sibling ${JSON.stringify(bad)}`);
+    assert.equal(run(tot("t25", 2.5, bad), sibling({})), null, `anchor ${JSON.stringify(bad)}`);            // malformed primary anchor -> no sibling at all
+  }
+  // Rejection never discards the existing primaries.
+  const bad = malformed[0];
+  const universe = [ml, mkt("sp", "spreads", null), tot("t25", 2.5, bad), tot("t35", 3.5)];
+  const events = ev([{ conditionId: "ml", volume24hr: 9 }, { conditionId: "sp", volume24hr: 9 }, rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+  assert.deepEqual(ids(selectCoreCaptureMarkets(universe, events, "soccer")), ids(selectPrimaryCoreMarkets(universe, events, "soccer")));
+  assert.deepEqual(ids(selectCoreCaptureMarkets(universe, events, "soccer")), ["ml", "sp", "t25"]);
+});
+
+test("contradictory duplicate representations of one condition are rejected (sibling and anchor)", () => {
+  const evs = ev([rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+  const prim = [tot("t25", 2.5)];
+  const other = (o: Record<string, unknown>) => tot("t35", 3.5, o);
+  const variants: Array<Record<string, unknown>> = [
+    { clob_token_ids: JSON.stringify(["z1", "z2"]) },                                          // different tokens
+    { clob_token_ids: JSON.stringify(["t35-b", "t35-a"]) },                                    // same tokens, swapped index alignment vs outcomes
+    { outcomes: JSON.stringify(["Under", "Over"]) },                                           // same tokens, flipped outcomes
+    { clob_token_ids: JSON.stringify(["t35-a", "t35-b", "t35-c"]), outcomes: JSON.stringify(["Over", "Under", "Under"]) },
+  ];
+  for (const v of variants) {
+    assert.equal(selectLinkedSoccerTotals([...prim, tot("t35", 3.5), other(v)], evs, "soccer", prim), null, `sibling dup ${JSON.stringify(v)}`);
+    assert.equal(selectLinkedSoccerTotals([...prim, other(v), tot("t35", 3.5)], evs, "soccer", prim), null, `sibling dup (reordered) ${JSON.stringify(v)}`);
+    const anchorEvs = ev([rawTot("t25", 2.5, 100), rawTot("t35", 3.5, 40)]);
+    const conflictingAnchor = tot("t25", 2.5, { clob_token_ids: JSON.stringify(["t25-b", "t25-a"]) });
+    assert.equal(selectLinkedSoccerTotals([...prim, conflictingAnchor, tot("t35", 3.5)], anchorEvs, "soccer", prim), null);   // anchor reported twice, contradictorily
+  }
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("t35", 3.5), tot("t35", 3.5)], evs, "soccer", prim)?.condition_id, "t35");   // identical duplicates stay valid
+});
+
+test("ambiguous or missing structured line is rejected; the slug never supplies a line", () => {
+  const prim = [tot("t25", 2.5)];
+  const run = (rawLine: unknown, slug = "g-total-3pt5") =>
+    selectLinkedSoccerTotals([...prim, mkt("x", "totals", slug)], ev([rawTot("t25", 2.5, 100), rawTot("x", rawLine, 40)]), "soccer", prim);
+  assert.equal(run(undefined), null);            // no structured line, slug says 3.5 -> still rejected
+  assert.equal(run(null), null);
+  assert.equal(run("3.5"), null);
+  assert.equal(run(3), null);                    // integer line is not a half-goal covering line
+  assert.equal(run(3.25), null);
+  assert.equal(run(3.5, "g-total-4pt5"), null);  // slug contradicts structured line
+  assert.equal(run(2.5), null);                  // same line is not a different line
+  assert.equal(run(3.5)?.condition_id, "x");
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("x", 3.5)], ev([rawTot("t25", undefined, 100), rawTot("x", 3.5, 40)]), "soccer", prim), null);   // anchor without structured line
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("x", 3.5)], ev([rawTot("t25", 2.5, 100), rawTot("x", 3.5, 40), rawTot("x", 4.5, 40)]), "soccer", prim), null);   // provider reports two lines for one condition
+  const noAnchorLine = [tot("t25", 2.5)];
+  assert.equal(selectLinkedSoccerTotals([...noAnchorLine, tot("x", 3.5)], ev([rawTot("t25", null, 100), rawTot("x", 3.5, 40)]), "soccer", noAnchorLine), null);
+});
+
+test("capacity overflow fails closed without raising the 16-token budget", () => {
+  assert.equal(MAX_TRACKED_TOKENS_PER_EVENT, 16);
+  const heavy = [0, 1, 2, 3, 4, 5, 6].map((i) => mkt(`p${i}`, "spreads", null)); // 7 markets -> 14 tokens
+  const prim = [...heavy, tot("t25", 2.5)];                                         // 16 tokens
+  const evs = ev([rawTot("t25", 2.5, 100), rawTot("x", 3.5, 40)]);
+  assert.equal(inventoryTokensOf(prim), 16);
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("x", 3.5)], evs, "soccer", prim), null);
+  const room = prim.slice(1);                                                       // 14 tokens -> exactly 16 with sibling
+  const got = selectLinkedSoccerTotals([...room, tot("x", 3.5)], evs, "soccer", room);
+  assert.equal(inventoryTokensOf([...room, got]), 16);
+  const bad = tot("x", 3.5, { outcomes: JSON.stringify(["Over", ""]) });             // incomplete Over/Under linkage
+  assert.equal(selectLinkedSoccerTotals([...room, bad], evs, "soccer", room), null);
+  const one = tot("x", 3.5, { clob_token_ids: JSON.stringify(["only"]), outcomes: JSON.stringify(["Over"]) });
+  assert.equal(selectLinkedSoccerTotals([...room, one], evs, "soccer", room), null);
+  const overUnderTwice = tot("x", 3.5, { outcomes: JSON.stringify(["Over", "Over"]) });
+  assert.equal(selectLinkedSoccerTotals([...room, overUnderTwice], evs, "soccer", room), null);
+});
+
+test("selection is deterministic across input and event ordering", () => {
+  const { universe, events } = base();
+  const expected = ids(selectCoreCaptureMarkets(universe, events, "soccer")).sort();
+  const perms = [[4, 3, 2, 1, 0], [2, 4, 0, 3, 1], [3, 0, 4, 1, 2]];
+  for (const p of perms) {
+    const u = p.map((i) => universe[i]);
+    const e = ev([...events[0].markets].reverse());
+    assert.deepEqual(ids(selectCoreCaptureMarkets(u, e, "soccer")).sort(), expected);
+  }
+});
+
+test("non-soccer and absent anchor behaviour is unchanged", () => {
+  const { universe, events } = base();
+  for (const family of ["tennis", "basketball", "hockey", "baseball"]) {
+    assert.deepEqual(ids(selectCoreCaptureMarkets(universe, events, family)), ids(selectPrimaryCoreMarkets(universe, events, family)));
+  }
+  const tied = ev([...events[0].markets.map((r: any) => r.conditionId === "t35" ? { ...r, volume24hr: 100 } : r)]);
+  const tiedUniverse = universe.filter((m: any) => m.condition_id !== "t15");
+  assert.deepEqual(ids(selectPrimaryCoreMarkets(tiedUniverse, tied, "soccer")), ["ml", "sp"]);      // 2.5 vs 3.5 tie -> no primary total
+  assert.deepEqual(ids(selectCoreCaptureMarkets(tiedUniverse, tied, "soccer")), ["ml", "sp"]);      // no anchor -> no arbitrary sibling
+});
+
+test("missing or contradictory volume/identity authority never yields an arbitrary sibling", () => {
+  const prim = [tot("t25", 2.5)];
+  const noVol = ev([rawTot("t25", 2.5, 100), rawTot("x", 3.5, undefined)]);
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("x", 3.5)], noVol, "soccer", prim), null);
+  const noCond = { ...tot("x", 3.5), condition_id: null };
+  assert.equal(selectLinkedSoccerTotals([...prim, noCond], ev([rawTot("t25", 2.5, 100)]), "soccer", prim), null);
+  const wrongGame = ev([rawTot("t25", 2.5, 100), rawTot("x", 3.5, 40)], null);
+  assert.equal(selectLinkedSoccerTotals([...prim, tot("x", 3.5)], wrongGame, "soccer", prim), null);   // no structured game id on payload
+  const twoAnchors = [tot("t25", 2.5), tot("t35", 3.5)];
+  assert.equal(selectLinkedSoccerTotals([...twoAnchors, tot("x", 4.5)], ev([rawTot("t25", 2.5, 1), rawTot("t35", 3.5, 1), rawTot("x", 4.5, 1)]), "soccer", twoAnchors), null);
+  const missingTokens = { ...tot("t25", 2.5), clob_token_ids: null };
+  assert.equal(selectLinkedSoccerTotals([missingTokens, tot("x", 3.5)], ev([rawTot("t25", 2.5, 1), rawTot("x", 3.5, 1)]), "soccer", [missingTokens]), null);
+});
+
+test("quote synchronization is never claimed without per-leg acquisition timing; caps and persistence untouched", () => {
+  assert.equal(assessLinkedQuoteSynchronization([], 10_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteSynchronization([1000], 10_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteSynchronization([1000, null], 10_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteSynchronization([1000, undefined, 1500], 10_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteSynchronization([1000, 90_000], 10_000), "UNPROVEN");
+  assert.equal(assessLinkedQuoteSynchronization([1000, 1500], 10_000), "BOUNDED");
+  assert.deepEqual([MAX_DAILY_PHYSICAL_EVENTS, MAX_TRACKED_TOKENS_PER_EVENT, MAX_PERSISTED_OBSERVATIONS_PER_EVENT, MAX_TOTAL_ROWS_PER_DAY], [100, 16, 192, 20000]);
+  assert.match(collector, /const markets = selectCoreCaptureMarkets\(universe\.markets, events, family\);/);
+  assert.match(collector, /const observedAt = new Date\(nowMs\)\.toISOString\(\);/);   // one poll-cycle instant, not a per-leg time
+  assert.doesNotMatch(collector, /synchron\w*\s*[:=]\s*["']?(BOUNDED|PROVEN)/i);
+});
