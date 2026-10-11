@@ -33,12 +33,17 @@ buildCommand = "npm ci --ignore-scripts"
 # it has no dependency on that run's sync/legacy-pipeline exit code, so it is
 # separated with `;` and always attempts to run, even when the legacy sync or
 # legacy pipeline step fails or is still catching up.
+# INPLAY_PAPER_SETTLEMENT_CYCLE_V1: after the decision cycle (both branches) the autonomous A/B/C settlement cycle derives the
+# completed UTC days itself (no --day), settles frozen BETs against the canonical provider resolver and UPSERTS bounded
+# daily report rows into DBClone (research_inplay_paper_settlement_reports). DBClone reads/writes only. It runs LAST and
+# is separated with `;`, so its failure cannot suppress sync or decisions; the decision cycle's exit code is captured in D
+# and the run still exits non-zero if either the decision cycle or the settlement cycle failed (no silent success).
 # INPLAY_PAPER_DECISIONS_V1: the research-only paper-decision cycle (DBClone reads/writes only, bounded keyset
 # cursor, scripts/research-inplay-paper-decisions.ts) runs after the sync in BOTH branches. It is separated with `;`
 # because it only reads rows already in the clone, so it has no dependency on this run's sync exit code, and its own
 # failure cannot suppress the sync (it is the last command). Source->DBClone latency is at least one cron interval, so
 # its decisions are never LIVE_PROSPECTIVE.
-startCommand = "sh -c 'if [ \"$(date -u +%H)\" = \"02\" ]; then npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only; npm run research-clone:inplay-paper-decisions; else npm run research-clone:sync -- --telemetry-only; npm run research-clone:inplay-paper-decisions; fi'"
+startCommand = "sh -c 'if [ \"$(date -u +%H)\" = \"02\" ]; then npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct && npm run research-clone:modeling-conveyor && npm run research-clone:modeling-dashboard-refresh -- --runtime-only; npm run research-clone:inplay-paper-decisions; D=$?; npm run research-clone:inplay-paper-settlement-cycle && [ \"$D\" = 0 ]; else npm run research-clone:sync -- --telemetry-only; npm run research-clone:inplay-paper-decisions; D=$?; npm run research-clone:inplay-paper-settlement-cycle && [ \"$D\" = 0 ]; fi'"
 #
 # AUTOMATED_D1_MODELING_CONVEYOR_V1: the two final steps are chained with `&&`
 # to the DIRECT model-ready step ONLY, so they run exclusively after it
