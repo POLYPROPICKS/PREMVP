@@ -199,7 +199,8 @@ test("schema: DBClone-only, additive/idempotent, PK on (utc_day, version), least
   assert.match(sql, /nppznoujvnyjargjkmnv/); assert.match(sql, /NEVER apply to production/);
   assert.match(sql, /primary key \(utc_day, report_version\)/); assert.match(sql, /create table if not exists/);
   assert.match(sql, /enable row level security/); assert.match(sql, /revoke all on public\.research_inplay_paper_settlement_reports from anon, authenticated/);
-  assert.doesNotMatch(sql, /grant[^;]*delete/i); assert.doesNotMatch(sql, /drop table|alter table public\.research_inplay_paper_decisions|truncate/i);
+  assert.doesNotMatch(sql, /grant[^;]*delete/i); assert.doesNotMatch(sql, /drop table|alter table public\.research_inplay_paper_decisions|^\s*truncate\b/im);
+  assert.match(sql, /REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER\s+ON TABLE public\.research_inplay_paper_settlement_reports\s+FROM service_role;/); // reproduces the DBClone least-privilege state
   const src = ["lib/research/inplayPaperSettlementCycle.ts", "scripts/research-inplay-paper-settlement-cycle.ts"].map((f) => readFileSync(f, "utf8")).join("\n").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
   assert.match(src, /nppznoujvnyjargjkmnv/); assert.doesNotMatch(src, /nbnldzfsxffztsfrrxqy|ireland|placeOrder|SUPABASE_URL\b|SUPABASE_SERVICE_ROLE_KEY/i);
   assert.doesNotMatch(src, /from\(DECISION_TABLE\)|research_inplay_paper_decisions"\)\.(insert|update|upsert|delete)/);

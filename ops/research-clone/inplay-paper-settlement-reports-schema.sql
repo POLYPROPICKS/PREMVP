@@ -68,3 +68,7 @@ alter table public.research_inplay_paper_settlement_reports enable row level sec
 revoke all on public.research_inplay_paper_settlement_reports from anon, authenticated;
 -- Least privilege: no DELETE; reports are insert + update (upsert) only.
 grant select, insert, update on public.research_inplay_paper_settlement_reports to service_role;
+
+REVOKE DELETE, TRUNCATE, REFERENCES, TRIGGER
+ON TABLE public.research_inplay_paper_settlement_reports
+FROM service_role;
