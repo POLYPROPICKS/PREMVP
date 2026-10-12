@@ -5,10 +5,10 @@
 | Прематч · Широкий портфель (`PORTFOLIO_BROAD_SAFE`) | 0 | 0 | 0–0–0–0 | авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 630 | UNPROVEN | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (verified settled n=0) | NO_FORWARD_CONTRACT_BETS_YET |
 | Прематч · Сбалансированный (`QUALITY_FILL_A_SAFE`) | 0 | 0 | 0–0–0–0 | авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 630 | UNPROVEN | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (verified settled n=0) | NO_FORWARD_CONTRACT_BETS_YET |
 | Прематч · Футбольный расширенный (`QUALITY_FILL_D_SAFE`) | 0 | 0 | 0–0–0–0 | авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 630 | UNPROVEN | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (verified settled n=0) | NO_FORWARD_CONTRACT_BETS_YET |
-| Прематч · Теннис 50–52¢ (`TENNIS_P50_52_SAFE`) | 0 | 0 | 0–0–0–0 | авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 341 | UNPROVEN | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (verified settled n=0) | NO_FORWARD_CONTRACT_BETS_YET |
-| Лайв · Контроль 48–52¢ (`CONTROL_PRICE_BUCKET_A`) | 51 | 51 | UNPROVEN (результат не сохраняется в Ledger) | DELAYED_PAPER: 51; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0 | исполнимый BUY VWAP полного стейка: 51/51 | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (games n=51) | DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE |
-| Лайв · Контроль 53–58¢ (`CONTROL_PRICE_BUCKET_B`) | 53 | 53 | UNPROVEN (результат не сохраняется в Ledger) | DELAYED_PAPER: 53; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0 | исполнимый BUY VWAP полного стейка: 53/53 | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (games n=53) | DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE |
-| Лайв · Контроль 35–44¢ (`CONTROL_PRICE_BUCKET_C`) | 104 | 104 | UNPROVEN (результат не сохраняется в Ledger) | DELAYED_PAPER: 104; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0 | исполнимый BUY VWAP полного стейка: 104/104 | UNPROVEN/UNPROVEN/UNPROVEN | SUFFICIENT_FOR_COMPARISON | DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE |
+| Прематч · Теннис 50–52¢ (`TENNIS_P50_52_SAFE`) | 0 | 0 | 0–0–0–0 | авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 343 | UNPROVEN | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (verified settled n=0) | NO_FORWARD_CONTRACT_BETS_YET |
+| Лайв · Контроль 48–52¢ (`CONTROL_PRICE_BUCKET_A`) | 52 | 52 | UNPROVEN (результат не сохраняется в Ledger) | DELAYED_PAPER: 52; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0 | исполнимый BUY VWAP полного стейка: 52/52 | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (games n=52) | DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE |
+| Лайв · Контроль 53–58¢ (`CONTROL_PRICE_BUCKET_B`) | 54 | 54 | UNPROVEN (результат не сохраняется в Ledger) | DELAYED_PAPER: 54; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0 | исполнимый BUY VWAP полного стейка: 54/54 | UNPROVEN/UNPROVEN/UNPROVEN | INSUFFICIENT (games n=54) | DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE |
+| Лайв · Контроль 35–44¢ (`CONTROL_PRICE_BUCKET_C`) | 107 | 107 | UNPROVEN (результат не сохраняется в Ledger) | DELAYED_PAPER: 107; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0 | исполнимый BUY VWAP полного стейка: 107/107 | UNPROVEN/UNPROVEN/UNPROVEN | SUFFICIENT_FOR_COMPARISON | DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE |
 | Alpha 1 · Недооценённые исходы (`VALUE_BACKED_TAIL_REPRICING`) | 0 | 0 | n/a | n/a (facts-only) | n/a (facts-only) | UNPROVEN/UNPROVEN/UNPROVEN | n/a | FACTS_ONLY_NO_BET |
 | Alpha 2 · Арбитраж связанных рынков (`STATEWISE_PAYOFF_ARBITRAGE`) | 0 | 0 | n/a | n/a (facts-only) | n/a (facts-only) | UNPROVEN/UNPROVEN/UNPROVEN | n/a | FACTS_ONLY_NO_BET |
 
@@ -33,11 +33,11 @@
 | PORTFOLIO_BROAD_SAFE | 630 | 0 | 0 | 0 | 0 | 0–0–0–0 | контрактных BET ещё нет |
 | QUALITY_FILL_A_SAFE | 630 | 0 | 0 | 0 | 0 | 0–0–0–0 | контрактных BET ещё нет |
 | QUALITY_FILL_D_SAFE | 630 | 0 | 0 | 0 | 0 | 0–0–0–0 | контрактных BET ещё нет |
-| TENNIS_P50_52_SAFE | 341 | 3 | 0 | 0 | 0 | 0–0–0–0 | контрактных BET ещё нет |
+| TENNIS_P50_52_SAFE | 343 | 5 | 0 | 0 | 0 | 0–0–0–0 | контрактных BET ещё нет |
 
 # Forward BET ledger — CEO report (five SAFE strategies)
 
-Generated: 2026-10-12T15:03:01.992Z (DBClone, read-only)
+Generated: 2026-10-12T16:11:37.415Z (DBClone, read-only)
 
 ## Forward corpus (FORWARD_BET_V1, DB-first, independent CLOB settlement)
 | Strategy | verified independent games | BET | WIN–LOSS–VOID–UNKNOWN | original WIN% | semantically validated WIN% | Gross | Fees | Net ROI | confidence | further games needed | verdict |
@@ -57,6 +57,6 @@ Generated: 2026-10-12T15:03:01.992Z (DBClone, read-only)
 | QUALITY_FILL_D_SAFE | 0 | 630 | 429–166–0–35 | 72.1% [68.4%, 75.6%] | UNPROVEN | UNPROVEN | UNPROVEN | UNPROVEN | n/a (reference) | n/a | HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE |
 | TENNIS_P50_52_SAFE | 0 | 338 | 157–123–0–58 | 56.1% [50.2%, 61.8%] | UNPROVEN | UNPROVEN | UNPROVEN | UNPROVEN | n/a (reference) | n/a | HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE |
 
-Legacy DB-first rows without the contract (not counted as proven): P50_52_SAFE=0, PORTFOLIO_BROAD_SAFE=0, QUALITY_FILL_A_SAFE=0, QUALITY_FILL_D_SAFE=0, TENNIS_P50_52_SAFE=3
+Legacy DB-first rows without the contract (not counted as proven): P50_52_SAFE=0, PORTFOLIO_BROAD_SAFE=0, QUALITY_FILL_A_SAFE=0, QUALITY_FILL_D_SAFE=0, TENNIS_P50_52_SAFE=5
 
 `UNPROVEN` = not established by evidence (never zero). Gross/Fees/Net ROI stay UNPROVEN until every counted BET carries an executable BUY authority.

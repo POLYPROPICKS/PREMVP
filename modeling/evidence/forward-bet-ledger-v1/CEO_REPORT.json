@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-10-12T15:03:01.992Z",
-  "contractSchemaApplied": false,
-  "ledgerRowN": 2861,
-  "decisionRowN": 663,
+  "generatedAt": "2026-10-12T16:11:37.415Z",
+  "contractSchemaApplied": true,
+  "ledgerRowN": 2863,
+  "decisionRowN": 675,
   "tenTracks": [
     {
       "canonicalId": "P50_52_SAFE",
@@ -73,7 +73,7 @@
       "independentGames": 0,
       "bet": 0,
       "wlvu": "0–0–0–0",
-      "timingProof": "авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 341",
+      "timingProof": "авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 343",
       "priceProof": "UNPROVEN",
       "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
       "confidence": "INSUFFICIENT (verified settled n=0)",
@@ -85,13 +85,13 @@
       "group": "LIVE_CONTROL",
       "mode": "LIVE_DELAYED_PAPER",
       "canEmitBet": true,
-      "independentGames": 51,
-      "bet": 51,
+      "independentGames": 52,
+      "bet": 52,
       "wlvu": "UNPROVEN (результат не сохраняется в Ledger)",
-      "timingProof": "DELAYED_PAPER: 51; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
-      "priceProof": "исполнимый BUY VWAP полного стейка: 51/51",
+      "timingProof": "DELAYED_PAPER: 52; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
+      "priceProof": "исполнимый BUY VWAP полного стейка: 52/52",
       "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
-      "confidence": "INSUFFICIENT (games n=51)",
+      "confidence": "INSUFFICIENT (games n=52)",
       "verdict": "DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE"
     },
     {
@@ -100,13 +100,13 @@
       "group": "LIVE_CONTROL",
       "mode": "LIVE_DELAYED_PAPER",
       "canEmitBet": true,
-      "independentGames": 53,
-      "bet": 53,
+      "independentGames": 54,
+      "bet": 54,
       "wlvu": "UNPROVEN (результат не сохраняется в Ledger)",
-      "timingProof": "DELAYED_PAPER: 53; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
-      "priceProof": "исполнимый BUY VWAP полного стейка: 53/53",
+      "timingProof": "DELAYED_PAPER: 54; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
+      "priceProof": "исполнимый BUY VWAP полного стейка: 54/54",
       "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
-      "confidence": "INSUFFICIENT (games n=53)",
+      "confidence": "INSUFFICIENT (games n=54)",
       "verdict": "DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE"
     },
     {
@@ -115,11 +115,11 @@
       "group": "LIVE_CONTROL",
       "mode": "LIVE_DELAYED_PAPER",
       "canEmitBet": true,
-      "independentGames": 104,
-      "bet": 104,
+      "independentGames": 107,
+      "bet": 107,
       "wlvu": "UNPROVEN (результат не сохраняется в Ledger)",
-      "timingProof": "DELAYED_PAPER: 104; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
-      "priceProof": "исполнимый BUY VWAP полного стейка: 104/104",
+      "timingProof": "DELAYED_PAPER: 107; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
+      "priceProof": "исполнимый BUY VWAP полного стейка: 107/107",
       "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
       "confidence": "SUFFICIENT_FOR_COMPARISON",
       "verdict": "DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE"
@@ -367,12 +367,12 @@
         "verdict": "HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE"
       },
       "legacyForwardWithoutContract": {
-        "bet": 3,
+        "bet": 5,
         "note": "DB-first persisted before the contract existed; timing and identity unproven"
       },
       "funnel": {
-        "recordedBet": 341,
-        "dbFirstPersisted": 3,
+        "recordedBet": 343,
+        "dbFirstPersisted": 5,
         "scheduledOnlyPreMatch": 0,
         "authoritativelyProvenPreMatchGames": 0,
         "verifiedIndependentGames": 0,
