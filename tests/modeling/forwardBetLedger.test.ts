@@ -142,7 +142,12 @@ test("a provider root id upgrades identity; text and provider-event keys never d
   const text = canonicalGame({ sportFamily: "soccer", providerEventId: "1", eventTitle: "A vs B", scheduledStartIso: "2026-10-12T19:15:00Z" });
   const root = canonicalGame({ sportFamily: "soccer", providerEventId: "1", providerRootGameId: "G-77", eventTitle: "A vs B", scheduledStartIso: "2026-10-12T19:15:00Z" });
   assert.deepEqual([text.basis, text.providerRootGameId], ["TEAM_PAIR_START_DEDUP", null]);
-  assert.deepEqual([root.basis, root.providerRootGameId, root.key], ["PROVIDER_ROOT_CONFIRMED", "G-77", text.key]);
+  assert.deepEqual([root.basis, root.providerRootGameId, root.key], ["PROVIDER_ROOT_CONFIRMED", "G-77", "soccer:root:G-77"]);
+  // Same root, skewed start / unparseable title: still one physical game. Different roots, identical pair+start: two games.
+  const skew = canonicalGame({ sportFamily: "soccer", providerEventId: "2", providerRootGameId: "G-77", eventTitle: "A vs B", scheduledStartIso: "2026-10-12T19:15:05Z" });
+  const noTitle = canonicalGame({ sportFamily: "soccer", providerEventId: "3", providerRootGameId: "G-77", eventTitle: "Spread: Stal (-4.5)" });
+  const other = canonicalGame({ sportFamily: "soccer", providerEventId: "1", providerRootGameId: "G-78", eventTitle: "A vs B", scheduledStartIso: "2026-10-12T19:15:00Z" });
+  assert.equal(skew.key, root.key); assert.equal(noTitle.key, root.key); assert.notEqual(other.key, root.key);
   assert.equal(canonicalGame({ sportFamily: "soccer", providerEventId: "1" }).basis, "PROVIDER_EVENT_ONLY");
 });
 
@@ -170,7 +175,13 @@ function fakeDb(handler: (call: Call) => { error: null | { code?: string; messag
   const db = {
     from(table: string) {
       return {
-        upsert(payload: any, options: any) { const call = { table, op: "upsert", payload, options }; calls.push(call); return Promise.resolve(handler(call)); },
+        upsert(payload: any, options: any) {
+          const call = { table, op: "upsert", payload, options }; calls.push(call);
+          const result = handler(call);
+          // ON CONFLICT DO NOTHING returns no representation for a skipped row; the mock models that with row_key "skipped".
+          const returned = result.error || Array.isArray(payload) || payload.row_key === "skipped" ? [] : [{ row_key: payload.row_key }];
+          return Object.assign(Promise.resolve(result), { select: () => Promise.resolve({ ...result, data: returned }) });
+        },
         select(columns: string) { return { limit: () => { const call = { table, op: "select", payload: columns }; calls.push(call); return Promise.resolve(handler(call)); } }; },
       };
     },
@@ -179,7 +190,7 @@ function fakeDb(handler: (call: Call) => { error: null | { code?: string; messag
 }
 
 test("contract rows are inserted one by one; a duplicate economic unit is counted, not fatal; other errors throw", async () => {
-  const rows = [{ row_key: "a", contract_version: "FORWARD_BET_V1" }, { row_key: "b", contract_version: "FORWARD_BET_V1" }, { row_key: "c" }];
+  const rows = [{ row_key: "a", contract_version: "FORWARD_BET_V1" }, { row_key: "b", contract_version: "FORWARD_BET_V1" }, { row_key: "c" }, { row_key: "skipped", contract_version: "FORWARD_BET_V1" }];
   const dup = fakeDb((call) => Array.isArray(call.payload) ? { error: null } : call.payload.row_key === "a" ? { error: { code: "23505", message: "DUPLICATE_ECONOMIC_UNIT" } } : { error: null });
   const result = await insertChoices(dup.db, rows);
   assert.deepEqual(result, { insertedContractN: 1, duplicateEconomicUnitN: 1 });

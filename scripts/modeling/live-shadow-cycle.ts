@@ -282,8 +282,8 @@ export async function insertChoices(db: SupabaseClient, rows: readonly Record<st
   let insertedContractN = 0;
   let duplicateEconomicUnitN = 0;
   for (const row of contract) {
-    const { error } = await db.from(RUNTIME_TABLE).upsert(row, { onConflict: "row_key", ignoreDuplicates: true });
-    if (!error) { insertedContractN += 1; continue; }
+    const { data, error } = await db.from(RUNTIME_TABLE).upsert(row, { onConflict: "row_key", ignoreDuplicates: true }).select("row_key");
+    if (!error) { insertedContractN += (data ?? []).length; continue; }
     if (error.code === "23505" && /DUPLICATE_ECONOMIC_UNIT|economic_unit/.test(error.message ?? "")) { duplicateEconomicUnitN += 1; continue; }
     throw new Error(`SHADOW_LEDGER_WRITE:${error.code ?? "FAILED"}`);
   }

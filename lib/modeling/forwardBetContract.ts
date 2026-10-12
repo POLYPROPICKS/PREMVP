@@ -146,10 +146,13 @@ export function canonicalGame(input: { sportFamily: string | null | undefined; p
   const pair = extractTeamPair(input.eventTitle, input.marketQuestion);
   const start = input.scheduledStartIso ? Date.parse(input.scheduledStartIso) : NaN;
   const root = (input.providerRootGameId ?? "").trim() || null;
-  // The key stays the conservative dedup key either way; only a provider-supplied root id upgrades the identity basis.
-  if (pair && Number.isFinite(start)) return { key: `${sport}:${pair[0]}|${pair[1]}@${new Date(start).toISOString()}`, basis: root ? "PROVIDER_ROOT_CONFIRMED" : "TEAM_PAIR_START_DEDUP", providerRootGameId: root };
+  // A provider-published root game id IS the physical-game identity: the key follows it, so every market shard of one game
+  // collapses to one economic unit and two root ids never merge by a shared pair/start. Without a root the key stays the
+  // conservative pair+start dedup (or the provider-event fallback), which never upgrades the identity basis.
+  if (root) return { key: `${sport}:root:${root}`, basis: "PROVIDER_ROOT_CONFIRMED", providerRootGameId: root };
+  if (pair && Number.isFinite(start)) return { key: `${sport}:${pair[0]}|${pair[1]}@${new Date(start).toISOString()}`, basis: "TEAM_PAIR_START_DEDUP", providerRootGameId: null };
   const event = (input.providerEventId ?? "").trim();
-  return { key: event ? `${sport}:pe:${event}` : null, basis: root ? "PROVIDER_ROOT_CONFIRMED" : "PROVIDER_EVENT_ONLY", providerRootGameId: root };
+  return { key: event ? `${sport}:pe:${event}` : null, basis: "PROVIDER_EVENT_ONLY", providerRootGameId: null };
 }
 
 export function economicUnitKey(gameKey: string | null): string | null {

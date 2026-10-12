@@ -199,8 +199,12 @@ async function main() {
   const ledger: LedgerLine[] = raw.map((r) => ({ contract_version: null, contract_status: null, timing_class: null, executable_buy_price: null, executable_price_authority: null, ...r })) as unknown as LedgerLine[];
   let terminals: TerminalLine[] = [];
   if (schema) {
-    const authority = await db.from("virtual_bet_settlement_authority").select("bet_row_key,outcome").eq("check_kind", "TERMINAL");
-    if (!authority.error) terminals = (authority.data ?? []) as TerminalLine[];
+    for (let from = 0; ; from += 1000) {
+      const authority = await db.from("virtual_bet_settlement_authority").select("bet_row_key,outcome").eq("check_kind", "TERMINAL").order("check_id", { ascending: true }).range(from, from + 999);
+      if (authority.error) throw new Error(`SETTLEMENT_AUTHORITY_READ:${authority.error.code ?? "FAILED"}`);
+      terminals.push(...((authority.data ?? []) as TerminalLine[]));
+      if ((authority.data ?? []).length < 1000) break;
+    }
   }
   const decisionLines: DecisionLine[] = [];
   for (let from = 0; ; from += 1000) {

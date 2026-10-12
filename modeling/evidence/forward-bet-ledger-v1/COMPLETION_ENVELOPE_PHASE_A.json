@@ -1,0 +1,132 @@
+{
+  "schema_version": "1",
+  "completion_id": "MODELING_14_PHASE_A_FORWARD_LIFECYCLE_RELEASE-20261012",
+  "task_id": "MODELING_14_PHASE_A_FORWARD_LIFECYCLE_RELEASE",
+  "task_class": "R1_BOUNDED_CODE",
+  "risk_class": "R1_BOUNDED_CODE",
+  "executor": "claude_code_cloud",
+  "environment": "PREMVP cloud container; DBClone REST read-only via pre-provisioned clone creds; no DDL/management API; throwaway local Postgres 16 for SQL proof",
+  "repository": "POLYPROPICKS/PREMVP",
+  "branch": "claude/stoic-pasteur-c0r36x",
+  "base_sha": "4be41ffdc707ea93a936b4e2ff9c185a3f1cb240",
+  "origin_main_sha": "9564114f712debbe3459cd2022bf2c0b0fdc6da5",
+  "files_changed": [
+    "lib/modeling/forwardBetContract.ts",
+    "scripts/modeling/forward-bet-ceo-report.ts",
+    "scripts/modeling/live-shadow-cycle.ts",
+    "tests/modeling/forwardBetLedger.test.ts",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.json",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.md",
+    "modeling/evidence/forward-bet-ledger-v1/COMPLETION_ENVELOPE_PHASE_A.json"
+  ],
+  "reviewer_receipt": {
+    "reviewer": "independent adversarial subagent (single pass, read-only)",
+    "head_reviewed": "4be41ffdc707ea93a936b4e2ff9c185a3f1cb240",
+    "risks_checked": [
+      "physical-match identity",
+      "first-BET immutability/timestamp",
+      "future results",
+      "scheduled vs authoritative start",
+      "market/line/side/token",
+      "double settlement",
+      "fake executable ROI",
+      "clone/production isolation"
+    ],
+    "confirmed": {
+      "D1": "MEDIUM CEO report read TERMINAL settlements without pagination (1000-row cap) -> silently understated W/L -> FIXED (paged, fails loudly on read error)",
+      "D2": "MEDIUM provider-root identity labelled PROVIDER_ROOT_CONFIRMED but key ignored the root (split/collapse) -> FIXED in TS (key = sport:root:<root>); latent, no root id is wired today",
+      "D4b": "LOW contractRowsInserted over-counted ON CONFLICT DO NOTHING skips -> FIXED (count returned rows)"
+    },
+    "residual_not_fixed_by_design": {
+      "D3": "LOW authoritative_start source is an enum label only and legacy settlement columns stay writable on contract rows for a non-TS service_role writer; no shipped writer does this (builder hardcodes authoritative start null; app code excludes contract rows from Gamma settlement). Fixing needs a SQL change, which would invalidate the Architect-verified checksum e90a75c9...; recommended as one additive migration together with Phase B, only if a second writer is introduced.",
+      "D4a": "LOW settlement-table CHECK does not cross-validate outcome vs winner token / CLOB_5050; TS classifier is consistent; only a non-TS writer could violate."
+    }
+  },
+  "commands_run": [
+    {
+      "command": "npm run test:modeling:forward-bet",
+      "exit_code": 0,
+      "purpose": "30/30 after fixes"
+    },
+    {
+      "command": "PREMVP_TEST_PSQL=<throwaway local pg16> node --test forwardBetLedgerPostgres + premvpCloneForwardBetMigration + premvpMigrationHttpsTransport",
+      "exit_code": 0,
+      "purpose": "50 pass / 0 fail / 0 skipped; 13 real-Postgres integrity tests that were SKIPPED in previous rounds now PASS"
+    },
+    {
+      "command": "node --import tsx --test liveModelingDashboardProduction forwardBetPayloadCompat",
+      "exit_code": 0,
+      "purpose": "legacy regressions 10 pass / 0 fail (2 pre-existing skips)"
+    },
+    {
+      "command": "npm run control-plane:check",
+      "exit_code": 0,
+      "purpose": "PASS"
+    },
+    {
+      "command": "npx tsc --noEmit (grep changed files)",
+      "exit_code": 0,
+      "purpose": "no errors in changed files"
+    },
+    {
+      "command": "npm run build",
+      "exit_code": 1,
+      "purpose": "FAILS identically on unmodified PR head: Missing required environment variable SUPABASE_URL at /api/entitlement/check (container env, not PR code)"
+    },
+    {
+      "command": "npm run build (placeholder non-secret env)",
+      "exit_code": 0,
+      "purpose": "compile + 33/33 static pages PASS"
+    },
+    {
+      "command": "sha256sum migration",
+      "exit_code": 0,
+      "purpose": "e90a75c9023699441f10982466f03d9bd6c2d397e6c255ab48bef04e2694a3fe UNCHANGED; handoff and embedded copy untouched"
+    },
+    {
+      "command": "npx tsx scripts/modeling/forward-bet-ceo-report.ts",
+      "exit_code": 0,
+      "purpose": "read-only DBClone aggregates; CEO table refreshed"
+    }
+  ],
+  "capability": {
+    "supabase_mcp_projects_visible": [
+      "whtvjqjynhhotonrbhbm (Polypropicks2, INACTIVE)",
+      "lkqoudjgbjiiersvmpwd (polypropicks-prod-shadow)"
+    ],
+    "dbclone_nppznoujvnyjargjkmnv_reachable_via_mcp": false,
+    "SUPABASE_ACCESS_TOKEN": "unset",
+    "registered_apply_route_runnable": false,
+    "decision": "no DB write attempted; no secret requested; deployment handoff DEPLOYMENT_HANDOFF.json is the exact artifact for the Architect"
+  },
+  "runtime_state": {
+    "migration_applied_to_dbclone": false,
+    "forward_contract_rows": 0,
+    "db_first_legacy_rows": 3,
+    "all_three_tennis": true,
+    "independent_settlement_rows": 0,
+    "verified_bets": 0,
+    "ledger_rows_tennis_p50_52": 341,
+    "live_controls_delayed_paper": {
+      "A": 51,
+      "B": 53,
+      "C": 104
+    }
+  },
+  "boundaries": {
+    "production_touched": false,
+    "ireland_touched": false,
+    "queue_reservation_scorer_touched": false,
+    "trading": false,
+    "historical_rows_modified": false,
+    "strategy_definitions_changed": false
+  },
+  "verdict": {
+    "code": "TERMINAL_PASS (release-ready)",
+    "database_deployment": "NOT_PROVEN",
+    "natural_runtime": "NOT_PROVEN",
+    "lifecycle": "UNPROVEN"
+  },
+  "first_external_blocker": "No DBClone DDL capability in any executor session (SUPABASE_ACCESS_TOKEN absent; Supabase MCP not bound to nppznoujvnyjargjkmnv)",
+  "founder_action": "START (one) — hand DEPLOYMENT_HANDOFF.json to the Architect session that holds the official Supabase connection"
+}
