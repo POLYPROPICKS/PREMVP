@@ -47,7 +47,7 @@ historical archive is **not** the fix (D5); making them unreachable for the mode
   `inplay_observations_v1`. Each is an explicit column allow-list (no `*`, no JSON column, no reservation/capture lineage
   ids, no live-policy eligibility/rejection columns, no strategy-decision table) over the **existing** raw table, joined to the one-row
   `blind_obs.model_horizon`. Prematch/T20 additionally require `observed_at < event_start_iso`.
-* **View semantics, validated on a real PostgreSQL 16 engine and designed for 17**:
+* **View semantics, validated on real scratch PostgreSQL engines (16 and 17.6; DBClone itself runs 17.6)**:
   * The views are **definer** views (no `security_invoker`). `security_invoker = true` would require the reader to hold
     `SELECT` on the base tables, which is exactly what must not exist; a view-only reader cannot work with it.
   * `security_barrier = true` is mandatory: without it a reader-supplied leaky predicate is evaluated on raw rows *before*
@@ -86,13 +86,20 @@ historical archive is **not** the fix (D5); making them unreachable for the mode
 | SQL, hash pin, project-ref/production rejection, allow-listed statement shapes | Proven by `tests/control-plane/premvpCloneBlindInputMigration.test.mjs` |
 | The adapter dry-run never calls apply | Proven against a **fake transport** only; rollback on the real Management API is established at run time by the transport's own transaction probe and schema-fingerprint check |
 | Gate 1 `npm run build` | Plain environment fails with `Missing required environment variable: SUPABASE_URL` identically on the unmodified base (container lacks the secret); it compiles with non-secret placeholder values. Recorded, not waved through |
-| View/ACL semantics (PostgreSQL 16 only; DBClone's engine version and `CREATEROLE` behaviour on it are not yet confirmed), denial of outcome tables / mixed joins / JSON / DDL / `SET ROLE service_role`, as-of horizon, leaky-predicate control, selector determinism under changed outcomes, raw rows byte-identical | Proven on a scratch PostgreSQL 16 by `tests/control-plane/blindInputPostgresSemantics.test.mjs` (opt-in via `BLIND_INPUT_PG_HOST`) |
+| View/ACL semantics (scratch PostgreSQL 16 and 17.6, the DBClone engine version; the actual DBClone `postgres` role behaviour is not yet confirmed), denial of outcome tables / mixed joins / JSON / DDL / `SET ROLE service_role`, as-of horizon, leaky-predicate control, selector determinism under changed outcomes, raw rows byte-identical | Proven on scratch PostgreSQL by `tests/control-plane/blindInputPostgresSemantics.test.mjs` (opt-in via `BLIND_INPUT_PG_HOST`) |
 | The same on **DBClone itself** (real roles, real grants, real data volume, real owner of the raw tables) | **RUNTIME_UNVERIFIED** until the reviewed apply stage and the login probes of the next mission |
 | A frozen production selector executed with the restricted credential and no `service_role` in its process | **RUNTIME_UNVERIFIED** (next mission) |
 
-Known first-apply risk: if DBClone already has `PUBLIC`-executable `SECURITY DEFINER` functions, `PUBLIC` table grants,
-or `PUBLIC` `CREATE` on a schema, the migration **aborts by design** and names the object. That is a finding to remediate
-under its own review, not a reason to weaken the assertion.
+Known first-apply risk and the one repair made for it: an independent read-only DBClone preflight (PostgreSQL 17.6) found that
+`public.record_football_execution_matrix_s1s2s3_evidence(payload jsonb)` is `SECURITY DEFINER` and executable by `PUBLIC`
+(plus explicit `anon` / `authenticated` / `service_role` grants), so the unmodified migration would have aborted with
+`BLIND_DEFINER_FUNCTION_EXPOSURE`. The migration therefore revokes `EXECUTE` **from `PUBLIC` for that one function only**.
+It first requires the three explicit grants to exist, grants nothing, and checks afterwards that `PUBLIC` is gone and the
+three grants still hold. The effective-privilege assertion is unchanged and does not whitelist anything: another
+`PUBLIC`-executable `SECURITY DEFINER` function, `PUBLIC` table grant, or `PUBLIC` `CREATE` still aborts the apply by design.
+The function is not defined or called anywhere in this repository (a DBClone-only object); consumers that rely on the
+explicit API-role grants are unaffected, while a hypothetical consumer relying on `PUBLIC` alone is not visible from the
+repository and must be checked at the reviewed apply (RUNTIME_UNVERIFIED).
 
 ## 5. Known limits (stated, not hidden)
 
@@ -110,12 +117,15 @@ under its own review, not a reason to weaken the assertion.
 5. The horizon has no history: `blind_horizon_writer` can overwrite `as_of`, `set_by`/`set_at` are insert-time defaults and
    are not refreshed by an update, and `as_of` is unbounded. Independent evaluation (D14) therefore trusts that writer
    role until an append-only horizon log is added.
-6. `outcome` in the prematch projection is the contract-token label carried by the raw table, not a result; this is the
+6. Coverage: `prematch_observations_v1` reads `reservation_market_observations` (about 39k rows at preflight), not
+   `research_evidence_page_rows` (about 592k). Historical research coverage of the latter is outside this package; a blind-role
+   pass MUST NOT be read as coverage of it.
+7. `outcome` in the prematch projection is the contract-token label carried by the raw table, not a result; this is the
    repository's reading of `reservation_market_observations.outcome` and MUST be confirmed on DBClone data at the apply
    stage. `reference_entry_price`, `execution_price_cap`, `requested_stake_usd` and the fee fields are observation-time
    execution inputs and are exposed; only live-policy eligibility/rejection output and reservation/capture lineage ids are
    excluded. The outcome-shaped-column screen is a name heuristic, not a semantic proof; the hash pin is the guard.
-7. Statement-level role defaults (`default_transaction_read_only`, `statement_timeout`, `search_path`) are conveniences the
+8. Statement-level role defaults (`default_transaction_read_only`, `statement_timeout`, `search_path`) are conveniences the
    session can override; the boundary is privileges, which the tests exercise in read-write transactions.
 
 ## 6. Not in this release (next stages, in order)

@@ -17,6 +17,7 @@ const migrationSql = fs.readFileSync(root(BLIND_MIGRATION_FILE), 'utf8').replace
 const FIXTURE_DDL = ['precontract-t20-research-schema', 'inplay-core-path-schema', 'reservation-telemetry-schema', 'model-ready-schema', 't10-sibling-offpolicy-schema', 'prospective-selection-shadow-runtime-schema']
   .map((name) => fs.readFileSync(root(`ops/research-clone/${name}.sql`), 'utf8'));
 const OWNER = 'sim_postgres';
+const EXISTING_RPC = 'public.record_football_execution_matrix_s1s2s3_evidence';
 const CLUSTER_ROLES = ['blind_model_reader', 'blind_horizon_writer', 'research_ledger_writer', 'research_settlement_authority', OWNER, 'anon', 'authenticated', 'service_role'];
 const RAW = ['research_precontract_t20_observations', 'reservation_market_observations', 'research_inplay_core_path_observations'];
 
@@ -39,6 +40,10 @@ function freshDb(name, { prepare = '' } = {}) {
   assert.ok(asOwner(name, `alter default privileges for role ${OWNER} grant all on tables to anon, authenticated, service_role;
     alter default privileges for role ${OWNER} grant execute on functions to anon, authenticated, service_role;`).ok);
   for (const ddl of FIXTURE_DDL) { const r = asOwner(name, ddl); assert.ok(r.ok, r.err); }
+  // Real DBClone state found by the read-only preflight (PostgreSQL 17.6): an existing SECURITY DEFINER RPC that is
+  // executable by PUBLIC *and* carries explicit anon/authenticated/service_role grants (default privileges + PUBLIC default).
+  const fx = asOwner(name, `create function ${EXISTING_RPC}(payload jsonb) returns jsonb language sql security definer as $$ select payload $$;`);
+  assert.ok(fx.ok, fx.err);
   if (prepare) { const r = admin(prepare, name); assert.ok(r.ok, r.err); }
   return name;
 }
@@ -95,6 +100,18 @@ describe('blind input authority on real PostgreSQL', { skip: SKIP }, () => {
     assert.match(attrs, /blind_model_reader\|f\|f\|f\|f\|f\|f\|f/);
     // deployment of the credential is a later stage: simulate it here, the migration itself created no LOGIN
     assert.ok(admin(`alter role blind_model_reader login; alter role blind_horizon_writer login;`).ok);
+  });
+
+  test('real-clone ACL repair: only PUBLIC EXECUTE of the one existing SECURITY DEFINER RPC is revoked; existing consumers keep their explicit grants', () => {
+    const state = admin(`select
+      (select prosecdef from pg_proc where oid = '${EXISTING_RPC}(jsonb)'::regprocedure),
+      (select count(*) from pg_proc p cross join lateral aclexplode(p.proacl) a where p.oid = '${EXISTING_RPC}(jsonb)'::regprocedure and a.grantee = 0),
+      has_function_privilege('anon', '${EXISTING_RPC}(jsonb)', 'EXECUTE'), has_function_privilege('authenticated', '${EXISTING_RPC}(jsonb)', 'EXECUTE'),
+      has_function_privilege('service_role', '${EXISTING_RPC}(jsonb)', 'EXECUTE'), has_function_privilege('${OWNER}', '${EXISTING_RPC}(jsonb)', 'EXECUTE'),
+      has_function_privilege('blind_model_reader', '${EXISTING_RPC}(jsonb)', 'EXECUTE'), has_function_privilege('blind_horizon_writer', '${EXISTING_RPC}(jsonb)', 'EXECUTE');`, DB).out;
+    assert.equal(state, 't|0|t|t|t|t|f|f');
+    denied(asReader(DB, `select ${EXISTING_RPC}('{}'::jsonb);`), /permission denied for function record_football_execution_matrix_s1s2s3_evidence/);
+    assert.equal(asReader(DB, `select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where p.prosecdef and n.nspname = 'public' and has_function_privilege('blind_model_reader', p.oid, 'EXECUTE');`).out, '0');
   });
 
   test('no horizon row = fail closed: the reader sees zero observations', () => {
@@ -196,11 +213,15 @@ describe('fail-closed: unsafe environments abort the whole migration, leaving no
     ['PUBLIC SELECT on an outcome table', `grant select on public.research_model_ready_rows to public;`, /BLIND_RELATION_EXPOSURE/],
     ['column-level SELECT granted to PUBLIC on an outcome column', `grant select (settlement_label) on public.research_model_ready_rows to public;`, /BLIND_RELATION_EXPOSURE/],
     ['PUBLIC CREATE on schema public', `grant create on schema public to public;`, /BLIND_SCHEMA_CREATE_EXPOSURE/],
-    ['pre-existing BYPASSRLS reader role (even one the executor administers)', `create role blind_model_reader nologin bypassrls; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE|permission denied to alter role/],
-    ['pre-existing CREATEDB reader role the executor administers', `create role blind_model_reader nologin createdb; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE/],
-    ['pre-existing reader role that already has LOGIN', `create role blind_model_reader login; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE/],
+    ['pre-existing BYPASSRLS reader role (even one the executor administers)', `create role blind_model_reader nologin noinherit bypassrls; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE|permission denied to alter role/],
+    ['pre-existing CREATEDB reader role the executor administers', `create role blind_model_reader nologin noinherit createdb; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE/],
+    ['pre-existing reader role that already has LOGIN', `create role blind_model_reader login noinherit; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE/],
     ['PUBLIC USAGE on a sequence', `create sequence public.leaky_seq; grant usage on sequence public.leaky_seq to public;`, /BLIND_SEQUENCE_EXPOSURE/],
     ['PUBLIC CREATE on the database', `grant create on database blind_sem_neg to public;`, /BLIND_DATABASE_CREATE_EXPOSURE/],
+    ['existing consumer role without an EXPLICIT grant (would be broken by the revoke)', `revoke execute on function ${EXISTING_RPC}(jsonb) from anon;`, /BLIND_EXISTING_CONSUMER_GRANT_NOT_EXPLICIT/],
+    ['the known RPC is absent (state differs from the reviewed preflight)', `drop function ${EXISTING_RPC}(jsonb);`, /does not exist/],
+    ['the known RPC is not owned by the executor, so the PUBLIC revoke cannot take effect', `drop function ${EXISTING_RPC}(jsonb); create function ${EXISTING_RPC}(payload jsonb) returns jsonb language sql security definer as $$ select payload $$; grant execute on function ${EXISTING_RPC}(jsonb) to anon, authenticated, service_role;`, /BLIND_PUBLIC_EXECUTE_NOT_REVOKED|permission denied for function|BLIND_DEFINER_FUNCTION_EXPOSURE/],
+    ['a DIFFERENT PUBLIC SECURITY DEFINER function is still rejected (guard not whitelisted)', `create function public.other_definer() returns int language sql security definer as $$ select 1 $$; grant execute on function public.other_definer() to public;`, /BLIND_DEFINER_FUNCTION_EXPOSURE:blind_model_reader:public\.other_definer/],
     ['pre-existing reader already member of service_role', `create role blind_model_reader nologin noinherit in role service_role; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_MEMBERSHIP_PRESENT/],
     ['foreign object already inside blind_obs', `create schema blind_obs authorization ${OWNER}; create table blind_obs.x(a int); alter table blind_obs.x owner to ${OWNER};`, /BLIND_SCHEMA_CONTENT_UNEXPECTED/],
   ];

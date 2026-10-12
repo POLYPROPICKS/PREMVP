@@ -98,6 +98,45 @@ grant select on blind_obs.inplay_observations_v1 to blind_model_reader;
 grant usage on schema blind_obs to blind_horizon_writer;
 grant select, insert, update on blind_obs.model_horizon to blind_horizon_writer;
 
+-- ACL correction for ONE existing DBClone object. Independent read-only preflight (PostgreSQL 17.6) found
+-- public.record_football_execution_matrix_s1s2s3_evidence(jsonb) is SECURITY DEFINER with EXECUTE granted to PUBLIC plus explicit
+-- grants to anon / authenticated / service_role; every new role inherits PUBLIC, so the assertion below would (correctly) abort.
+-- Only PUBLIC is revoked, only for this exact function. The explicit grants of the existing consumers are required to exist before
+-- the revoke and to still hold after it; nothing is granted here and the assertion below is unchanged and not whitelisted.
+do $$
+declare
+  f constant oid := 'public.record_football_execution_matrix_s1s2s3_evidence(jsonb)'::regprocedure::oid;
+  r text;
+begin
+  foreach r in array array['anon', 'authenticated', 'service_role'] loop
+    if not exists (
+      select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a join pg_roles x on x.oid = a.grantee
+      where p.oid = f and x.rolname = r and a.privilege_type = 'EXECUTE'
+    ) then
+      raise exception 'BLIND_EXISTING_CONSUMER_GRANT_NOT_EXPLICIT:%', r;
+    end if;
+  end loop;
+end;
+$$;
+
+revoke execute on function public.record_football_execution_matrix_s1s2s3_evidence(jsonb) from public;
+
+do $$
+declare
+  f constant oid := 'public.record_football_execution_matrix_s1s2s3_evidence(jsonb)'::regprocedure::oid;
+  r text;
+begin
+  if exists (select 1 from pg_proc p cross join lateral aclexplode(p.proacl) a where p.oid = f and a.grantee = 0) then
+    raise exception 'BLIND_PUBLIC_EXECUTE_NOT_REVOKED';
+  end if;
+  foreach r in array array['anon', 'authenticated', 'service_role'] loop
+    if not has_function_privilege(r, f, 'EXECUTE') then
+      raise exception 'BLIND_EXISTING_CONSUMER_GRANT_LOST:%', r;
+    end if;
+  end loop;
+end;
+$$;
+
 -- Fail-closed effective-privilege assertion. Any violation raises, and the whole migration (roles included) rolls back.
 -- These are PostgreSQL's own effective-privilege functions, so PUBLIC grants, role membership and column ACLs are included.
 do $$

@@ -79,8 +79,13 @@ test('SQL never touches raw telemetry except through the three SELECT-only proje
   const { code, statements } = lexSql(sql);
   assert.doesNotMatch(code, /\b(?:drop|delete|truncate|insert\s+into|copy|merge)\b/i);
   const referencing = statements.filter((s) => /\bpublic\.[a-z_]+/.test(s)).filter((s) => !/^revoke all on schema/.test(s));
-  assert.equal(referencing.length, 3);
-  for (const s of referencing) assert.match(s, /^create or replace view blind_obs\.[a-z0-9_]+_v1 with \(security_barrier = true\) as select /);
+  const acl = referencing.filter((st) => st.startsWith('revoke execute on function '));
+  assert.deepEqual(acl, ['revoke execute on function public.record_football_execution_matrix_s1s2s3_evidence(jsonb) from public']);
+  const views = referencing.filter((st) => !acl.includes(st));
+  assert.equal(views.length, 3);
+  for (const s of views) assert.match(s, /^create or replace view blind_obs\.[a-z0-9_]+_v1 with \(security_barrier = true\) as select /);
+  // the ACL correction is exactly one function, revoke-only, from PUBLIC only: no grant to anything but the three blind roles
+  assert.equal(statements.filter((st) => /^grant /.test(st) && !/ to (?:blind_model_reader|blind_horizon_writer)$/.test(st)).length, 0);
   assert.doesNotMatch(sql, /\balter table public\./i);
   assert.doesNotMatch(sql, /\b(?:research_model_ready_rows|research_model_ready_days|research_model_economics|research_t10_sibling_offpolicy_rows|settlement_label|frozenLabel|labelAsOf|canonical_row)\b/);
 });

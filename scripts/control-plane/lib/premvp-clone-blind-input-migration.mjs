@@ -8,7 +8,7 @@ export const BLIND_MIGRATION_FILE = 'ops/research-clone/migrations/2026101216000
 // Reviewed-delta pin. Changing one byte of the SQL requires changing this constant in a reviewed commit; a declaration
 // hash alone can never authorize a different file. This mode is NOT a general executor and shares no allow-list with
 // `clone-schema` (which cannot create roles/views/ACLs) or `clone-shadow` (which stays pinned to its own SQL).
-export const BLIND_MIGRATION_SHA256 = '538f27cdf09d253fa7e85f2c4682f6df0b0279477c255abec7e3604de154bf7c';
+export const BLIND_MIGRATION_SHA256 = 'dd8b9b4812bcf690db6ca293d358f7f5d8a6efbf862e48a547431f7793ab2978';
 
 const BLIND_VIEWS = Object.freeze({
   prematch_observations_v1: 'reservation_market_observations',
@@ -37,6 +37,7 @@ const STATEMENT_ALLOWLIST = Object.freeze([
   /^grant usage on schema blind_obs to (?:blind_model_reader|blind_horizon_writer)$/,
   new RegExp(`^grant select on blind_obs\\.(?:${VIEW_NAMES}) to blind_model_reader$`),
   /^grant select, insert, update on blind_obs\.model_horizon to blind_horizon_writer$/,
+  /^revoke execute on function public\.record_football_execution_matrix_s1s2s3_evidence\(jsonb\) from public$/,
 ]);
 
 // Defence in depth inside DO bodies (their statements are invisible to the top-level allow-list).
@@ -62,7 +63,7 @@ export function assertBlindSqlShape(sql) {
       if (lower.includes('*') || lower.includes('security_invoker')) errors.push(`BLIND_VIEW_WILDCARD_OR_INVOKER:${view[1]}`);
     }
   }
-  if (doCount !== 3) errors.push(`BLIND_SQL_DO_BLOCK_COUNT:${doCount}`);
+  if (doCount !== 5) errors.push(`BLIND_SQL_DO_BLOCK_COUNT:${doCount}`);
   if (viewPairs.length !== 3 || new Set(viewPairs).size !== 3) errors.push('BLIND_SQL_VIEW_SET_INVALID');
   if (/set_config/i.test(text)) errors.push('BLIND_SQL_GUC_FUNCTION_FORBIDDEN');
   if (!text.includes(ROLE_CREATE_CLAUSE)) errors.push('BLIND_SQL_ROLE_ATTRIBUTES_NOT_EXACT');
