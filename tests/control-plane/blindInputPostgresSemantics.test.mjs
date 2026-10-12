@@ -198,6 +198,9 @@ describe('fail-closed: unsafe environments abort the whole migration, leaving no
     ['PUBLIC CREATE on schema public', `grant create on schema public to public;`, /BLIND_SCHEMA_CREATE_EXPOSURE/],
     ['pre-existing BYPASSRLS reader role (even one the executor administers)', `create role blind_model_reader nologin bypassrls; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE|permission denied to alter role/],
     ['pre-existing CREATEDB reader role the executor administers', `create role blind_model_reader nologin createdb; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE/],
+    ['pre-existing reader role that already has LOGIN', `create role blind_model_reader login; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_ATTRIBUTES_UNSAFE/],
+    ['PUBLIC USAGE on a sequence', `create sequence public.leaky_seq; grant usage on sequence public.leaky_seq to public;`, /BLIND_SEQUENCE_EXPOSURE/],
+    ['PUBLIC CREATE on the database', `grant create on database blind_sem_neg to public;`, /BLIND_DATABASE_CREATE_EXPOSURE/],
     ['pre-existing reader already member of service_role', `create role blind_model_reader nologin noinherit in role service_role; grant blind_model_reader to ${OWNER} with admin option;`, /BLIND_ROLE_MEMBERSHIP_PRESENT/],
     ['foreign object already inside blind_obs', `create schema blind_obs authorization ${OWNER}; create table blind_obs.x(a int); alter table blind_obs.x owner to ${OWNER};`, /BLIND_SCHEMA_CONTENT_UNEXPECTED/],
   ];

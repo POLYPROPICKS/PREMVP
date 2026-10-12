@@ -8,7 +8,7 @@ export const BLIND_MIGRATION_FILE = 'ops/research-clone/migrations/2026101216000
 // Reviewed-delta pin. Changing one byte of the SQL requires changing this constant in a reviewed commit; a declaration
 // hash alone can never authorize a different file. This mode is NOT a general executor and shares no allow-list with
 // `clone-schema` (which cannot create roles/views/ACLs) or `clone-shadow` (which stays pinned to its own SQL).
-export const BLIND_MIGRATION_SHA256 = 'cfc84c54def92fc6003baa5946c45726da067a82c7a160ed29ff53a17328f2e5';
+export const BLIND_MIGRATION_SHA256 = '538f27cdf09d253fa7e85f2c4682f6df0b0279477c255abec7e3604de154bf7c';
 
 const BLIND_VIEWS = Object.freeze({
   prematch_observations_v1: 'reservation_market_observations',

@@ -45,7 +45,7 @@ historical archive is **not** the fix (D5); making them unreachable for the mode
   migration contains no secret.
 * **Projections** (schema `blind_obs`, versioned `_v1`): `prematch_observations_v1`, `t20_observations_v1`,
   `inplay_observations_v1`. Each is an explicit column allow-list (no `*`, no JSON column, no reservation/capture lineage
-  ids, no live-policy output, no strategy-decision table) over the **existing** raw table, joined to the one-row
+  ids, no live-policy eligibility/rejection columns, no strategy-decision table) over the **existing** raw table, joined to the one-row
   `blind_obs.model_horizon`. Prematch/T20 additionally require `observed_at < event_start_iso`.
 * **View semantics, validated on a real PostgreSQL 16 engine and designed for 17**:
   * The views are **definer** views (no `security_invoker`). `security_invoker = true` would require the reader to hold
@@ -62,19 +62,31 @@ historical archive is **not** the fix (D5); making them unreachable for the mode
   inherited membership and column ACLs are all counted): the four roles hold no relation, sequence, `SECURITY DEFINER`
   function, schema-`CREATE` or database-`CREATE` privilege beyond the stated allow-list; are members of no other role;
   `blind_obs` contains exactly the horizon table and the three views; the views have no JSON or outcome-shaped columns;
-  `PUBLIC`, `anon`, `authenticated` and `service_role` hold nothing in `blind_obs`. Any violation aborts the whole
-  transaction, roles included.
+  `PUBLIC`, `anon`, `authenticated` and `service_role` hold no table- or schema-level privilege in `blind_obs`; and none
+  of the four roles may already have `LOGIN`. Any violation aborts the whole transaction, roles included. Scope limits of
+  this assertion: extension-owned relations and functions are exempt; it is a point-in-time check (a later `PUBLIC`
+  grant, or a later `SECURITY DEFINER` function in `public` that receives default `PUBLIC` `EXECUTE`, reopens a route), so
+  `BLIND_INPUT_CATALOG_SQL` MUST be re-run periodically and before every model run; no schedule exists yet.
+* **The column guard is the SQL hash pin**, not the statement-shape check: the shape check bounds statement kinds, and the
+  pinned hash is what fixes the exact column lists. Any column change is a reviewed change to the SQL and the pin.
 * **Release route**: a separate exact-reviewed adapter mode (`--clone-blind-input`) with a pinned SQL hash and project
   ref. It is **not** a general SQL executor, does not extend the generic `clone-schema` allow-list (which cannot create
   roles, views or ACLs), and does not touch the hash-pinned `clone-shadow` mode. Dry-run (rolled back) is mandatory
-  before apply; apply also requires the catalog read-back (`readBlindInputCatalog`) to equal the expected counts.
+  before apply. The in-transaction assertion above is the gate that can still roll back. After commit the adapter reads
+  the catalog back (`readBlindInputCatalog`) and fails the run if any count differs; that is a confirmation, not a rollback
+  path (a mismatch after commit means stop and remediate under review).
+* **Release order**: apply `clone-shadow` (`20261012150000`) **before** this migration. This mode accepts the ledger with or
+  without the shadow version, but `clone-shadow` accepts only the exact pre-shadow baseline, so applying this first would
+  make the shadow release fail with ledger drift and out of version order.
 
 ## 4. What is proven, and what is not
 
 | Claim | Status |
 |---|---|
-| SQL, hash pin, project-ref/production rejection, allow-listed statement shapes, dry-run does not apply | Proven by `tests/control-plane/premvpCloneBlindInputMigration.test.mjs` |
-| View/ACL semantics, denial of outcome tables / mixed joins / JSON / DDL / `SET ROLE service_role`, as-of horizon, leaky-predicate control, selector determinism under changed outcomes, raw rows byte-identical | Proven on a scratch PostgreSQL 16 by `tests/control-plane/blindInputPostgresSemantics.test.mjs` (opt-in via `BLIND_INPUT_PG_HOST`) |
+| SQL, hash pin, project-ref/production rejection, allow-listed statement shapes | Proven by `tests/control-plane/premvpCloneBlindInputMigration.test.mjs` |
+| The adapter dry-run never calls apply | Proven against a **fake transport** only; rollback on the real Management API is established at run time by the transport's own transaction probe and schema-fingerprint check |
+| Gate 1 `npm run build` | Plain environment fails with `Missing required environment variable: SUPABASE_URL` identically on the unmodified base (container lacks the secret); it compiles with non-secret placeholder values. Recorded, not waved through |
+| View/ACL semantics (PostgreSQL 16 only; DBClone's engine version and `CREATEROLE` behaviour on it are not yet confirmed), denial of outcome tables / mixed joins / JSON / DDL / `SET ROLE service_role`, as-of horizon, leaky-predicate control, selector determinism under changed outcomes, raw rows byte-identical | Proven on a scratch PostgreSQL 16 by `tests/control-plane/blindInputPostgresSemantics.test.mjs` (opt-in via `BLIND_INPUT_PG_HOST`) |
 | The same on **DBClone itself** (real roles, real grants, real data volume, real owner of the raw tables) | **RUNTIME_UNVERIFIED** until the reviewed apply stage and the login probes of the next mission |
 | A frozen production selector executed with the restricted credential and no `service_role` in its process | **RUNTIME_UNVERIFIED** (next mission) |
 
@@ -85,13 +97,25 @@ under its own review, not a reason to weaken the assertion.
 ## 5. Known limits (stated, not hidden)
 
 1. The as-of clock is `observed_at`. Availability time (when the Clone received a late sync) is not modelled; T20 has no
-   `created_at`.
+   `created_at`. Several exposed columns can post-date `observed_at` for a row (`created_at`, in-play
+   `state_received_at` and `orderbook_*_at`, T20 `provider_start_acquired_at`), and the derivation of T20
+   `daily_volume_rank` / `sampling_bucket` is not shown to be as-of; a selector MUST NOT use them as decision-time inputs
+   until each is confirmed as-of.
 2. The horizon is a single row, so concurrent runs with different decision cuts must be serialised or run per decision.
-3. The reader can still see catalog metadata (table names, `pg_class.reltuples` row-count estimates). Counts are not
-   outcomes.
+3. The reader can still see catalog metadata (table names, `pg_class.reltuples` row-count estimates), and `EXPLAIN` on a
+   view plans with the base tables' statistics, which can disclose aggregate distributions beyond the horizon. None of this
+   is an outcome, but it is not zero information.
 4. In-play rows legitimately contain the score and live status **at or before** the horizon; the final tick is
    unreachable only because the horizon excludes it.
-5. Statement-level role defaults (`default_transaction_read_only`, `statement_timeout`, `search_path`) are conveniences the
+5. The horizon has no history: `blind_horizon_writer` can overwrite `as_of`, `set_by`/`set_at` are insert-time defaults and
+   are not refreshed by an update, and `as_of` is unbounded. Independent evaluation (D14) therefore trusts that writer
+   role until an append-only horizon log is added.
+6. `outcome` in the prematch projection is the contract-token label carried by the raw table, not a result; this is the
+   repository's reading of `reservation_market_observations.outcome` and MUST be confirmed on DBClone data at the apply
+   stage. `reference_entry_price`, `execution_price_cap`, `requested_stake_usd` and the fee fields are observation-time
+   execution inputs and are exposed; only live-policy eligibility/rejection output and reservation/capture lineage ids are
+   excluded. The outcome-shaped-column screen is a name heuristic, not a semantic proof; the hash pin is the guard.
+7. Statement-level role defaults (`default_transaction_read_only`, `statement_timeout`, `search_path`) are conveniences the
    session can override; the boundary is privileges, which the tests exercise in read-write transactions.
 
 ## 6. Not in this release (next stages, in order)

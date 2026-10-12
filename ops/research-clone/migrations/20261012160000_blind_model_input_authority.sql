@@ -109,7 +109,7 @@ declare
   found_list text;
 begin
   perform 1 from pg_roles
-  where rolname = any (roles) and (rolsuper or rolbypassrls or rolcreaterole or rolcreatedb or rolreplication or rolinherit);
+  where rolname = any (roles) and (rolsuper or rolbypassrls or rolcreaterole or rolcreatedb or rolreplication or rolinherit or rolcanlogin);
   if found then raise exception 'BLIND_ROLE_ATTRIBUTES_UNSAFE'; end if;
 
   foreach r in array roles loop
