@@ -372,6 +372,33 @@ export function sqlRepairLedgerVersion(from, to, name) {
 
 export const DRY_RUN_MARKER = 'PREMVP_DRYRUN_COMPLETE';
 export const CLONE_APPLY_MARKER = 'PREMVP_CLONE_APPLY_COMPLETE';
+const FORWARD_BET_CATALOG_SQL = `
+select
+  coalesce(g.oid is not null, false) as ledger_guard_present,
+  coalesce(g.prosecdef, true) as ledger_security_definer,
+  exists(select 1 from pg_trigger t where t.tgrelid = 'public.prospective_selection_shadow_runtime'::regclass
+    and t.tgfoid = g.oid and t.tgname = 'prospective_selection_shadow_guard_row_trg' and t.tgtype::int = 31 and t.tgenabled = 'O') as ledger_row_trigger_enabled,
+  exists(select 1 from pg_trigger t where t.tgrelid = 'public.prospective_selection_shadow_runtime'::regclass
+    and t.tgfoid = g.oid and t.tgname = 'prospective_selection_shadow_guard_truncate_trg' and t.tgtype::int = 34 and t.tgenabled = 'O') as ledger_truncate_trigger_enabled,
+  to_regclass('public.prospective_shadow_economic_unit_uidx') is not null as economic_unit_index_present,
+  exists(select 1 from pg_constraint where conrelid = 'public.prospective_selection_shadow_runtime'::regclass and conname = 'prospective_shadow_forward_contract_ck') as contract_check_present,
+  has_table_privilege('service_role', 'public.prospective_selection_shadow_runtime', 'DELETE') as ledger_service_delete,
+  has_table_privilege('service_role', 'public.prospective_selection_shadow_runtime', 'TRUNCATE') as ledger_service_truncate,
+  to_regclass('public.virtual_bet_settlement_authority') is not null as settlement_table_present,
+  coalesce((select c.relrowsecurity from pg_class c where c.oid = to_regclass('public.virtual_bet_settlement_authority')), false) as settlement_rls_enabled,
+  exists(select 1 from pg_trigger t where t.tgrelid = to_regclass('public.virtual_bet_settlement_authority')
+    and t.tgname = 'virtual_bet_settlement_guard_row_trg' and t.tgtype::int = 31 and t.tgenabled = 'O') as settlement_row_trigger_enabled,
+  exists(select 1 from pg_trigger t where t.tgrelid = to_regclass('public.virtual_bet_settlement_authority')
+    and t.tgname = 'virtual_bet_settlement_guard_truncate_trg' and t.tgtype::int = 34 and t.tgenabled = 'O') as settlement_truncate_trigger_enabled,
+  to_regclass('public.virtual_bet_settlement_one_terminal_uidx') is not null as one_terminal_index_present,
+  coalesce(has_table_privilege('anon', 'public.virtual_bet_settlement_authority', 'SELECT,INSERT,UPDATE,DELETE'), true) as settlement_anon_any,
+  coalesce(has_table_privilege('authenticated', 'public.virtual_bet_settlement_authority', 'SELECT,INSERT,UPDATE,DELETE'), true) as settlement_authenticated_any,
+  coalesce(has_table_privilege('service_role', 'public.virtual_bet_settlement_authority', 'UPDATE'), true) as settlement_service_update,
+  coalesce(has_table_privilege('service_role', 'public.virtual_bet_settlement_authority', 'DELETE'), true) as settlement_service_delete,
+  coalesce(has_table_privilege('service_role', 'public.virtual_bet_settlement_authority', 'TRUNCATE'), true) as settlement_service_truncate,
+  coalesce(has_table_privilege('service_role', 'public.virtual_bet_settlement_authority', 'INSERT'), false) as settlement_service_insert
+from (select to_regprocedure('public.prospective_selection_shadow_guard()') as oid) target
+left join pg_proc g on g.oid = target.oid`;
 const SHADOW_GUARD_CATALOG_SQL = `
 select
   p.oid is not null as function_present,
@@ -530,6 +557,10 @@ export function createHttpsMigrationTransport({ token, projectRef, allowlist, fe
 
     async readShadowGuardCatalog() {
       return rowsOf(await readOnly(SHADOW_GUARD_CATALOG_SQL))[0] ?? null;
+    },
+
+    async readForwardBetCatalog() {
+      return rowsOf(await readOnly(FORWARD_BET_CATALOG_SQL))[0] ?? null;
     },
   };
 }

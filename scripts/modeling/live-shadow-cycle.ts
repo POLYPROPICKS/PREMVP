@@ -6,6 +6,7 @@ import { replayDynamicHarvest, type DynamicExecutionCandidate } from "@/lib/mode
 import { buildPrincipalRecoveryStageA } from "@/lib/modeling/dynamicPrincipalRecoveryVault";
 import { stableHash } from "@/lib/modeling/scientificCapitalArchitecture";
 import { resolveSignalOutcome, type GammaMarket } from "@/lib/feed/resolveSignalOutcome";
+import { buildForwardBetColumns, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isForwardPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
 import { syncResearchEvidencePage } from "../research-clone-daily-sync";
 import {
   CAP,
@@ -35,6 +36,11 @@ type RuntimeLedgerRow = LedgerRow & {
   settlement_checked_at: string | null;
   first_persisted_at: string | null;
   unresolved_reason: string | null;
+  contract_version?: string | null;
+  contract_status?: string | null;
+  timing_class?: string | null;
+  canonical_game_key?: string | null;
+  forward?: ForwardBetColumns | null;
 };
 
 type GammaBatchResult = {
@@ -87,6 +93,18 @@ function resolveClients() {
 }
 
 const LEDGER_PROJECTION = "row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,pre_event_score,data_coverage,settlement_state,settlement_checked_at,settled_at,result,first_persisted_at,unresolved_reason";
+const FORWARD_PROJECTION = ",contract_version,contract_status,timing_class,canonical_game_key,executable_buy_price,executable_price_authority,observation_lag_seconds,lead_time_scheduled_seconds,lead_time_authoritative_seconds";
+
+/**
+ * The forward contract columns arrive by a DBClone-only migration. A cycle deployed before that migration runs in
+ * legacy mode (no contract fields, nothing fabricated) instead of failing; once the columns exist it writes the contract.
+ */
+export async function probeForwardContractSchema(db: SupabaseClient): Promise<boolean> {
+  const { error } = await db.from(RUNTIME_TABLE).select("contract_version").limit(1);
+  if (!error) return true;
+  if (error.code === "42703" || error.code === "PGRST204" || /contract_version/.test(error.message ?? "")) return false;
+  throw new Error(`SHADOW_FORWARD_SCHEMA_PROBE:${error.code ?? "FAILED"}`);
+}
 
 async function readRuntimeSnapshot(db: SupabaseClient): Promise<Record<string, any> | null> {
   const { data, error } = await db.from(RUNTIME_TABLE)
@@ -99,11 +117,11 @@ async function readRuntimeSnapshot(db: SupabaseClient): Promise<Record<string, a
   return data?.snapshot_payload && typeof data.snapshot_payload === "object" ? data.snapshot_payload as Record<string, any> : null;
 }
 
-async function readAllLedger(db: SupabaseClient): Promise<RuntimeLedgerRow[]> {
+async function readAllLedger(db: SupabaseClient, forwardSchema: boolean): Promise<RuntimeLedgerRow[]> {
   const all: RuntimeLedgerRow[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await db.from(RUNTIME_TABLE)
-      .select(LEDGER_PROJECTION)
+      .select(forwardSchema ? LEDGER_PROJECTION + FORWARD_PROJECTION : LEDGER_PROJECTION)
       .eq("row_kind", "LEDGER")
       .order("decision_timestamp", { ascending: true })
       .order("row_key", { ascending: true })
@@ -120,8 +138,9 @@ function identityFor(row: V4EvidenceRow): string {
   return `${row.condition_id}::${row.selected_token_id}::${row.observed_at}`;
 }
 
-function runtimeRow(model: (typeof MODEL_IDS)[number], date: string, candidate: any, source: V4EvidenceRow, metadata: { scoreLevel: number; dataCoverage: number }): RuntimeLedgerRow {
+export function runtimeRow(model: (typeof MODEL_IDS)[number], date: string, candidate: any, source: V4EvidenceRow, metadata: { scoreLevel: number; dataCoverage: number }, decisionGeneratedAt: string | null = null): RuntimeLedgerRow {
   return {
+    forward: decisionGeneratedAt ? buildForwardBetColumns({ model, source, candidate, decisionGeneratedAt }) : null,
     row_key: `LEDGER:${model}:${candidate.candidateIdentity}`,
     row_kind: "LEDGER",
     model,
@@ -171,8 +190,9 @@ function fromDatabaseLedger(row: any): RuntimeLedgerRow {
   };
 }
 
-function toDatabaseLedger(row: RuntimeLedgerRow): Record<string, unknown> {
+export function toDatabaseLedger(row: RuntimeLedgerRow): Record<string, unknown> {
   return {
+    ...(row.forward ?? {}),
     row_key: row.row_key,
     row_kind: "LEDGER",
     model_id: row.model_id,
@@ -206,13 +226,27 @@ export async function persistRuntimeSnapshot(db: SupabaseClient, snapshot: Recor
   if (error) throw new Error(`SHADOW_SNAPSHOT_WRITE:${error.code ?? "FAILED"}`);
 }
 
-function insertChoices(db: SupabaseClient, rows: readonly Record<string, unknown>[]): Promise<void> {
-  return (async () => {
-    for (let from = 0; from < rows.length; from += 500) {
-      const { error } = await db.from(RUNTIME_TABLE).upsert(rows.slice(from, from + 500), { onConflict: "row_key", ignoreDuplicates: true });
-      if (error) throw new Error(`SHADOW_LEDGER_WRITE:${error.code ?? "FAILED"}`);
-    }
-  })();
+/**
+ * Legacy-shaped rows keep the batched ignore-duplicates upsert. Contract rows are inserted one at a time so each carries
+ * its own database-owned first_persisted_at, and a duplicate economic unit (same model x physical game, any date) is
+ * rejected by the database and counted rather than aborting the other bets.
+ */
+export async function insertChoices(db: SupabaseClient, rows: readonly Record<string, unknown>[]): Promise<{ insertedContractN: number; duplicateEconomicUnitN: number }> {
+  const legacy = rows.filter((row) => row.contract_version === undefined);
+  const contract = rows.filter((row) => row.contract_version === FORWARD_BET_CONTRACT_VERSION);
+  for (let from = 0; from < legacy.length; from += 500) {
+    const { error } = await db.from(RUNTIME_TABLE).upsert(legacy.slice(from, from + 500), { onConflict: "row_key", ignoreDuplicates: true });
+    if (error) throw new Error(`SHADOW_LEDGER_WRITE:${error.code ?? "FAILED"}`);
+  }
+  let insertedContractN = 0;
+  let duplicateEconomicUnitN = 0;
+  for (const row of contract) {
+    const { error } = await db.from(RUNTIME_TABLE).upsert(row, { onConflict: "row_key", ignoreDuplicates: true });
+    if (!error) { insertedContractN += 1; continue; }
+    if (error.code === "23505" && /DUPLICATE_ECONOMIC_UNIT|economic_unit/.test(error.message ?? "")) { duplicateEconomicUnitN += 1; continue; }
+    throw new Error(`SHADOW_LEDGER_WRITE:${error.code ?? "FAILED"}`);
+  }
+  return { insertedContractN, duplicateEconomicUnitN };
 }
 
 async function updateSettlements(db: SupabaseClient, rows: readonly RuntimeLedgerRow[]): Promise<void> {
@@ -386,6 +420,26 @@ function selectionMetrics(rows: readonly RuntimeLedgerRow[], date: string, model
   };
 }
 
+export function forwardContractSummary(ledger: readonly RuntimeLedgerRow[], schemaApplied: boolean, duplicateEconomicUnitBlockedN: number) {
+  const contractRows = ledger.filter((row) => row.contract_version === FORWARD_BET_CONTRACT_VERSION);
+  const count = (key: string) => contractRows.reduce<Record<string, number>>((acc, row) => {
+    const value = String((row as unknown as Record<string, unknown>)[key] ?? "NULL");
+    acc[value] = (acc[value] ?? 0) + 1;
+    return acc;
+  }, {});
+  return {
+    contractVersion: FORWARD_BET_CONTRACT_VERSION,
+    schemaApplied,
+    contractRowN: contractRows.length,
+    legacyUnclassifiedRowN: ledger.length - contractRows.length,
+    timingClassCounts: count("timing_class"),
+    contractStatusCounts: count("contract_status"),
+    forwardPreMatchN: contractRows.filter((row) => row.contract_status === "COMPLETE" && isForwardPreMatch(row.timing_class)).length,
+    executableAuthorityN: contractRows.filter((row) => (row as unknown as Record<string, unknown>).executable_buy_price !== null && (row as unknown as Record<string, unknown>).executable_buy_price !== undefined).length,
+    duplicateEconomicUnitBlockedN,
+  };
+}
+
 async function main(): Promise<void> {
   const now = new Date();
   const nowIso = now.toISOString();
@@ -400,9 +454,11 @@ async function main(): Promise<void> {
   const sync = await syncResearchEvidencePage(clone, source, bootstrapSince);
   if (sync.APPEND_PENDING) throw new Error("V4_EVIDENCE_SYNC_PENDING");
 
-  let ledger = await readAllLedger(clone);
+  const forwardSchema = await probeForwardContractSchema(clone);
+  let ledger = await readAllLedger(clone, forwardSchema);
   const existing = new Set(ledger.map((row) => row.row_key));
   const additions: RuntimeLedgerRow[] = [];
+  let blockedDuplicateUnits = 0;
   const selectionSummaries: Record<string, Array<{ model: string; selected: number; football: number; tennis: number; other: number }>> = {};
   for (const date of dates) {
     const evidenceRows = await readV4DateRows(clone, date);
@@ -413,12 +469,16 @@ async function main(): Promise<void> {
       const priorCount = ledger.filter((row) => row.model_id === model && row.decision_date === date).length;
       if (priorCount > CAP) throw new Error(`PERSISTED_CAP_EXCEEDED:${date}:${model}`);
       const chosen = capped.get(model) ?? [];
-      const newCandidates = chosen.filter((candidate) => !existing.has(`LEDGER:${model}:${candidate.candidateIdentity}`)).slice(0, CAP - priorCount);
+      const notYetPersisted = chosen.filter((candidate) => !existing.has(`LEDGER:${model}:${candidate.candidateIdentity}`));
+      // Same model x same physical game on a later date/observation is the same economic unit, not a new bet.
+      const { fresh, blockedDuplicateUnitN } = excludeExistingEconomicUnits(model, notYetPersisted, [...ledger, ...additions].map((row) => ({ model_id: row.model_id, physicalEventKey: row.physicalEventKey })));
+      blockedDuplicateUnits += blockedDuplicateUnitN;
+      const newCandidates = fresh.slice(0, CAP - priorCount);
       for (const candidate of newCandidates) {
         const sourceRow = byIdentity.get(candidate.candidateIdentity);
         const feature = metadata.get(candidate.candidateIdentity);
         if (!sourceRow || !feature) throw new Error("SELECTED_SOURCE_IDENTITY_MISSING");
-        const row = runtimeRow(model, date, candidate, sourceRow, feature);
+        const row = runtimeRow(model, date, candidate, sourceRow, feature, forwardSchema ? new Date().toISOString() : null);
         additions.push(row);
         existing.add(row.row_key);
       }
@@ -429,13 +489,13 @@ async function main(): Promise<void> {
       selectionSummaries[date].push({ model, selected: currentRows.length, football, tennis, other: currentRows.length - football - tennis });
     }
   }
-  await insertChoices(clone, additions.map(toDatabaseLedger));
+  const insertion = await insertChoices(clone, additions.map(toDatabaseLedger));
   // Read the database-authored insert time and any concurrent winner of an ignored replay.
-  ledger = await readAllLedger(clone);
+  ledger = await readAllLedger(clone, forwardSchema);
 
   const settlement = await resolveSelectedUnresolved(ledger);
   await updateSettlements(clone, settlement.updatedRows);
-  if (settlement.updatedRows.length) ledger = await readAllLedger(clone);
+  if (settlement.updatedRows.length) ledger = await readAllLedger(clone, forwardSchema);
 
   const replays = replayCapital(ledger, nowIso);
   const todaySelection = MODEL_IDS.map((model) => selectionMetrics(ledger, today, model, replays.get(model)!));
@@ -480,6 +540,7 @@ async function main(): Promise<void> {
       actualStartUnproven: ledger.filter((row) => row.first_persisted_at).length,
       historicalUnproven: ledger.filter((row) => !row.first_persisted_at).length,
     },
+    forwardContract: forwardContractSummary(ledger, forwardSchema, blockedDuplicateUnits + insertion.duplicateEconomicUnitN),
     modelDays: MODEL_IDS.flatMap((model) => [...new Set(ledger.filter((row) => row.model_id === model).map((row) => row.decision_date))].sort().map((date) => {
       const rows = ledger.filter((row) => row.model_id === model && row.decision_date === date);
       return { model, date, selected: rows.length, uniqueGames: new Set(rows.map((row) => row.physicalEventKey)).size,
@@ -513,6 +574,9 @@ async function main(): Promise<void> {
     selectedToday: todaySelection.map(({ model, selectedToday, settled, unqueried, wins, losses }) => ({ model, selectedToday, settled, unqueried, wins, losses })),
     selectedLedgerRowN: ledger.length,
     settlementConditionsQueried: settlement.queriedConditionN,
+    forwardContractSchemaApplied: forwardSchema,
+    contractRowsInserted: insertion.insertedContractN,
+    duplicateEconomicUnitBlocked: blockedDuplicateUnits + insertion.duplicateEconomicUnitN,
     gammaCallsWereSelectedOnly: true,
     productionMoneyWrites: 0,
   }));

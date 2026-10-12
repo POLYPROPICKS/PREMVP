@@ -143,7 +143,7 @@ test("30-minute job command is defined without scheduling nightly modeling work"
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   assert.equal(
     pkg.scripts["modeling:shadow-cycle"],
-    "tsx scripts/modeling/live-shadow-cycle.ts && tsx scripts/modeling/refresh-modeling-dashboard.ts --runtime-only",
+    "tsx scripts/modeling/live-shadow-cycle.ts && tsx scripts/modeling/virtual-bet-settlement-authority.ts && tsx scripts/modeling/refresh-modeling-dashboard.ts --runtime-only",
   );
   assert.match(pkg.scripts["modeling:shadow-cycle"], /--runtime-only/);
 });
