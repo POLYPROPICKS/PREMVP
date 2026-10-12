@@ -579,3 +579,63 @@ test("T20-01: partial index migration is index-only, concurrent, matches the RPC
   assert.deepEqual([RESEARCH_TICK_BUDGET_MS, EVENT_UNIVERSE_CEILING, MAX_RESEARCH_EVENTS_PER_DAY, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, MAX_NEW_EVENTS_PER_TICK, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT],
     [8_000, 800, 100, 40, 20, 40, 5, 128]);
 });
+
+// ---- T20 business completeness: gameId-less MONEYLINE-only events + typed failure reasons ----------------------------
+const gameless = (eventId: string, cond: string, type = "moneyline") => ({ ...mk(eventId, "", type, `s-${cond}`, 3, cond), provider_game_id: null });
+
+test("T20-GAMELESS-A: a provider event with no gameId anywhere is captured from its own exact markets for cricket/tennis (MONEYLINE only)", async () => {
+  const own = [gameless("77", "cm1"), gameless("77", "ct1", "cricket_toss_winner"), gameless("77", "cc1", "cricket_completed_match")];
+  let discoveryCalls = 0;
+  const deps = { readExactEvent: async () => own, readGameEvents: async () => { discoveryCalls++; return []; }, fetchBooks: fakeBooks as never, fetchFeeSchedule: noFee as never };
+  const out = await captureResearchEvent(selection({ sportFamily: "cricket", providerEventId: "77", providerGameId: null }), START, deps);
+  assert.equal(out.kind, "CAPTURED");
+  if (out.kind !== "CAPTURED") return;
+  assert.deepEqual([...new Set(out.rows.map((r) => r.canonical_market_type))], ["MONEYLINE"]);
+  assert.equal(out.rows.length, 2);
+  assert.equal(out.rows.every((r) => r.provider_game_id === null && r.provider_event_id === "77"), true);
+  assert.equal(discoveryCalls, 0, "no gameId means no sibling discovery is attempted or invented");
+  assert.deepEqual(out.unsupported, { OTHER_STRUCTURED: 2 });
+  const tennis = await captureResearchEvent(selection({ sportFamily: "tennis", providerEventId: "77", providerGameId: null }), START, deps);
+  assert.equal(tennis.kind, "CAPTURED");
+});
+
+test("T20-GAMELESS-B: every other gameId-less case still fails closed with the exact unresolved-identity reason", async () => {
+  const own = [gameless("78", "sm1")];
+  const base = { readExactEvent: async () => own, readGameEvents: async () => { throw new Error("must not be called"); }, fetchBooks: fakeBooks as never };
+  // soccer (full multi-market family) with no gameId
+  const soccer = await captureResearchEvent(selection({ sportFamily: "soccer", providerEventId: "78", providerGameId: null }), START, base);
+  assert.deepEqual([soccer.kind, (soccer as { reason?: string }).reason], ["FAILED", "EVENT_GAME_IDENTITY_UNRESOLVED"]);
+  // source states a gameId the provider event does not carry: unproven, not waved through
+  const sourceGame = await captureResearchEvent(selection({ sportFamily: "cricket", providerEventId: "78", providerGameId: "G9" }), START, base);
+  assert.deepEqual([sourceGame.kind, (sourceGame as { reason?: string }).reason], ["FAILED", "EVENT_GAME_IDENTITY_UNRESOLVED"]);
+  // empty exact event
+  const empty = await captureResearchEvent(selection({ sportFamily: "cricket", providerEventId: "78", providerGameId: null }), START, { ...base, readExactEvent: async () => [] });
+  assert.deepEqual([empty.kind, (empty as { reason?: string }).reason], ["FAILED", "EVENT_GAME_IDENTITY_UNRESOLVED"]);
+});
+
+test("T20-REASON-A: a provider reschedule is a typed reason, not a generic outage; unknown errors stay generic and never leak raw text", async () => {
+  const fail = (message: string) => captureResearchEvent(selection(), START, { readExactEvent: async () => { throw new Error(message); } });
+  const mismatch = await fail("RESERVED_EVENT_START_MISMATCH");
+  assert.deepEqual([mismatch.kind, (mismatch as { reason?: string }).reason], ["FAILED", "RESERVED_EVENT_START_MISMATCH"]);
+  const ambiguous = await fail("PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS");
+  assert.equal((ambiguous as { reason?: string }).reason, "PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS");
+  const generic = await fail("socket hang up https://gamma-api.polymarket.com/events/1");
+  assert.equal((generic as { reason?: string }).reason, "EVENT_MARKET_SET_UNAVAILABLE");
+});
+
+test("T20-REASON-B: job_runs diagnostics carry bounded aggregate failed_reason_counts (reasons only, no ids/payloads)", async () => {
+  const { store } = persistingStore([sourceRow(1, 900), sourceRow(2, 800), sourceRow(3, 700)]);
+  const { jobs, writeJobRun } = withJobs();
+  const reasons = ["RESERVED_EVENT_START_MISMATCH", "RESERVED_EVENT_START_MISMATCH", "EVENT_GAME_IDENTITY_UNRESOLVED"];
+  let i = 0;
+  const res = await runPrecontractT20ResearchTick(NOW, { store, writeJobRun, ...SOFT, capture: async () => ({ kind: "FAILED", reason: reasons[i++], unsupported: {} }) });
+  assert.equal(res.diagnostics.failed_event_n, 3);
+  assert.deepEqual(res.diagnostics.failed_reason_counts, { RESERVED_EVENT_START_MISMATCH: 2, EVENT_GAME_IDENTITY_UNRESOLVED: 1 });
+  assert.deepEqual(jobs[0].diagnostics?.failed_reason_counts, res.diagnostics.failed_reason_counts);
+  assert.equal(JSON.stringify(res.diagnostics.failed_reason_counts).includes("sourceRow"), false);
+
+  const failingWrite = persistingStore([sourceRow(4, 900)]);
+  failingWrite.store.writeRows = async () => { throw new Error("db down detail"); };
+  const w = await runPrecontractT20ResearchTick(NOW, { store: failingWrite.store, ...SOFT, capture: async () => ({ kind: "CAPTURED", rows: [{ id: "x" }], unsupported: {} }) });
+  assert.deepEqual([w.diagnostics.failed_event_n, w.diagnostics.failed_reason_counts], [1, { RESEARCH_WRITE_FAILED: 1 }]);
+});
