@@ -33,6 +33,8 @@ type RuntimeLedgerRow = LedgerRow & {
   pre_event_score: number;
   data_coverage: number;
   settlement_checked_at: string | null;
+  first_persisted_at: string | null;
+  unresolved_reason: string | null;
 };
 
 type GammaBatchResult = {
@@ -84,7 +86,7 @@ function resolveClients() {
   };
 }
 
-const LEDGER_PROJECTION = "row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,pre_event_score,data_coverage,settlement_state,settlement_checked_at,settled_at,result";
+const LEDGER_PROJECTION = "row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,pre_event_score,data_coverage,settlement_state,settlement_checked_at,settled_at,result,first_persisted_at,unresolved_reason";
 
 async function readRuntimeSnapshot(db: SupabaseClient): Promise<Record<string, any> | null> {
   const { data, error } = await db.from(RUNTIME_TABLE)
@@ -137,6 +139,8 @@ function runtimeRow(model: (typeof MODEL_IDS)[number], date: string, candidate: 
     data_coverage: metadata.dataCoverage,
     settlementState: "UNQUERIED",
     settlement_checked_at: null,
+    first_persisted_at: null,
+    unresolved_reason: null,
     decision_date: date,
     settledAt: null,
     result: null,
@@ -160,6 +164,8 @@ function fromDatabaseLedger(row: any): RuntimeLedgerRow {
     data_coverage: Number(row.data_coverage ?? 0),
     settlementState: row.settlement_state,
     settlement_checked_at: row.settlement_checked_at ?? null,
+    first_persisted_at: row.first_persisted_at ?? null,
+    unresolved_reason: row.unresolved_reason ?? null,
     settledAt: row.settled_at ?? null,
     result: row.result ?? null,
   };
@@ -183,6 +189,7 @@ function toDatabaseLedger(row: RuntimeLedgerRow): Record<string, unknown> {
     data_coverage: row.data_coverage,
     settlement_state: row.settlementState,
     settlement_checked_at: row.settlement_checked_at,
+    unresolved_reason: row.unresolved_reason,
     settled_at: row.settledAt,
     result: row.result,
     updated_at: new Date().toISOString(),
@@ -199,13 +206,27 @@ export async function persistRuntimeSnapshot(db: SupabaseClient, snapshot: Recor
   if (error) throw new Error(`SHADOW_SNAPSHOT_WRITE:${error.code ?? "FAILED"}`);
 }
 
-function upsertRows(db: SupabaseClient, rows: readonly Record<string, unknown>[]): Promise<void> {
+function insertChoices(db: SupabaseClient, rows: readonly Record<string, unknown>[]): Promise<void> {
   return (async () => {
     for (let from = 0; from < rows.length; from += 500) {
-      const { error } = await db.from(RUNTIME_TABLE).upsert(rows.slice(from, from + 500), { onConflict: "row_key" });
+      const { error } = await db.from(RUNTIME_TABLE).upsert(rows.slice(from, from + 500), { onConflict: "row_key", ignoreDuplicates: true });
       if (error) throw new Error(`SHADOW_LEDGER_WRITE:${error.code ?? "FAILED"}`);
     }
   })();
+}
+
+async function updateSettlements(db: SupabaseClient, rows: readonly RuntimeLedgerRow[]): Promise<void> {
+  for (const row of rows) {
+    const { error } = await db.from(RUNTIME_TABLE).update({
+      settlement_state: row.settlementState,
+      settlement_checked_at: row.settlement_checked_at,
+      settled_at: row.settledAt,
+      result: row.result,
+      unresolved_reason: row.unresolved_reason,
+      updated_at: new Date().toISOString(),
+    }).eq("row_key", row.row_key).eq("row_kind", "LEDGER").eq("settlement_state", "UNQUERIED");
+    if (error) throw new Error(`SHADOW_SETTLEMENT_WRITE:${error.code ?? "FAILED"}`);
+  }
 }
 
 async function fetchGammaBatch(conditionIds: readonly string[]): Promise<GammaBatchResult> {
@@ -216,7 +237,6 @@ async function fetchGammaBatch(conditionIds: readonly string[]): Promise<GammaBa
     const batch = conditionIds.slice(from, from + GAMMA_BATCH_N);
     const params = new URLSearchParams();
     for (const conditionId of batch) params.append("condition_ids", conditionId);
-    params.set("closed", "true");
     params.set("limit", String(batch.length));
     try {
       const response = await fetch(`https://gamma-api.polymarket.com/markets?${params.toString()}`, {
@@ -271,12 +291,15 @@ export async function resolveSelectedUnresolved(
         market,
       });
       const result = outcome.resolverState === "resolved_candidate" ? outcome.signalResult : null;
+      const tokenPresent = outcome.selectedOutcomeIndexByToken !== null;
+      const trustedResult = tokenPresent ? result : null;
       updatedRows.push({
         ...row,
         settlement_checked_at: now,
-        settlementState: result === "won" ? "WIN" : result === "lost" ? "LOSS" : "UNQUERIED",
-        result: result === "won" ? "WIN" : result === "lost" ? "LOSS" : null,
-        settledAt: result ? now : null,
+        settlementState: trustedResult === "won" ? "WIN" : trustedResult === "lost" ? "LOSS" : "UNQUERIED",
+        result: trustedResult === "won" ? "WIN" : trustedResult === "lost" ? "LOSS" : null,
+        settledAt: trustedResult ? now : null,
+        unresolved_reason: trustedResult ? null : !market ? "PROVIDER_NOT_RESOLVED" : !tokenPresent ? "EXACT_IDENTITY_MISMATCH" : outcome.resolverState === "active_unresolved" ? "LIVE_OR_FUTURE" : "PROVIDER_NOT_RESOLVED",
       });
     }
   }
@@ -406,15 +429,13 @@ async function main(): Promise<void> {
       selectionSummaries[date].push({ model, selected: currentRows.length, football, tennis, other: currentRows.length - football - tennis });
     }
   }
-  await upsertRows(clone, additions.map(toDatabaseLedger));
-  ledger = [...ledger, ...additions];
+  await insertChoices(clone, additions.map(toDatabaseLedger));
+  // Read the database-authored insert time and any concurrent winner of an ignored replay.
+  ledger = await readAllLedger(clone);
 
   const settlement = await resolveSelectedUnresolved(ledger);
-  await upsertRows(clone, settlement.updatedRows.map(toDatabaseLedger));
-  if (settlement.updatedRows.length) {
-    const updates = new Map(settlement.updatedRows.map((row) => [row.row_key, row]));
-    ledger = ledger.map((row) => updates.get(row.row_key) ?? row);
-  }
+  await updateSettlements(clone, settlement.updatedRows);
+  if (settlement.updatedRows.length) ledger = await readAllLedger(clone);
 
   const replays = replayCapital(ledger, nowIso);
   const todaySelection = MODEL_IDS.map((model) => selectionMetrics(ledger, today, model, replays.get(model)!));
@@ -453,6 +474,21 @@ async function main(): Promise<void> {
         losses: ledger.filter((row) => row.settlementState === "LOSS").length,
       },
     },
+    firstPersistence: {
+      provenBeforeStart: ledger.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
+      late: ledger.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) >= Date.parse(row.eventStart)).length,
+      historicalUnproven: ledger.filter((row) => !row.first_persisted_at).length,
+    },
+    modelDays: MODEL_IDS.flatMap((model) => [...new Set(ledger.filter((row) => row.model_id === model).map((row) => row.decision_date))].sort().map((date) => {
+      const rows = ledger.filter((row) => row.model_id === model && row.decision_date === date);
+      return { model, date, selected: rows.length, uniqueGames: new Set(rows.map((row) => row.physicalEventKey)).size,
+        wins: rows.filter((row) => row.settlementState === "WIN").length,
+        losses: rows.filter((row) => row.settlementState === "LOSS").length,
+        unresolved: rows.filter((row) => row.settlementState === "UNQUERIED").length,
+        firstPersistProvenBeforeStart: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
+        firstPersistLate: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) >= Date.parse(row.eventStart)).length,
+        firstPersistUnproven: rows.filter((row) => !row.first_persisted_at).length };
+    })),
     models: todaySelection,
   };
   await persistRuntimeSnapshot(

@@ -80,6 +80,31 @@ test("provider unavailable leaves selected positions UNQUERIED", async () => {
   assert.equal(row.settlementState, "UNQUERIED");
 });
 
+test("closed provider market with a missing selected token cannot become LOSS", async () => {
+  const row = {
+    row_kind: "LEDGER", row_key: "missing-token", condition_id: "condition-a", selected_token_id: "different-token",
+    candidateIdentity: "a", decisionTimestamp: "2026-09-23T10:00:00.000Z", entryPrice: 0.5,
+    model_id: "P50_52_SAFE", decision_date: "2026-09-23", physicalEventKey: "event-a", eventStart: "2026-09-23T14:00:00Z",
+    sportFamily: "tennis", pre_event_score: 70, data_coverage: 80, settlementState: "UNQUERIED", settlement_checked_at: null,
+  } as any;
+  const result = await resolveSelectedUnresolved([row], async () => ({
+    markets: new Map([["condition-a", { conditionId: "condition-a", closed: true,
+      outcomes: ["A", "B"], outcomePrices: ["1", "0"], clobTokenIds: ["token-a", "token-b"] }]]),
+    respondedConditionIds: new Set(["condition-a"]), complete: true,
+  }));
+  assert.equal(result.updatedRows[0].settlementState, "UNQUERIED");
+  assert.equal(result.updatedRows[0].result, null);
+  assert.equal(result.updatedRows[0].unresolved_reason, "EXACT_IDENTITY_MISMATCH");
+});
+
+test("clone schema records DB insertion time without backfilling historical rows", () => {
+  const schema = readFileSync(join(root, "ops/research-clone/prospective-selection-shadow-runtime-schema.sql"), "utf8");
+  assert.match(schema, /add column if not exists first_persisted_at timestamptz\s*,/i);
+  assert.match(schema, /new\.first_persisted_at := clock_timestamp\(\)/i);
+  assert.match(schema, /raise exception 'IMMUTABLE_SHADOW_CHOICE'/i);
+  assert.doesNotMatch(schema, /first_persisted_at timestamptz\s+default/i);
+});
+
 test("runtime snapshot persistence writes one sanitized current row", async () => {
   const calls: any[] = [];
   const client = { from(table: string) { return { async upsert(row: unknown, options: unknown) { calls.push({ table, row, options }); return { error: null }; } }; } };
