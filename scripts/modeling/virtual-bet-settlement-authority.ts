@@ -93,6 +93,23 @@ async function readHistory(db: SupabaseClient, rowKeys: readonly string[]): Prom
   return history;
 }
 
+/**
+ * Budget order: conditions with an unresolved bet first, then least recently checked first, so a backlog of pending or
+ * never-closing conditions cannot starve later models (row_key order) and already-terminal rechecks never outrank them.
+ */
+export function prioritizeConditions(byCondition: Map<string, Array<{ row_key: string }>>, history: Map<string, Array<Pick<StoredSettlementCheck, "check_kind" | "checked_at">>>): string[] {
+  const rank = (bets: Array<{ row_key: string }>) => {
+    const rows = bets.map((bet) => history.get(bet.row_key) ?? []);
+    const unresolved = rows.some((list) => !list.some((row) => row.check_kind === "TERMINAL"));
+    const lastChecked = Math.min(...rows.map((list) => (list[0] ? Date.parse(list[0].checked_at) : 0)));
+    return { unresolved, lastChecked };
+  };
+  return [...byCondition.entries()]
+    .map(([condition, bets]) => ({ condition, ...rank(bets) }))
+    .sort((a, b) => Number(b.unresolved) - Number(a.unresolved) || a.lastChecked - b.lastChecked || a.condition.localeCompare(b.condition))
+    .map((entry) => entry.condition);
+}
+
 export type SettlementRunSummary = {
   schemaApplied: boolean;
   forwardBetN: number;
@@ -129,7 +146,7 @@ export async function runSettlementAuthority(db: SupabaseClient, now = new Date(
     list.push(bet);
     byCondition.set(bet.condition_id.toLowerCase(), list);
   }
-  const conditions = [...byCondition.keys()].slice(0, MAX_CONDITIONS_PER_RUN);
+  const conditions = prioritizeConditions(byCondition, history).slice(0, MAX_CONDITIONS_PER_RUN);
   for (const conditionId of conditions) {
     const market = await fetchMarket(conditionId);
     summary.conditionsQueried += 1;

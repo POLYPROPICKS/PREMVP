@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { classifyClobSettlement, reconcileSettlement, type StoredSettlementCheck } from "../../lib/modeling/virtualBetSettlement";
-import { runSettlementAuthority } from "../../scripts/modeling/virtual-bet-settlement-authority";
+import { prioritizeConditions, runSettlementAuthority } from "../../scripts/modeling/virtual-bet-settlement-authority";
 
 const bet = { conditionId: "0xCOND", selectedTokenId: "tok-a" };
 const market = (over: Record<string, unknown> = {}, winnerId: string | null = "tok-a") => ({
@@ -115,4 +115,19 @@ test("settlement runner: pending -> terminal -> repeat is idempotent, one termin
   assert.equal(checks.find((c) => c.check_kind === "TERMINAL").outcome, "WIN");
   const missing = await runSettlementAuthority({ from: () => ({ select: () => ({ limit: () => Promise.resolve({ error: { code: "PGRST205" } }) }) }) } as any, now, fetchMarket as any, fetchAux);
   assert.equal(missing.schemaApplied, false);
+});
+
+test("settlement budget serves unresolved and least-recently-checked conditions first, so later models are not starved", () => {
+  const byCondition = new Map([
+    ["0xdone", [{ row_key: "A:done" }]],
+    ["0xstale", [{ row_key: "B:stale" }]],
+    ["0xfresh", [{ row_key: "C:fresh" }]],
+    ["0xnever", [{ row_key: "Z:never" }]],
+  ]);
+  const history = new Map([
+    ["A:done", [{ check_kind: "TERMINAL" as const, checked_at: "2026-10-12T01:00:00Z" }]],
+    ["B:stale", [{ check_kind: "PENDING" as const, checked_at: "2026-10-10T00:00:00Z" }]],
+    ["C:fresh", [{ check_kind: "PENDING" as const, checked_at: "2026-10-12T00:00:00Z" }]],
+  ]);
+  assert.deepEqual(prioritizeConditions(byCondition, history), ["0xnever", "0xstale", "0xfresh", "0xdone"]);
 });
