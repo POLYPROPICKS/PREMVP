@@ -52,6 +52,44 @@ type GammaBatchResult = {
   complete: boolean;
 };
 
+const AUTHORITY_TABLE = "virtual_bet_settlement_authority";
+type IndependentOutcome = "WIN" | "LOSS" | "VOID";
+
+/**
+ * A row carrying any contract version belongs to the forward-BET contract. Its only terminal authority is the
+ * independent CLOB settlement journal; the legacy Gamma resolver, the legacy W/L tallies and the legacy capital replay
+ * must never see it (fail closed for any non-null version, not only the current one).
+ */
+export function isForwardContractRow(row: { contract_version?: string | null }): boolean {
+  return typeof row.contract_version === "string" && row.contract_version.length > 0;
+}
+
+/** Read-only view of the append-only authority journal. Absent table (migration not applied) means no terminals. */
+export async function readIndependentTerminals(db: SupabaseClient): Promise<Map<string, IndependentOutcome>> {
+  const terminals = new Map<string, IndependentOutcome>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from(AUTHORITY_TABLE).select("bet_row_key,outcome").eq("check_kind", "TERMINAL")
+      .order("check_id", { ascending: true }).range(from, from + 999);
+    if (error) {
+      if (error.code === "42P01" || error.code === "PGRST205" || error.code === "PGRST204") return new Map();
+      throw new Error(`SETTLEMENT_AUTHORITY_READ:${error.code ?? "FAILED"}`);
+    }
+    for (const row of (data ?? []) as Array<{ bet_row_key: string; outcome: string }>) {
+      if (row.outcome === "WIN" || row.outcome === "LOSS" || row.outcome === "VOID") terminals.set(row.bet_row_key, row.outcome);
+    }
+    if ((data ?? []).length < 1000) break;
+  }
+  return terminals;
+}
+
+/** Contract-row result counts taken only from the independent journal; everything without a terminal row is UNKNOWN. */
+export function independentSettlementCounts(rows: readonly RuntimeLedgerRow[], terminals: ReadonlyMap<string, IndependentOutcome>) {
+  const contract = rows.filter(isForwardContractRow);
+  const count = (outcome: IndependentOutcome) => contract.filter((row) => terminals.get(row.row_key) === outcome).length;
+  const win = count("WIN"), loss = count("LOSS"), voided = count("VOID");
+  return { bet: contract.length, win, loss, void: voided, unknown: contract.length - win - loss - voided };
+}
+
 export function deriveRequiredSelectionDates(today: string, lastProcessedDate: string | null): string[] {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(today)) throw new Error("INVALID_MINSK_DATE");
   if (lastProcessedDate && lastProcessedDate > today) throw new Error("MINSK_DATE_REGRESSION");
@@ -252,8 +290,10 @@ export async function insertChoices(db: SupabaseClient, rows: readonly Record<st
   return { insertedContractN, duplicateEconomicUnitN };
 }
 
-async function updateSettlements(db: SupabaseClient, rows: readonly RuntimeLedgerRow[]): Promise<void> {
+export async function updateSettlements(db: SupabaseClient, rows: readonly RuntimeLedgerRow[]): Promise<void> {
   for (const row of rows) {
+    // Defence in depth: the legacy writer can never set a terminal result on a forward-contract row.
+    if (isForwardContractRow(row)) continue;
     const { error } = await db.from(RUNTIME_TABLE).update({
       settlement_state: row.settlementState,
       settlement_checked_at: row.settlement_checked_at,
@@ -301,7 +341,8 @@ export async function resolveSelectedUnresolved(
   fetchMarkets: (conditionIds: readonly string[]) => Promise<GammaBatchResult> = fetchGammaBatch,
   now = new Date().toISOString(),
 ): Promise<{ updatedRows: RuntimeLedgerRow[]; complete: boolean; queriedConditionN: number }> {
-  const open = ledger.filter((row) => row.row_kind === "LEDGER" && row.settlementState === "UNQUERIED" && typeof row.condition_id === "string" && row.condition_id.length > 0);
+  // Forward-contract rows are settled only by the independent CLOB journal; Gamma is legacy-corpus authority.
+  const open = ledger.filter((row) => row.row_kind === "LEDGER" && !isForwardContractRow(row) && row.settlementState === "UNQUERIED" && typeof row.condition_id === "string" && row.condition_id.length > 0);
   const byCondition = new Map<string, RuntimeLedgerRow[]>();
   for (const row of open) {
     const key = row.condition_id!.toLowerCase();
@@ -368,12 +409,13 @@ function usd(units: number): number {
   return Math.round((units * 2 + Number.EPSILON) * 100) / 100;
 }
 
-function replayCapital(rows: readonly RuntimeLedgerRow[], now: string) {
+export function replayCapital(rows: readonly RuntimeLedgerRow[], now: string) {
   const protectedPolicy = buildPrincipalRecoveryStageA().find((policy) => policy.id === "PRV2_T25_P50_R1_S0.05_C0.1");
   if (!protectedPolicy) throw new Error("PRV2_POLICY_MISSING");
   const fixedPolicy = { family: "NO_VAULT" as const, id: "DYNAMIC_NO_VAULT" as const };
   return new Map(MODEL_IDS.map((model) => {
-    const candidates = rows.filter((row) => row.model_id === model).map(capitalCandidate);
+    // Contract rows carry a reference price, not an executable fill or an independently settled result.
+    const candidates = rows.filter((row) => row.model_id === model && !isForwardContractRow(row)).map(capitalCandidate);
     const fixed = replayDynamicHarvest(candidates, fixedPolicy, {
       finalizationMode: "KEEP_OPEN_AT_CUTOFF", cutoffAtIso: now, stakeMode: "FIXED_1U",
     });
@@ -384,16 +426,18 @@ function replayCapital(rows: readonly RuntimeLedgerRow[], now: string) {
   }));
 }
 
-function selectionMetrics(rows: readonly RuntimeLedgerRow[], date: string, model: (typeof MODEL_IDS)[number], replays: ReturnType<typeof replayCapital> extends Map<any, infer V> ? V : never) {
+export function selectionMetrics(rows: readonly RuntimeLedgerRow[], date: string, model: (typeof MODEL_IDS)[number], replays: ReturnType<typeof replayCapital> extends Map<any, infer V> ? V : never, terminals: ReadonlyMap<string, IndependentOutcome> = new Map()) {
   const current = rows.filter((row) => row.model_id === model && row.decision_date === date);
+  // Selection counts include every BET; legacy settlement and capital figures cover the legacy corpus only.
+  const legacy = current.filter((row) => !isForwardContractRow(row));
   const fixedLedger = replays.fixed.ledger;
   const protectedLedger = replays.protected.ledger;
   const rowByIdentity = (ledger: typeof fixedLedger) => new Map(ledger.map((entry) => [entry.observationId, entry]));
   const fixedById = rowByIdentity(fixedLedger);
   const protectedById = rowByIdentity(protectedLedger);
   const n = (sport: string) => current.filter((row) => row.sportFamily.toLowerCase() === sport).length;
-  const fixedSkips = current.filter((row) => (fixedById.get(row.candidateIdentity)?.stake ?? 0) <= 0).length;
-  const protectedSkips = current.filter((row) => (protectedById.get(row.candidateIdentity)?.stake ?? 0) <= 0).length;
+  const fixedSkips = legacy.filter((row) => (fixedById.get(row.candidateIdentity)?.stake ?? 0) <= 0).length;
+  const protectedSkips = legacy.filter((row) => (protectedById.get(row.candidateIdentity)?.stake ?? 0) <= 0).length;
   return {
     model,
     date,
@@ -401,10 +445,11 @@ function selectionMetrics(rows: readonly RuntimeLedgerRow[], date: string, model
     football: current.filter((row) => ["soccer", "football"].includes(row.sportFamily.toLowerCase())).length,
     tennis: n("tennis"),
     other: current.length - current.filter((row) => ["soccer", "football", "tennis"].includes(row.sportFamily.toLowerCase())).length,
-    settled: current.filter((row) => row.settlementState === "WIN" || row.settlementState === "LOSS").length,
-    unqueried: current.filter((row) => row.settlementState === "UNQUERIED").length,
-    wins: current.filter((row) => row.settlementState === "WIN").length,
-    losses: current.filter((row) => row.settlementState === "LOSS").length,
+    settled: legacy.filter((row) => row.settlementState === "WIN" || row.settlementState === "LOSS").length,
+    unqueried: legacy.filter((row) => row.settlementState === "UNQUERIED").length,
+    wins: legacy.filter((row) => row.settlementState === "WIN").length,
+    losses: legacy.filter((row) => row.settlementState === "LOSS").length,
+    forwardBet: { ...independentSettlementCounts(current, terminals), economics: "UNPROVEN" as const },
     fixed: {
       freeUsd: usd(replays.fixed.endingFreeActive),
       lockedUsd: usd(replays.fixed.endingOpenPrincipal),
@@ -423,7 +468,7 @@ function selectionMetrics(rows: readonly RuntimeLedgerRow[], date: string, model
   };
 }
 
-export function forwardContractSummary(ledger: readonly RuntimeLedgerRow[], schemaApplied: boolean, duplicateEconomicUnitBlockedN: number) {
+export function forwardContractSummary(ledger: readonly RuntimeLedgerRow[], schemaApplied: boolean, duplicateEconomicUnitBlockedN: number, terminals: ReadonlyMap<string, IndependentOutcome> = new Map()) {
   const contractRows = ledger.filter((row) => row.contract_version === FORWARD_BET_CONTRACT_VERSION);
   const count = (key: string) => contractRows.reduce<Record<string, number>>((acc, row) => {
     const value = String((row as unknown as Record<string, unknown>)[key] ?? "NULL");
@@ -448,6 +493,10 @@ export function forwardContractSummary(ledger: readonly RuntimeLedgerRow[], sche
     gameIdentityBasisCounts: count("game_identity_basis"),
     executableAuthorityN: contractRows.filter((row) => (row as unknown as Record<string, unknown>).executable_buy_price !== null && (row as unknown as Record<string, unknown>).executable_buy_price !== undefined).length,
     duplicateEconomicUnitBlockedN,
+    // Terminal results come only from the independent CLOB journal; the ledger's legacy settlement columns are not read.
+    independentSettlement: { source: "virtual_bet_settlement_authority", ...independentSettlementCounts(contractRows, terminals) },
+    // The ledger price is a reference; without an executable BUY price and an independent terminal there is no Net ROI.
+    economics: { netRoi: "UNPROVEN", priceBasis: "REFERENCE_ONLY" },
   };
 }
 
@@ -512,8 +561,10 @@ async function main(): Promise<void> {
   await updateSettlements(clone, settlement.updatedRows);
   if (settlement.updatedRows.length) ledger = await readAllLedger(clone, forwardSchema);
 
+  const terminals = forwardSchema ? await readIndependentTerminals(clone) : new Map<string, IndependentOutcome>();
+  const legacyLedger = ledger.filter((row) => !isForwardContractRow(row));
   const replays = replayCapital(ledger, nowIso);
-  const todaySelection = MODEL_IDS.map((model) => selectionMetrics(ledger, today, model, replays.get(model)!));
+  const todaySelection = MODEL_IDS.map((model) => selectionMetrics(ledger, today, model, replays.get(model)!, terminals));
   const byDate = Object.fromEntries([...new Set(ledger.map((row) => row.decision_date))].sort().map((date) => [date, stableHash(
     ledger.filter((row) => row.decision_date === date).map((row) => ({
       row_key: row.row_key,
@@ -544,10 +595,11 @@ async function main(): Promise<void> {
       queriedConditionN: settlement.queriedConditionN,
       providerBatchComplete: settlement.complete,
       stateCounts: {
-        unqueried: ledger.filter((row) => row.settlementState === "UNQUERIED").length,
-        wins: ledger.filter((row) => row.settlementState === "WIN").length,
-        losses: ledger.filter((row) => row.settlementState === "LOSS").length,
+        unqueried: legacyLedger.filter((row) => row.settlementState === "UNQUERIED").length,
+        wins: legacyLedger.filter((row) => row.settlementState === "WIN").length,
+        losses: legacyLedger.filter((row) => row.settlementState === "LOSS").length,
       },
+      stateCountsScope: "LEGACY_GAMMA_CORPUS_ONLY",
     },
     firstPersistence: {
       beforeScheduledStart: ledger.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
@@ -555,13 +607,14 @@ async function main(): Promise<void> {
       actualStartUnproven: ledger.filter((row) => row.first_persisted_at).length,
       historicalUnproven: ledger.filter((row) => !row.first_persisted_at).length,
     },
-    forwardContract: forwardContractSummary(ledger, forwardSchema, blockedDuplicateUnits + insertion.duplicateEconomicUnitN),
+    forwardContract: forwardContractSummary(ledger, forwardSchema, blockedDuplicateUnits + insertion.duplicateEconomicUnitN, terminals),
     modelDays: MODEL_IDS.flatMap((model) => [...new Set(ledger.filter((row) => row.model_id === model).map((row) => row.decision_date))].sort().map((date) => {
       const rows = ledger.filter((row) => row.model_id === model && row.decision_date === date);
       return { model, date, selected: rows.length, uniqueGames: new Set(rows.map((row) => row.physicalEventKey)).size,
-        wins: rows.filter((row) => row.settlementState === "WIN").length,
-        losses: rows.filter((row) => row.settlementState === "LOSS").length,
-        unresolved: rows.filter((row) => row.settlementState === "UNQUERIED").length,
+        wins: rows.filter((row) => !isForwardContractRow(row) && row.settlementState === "WIN").length,
+        losses: rows.filter((row) => !isForwardContractRow(row) && row.settlementState === "LOSS").length,
+        unresolved: rows.filter((row) => !isForwardContractRow(row) && row.settlementState === "UNQUERIED").length,
+        forwardBet: independentSettlementCounts(rows, terminals),
         firstPersistBeforeScheduledStart: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
         firstPersistLateRelativeToScheduledStart: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) >= Date.parse(row.eventStart)).length,
         firstPersistActualStartUnproven: rows.filter((row) => row.first_persisted_at).length,

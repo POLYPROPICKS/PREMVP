@@ -23,7 +23,7 @@
     "modeling:shadow-cycle": "tsx scripts/modeling/live-shadow-cycle.ts && tsx scripts/modeling/virtual-bet-settlement-authority.ts && tsx scripts/modeling/refresh-modeling-dashboard.ts --runtime-only",
     "modeling:virtual-bet-settlement": "tsx scripts/modeling/virtual-bet-settlement-authority.ts",
     "modeling:forward-bet-ceo-report": "tsx scripts/modeling/forward-bet-ceo-report.ts",
-    "test:modeling:forward-bet": "node --import tsx --test tests/modeling/forwardBetLedger.test.ts tests/modeling/virtualBetSettlement.test.ts tests/modeling/forwardBetCeoReport.test.ts tests/modeling/strategyTrackLabels.test.ts tests/modeling/forwardBetSqlParity.test.ts",
+    "test:modeling:forward-bet": "node --import tsx --test tests/modeling/forwardBetLedger.test.ts tests/modeling/virtualBetSettlement.test.ts tests/modeling/forwardBetCeoReport.test.ts tests/modeling/strategyTrackLabels.test.ts tests/modeling/forwardBetSqlParity.test.ts tests/modeling/forwardBetSettlementAuthority.test.ts",
     "test:research-clone-forward-bet-pg": "node --import tsx --test tests/research-clone/forwardBetLedgerPostgres.test.mjs tests/research-clone/forwardBetPayloadCompat.test.ts",
     "modeling:shadow-regression": "tsx scripts/modeling/prospective-selection-shadow.ts --regression",
     "modeling-dashboard:refresh": "npm run research-clone:modeling-dashboard-refresh && npm run research-live:modeling-dashboard-refresh",
