@@ -236,13 +236,12 @@ test("3/16/17/18: capture writes scalar research rows only; corners derivatives 
 function fakeStore(rows: ResearchEventCandidateRow[], captured: Set<string> = new Set()) {
   const written: Record<string, unknown>[][] = [];
   const tables: string[] = [];
-  const calls = { load: 0, purge: 0 };
+  const calls = { load: 0 };
   const store: ResearchStore = {
     async loadEventCandidates() { calls.load++; tables.push("generated_signal_research_snapshots"); return rows; },
     async capturedAmong(ids) { return new Set(ids.filter((i) => captured.has(i))); },
     async capturedEventCount() { return captured.size; },
     async writeRows(r) { tables.push("research_precontract_t20_observations"); written.push(r); },
-    async purgeExpired(_c, limit) { calls.purge++; assert.ok(limit <= 1000); return 0; },
   };
   return { store, written, tables, calls };
 }
@@ -392,7 +391,7 @@ const okOutcome = (): EventCaptureOutcome => ({ kind: "CAPTURED", rows: [{ id: "
 
 test("TIMEOUT_NO_LATE_WRITE: a slow in-flight capture that settles after the deadline is discarded (writeRows stays 0)", async () => {
   const rows = [sourceRow(1, 900), sourceRow(2, 800)];
-  const { store, written, calls } = fakeStore(rows);
+  const { store, written } = fakeStore(rows);
   const slow = deferred<EventCaptureOutcome>();
   let captureStarts = 0;
   const t0 = Date.now();
@@ -404,7 +403,6 @@ test("TIMEOUT_NO_LATE_WRITE: a slow in-flight capture that settles after the dea
   await settle(); await settle();
   assert.equal(written.length, 0, "no research write after the deadline");
   assert.equal(captureStarts, 1, "no further event capture begins after the deadline");
-  assert.equal(calls.purge, 0, "no retention delete after the deadline");
 });
 
 test("TIMEOUT_NO_NEW_WORK_AFTER_DEADLINE: expired capture starts no provider request; expired tick starts no DB read/write/purge", async () => {
@@ -437,15 +435,16 @@ test("TIMEOUT_NO_NEW_WORK_AFTER_DEADLINE: expired capture starts no provider req
   await runPrecontractT20ResearchTick(NOW, { store, budgetMs: 30, capture: async () => { capturedCalls++; return okOutcome(); } });
   slowLoad.resolve([sourceRow(1, 900)]);
   await settle();
-  assert.deepEqual([capturedCalls, writes, base.calls.purge], [0, 0, 0]);
+  assert.deepEqual([capturedCalls, writes], [0, 0]);
 });
 
-test("deadline hygiene: a normal tick still captures, writes and purges inside the budget", async () => {
-  const { store, written, calls } = fakeStore([sourceRow(1, 900)]);
+test("deadline hygiene: a normal tick still captures and writes inside the budget, and never deletes Production rows", async () => {
+  const { store, written } = fakeStore([sourceRow(1, 900)]);
+  assert.equal("purgeExpired" in store, false, "the collector store has no delete capability: T20 expiry is clone-confirmed in the sync");
   const res = await runPrecontractT20ResearchTick(NOW, { store, capture: async () => okOutcome() });
   assert.equal(res.status, "success");
   assert.equal(written.length, 1);
-  assert.equal(calls.purge, 1);
+  assert.equal("purged_row_n" in res.diagnostics, false);
 });
 
 test("GSRS game_start_iso index migration: concurrent, partial, index-only; RPC range predicate and 40/20/40 unchanged", () => {
@@ -514,7 +513,6 @@ test("SOFT-B/F: first event captured, second cannot safely start => rows retaine
   assert.equal(jobs[0].errorMessage, undefined);
   assert.equal(jobs[0].generatedCount, 1);
   assert.equal(jobs[0].rejectedCount, 0, "a deferred event is not a rejected/failed event");
-  assert.equal(calls.purge, 0, "no retention purge after a soft deferral (leftover budget is too small)");
 });
 
 test("SOFT-C: the next tick sees the first event captured and continues the deferred second event", async () => {
@@ -701,7 +699,6 @@ function boundedStore(rows: ResearchEventCandidateRow[], persisted: Set<string> 
     async capturedAmong(ids) { return new Set(ids.filter((i) => persisted.has(i))); },
     async capturedEventCount() { return persisted.size; },
     async writeRows(r) { written.push(r); for (const x of r) persisted.add(String(x.physical_event_id)); },
-    async purgeExpired() { return 0; },
   };
   return { store, written, loads, persisted };
 }

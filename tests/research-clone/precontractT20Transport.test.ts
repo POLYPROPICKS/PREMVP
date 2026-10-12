@@ -84,11 +84,11 @@ test("R2: repeated append sync of the carrier keyset is idempotent", async () =>
   assert.equal(target.size, 1);
 });
 
-test("R2 wall: carrier is transport-only — not in TELEMETRY_PURGE_ORDER and no production delete path names it", () => {
+test("R2 wall: the carrier is outside TELEMETRY_PURGE_ORDER and the only Production delete path is the single clone-confirmed purge", () => {
   assert.equal((TELEMETRY_PURGE_ORDER as readonly string[]).includes(TABLE), false);
   const script = readFileSync("scripts/research-clone-daily-sync.ts", "utf8");
   const deletes = script.match(/\.delete\(\)/g) ?? [];
-  assert.equal(deletes.length, 1, "only the pre-existing confirmed-telemetry purge delete exists");
-  const purgeOrder = readFileSync("lib/research-clone/dailySync.ts", "utf8");
-  assert.doesNotMatch(purgeOrder, new RegExp(TABLE));
+  assert.equal(deletes.length, 1, "only the confirmed-telemetry purge delete exists");
+  const collector = readFileSync("lib/executor/precontractT20Research.ts", "utf8");
+  assert.doesNotMatch(collector, /\.from\([^)]*\)\s*\.delete\(|purgeExpired/, "the T20 collector can no longer delete Production rows");
 });

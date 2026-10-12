@@ -1970,7 +1970,7 @@ test("SOFT-I: event-rebalance completes normal live orchestration even when rese
         provider_sport_code: null, provider_sport_code_n: 0, provider_sport_source: null, provider_sport_source_n: 0,
         parent_event_volume_24h: 1000 - i, volume_contradiction: false,
       })),
-      capturedAmong: async () => new Set(), capturedEventCount: async () => 0, writeRows: async () => undefined, purgeExpired: async () => 0,
+      capturedAmong: async () => new Set(), capturedEventCount: async () => 0, writeRows: async () => undefined,
     },
     writeJobRun: async (j) => { research.status = j.status; research.budget_deferred = j.diagnostics?.budget_deferred; research.deferred = j.diagnostics?.deferred_budget_event_n; },
     budgetMs: 300, softStartMinRemainingMs: 50,
