@@ -10,7 +10,14 @@ import { admitResearchMarket } from "../executor/precontractT20Research";
 import { buildExecutableSiblingColumns, fetchFeeSchedulesBounded } from "../executor/t10ExecutableSiblingTelemetry";
 
 export const TABLE = "research_inplay_core_path_observations";
-export const SOURCE_VERSION = "INPLAY_CORE_PATH_V1";
+export const SOURCE_VERSION = "INPLAY_CORE_PATH_V2";
+/**
+ * Research-only worst acceptable ask for the full-stake BUY walk. buildExecutableSiblingColumns() otherwise defaults
+ * to the pre-game Queue entry cap (0.555), which silently turned every token whose ask sits above 0.555 into a NULL
+ * BUY/SELL indistinguishable from "no liquidity". Asks at or above 0.99 leave at most one cent of payoff and stay out.
+ * INPLAY_CORE_PATH_V2 rows are the first walked against this cap; V1 rows were walked against 0.555.
+ */
+export const INPLAY_RESEARCH_EXECUTION_PRICE_CAP = 0.99;
 export const MAX_DAILY_PHYSICAL_EVENTS = 100;
 export const MAX_TRACKED_TOKENS_PER_EVENT = 16;
 export const MAX_PERSISTED_OBSERVATIONS_PER_EVENT = 192;
@@ -38,10 +45,23 @@ export type SportState = {
 };
 const NO_SPORT_STATE: SportState = { periodNum: null, clockSecondsElapsed: null, clockSecondsRemaining: null, sideAScore: null, sideBScore: null, receivedAt: null };
 
+const TENNIS_SET_SCORE = /^\d{1,2}-\d{1,2}(?:\(\d{1,2}-\d{1,2}\))?$/;
+
+/** Current set number from the structured "S<n>" period, accepted only when the score lists exactly n well-formed sets. */
+function tennisSetNumber(period: string, score: unknown): number | null {
+  const token = /^S([1-5])$/.exec(period);
+  if (!token || typeof score !== "string") return null;
+  const sets = score.split(", ");
+  const number = Number.parseInt(token[1], 10);
+  return sets.length === number && sets.every((set) => TENNIS_SET_SCORE.test(set)) ? number : null;
+}
+
 /**
  * Typed state from the provider sports socket for the families whose payload is proven to carry a
- * single-pair score plus a period and clock: soccer and american-football. Every other family (tennis: multi-set
- * score and no clock; cricket: runs-wickets of one batting side and no gameId; basketball/baseball/hockey: no provider
+ * single-pair score plus a period and clock: soccer and american-football. Tennis yields ONLY the current set number
+ * (period token "S<n>" cross-checked against the number of set scores in the multi-set score string, live-verified
+ * 2026-10-12: "6-4, 6-7(2-7), 2-2" is S3); its set scores are never collapsed into side A / side B and it has no clock.
+ * Every other family (cricket: runs-wickets of one batting side and no gameId; basketball/baseball/hockey: no provider
  * payload observed) stays null. Side A = home team, side B = away team in both. Soccer score is "<home>-<away>".
  * American football score is "<away>-<home>" (verified live: provider "0-7" for homeTeam JAX / awayTeam PHI while an
  * independent scoreboard showed home JAX 7, away PHI 0), so its numbers are swapped into side A / side B.
@@ -52,10 +72,15 @@ const NO_SPORT_STATE: SportState = { periodNum: null, clockSecondsElapsed: null,
  */
 export function deriveSportState(raw: SportsState, family: string, eventLiveStatus: "LIVE" | "FINAL",
   receivedAtMs: number | undefined, nowMs: number): SportState {
-  if ((family !== "soccer" && family !== "american-football") || receivedAtMs === undefined || !Number.isFinite(receivedAtMs)
+  if ((family !== "soccer" && family !== "american-football" && family !== "tennis") || receivedAtMs === undefined || !Number.isFinite(receivedAtMs)
     || receivedAtMs > nowMs || nowMs - receivedAtMs > STATE_MAX_AGE_MS) return NO_SPORT_STATE;
-  const sides = typeof raw.score === "string" ? /^(\d{1,3})-(\d{1,3})$/.exec(raw.score) : null;
   const period = typeof raw.period === "string" ? raw.period : "";
+  if (family === "tennis") {
+    // The final-state period token is unobserved for tennis, so FINAL stays null rather than guessed.
+    const setNumber = eventLiveStatus === "LIVE" ? tennisSetNumber(period, raw.score) : null;
+    return setNumber === null ? NO_SPORT_STATE : { ...NO_SPORT_STATE, periodNum: setNumber, receivedAt: new Date(receivedAtMs).toISOString() };
+  }
+  const sides = typeof raw.score === "string" ? /^(\d{1,3})-(\d{1,3})$/.exec(raw.score) : null;
   let periodNum: number | null = null;
   let clockSecondsElapsed: number | null = null;
   let clockSecondsRemaining: number | null = null;
@@ -347,6 +372,23 @@ export function assessLinkedQuoteWindows(windows: ReadonlyArray<{ startedAtMs: n
   return Math.max(...valid.map((w) => w.completedAtMs)) - Math.min(...valid.map((w) => w.startedAtMs)) <= maxSpanMs ? "BOUNDED" : "UNPROVEN";
 }
 
+/**
+ * Span (ms) from the earliest request start to the latest response completion of ONE capture cycle, or null unless
+ * every leg carries its own validated acquisition window. A leg without a window (failed, mismatched or implausible
+ * fetch) makes the cycle's span unknown: it is never imputed from the shared poll time.
+ */
+export function linkedQuoteSpanMs(windows: ReadonlyArray<{ startedAtMs: number; completedAtMs: number } | null | undefined>): number | null {
+  if (windows.length === 0) return null;
+  const valid = windows.filter((w): w is { startedAtMs: number; completedAtMs: number } => !!w);
+  if (valid.length !== windows.length) return null;
+  return Math.max(...valid.map((w) => w.completedAtMs)) - Math.min(...valid.map((w) => w.startedAtMs));
+}
+
+/** Short typed reason token for a column; never free provider text. */
+function reasonToken(value: unknown): string | null {
+  return typeof value === "string" && /^[A-Za-z0-9_:-]{1,40}$/.test(value) ? value : null;
+}
+
 /** Point-time variant for callers that hold one instant per leg; null/undefined instants are UNPROVEN. */
 export function assessLinkedQuoteSynchronization(legAcquiredAtMs: ReadonlyArray<number | null | undefined>, maxSpanMs: number): "BOUNDED" | "UNPROVEN" {
   if (legAcquiredAtMs.length < 2 || !Number.isFinite(maxSpanMs) || maxSpanMs < 0) return "UNPROVEN";
@@ -409,6 +451,8 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
   if (!isLive()) return 0;
   const observedAt = new Date(nowMs).toISOString();
   const sport = deriveSportState(raw, family, state.eventLiveStatus, stateReceivedAtMs, nowMs);
+  const wallNowMs = Date.now();
+  const cycleSpanMs = linkedQuoteSpanMs(tokens.map((t, i) => validateAcquisitionWindow(books[i], t.tokenId, wallNowMs)));
   let saved = 0;
   for (let i = 0; i < tokens.length; i++) {
     if (!isLive()) return saved;
@@ -421,7 +465,7 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
     if (!reason) continue;
     const { bestBid, bestAsk } = getBestBidAsk(book);
     const depth = computeDepthWithinPct(book, 0.02);
-    const exec = buildExecutableSiblingColumns({ token, result, fee: fees.get(token.tokenId) ?? null });
+    const exec = buildExecutableSiblingColumns({ token, result, fee: fees.get(token.tokenId) ?? null, hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP });
     const shares = typeof exec.full_stake_shares === "number" ? exec.full_stake_shares : null;
     const exit = book && shares !== null ? computeExecutableExit(book.bids, shares, 0.02) : null;
     const market = admitResearchMarket(family, token.market.sports_market_type, token.market.provider_market_slug);
@@ -443,6 +487,9 @@ export async function captureInplayCorePath(raw: SportsState, db: Client, nowMs 
       full_stake_executable_vwap: exec.full_stake_executable_vwap ?? null,
       full_stake_shares: shares, full_stake_exit_vwap: exit?.fullyFilled ? exit.avgPrice : null,
       full_stake_exit_fully_filled: exit?.fullyFilled ?? null, taker_fee_usd: exec.taker_fee_usd ?? null,
+      executable_full_stake_state: reasonToken(exec.executable_full_stake_state), taker_fee_state: reasonToken(exec.taker_fee_state),
+      taker_fee_reason: reasonToken(exec.taker_fee_reason),
+      quote_cycle_legs: tokens.length, quote_cycle_span_ms: cycleSpanMs,
       orderbook_fetch_status: result?.ok ? "SUCCESS" : "FAILED", ...orderbookTimingColumns(result, token.tokenId), persistence_reason: reason,
       sequence_in_event: 0, created_at: observedAt,
     };
