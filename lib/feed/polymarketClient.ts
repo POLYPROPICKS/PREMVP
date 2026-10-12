@@ -39,6 +39,59 @@ export async function fetchPolymarketEventsByGameId(gameId: string): Promise<Pol
   return Array.isArray(events) ? events : null;
 }
 
+/**
+ * Hard id bound for ONE `GET /events?id=..&id=..` batch. Measured 2026-10-12: Gamma silently truncates the response to its
+ * default page of 20 when more ids are requested, so a batch never exceeds this and always sends an explicit `limit`.
+ */
+export const GAMMA_EVENTS_BATCH_LIMIT = 20;
+/** Per-batch provider timeout (measured latency 0.35-0.65s for 1-40 events, 1-9MB). */
+export const GAMMA_EVENTS_BATCH_TIMEOUT_MS = 3000;
+
+/** Scalar projection of one current Gamma event: only identity and the provider start fields (no markets retained). */
+export type GammaEventStart = {
+  id: string;
+  gameId: string | null;
+  startTime: string | null;
+  endDate: string | null;
+  endDateIso: string | null;
+};
+export type GammaEventStartsBatch = {
+  /** Wall clock taken BEFORE the request was sent: the provider state is at least this fresh (conservative). */
+  acquiredAtMs: number;
+  latencyMs: number;
+  requestedN: number;
+  /** Exactly the elements Gamma returned, in order. Duplicates, missing and unrequested ids are NOT repaired here. */
+  events: GammaEventStart[];
+};
+
+const scalarText = (v: unknown): string | null =>
+  typeof v === "string" ? (v.trim() || null) : typeof v === "number" && Number.isFinite(v) ? String(v) : null;
+
+/**
+ * Current Gamma event start/identity for up to GAMMA_EVENTS_BATCH_LIMIT persisted provider event ids in ONE request
+ * (`GET /events?id=..&limit=N`). Returns null on any transport/shape failure or an invalid/oversized/duplicated id list.
+ * Completeness is the CALLER's proof: a requested id absent from `events`, or returned more than once, is unverified.
+ */
+export async function fetchPolymarketEventStartsByIds(
+  eventIds: readonly string[], timeoutMs = GAMMA_EVENTS_BATCH_TIMEOUT_MS,
+): Promise<GammaEventStartsBatch | null> {
+  if (eventIds.length === 0 || eventIds.length > GAMMA_EVENTS_BATCH_LIMIT) return null;
+  if (new Set(eventIds).size !== eventIds.length || !eventIds.every((id) => /^\d+$/.test(id))) return null;
+  const acquiredAtMs = Date.now();
+  const raw = await safeFetch<unknown>(
+    `${GAMMA_API_BASE}/events?${eventIds.map((id) => `id=${encodeURIComponent(id)}`).join("&")}&limit=${eventIds.length}`, {}, timeoutMs,
+  );
+  if (!Array.isArray(raw)) return null;
+  const events: GammaEventStart[] = [];
+  for (const item of raw) {
+    const e = item as Record<string, unknown> | null;
+    const id = e && typeof e === "object" ? scalarText(e.id) : null;
+    if (!e || id === null) continue;
+    events.push({ id, gameId: scalarText(e.gameId), startTime: scalarText(e.startTime), endDate: scalarText(e.endDate), endDateIso: scalarText(e.endDateIso) });
+  }
+  return { acquiredAtMs, latencyMs: Date.now() - acquiredAtMs, requestedN: eventIds.length, events };
+}
+
 // Helper for safe fetch with timeout
 async function safeFetch<T>(
   url: string,

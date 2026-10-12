@@ -6,10 +6,11 @@ import { runAppendSync, TELEMETRY_PURGE_ORDER, type Watermark } from "../../lib/
 
 const TABLE = "research_precontract_t20_observations";
 
-// Every persisted column of the production carrier (migration 20261007090000).
+// Every persisted column of the production carrier (migrations 20261007090000 + 20261012090000 lineage columns).
 const PRODUCTION_CARRIER_COLUMNS = [
   "id", "physical_event_id", "provider_game_id", "provider_event_id", "source_id", "source_version",
   "event_start_iso", "observed_at", "observation_phase",
+  "provider_start_iso", "provider_start_acquired_at", "provider_start_source",
   "parent_event_volume_24h", "daily_volume_rank", "sampling_bucket",
   "provider_sport_family", "provider_sport_code", "provider_sport_source",
   "condition_id", "token_id", "side",
@@ -40,9 +41,14 @@ test("R2: projection is exactly the production carrier columns and the migration
   assert.deepEqual([...projected].sort(), [...PRODUCTION_CARRIER_COLUMNS].sort());
   const migration = readFileSync("supabase/migrations/20261007090000_precontract_t20_research_observations_v1.sql", "utf8");
   const migrationTable = migration.slice(migration.indexOf(`public.${TABLE} (`), migration.indexOf("CONSTRAINT uq_rp_t20_obs_identity"));
+  const lineage = readFileSync("supabase/migrations/20261012090000_precontract_t20_provider_start_lineage_v1.sql", "utf8");
   for (const column of PRODUCTION_CARRIER_COLUMNS) {
-    assert.match(migrationTable, new RegExp(`^\\s+${column}\\s`, "m"), `production ${column}`);
+    const lineageColumn = column.startsWith("provider_start_");
+    if (lineageColumn) assert.match(lineage, new RegExp(`ADD COLUMN IF NOT EXISTS ${column} `), `production lineage ${column}`);
+    else assert.match(migrationTable, new RegExp(`^\\s+${column}\\s`, "m"), `production ${column}`);
   }
+  // additive only: nullable columns, no backfill/drop/index/RPC change
+  assert.doesNotMatch(lineage.replace(/--.*$/gm, ""), /NOT NULL|DROP|UPDATE|DELETE|CREATE (OR REPLACE )?FUNCTION|CREATE INDEX|DEFAULT/i);
 });
 
 test("R2: clone schema is clone-only, carries every projected column, identity, watermark index, RLS and grants", () => {

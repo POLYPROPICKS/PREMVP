@@ -14,6 +14,7 @@
 import type { RuntimeSupabaseClient } from "../constructor/bootstrap";
 import { fetchOrderBooksConcurrent, type TokenFeeScheduleResult } from "../liquidity/polymarketClient";
 import { getBestBidAsk } from "../liquidity/orderbookMath";
+import { fetchPolymarketEventStartsByIds, GAMMA_EVENTS_BATCH_LIMIT, type GammaEventStart, type GammaEventStartsBatch } from "../feed/polymarketClient";
 import { physicalMatchId } from "./contractADecisions";
 import {
   classifyExactEventMarket, defaultExactEventReader, defaultGameEventsReader, inventoryTokens, sameGameLiveUniverse,
@@ -51,6 +52,23 @@ export const EVENT_UNIVERSE_CEILING = 800;
 /** Business T20: 9 < minutes_to_start <= 20. */
 export const T20_MIN_EXCLUSIVE = 9;
 export const T20_MAX_INCLUSIVE = 20;
+/**
+ * Source-start band, in BOTH directions, inside which a selected event is reconciled against Gamma's CURRENT start before
+ * T20 eligibility is decided. A rescheduled event is discoverable while its snapshot start lies within
+ * (now + 9min - H, now + 20min + H]. Larger shifts are not recoverable here (fail closed; the snapshot start is the only lineage).
+ */
+export const T20_RESCHEDULE_HORIZON_MINUTES = 120;
+/** A provider start is re-requested once it is older than this (bounds Gamma load; 8s ticks reuse it). */
+export const PROVIDER_START_REFRESH_TTL_MS = 45_000;
+/** A provider start older than this at decision time is STALE and cannot define T20 eligibility (fail closed). */
+export const PROVIDER_START_MAX_AGE_MS = 90_000;
+/** Hard provider bound per tick: batches x GAMMA_EVENTS_BATCH_LIMIT events (sent in parallel, one round trip). */
+export const MAX_START_RECHECK_BATCHES_PER_TICK = 2;
+export const PROVIDER_START_SOURCE = "gamma_events_batch:startTime";
+/** Only when Gamma states no startTime and its endDate/endDateIso equals the snapshot start (the exact reader's legacy match). */
+export const PROVIDER_START_SOURCE_LEGACY = "gamma_events_batch:endDate_legacy_match";
+const CAPTURED_MEMO_CEILING = 5_000;
+const START_CACHE_PRUNE_AGE_MS = 600_000;
 
 export const OTHER_SPORT_FAMILIES = ["basketball", "baseball", "hockey", "cricket", "american-football"] as const;
 export const TARGET_SPORT_FAMILIES = ["soccer", "tennis", ...OTHER_SPORT_FAMILIES] as const;
@@ -96,7 +114,14 @@ export type ResearchEvent = {
   volume: number | null;
   volumeContradiction: boolean;
   sourceId: string;
+  /**
+   * Verified CURRENT provider start. `eventStartIso` (and `physicalEventId`, `sourceId`) stay the immutable snapshot lineage;
+   * this is stored separately and decides ONLY the actual T20 window. Absent = never reconciled (capture uses the snapshot start).
+   */
+  providerStart?: ProviderStartEvidence | null;
 };
+
+export type ProviderStartEvidence = { startIso: string; acquiredAtMs: number; source: string };
 
 const str = (v: unknown): string | null => typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 const finiteNum = (v: unknown): number | null => {
@@ -301,13 +326,16 @@ export async function captureResearchEvent(
   selection: CohortSelection, observedAt: string, deps: ResearchCaptureDeps = {},
 ): Promise<EventCaptureOutcome> {
   const { event } = selection;
+  // Provider reads (exact-event start check, same-game universe) use the verified CURRENT provider start; the persisted
+  // lineage (physical id, event_start_iso, source_id) keeps the snapshot start.
+  const readStartIso = event.providerStart?.startIso ?? event.eventStartIso;
   const unsupported: Record<string, number> = {};
   const live = () => deps.isLive ? deps.isLive() : true;
   const expired = (): EventCaptureOutcome => ({ kind: "FAILED", reason: RESEARCH_DEADLINE_EXPIRED, unsupported });
   let markets: Market[] = [];
   try {
     if (!live()) return expired();
-    const own = await (deps.readExactEvent ?? defaultExactEventReader)(event.providerEventId, event.eventStartIso);
+    const own = await (deps.readExactEvent ?? defaultExactEventReader)(event.providerEventId, readStartIso);
     if (!live()) return expired();
     const gameIds = new Set(own.map((m) => m.provider_game_id).filter((g): g is string => !!g));
     // The provider authors no gameId for some MONEYLINE-only events (e.g. international cricket). physicalMatchId already
@@ -320,9 +348,9 @@ export async function captureResearchEvent(
       if (own.length === 0 || gameIds.size !== 1) return { kind: "FAILED", reason: "EVENT_GAME_IDENTITY_UNRESOLVED", unsupported };
       const gameId = [...gameIds][0];
       if (event.providerGameId && event.providerGameId !== gameId) return { kind: "FAILED", reason: "EVENT_GAME_IDENTITY_CONTRADICTION", unsupported };
-      const discovered = await (deps.readGameEvents ?? defaultGameEventsReader)(gameId, event.eventStartIso);
+      const discovered = await (deps.readGameEvents ?? defaultGameEventsReader)(gameId, readStartIso);
       if (!live()) return expired();
-      const universe = sameGameLiveUniverse(gameId, event.eventStartIso, own, discovered);
+      const universe = sameGameLiveUniverse(gameId, readStartIso, own, discovered);
       if (universe.audit.audit_overflow) return { kind: "FAILED", reason: DISCOVERY_AUDIT_OVERFLOW, unsupported };
       markets = universe.markets;
     }
@@ -363,6 +391,9 @@ export async function captureResearchEvent(
       physical_event_id: event.physicalEventId, provider_game_id: event.providerGameId, provider_event_id: event.providerEventId,
       source_id: event.sourceId, source_version: RESEARCH_SOURCE_VERSION,
       event_start_iso: event.eventStartIso, observed_at: observedAt, observation_phase: RESEARCH_OBSERVATION_PHASE,
+      provider_start_iso: event.providerStart?.startIso ?? null,
+      provider_start_acquired_at: event.providerStart ? new Date(event.providerStart.acquiredAtMs).toISOString() : null,
+      provider_start_source: event.providerStart?.source ?? null,
       parent_event_volume_24h: event.volume, daily_volume_rank: selection.rank, sampling_bucket: selection.bucket,
       provider_sport_family: event.sportFamily, provider_sport_code: event.sportCode, provider_sport_source: event.sportSource,
       condition_id: token.conditionId, token_id: token.tokenId, side: token.side,
@@ -379,6 +410,81 @@ export async function captureResearchEvent(
   });
   return { kind: "CAPTURED", rows, unsupported };
 }
+
+
+// ── Provider start reconciliation (TELEMETRY-08C) ─────────────────────────────────────────────────────────────────────
+// The candidate universe is frozen at snapshot time, so a Gamma reschedule moves the ACTUAL T20 window away from the
+// snapshot start. Before T20 eligibility is decided, every selected, uncaptured event whose snapshot start lies in the
+// reschedule band is reconciled against Gamma's CURRENT event start, fetched by exact persisted provider event id in
+// batches of <= GAMMA_EVENTS_BATCH_LIMIT. Cohort membership/rank stay source-based (never changed by provider state).
+
+type StartEntry =
+  | { ok: true; event: GammaEventStart; acquiredAtMs: number }
+  | { ok: false; reason: string; attemptedAtMs: number };
+
+/** Process-local reuse of recent provider starts and of already-captured physical ids. Correctness never depends on it. */
+export type ResearchStartState = { starts: Map<string, StartEntry>; captured: Set<string> };
+export const createResearchStartState = (): ResearchStartState => ({ starts: new Map(), captured: new Set() });
+const DEFAULT_START_STATE = createResearchStartState();
+
+export type FetchProviderStarts = (eventIds: string[]) => Promise<GammaEventStartsBatch | null>;
+
+export const PROVIDER_START_REASONS = {
+  BATCH_UNAVAILABLE: "PROVIDER_START_BATCH_UNAVAILABLE",
+  BATCH_ANOMALY: "PROVIDER_START_BATCH_ANOMALY",
+  EVENT_MISSING: "PROVIDER_START_EVENT_MISSING",
+  IDENTITY_AMBIGUOUS: "PROVIDER_START_IDENTITY_AMBIGUOUS",
+  IDENTITY_CONTRADICTION: "PROVIDER_START_IDENTITY_CONTRADICTION",
+  STALE: "PROVIDER_START_STALE",
+  UNVERIFIED: "PROVIDER_START_UNVERIFIED",
+  MISSING: "PROVIDER_START_MISSING",
+} as const;
+
+/** Requested ids -> entries. A missing/duplicated id is that event's failure; an unrequested id poisons the whole batch. */
+export function entriesFromBatch(ids: readonly string[], batch: GammaEventStartsBatch | null, attemptedAtMs: number): Map<string, StartEntry> {
+  const out = new Map<string, StartEntry>();
+  const fail = (id: string, reason: string) => out.set(id, { ok: false, reason, attemptedAtMs });
+  if (!batch) { ids.forEach((id) => fail(id, PROVIDER_START_REASONS.BATCH_UNAVAILABLE)); return out; }
+  const requested = new Set(ids);
+  const byId = new Map<string, GammaEventStart[]>();
+  for (const e of batch.events) byId.set(e.id, [...(byId.get(e.id) ?? []), e]);
+  if ([...byId.keys()].some((id) => !requested.has(id))) { ids.forEach((id) => fail(id, PROVIDER_START_REASONS.BATCH_ANOMALY)); return out; }
+  for (const id of ids) {
+    const found = byId.get(id) ?? [];
+    if (found.length === 0) fail(id, PROVIDER_START_REASONS.EVENT_MISSING);
+    else if (found.length > 1) fail(id, PROVIDER_START_REASONS.IDENTITY_AMBIGUOUS);
+    else out.set(id, { ok: true, event: found[0], acquiredAtMs: batch.acquiredAtMs });
+  }
+  return out;
+}
+
+/**
+ * One event's CURRENT provider start, or the exact reason it is unverified. `startTime` is the authority (live-proven equal to
+ * every market's gameStartTime, i.e. to the value the snapshot froze). Never infers from titles, slugs or other fields.
+ */
+export function resolveProviderStart(
+  sourceStartIso: string, sourceGameId: string | null, entry: StartEntry | undefined, nowMs: number,
+): { ok: true; evidence: ProviderStartEvidence } | { ok: false; reason: string } {
+  if (!entry) return { ok: false, reason: PROVIDER_START_REASONS.UNVERIFIED };
+  if (!entry.ok) return { ok: false, reason: entry.reason };
+  if (!(entry.acquiredAtMs >= nowMs - PROVIDER_START_MAX_AGE_MS)) return { ok: false, reason: PROVIDER_START_REASONS.STALE };
+  const { event, acquiredAtMs } = entry;
+  if (sourceGameId && event.gameId && sourceGameId.toLowerCase() !== event.gameId.toLowerCase()) {
+    return { ok: false, reason: PROVIDER_START_REASONS.IDENTITY_CONTRADICTION };
+  }
+  const startMs = Date.parse(event.startTime ?? "");
+  if (Number.isFinite(startMs)) return { ok: true, evidence: { startIso: new Date(startMs).toISOString(), acquiredAtMs, source: PROVIDER_START_SOURCE } };
+  const sourceMs = Date.parse(sourceStartIso);
+  if (!event.startTime && [event.endDate, event.endDateIso].some((v) => Date.parse(v ?? "") === sourceMs)) {
+    return { ok: true, evidence: { startIso: new Date(sourceMs).toISOString(), acquiredAtMs, source: PROVIDER_START_SOURCE_LEGACY } };
+  }
+  return { ok: false, reason: PROVIDER_START_REASONS.MISSING };
+}
+
+/** Stable provider identity of an event across physical ids (used to catch the same match under two UTC-day keys). */
+export const providerIdentityKey = (e: Pick<ResearchEvent, "providerGameId" | "providerEventId">): string =>
+  e.providerGameId ? `g:${e.providerGameId.toLowerCase()}` : `e:${e.providerEventId.toLowerCase()}`;
+const physicalDate = (physicalEventId: string): string => physicalEventId.slice(-10);
 
 export type ResearchStore = {
   /**
@@ -451,7 +557,8 @@ function utcDayBounds(ms: number): { fromIso: string; toIso: string } {
 
 /** Currently-due events: earliest event_start first (the one about to leave T20), then the existing liquidity tie-breaker. */
 export function compareUrgency(a: ResearchEvent, b: ResearchEvent): number {
-  return Date.parse(a.eventStartIso) - Date.parse(b.eventStartIso) || compareLiquidity(a, b);
+  const start = (e: ResearchEvent) => Date.parse(e.providerStart?.startIso ?? e.eventStartIso);
+  return start(a) - start(b) || compareLiquidity(a, b);
 }
 
 export type ResearchTickDeps = ResearchCaptureDeps & {
@@ -463,6 +570,10 @@ export type ResearchTickDeps = ResearchCaptureDeps & {
   budgetMs?: number;
   /** Minimum remaining budget required to start a NEW event (soft guard); defaults to SOFT_EVENT_START_MIN_REMAINING_MS. */
   softStartMinRemainingMs?: number;
+  /** Gamma current-start batch fetch (<= GAMMA_EVENTS_BATCH_LIMIT ids); defaults to fetchPolymarketEventStartsByIds. */
+  fetchProviderStarts?: FetchProviderStarts;
+  /** Provider-start reuse + captured memo; defaults to a process-local singleton. Tests inject a fresh one. */
+  startState?: ResearchStartState;
   /** Test seam only: defaults to captureResearchEvent. */
   capture?: (selection: CohortSelection, observedAt: string, deps: ResearchCaptureDeps) => Promise<EventCaptureOutcome>;
 };
@@ -494,6 +605,17 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
     due_event_n: 0, attempted_event_n: 0, deferred_budget_event_n: 0,
     captured_event_n: 0, already_captured_event_n: 0, failed_event_n: 0, token_rows_written_n: 0,
     token_budget_exceeded_event_n: 0, purged_row_n: 0, event_universe_ceiling_exceeded_day_n: 0,
+    provider_start_batch_n: 0, provider_start_refresh_deferred_n: 0, provider_start_unverified_event_n: 0,
+    provider_start_unchanged_event_n: 0, provider_start_rescheduled_event_n: 0, provider_start_rescheduled_into_window_event_n: 0,
+    identity_ambiguous_event_n: 0,
+  };
+  let providerStartBatchLatencyMsMax = 0;
+  /** Aggregate-only: provider-start failure reason -> events this tick (no ids, no payloads). */
+  const providerStartFailureCounts: Record<string, number> = {};
+  const rememberCaptured = (physicalEventId: string) => {
+    const memo = (deps.startState ?? DEFAULT_START_STATE).captured;
+    if (memo.size >= CAPTURED_MEMO_CEILING) memo.clear();
+    memo.add(physicalEventId);
   };
   const unsupportedCounts: Record<string, number> = {};
   /** Aggregate-only: reason -> number of failed captures this tick (no event ids, no raw provider payloads). */
@@ -507,14 +629,23 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
   const capture = deps.capture ?? captureResearchEvent;
 
   const work = async () => {
+    // Source-start band: the snapshot start of any event that can be inside its ACTUAL T20 window now, given a provider
+    // reschedule of up to +/- T20_RESCHEDULE_HORIZON_MINUTES. Each UTC day touched by the band is one existing RPC call.
+    const horizonMs = T20_RESCHEDULE_HORIZON_MINUTES * 60_000;
+    const bandFromMs = nowMs + T20_MIN_EXCLUSIVE * 60_000 - horizonMs;
+    const bandToMs = nowMs + T20_MAX_INCLUSIVE * 60_000 + horizonMs;
+    const inBand = (startIso: string) => { const t = Date.parse(startIso); return t > bandFromMs && t <= bandToMs; };
     const days = new Map<string, { fromIso: string; toIso: string }>();
-    for (const ms of [nowMs + (T20_MIN_EXCLUSIVE + 1) * 60_000, nowMs + T20_MAX_INCLUSIVE * 60_000]) {
+    for (const ms of [bandFromMs, bandToMs]) {
       const bounds = utcDayBounds(ms);
       days.set(bounds.fromIso, bounds);
     }
-    let newEvents = 0;
+    const state = deps.startState ?? DEFAULT_START_STATE;
+    const dayCtxs: { bounds: { fromIso: string; toIso: string }; selected: CohortSelection[] }[] = [];
+    const universe: ResearchEvent[] = [];
+    // Phase 1: complete source-day universes and the source-based 40/20/40 cohort (provider state never changes them).
     for (const bounds of days.values()) {
-      if (newEvents >= MAX_NEW_EVENTS_PER_TICK || !live()) break;
+      if (!live()) break;
       const candidates = await deps.store.loadEventCandidates(bounds.fromIso, bounds.toIso, EVENT_UNIVERSE_CEILING);
       if (!live()) return expire();
       const dayKey = `day_${bounds.fromIso.slice(0, 10)}`;
@@ -524,20 +655,90 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
         cohortDiagnostics = { ...cohortDiagnostics, event_universe_ceiling: EVENT_UNIVERSE_CEILING, [`${dayKey}_event_universe_ceiling_exceeded`]: true };
         continue;
       }
-      const { selected, diagnostics } = selectResearchCohort(buildResearchEvents(candidates));
+      const events = buildResearchEvents(candidates);
+      const { selected, diagnostics } = selectResearchCohort(events);
       cohortDiagnostics = days.size === 1
         ? { ...cohortDiagnostics, ...diagnostics, universe_event_n: candidates.length }
         : { ...cohortDiagnostics, [dayKey]: { ...diagnostics, universe_event_n: candidates.length } };
-      const due = selected.filter((s) => inT20Window(s.event.eventStartIso, nowMs));
+      dayCtxs.push({ bounds, selected });
+      universe.push(...events);
+    }
+
+    // Phase 2: reconcile the CURRENT provider start of every selected, not-yet-captured event in the band BEFORE deciding
+    // actual T20 eligibility. Events that cannot be verified are never due (fail closed).
+    const identityGroups = new Map<string, Set<string>>();
+    for (const e of universe) {
+      const key = providerIdentityKey(e);
+      identityGroups.set(key, (identityGroups.get(key) ?? new Set()).add(e.physicalEventId));
+    }
+    const bandSelections = dayCtxs.flatMap((d) => d.selected).filter((sel) => inBand(sel.event.eventStartIso) && !state.captured.has(sel.event.physicalEventId));
+    const refreshable = bandSelections.filter((sel) => /^\d+$/.test(sel.event.providerEventId));
+    const attemptedAt = (id: string) => { const e = state.starts.get(id); return e ? (e.ok ? e.acquiredAtMs : e.attemptedAtMs) : -Infinity; };
+    const needsRefresh = refreshable
+      .filter((sel) => attemptedAt(sel.event.providerEventId) < nowMs - PROVIDER_START_REFRESH_TTL_MS)
+      .sort((a, b) => attemptedAt(a.event.providerEventId) - attemptedAt(b.event.providerEventId) || compareUrgency(a.event, b.event));
+    const refreshIds = [...new Set(needsRefresh.map((sel) => sel.event.providerEventId))];
+    const batchIds: string[][] = [];
+    for (let i = 0; i < refreshIds.length && batchIds.length < MAX_START_RECHECK_BATCHES_PER_TICK; i += GAMMA_EVENTS_BATCH_LIMIT) batchIds.push(refreshIds.slice(i, i + GAMMA_EVENTS_BATCH_LIMIT));
+    counters.provider_start_refresh_deferred_n += refreshIds.length - batchIds.reduce((n, ids) => n + ids.length, 0);
+    if (batchIds.length > 0 && live()) {
+      const fetchStarts = deps.fetchProviderStarts ?? fetchPolymarketEventStartsByIds;
+      const results = await Promise.all(batchIds.map((ids) => Promise.resolve().then(() => fetchStarts(ids)).catch(() => null)));
+      if (!live()) return expire();
+      batchIds.forEach((ids, i) => {
+        counters.provider_start_batch_n++;
+        providerStartBatchLatencyMsMax = Math.max(providerStartBatchLatencyMsMax, results[i]?.latencyMs ?? 0);
+        for (const [id, entry] of entriesFromBatch(ids, results[i], nowMs)) state.starts.set(id, entry);
+      });
+    }
+    for (const [id, entry] of state.starts) {
+      if ((entry.ok ? entry.acquiredAtMs : entry.attemptedAtMs) < nowMs - START_CACHE_PRUNE_AGE_MS) state.starts.delete(id);
+    }
+    const dueByDay = new Map<string, CohortSelection[]>();
+    for (const bandSelection of bandSelections) {
+      const { event } = bandSelection;
+      const resolved = resolveProviderStart(event.eventStartIso, event.providerGameId, state.starts.get(event.providerEventId), nowMs);
+      if (!resolved.ok) {
+        counters.provider_start_unverified_event_n++;
+        providerStartFailureCounts[resolved.reason] = (providerStartFailureCounts[resolved.reason] ?? 0) + 1;
+        continue;
+      }
+      const changed = Date.parse(resolved.evidence.startIso) !== Date.parse(event.eventStartIso);
+      counters[changed ? "provider_start_rescheduled_event_n" : "provider_start_unchanged_event_n"]++;
+      if (!inT20Window(resolved.evidence.startIso, nowMs)) continue;
+      // One physical match: the same provider identity under two UTC-day keys (a cross-day reschedule between the two
+      // completed generations) is owned only by the key whose UTC date is the verified start date, else it fails closed.
+      const group = identityGroups.get(providerIdentityKey(event)) ?? new Set<string>();
+      if (group.size > 1) {
+        const startDate = resolved.evidence.startIso.slice(0, 10);
+        const owners = [...group].filter((id) => physicalDate(id) === startDate);
+        if (owners.length !== 1 || owners[0] !== event.physicalEventId) { counters.identity_ambiguous_event_n++; continue; }
+      }
+      if (changed) counters.provider_start_rescheduled_into_window_event_n++;
+      const bucketDay = dayCtxs.find((d) => d.selected.includes(bandSelection));
+      if (!bucketDay) continue;
+      const key = bucketDay.bounds.fromIso;
+      dueByDay.set(key, [...(dueByDay.get(key) ?? []), { ...bandSelection, event: { ...event, providerStart: resolved.evidence } }]);
+    }
+
+    // Phase 3: capture, <= MAX_NEW_EVENTS_PER_TICK new events per tick, daily cap per source day.
+    let newEvents = 0;
+    for (const day of dayCtxs) {
+      if (newEvents >= MAX_NEW_EVENTS_PER_TICK || !live()) break;
+      const due = dueByDay.get(day.bounds.fromIso) ?? [];
       counters.due_event_n += due.length;
       if (due.length === 0) continue;
-      const captured = await deps.store.capturedAmong(due.map((s) => s.event.physicalEventId));
+      // A captured sibling under another UTC-day key of the same provider identity also counts as already captured.
+      const idsToCheck = [...new Set(due.flatMap((sel) => [...(identityGroups.get(providerIdentityKey(sel.event)) ?? [sel.event.physicalEventId])]))];
+      const capturedIds = await deps.store.capturedAmong(idsToCheck);
       if (!live()) return expire();
-      counters.already_captured_event_n += due.filter((s) => captured.has(s.event.physicalEventId)).length;
-      const todo = due.filter((s) => !captured.has(s.event.physicalEventId)).sort((a, b) => compareUrgency(a.event, b.event));
+      const isCaptured = (sel: CohortSelection) => [...(identityGroups.get(providerIdentityKey(sel.event)) ?? [sel.event.physicalEventId])].some((id) => capturedIds.has(id));
+      for (const sel of due) if (isCaptured(sel)) rememberCaptured(sel.event.physicalEventId);
+      counters.already_captured_event_n += due.filter(isCaptured).length;
+      const todo = due.filter((s) => !isCaptured(s)).sort((a, b) => compareUrgency(a.event, b.event));
       if (todo.length === 0) continue;
       // Daily cap guard independent of cohort drift between ticks (fail-closed on read error).
-      let dayCaptured = await deps.store.capturedEventCount(bounds.fromIso, bounds.toIso);
+      let dayCaptured = await deps.store.capturedEventCount(day.bounds.fromIso, day.bounds.toIso);
       if (!live()) return expire();
       for (let i = 0; i < todo.length; i++) {
         const selection = todo[i];
@@ -562,6 +763,7 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
           if (!live()) return expire();
           counters.captured_event_n++; dayCaptured++;
           counters.token_rows_written_n += outcome.rows.length;
+          rememberCaptured(selection.event.physicalEventId);
         } catch { if (!live()) return expire(); noteFailure(RESEARCH_WRITE_FAILED); }
         longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs);
       }
@@ -600,6 +802,8 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
   const durationMs = Date.now() - startedMs;
   const diagnostics = {
     ...cohortDiagnostics, ...counters, budget_deferred: budgetDeferred, hard_timeout_hit: hardTimeoutHit,
+    reschedule_horizon_minutes: T20_RESCHEDULE_HORIZON_MINUTES, provider_start_batch_latency_ms_max: providerStartBatchLatencyMsMax,
+    provider_start_failure_counts: providerStartFailureCounts,
     unsupported_market_type_counts: unsupportedCounts, failed_reason_counts: failedReasonCounts, duration_ms: durationMs,
   };
   try {
