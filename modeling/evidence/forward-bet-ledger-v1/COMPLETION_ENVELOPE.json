@@ -1,0 +1,185 @@
+{
+  "schema_version": "1",
+  "completion_id": "MODELING_14_FORWARD_BET_TO_SETTLEMENT_AUTHORITY-20261012",
+  "task_id": "MODELING_14_FORWARD_BET_TO_SETTLEMENT_AUTHORITY",
+  "task_class": "R1_BOUNDED_CODE",
+  "risk_class": "R1_BOUNDED_CODE",
+  "executor": "claude_code_cloud",
+  "environment": "PREMVP-DB-CLONE (cloud container; clone REST read proven, clone DDL/management API not available)",
+  "repository": "POLYPROPICKS/PREMVP",
+  "branch": "claude/stoic-pasteur-c0r36x",
+  "base_sha": "9564114f712debbe3459cd2022bf2c0b0fdc6da5",
+  "result_sha": "f6fb4a9df30aebb3362dd23d2567c359b924c87a",
+  "origin_main_sha": "9564114f712debbe3459cd2022bf2c0b0fdc6da5",
+  "worktree_before": "clean",
+  "worktree_after": "clean",
+  "files_changed": [
+    "lib/modeling/forwardBetContract.ts",
+    "lib/modeling/virtualBetSettlement.ts",
+    "scripts/modeling/live-shadow-cycle.ts",
+    "scripts/modeling/virtual-bet-settlement-authority.ts",
+    "scripts/modeling/forward-bet-ceo-report.ts",
+    "ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql",
+    "scripts/control-plane/lib/premvp-clone-forward-bet-migration.mjs",
+    "scripts/control-plane/lib/premvp-migration-https-transport.mjs",
+    "scripts/control-plane/apply-premvp-approved-migration.mjs",
+    "package.json",
+    "tests/modeling/forwardBetLedger.test.ts",
+    "tests/modeling/virtualBetSettlement.test.ts",
+    "tests/modeling/forwardBetCeoReport.test.ts",
+    "tests/research-clone/forwardBetLedgerPostgres.test.mjs",
+    "tests/control-plane/premvpCloneForwardBetMigration.test.mjs",
+    "tests/control-plane/premvpMigrationHttpsTransport.test.mjs",
+    "tests/modeling/liveModelingDashboardProduction.test.ts",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.md",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.json"
+  ],
+  "commands_run": [
+    {
+      "command": "node --import tsx --test tests/modeling/forwardBetLedger.test.ts tests/modeling/virtualBetSettlement.test.ts tests/modeling/forwardBetCeoReport.test.ts",
+      "exit_code": 0,
+      "purpose": "focused forward-BET and settlement tests (14 pass)"
+    },
+    {
+      "command": "PREMVP_TEST_PSQL=<local throwaway postgres 16> node --test tests/research-clone/forwardBetLedgerPostgres.test.mjs",
+      "exit_code": 0,
+      "purpose": "real-Postgres trigger/immutability/settlement semantics (10 pass)"
+    },
+    {
+      "command": "npm run control-plane:check",
+      "exit_code": 0,
+      "purpose": "control plane + migration route tests (443 pass)"
+    },
+    {
+      "command": "node --import tsx --test tests/modeling/liveModelingDashboardProduction.test.ts",
+      "exit_code": 0,
+      "purpose": "existing cycle regression (10 pass)"
+    },
+    {
+      "command": "npx tsc --noEmit; npx eslint <new files>",
+      "exit_code": 0,
+      "purpose": "no new type or lint errors (live-shadow-cycle keeps its 6 pre-existing any-errors)"
+    },
+    {
+      "command": "npm run build",
+      "exit_code": 1,
+      "purpose": "plain env: fails collecting /api/entitlement/check because SUPABASE_URL is absent in this sandbox (unrelated)"
+    },
+    {
+      "command": "npm run build (placeholder non-secret SUPABASE env)",
+      "exit_code": 0,
+      "purpose": "compile, TypeScript and 33/33 static pages PASS"
+    },
+    {
+      "command": "npx tsx scripts/modeling/forward-bet-ceo-report.ts",
+      "exit_code": 0,
+      "purpose": "read-only DBClone report; contract schema applied = false, ledger rows = 2859"
+    }
+  ],
+  "tests": [
+    {
+      "name": "forward-bet unit (contract, settlement, CEO report)",
+      "result": "PASS",
+      "detail": "14/14"
+    },
+    {
+      "name": "real Postgres 16 migration + trigger semantics",
+      "result": "PASS",
+      "detail": "10/10 incl. DB-owned first_persisted_at, immutability, duplicate economic unit, replay/late/unknown-start classes, one terminal settlement, append-only history, idempotent re-apply"
+    },
+    {
+      "name": "control-plane suite",
+      "result": "PASS",
+      "detail": "443/443"
+    },
+    {
+      "name": "npm run build",
+      "result": "PASS",
+      "detail": "only with placeholder SUPABASE env; plain-env failure is the missing SUPABASE_URL, not this change"
+    },
+    {
+      "name": "migration applied to DBClone and registered-route dry-run",
+      "result": "NOT_RUN",
+      "detail": "SUPABASE_ACCESS_TOKEN absent; Supabase MCP denied for the clone"
+    },
+    {
+      "name": "natural new forward BET + settlement runtime proof",
+      "result": "NOT_RUN",
+      "detail": "depends on migration being applied"
+    }
+  ],
+  "required_reviewers": [],
+  "invoked_reviewers": [],
+  "reviewer_receipts": [],
+  "evidence": [
+    {
+      "id": "EV-14-01",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "DBClone read: 2859 LEDGER rows; contract columns absent (schema probe false). Exactly one DB-first row exists: TENNIS_P50_52_SAFE, event 1174651 (Chloe Noel vs Valeriya Strakhova), decision 2026-10-12T12:02:43Z, first_persisted_at 2026-10-12T12:31:49Z, scheduled start 17:00Z, entry 0.505, UNQUERIED. Left unmodified."
+    },
+    {
+      "id": "EV-14-02",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "CLOB market for that condition at 13:3xZ: closed=false, no winner token, game_start_time 2026-10-12T17:00Z (scheduled, not authoritative). TERMINAL_OUTCOME_PENDING."
+    },
+    {
+      "id": "EV-14-03",
+      "evidence_class": "SUPPORTED",
+      "statement": "Migration 20261012180000 verified on real Postgres 16 on top of the base schema plus the #525 migration; idempotent on re-apply; legacy rows keep NULL contract fields and cannot gain them."
+    },
+    {
+      "id": "EV-14-04",
+      "evidence_class": "NOT_PROVEN",
+      "statement": "The migration is not applied to DBClone; the cycle and settlement script run in legacy/no-op mode until it is. No natural FORWARD_BET_V1 row, no settlement-authority row exists."
+    }
+  ],
+  "capability_changes": [
+    {
+      "executor_id": "claude_code_cloud",
+      "capability": "DATABASE_WRITE",
+      "new_verdict": "NOT_AVAILABLE"
+    }
+  ],
+  "state_delta_proposal": null,
+  "runtime_changed": false,
+  "deployment_changed": false,
+  "database_changed": false,
+  "forbidden_actions_respected": true,
+  "verdict": "BLOCKED",
+  "outcome_class": "HARD_BLOCKED",
+  "hard_stop": {
+    "hard_stop_id": "REQUIRED_SECRET",
+    "recovery_attempts": [
+      {
+        "id": "R1",
+        "action": "look for SUPABASE_ACCESS_TOKEN / DB URL in the session environment (registered migration route precondition)",
+        "outcome": "absent",
+        "exhausted": true
+      },
+      {
+        "id": "R2",
+        "action": "read-only Supabase MCP list_migrations on the clone",
+        "outcome": "permission denied",
+        "exhausted": true
+      },
+      {
+        "id": "R3",
+        "action": "REST service-role path to the clone",
+        "outcome": "read and row writes work, but DDL is impossible over PostgREST; no bypass of the registered route attempted",
+        "exhausted": true
+      }
+    ],
+    "unrecoverable_evidence": "The only registered DDL route (apply-premvp-approved-migration.mjs --clone-forward-bet-contract) needs the Supabase management token, which this session does not hold and may not obtain."
+  },
+  "operator_actions": {
+    "start": 1,
+    "intermediate": 0,
+    "terminal_result": 1
+  },
+  "blockers": [
+    "DBClone migration 20261012180000 not applied (no management token in this session)",
+    "Natural FORWARD_BET_V1 runtime proof therefore NOT_PROVEN",
+    "Settlement for the 12 Oct Chloe Noel precedent is TERMINAL_OUTCOME_PENDING (match not played yet; and it is a legacy-shaped row outside the new settlement table)"
+  ],
+  "founder_action": "Run the registered route once from a token-holding environment: apply-premvp-approved-migration.mjs --clone-forward-bet-contract (dry run, then apply with confirmation). The next 30-minute modeling:shadow-cycle then writes the first natural FORWARD_BET_V1 rows and the settlement script reconciles them."
+}
