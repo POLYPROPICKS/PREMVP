@@ -1,111 +1,123 @@
 {
   "schema_version": "1",
-  "completion_id": "MODELING_14_FORWARD_BET_TO_SETTLEMENT_AUTHORITY-20261012",
-  "task_id": "MODELING_14_FORWARD_BET_TO_SETTLEMENT_AUTHORITY",
+  "completion_id": "MODELING_14_PR526_FORWARD_AUTHORITY_CLOSURE-20261012",
+  "task_id": "MODELING_14_PR526_FORWARD_AUTHORITY_CLOSURE",
   "task_class": "R1_BOUNDED_CODE",
   "risk_class": "R1_BOUNDED_CODE",
   "executor": "claude_code_cloud",
   "environment": "PREMVP-DB-CLONE (cloud container; clone REST read proven, clone DDL/management API not available)",
   "repository": "POLYPROPICKS/PREMVP",
   "branch": "claude/stoic-pasteur-c0r36x",
-  "base_sha": "9564114f712debbe3459cd2022bf2c0b0fdc6da5",
-  "result_sha": "f6fb4a9df30aebb3362dd23d2567c359b924c87a",
+  "base_sha": "0679456afd510445f63d874e12f119da4bb45ac6",
+  "result_sha": "732427df8e6852797c529fdcea4fbc6426e2afac",
   "origin_main_sha": "9564114f712debbe3459cd2022bf2c0b0fdc6da5",
   "worktree_before": "clean",
   "worktree_after": "clean",
   "files_changed": [
     "lib/modeling/forwardBetContract.ts",
     "lib/modeling/virtualBetSettlement.ts",
-    "scripts/modeling/live-shadow-cycle.ts",
-    "scripts/modeling/virtual-bet-settlement-authority.ts",
-    "scripts/modeling/forward-bet-ceo-report.ts",
+    "lib/research/strategyTrackLabels.ts",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.json",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.md",
+    "modeling/evidence/forward-bet-ledger-v1/DEPLOYMENT_HANDOFF.json",
     "ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql",
+    "package.json",
+    "scripts/control-plane/apply-premvp-approved-migration.mjs",
+    "scripts/control-plane/forward-bet-deployment-handoff.mjs",
     "scripts/control-plane/lib/premvp-clone-forward-bet-migration.mjs",
     "scripts/control-plane/lib/premvp-migration-https-transport.mjs",
-    "scripts/control-plane/apply-premvp-approved-migration.mjs",
-    "package.json",
-    "tests/modeling/forwardBetLedger.test.ts",
-    "tests/modeling/virtualBetSettlement.test.ts",
-    "tests/modeling/forwardBetCeoReport.test.ts",
-    "tests/research-clone/forwardBetLedgerPostgres.test.mjs",
+    "scripts/modeling/forward-bet-ceo-report.ts",
+    "scripts/modeling/forward-bet-post-deploy-verify.ts",
+    "scripts/modeling/live-shadow-cycle.ts",
+    "scripts/modeling/prospective-selection-shadow.ts",
+    "scripts/modeling/virtual-bet-settlement-authority.ts",
     "tests/control-plane/premvpCloneForwardBetMigration.test.mjs",
     "tests/control-plane/premvpMigrationHttpsTransport.test.mjs",
+    "tests/modeling/forwardBetCeoReport.test.ts",
+    "tests/modeling/forwardBetLedger.test.ts",
     "tests/modeling/liveModelingDashboardProduction.test.ts",
-    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.md",
-    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.json"
+    "tests/modeling/strategyTrackLabels.test.ts",
+    "tests/modeling/virtualBetSettlement.test.ts",
+    "tests/research-clone/forwardBetLedgerPostgres.test.mjs",
+    "tests/research-clone/forwardBetPayloadCompat.test.ts"
   ],
   "commands_run": [
     {
-      "command": "node --import tsx --test tests/modeling/forwardBetLedger.test.ts tests/modeling/virtualBetSettlement.test.ts tests/modeling/forwardBetCeoReport.test.ts",
+      "command": "npm run test:modeling:forward-bet",
       "exit_code": 0,
-      "purpose": "focused forward-BET and settlement tests (14 pass)"
+      "purpose": "unit tests: contract, settlement, CEO report, ten-track labels (18 pass)"
     },
     {
-      "command": "PREMVP_TEST_PSQL=<local throwaway postgres 16> node --test tests/research-clone/forwardBetLedgerPostgres.test.mjs",
+      "command": "PREMVP_TEST_PSQL=<throwaway postgres 16> npm run test:research-clone-forward-bet-pg",
       "exit_code": 0,
-      "purpose": "real-Postgres trigger/immutability/settlement semantics (10 pass)"
+      "purpose": "migration + trigger integrity and real cycle payload compatibility (13 pass)"
     },
     {
       "command": "npm run control-plane:check",
       "exit_code": 0,
-      "purpose": "control plane + migration route tests (443 pass)"
+      "purpose": "control plane, migration route, handoff freshness (445 pass)"
     },
     {
-      "command": "node --import tsx --test tests/modeling/liveModelingDashboardProduction.test.ts",
+      "command": "node --import tsx --test tests/modeling/liveModelingDashboardProduction.test.ts tests/research-clone/inplayPaperDecisions.test.ts tests/research-clone/inplayPaperSettlement.test.ts",
       "exit_code": 0,
-      "purpose": "existing cycle regression (10 pass)"
+      "purpose": "existing cycle and live-control regressions (53 pass)"
     },
     {
-      "command": "npx tsc --noEmit; npx eslint <new files>",
+      "command": "npx tsc --noEmit; npx eslint <new/changed files>; git diff --check",
       "exit_code": 0,
-      "purpose": "no new type or lint errors (live-shadow-cycle keeps its 6 pre-existing any-errors)"
-    },
-    {
-      "command": "npm run build",
-      "exit_code": 1,
-      "purpose": "plain env: fails collecting /api/entitlement/check because SUPABASE_URL is absent in this sandbox (unrelated)"
+      "purpose": "no new type, lint or whitespace errors"
     },
     {
       "command": "npm run build (placeholder non-secret SUPABASE env)",
       "exit_code": 0,
-      "purpose": "compile, TypeScript and 33/33 static pages PASS"
+      "purpose": "compile, TypeScript, 33/33 pages (plain env fails only on missing SUPABASE_URL in this sandbox)"
+    },
+    {
+      "command": "npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts",
+      "exit_code": 1,
+      "purpose": "expected pre-deploy FAIL: contract columns and settlement table absent on DBClone; ledger DELETE refused (42501)"
     },
     {
       "command": "npx tsx scripts/modeling/forward-bet-ceo-report.ts",
       "exit_code": 0,
-      "purpose": "read-only DBClone report; contract schema applied = false, ledger rows = 2859"
+      "purpose": "read-only DBClone ten-track report"
     }
   ],
   "tests": [
     {
-      "name": "forward-bet unit (contract, settlement, CEO report)",
+      "name": "forward-bet unit suite",
       "result": "PASS",
-      "detail": "14/14"
+      "detail": "18/18"
     },
     {
-      "name": "real Postgres 16 migration + trigger semantics",
+      "name": "real Postgres 16: migration, immutability, economic unit incl. market-shard duplicates, timing classes, settlement history, grants, idempotent re-apply",
       "result": "PASS",
-      "detail": "10/10 incl. DB-owned first_persisted_at, immutability, duplicate economic unit, replay/late/unknown-start classes, one terminal settlement, append-only history, idempotent re-apply"
+      "detail": "11/11"
     },
     {
-      "name": "control-plane suite",
+      "name": "cycle payload inserted into migrated schema (COMPLETE, DB-classified; replay stored but not forward)",
       "result": "PASS",
-      "detail": "443/443"
+      "detail": "2/2"
+    },
+    {
+      "name": "control-plane suite incl. exact-SQL route and handoff freshness",
+      "result": "PASS",
+      "detail": "445/445"
     },
     {
       "name": "npm run build",
       "result": "PASS",
-      "detail": "only with placeholder SUPABASE env; plain-env failure is the missing SUPABASE_URL, not this change"
+      "detail": "with placeholder SUPABASE env only"
     },
     {
-      "name": "migration applied to DBClone and registered-route dry-run",
+      "name": "migration dry-run/apply on DBClone via registered route",
       "result": "NOT_RUN",
-      "detail": "SUPABASE_ACCESS_TOKEN absent; Supabase MCP denied for the clone"
+      "detail": "no SUPABASE_ACCESS_TOKEN in this session; Supabase MCP lists only Polypropicks2 and polypropicks-prod-shadow, neither is the clone"
     },
     {
-      "name": "natural new forward BET + settlement runtime proof",
+      "name": "natural forward BET + settlement lifecycle",
       "result": "NOT_RUN",
-      "detail": "depends on migration being applied"
+      "detail": "requires the DBClone migration"
     }
   ],
   "required_reviewers": [],
@@ -113,24 +125,39 @@
   "reviewer_receipts": [],
   "evidence": [
     {
-      "id": "EV-14-01",
+      "id": "EV-14-R1",
       "evidence_class": "PROVEN_IN_RUNTIME",
-      "statement": "DBClone read: 2859 LEDGER rows; contract columns absent (schema probe false). Exactly one DB-first row exists: TENNIS_P50_52_SAFE, event 1174651 (Chloe Noel vs Valeriya Strakhova), decision 2026-10-12T12:02:43Z, first_persisted_at 2026-10-12T12:31:49Z, scheduled start 17:00Z, entry 0.505, UNQUERIED. Left unmodified."
+      "statement": "DEFECT FIXED: provider_event_id is a market-shard id. On live clone evidence (1000 rows, 12 Oct) 17 fixtures (same competitor pair and start) span more than one provider_event_id (e.g. 1104527 and 1107765). canonical game is now competitor pair + scheduled start; unparsed shards stay PROVIDER_EVENT_ONLY and are INCOMPLETE:root_game_unverified."
     },
     {
-      "id": "EV-14-02",
-      "evidence_class": "PROVEN_IN_RUNTIME",
-      "statement": "CLOB market for that condition at 13:3xZ: closed=false, no winner token, game_start_time 2026-10-12T17:00Z (scheduled, not authoritative). TERMINAL_OUTCOME_PENDING."
-    },
-    {
-      "id": "EV-14-03",
+      "id": "EV-14-R2",
       "evidence_class": "SUPPORTED",
-      "statement": "Migration 20261012180000 verified on real Postgres 16 on top of the base schema plus the #525 migration; idempotent on re-apply; legacy rows keep NULL contract fields and cannot gain them."
+      "statement": "DEFECT FIXED: the cycle's evidence read did not include selected_outcome, so every contract row would have been INCOMPLETE:selected_outcome. It is a pre-decision fact and is now read; projection test forbids settlement columns."
     },
     {
-      "id": "EV-14-04",
+      "id": "EV-14-R3",
+      "evidence_class": "SUPPORTED",
+      "statement": "HARDENED: provider 50-50 VOID now only on the explicit is_50_50_outcome flag (price-at-0.5 inference removed); spread sign is never guessed for an unnamed or Yes/No/Over/Under side; scope_basis marks text-derived scope; resolved_at source recorded as Gamma auxiliary. Live example of fail-closed: 'Map Handicap: GLS (-1.5) vs ...' selected 'Galorys' yields no line, so the row would be INCOMPLETE:line_value."
+    },
+    {
+      "id": "EV-14-R4",
+      "evidence_class": "SUPPORTED",
+      "statement": "VERIFIED NO CHANGE NEEDED: selection invariance (future outcome fields cannot change a BET), DB-owned first_persisted_at and timing_class, replay != forward, scheduled-only/rescheduled/unknown start never proven, immutable choice fields, cross-date/legacy economic unit, one terminal settlement row with CONFLICT history, executable price only with CLOB authority."
+    },
+    {
+      "id": "EV-14-R5",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Ten-track CEO report generated from DBClone (read-only): 5 prematch tracks = forward engines with 0 contract BETs yet (2858 historical + 1 legacy DB-first row, none counted as proven); CONTROL A/B/C = 46/46/95 BET decisions, all DELAYED_PAPER, executable BUY VWAP on all (TIMELY_SOURCE_PATH_PROVEN=false); Alpha 1/2 = facts-only, canEmitBet=false, 0 BET. Control definition hashes equal the stored decision hashes and are frozen by test."
+    },
+    {
+      "id": "EV-14-R6",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Chloe Noel precedent unchanged and TERMINAL_OUTCOME_PENDING: CLOB closed=false at 13:54Z, no winner token, scheduled 17:00Z."
+    },
+    {
+      "id": "EV-14-R7",
       "evidence_class": "NOT_PROVEN",
-      "statement": "The migration is not applied to DBClone; the cycle and settlement script run in legacy/no-op mode until it is. No natural FORWARD_BET_V1 row, no settlement-authority row exists."
+      "statement": "DBClone still lacks the migration (post-deploy verifier FAIL on columns/table). No natural FORWARD_BET_V1 row, no settlement-authority row, no catalog proof exist. Isolation proof for this run: the clone ref is hard-checked in every script, no production credential exists in the session, DDL was never attempted."
     }
   ],
   "capability_changes": [
@@ -152,24 +179,30 @@
     "recovery_attempts": [
       {
         "id": "R1",
-        "action": "look for SUPABASE_ACCESS_TOKEN / DB URL in the session environment (registered migration route precondition)",
-        "outcome": "absent",
+        "action": "re-check session environment for SUPABASE_ACCESS_TOKEN / DB URL / password",
+        "outcome": "absent (only clone REST url and service-role key)",
         "exhausted": true
       },
       {
         "id": "R2",
-        "action": "read-only Supabase MCP list_migrations on the clone",
-        "outcome": "permission denied",
+        "action": "Supabase MCP list_projects",
+        "outcome": "sees Polypropicks2 and polypropicks-prod-shadow only; the clone and production refs are absent; no apply was attempted on any project",
         "exhausted": true
       },
       {
         "id": "R3",
-        "action": "REST service-role path to the clone",
-        "outcome": "read and row writes work, but DDL is impossible over PostgREST; no bypass of the registered route attempted",
+        "action": "management API reachability",
+        "outcome": "api.supabase.com answers 401 without a token, so the network is open and only the secret is missing",
+        "exhausted": true
+      },
+      {
+        "id": "R4",
+        "action": "prepare exact-SQL deployment handoff and post-deploy verifier",
+        "outcome": "DEPLOYMENT_HANDOFF.json (sha256 33990025...) + forward-bet-post-deploy-verify.ts committed; pre-state proven by verifier FAIL",
         "exhausted": true
       }
     ],
-    "unrecoverable_evidence": "The only registered DDL route (apply-premvp-approved-migration.mjs --clone-forward-bet-contract) needs the Supabase management token, which this session does not hold and may not obtain."
+    "unrecoverable_evidence": "The only registered DDL route needs a Supabase management token scoped to nppznoujvnyjargjkmnv. It is configured per environment (Edit environment, Network secrets or environment variable SUPABASE_ACCESS_TOKEN), never pasted into chat, and a new session picks it up. Raw SQL over the service-role REST key is impossible and bypassing the route is forbidden."
   },
   "operator_actions": {
     "start": 1,
@@ -177,9 +210,9 @@
     "terminal_result": 1
   },
   "blockers": [
-    "DBClone migration 20261012180000 not applied (no management token in this session)",
-    "Natural FORWARD_BET_V1 runtime proof therefore NOT_PROVEN",
-    "Settlement for the 12 Oct Chloe Noel precedent is TERMINAL_OUTCOME_PENDING (match not played yet; and it is a legacy-shaped row outside the new settlement table)"
+    "DBClone migration 20261012180000 not applied: no management token reachable by this session",
+    "Natural FORWARD_BET_V1 lifecycle NOT_PROVEN until the migration and the 30-minute cycle both run",
+    "PR #526 stays draft and unmerged: release gates (DBClone apply + catalog proof) are not met"
   ],
-  "founder_action": "Run the registered route once from a token-holding environment: apply-premvp-approved-migration.mjs --clone-forward-bet-contract (dry run, then apply with confirmation). The next 30-minute modeling:shadow-cycle then writes the first natural FORWARD_BET_V1 rows and the settlement script reconciles them."
+  "founder_action": "Add SUPABASE_ACCESS_TOKEN (clone-scoped) to this cloud environment's settings, then start one session with the instruction to run the dry run and apply from modeling/evidence/forward-bet-ledger-v1/DEPLOYMENT_HANDOFF.json, run forward-bet-post-deploy-verify.ts, and let the next shadow cycle produce the first natural forward BET. No SQL and no token in chat."
 }
