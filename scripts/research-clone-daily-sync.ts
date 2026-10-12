@@ -39,6 +39,19 @@ const EXPECTED_CLONE_REF = "nppznoujvnyjargjkmnv";
 const PAGE_SIZE = 250;
 const TELEMETRY_PAGE_SIZE = 200;
 const TELEMETRY_MAX_PAGES = 8;
+// OCTOBER_D1_BUSINESS_RECOVERY_V1: the 02 UTC full sync is the only run that can write the
+// full-sync-complete marker, and it requires every table drained. The hourly 8-page telemetry
+// budget (1,600 rows) did not drain the 00-02 UTC in-play burst on 2026-10-11/12, so the marker
+// was (correctly) withheld and MODEL_READY/D1 stalled. The full branch alone gets a larger but
+// still bounded telemetry append budget (64 x 200 = 12,800 rows); hourly runs are unchanged and
+// a table still pending after it stays pending (no marker), exactly as before.
+const FULL_SYNC_TELEMETRY_MAX_PAGES = 64;
+
+/** Append page budget for one table: hourly telemetry stays at 8 pages; the full sync gets the bounded full budget. */
+export function appendPageBudget(spec: { telemetry?: boolean }, fullSync: boolean): number {
+  if (!spec.telemetry) return MAX_APPEND_PAGES;
+  return fullSync ? FULL_SYNC_TELEMETRY_MAX_PAGES : TELEMETRY_MAX_PAGES;
+}
 const TELEMETRY_BOOTSTRAP_SINCE = "2026-09-30T00:00:00.000Z";
 const TELEMETRY_PURGE_FLOOR = "1970-01-01T00:00:00.000Z";
 const CAPTURE_RUN_PROJECTION = "id,reservation_id,plan_run_id,physical_event_id,provider_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,source_version,source_observed_at,markets_discovered_n,market_tokens_expected_n,market_tokens_observed_n,orderbooks_success_n,orderbooks_failed_n,capture_complete,capture_status,failure_reason,created_at,discovery_audit_v1";
@@ -842,11 +855,12 @@ async function syncTable(
   source: Client,
   spec: TableSpec,
   bootstrapSince: string | null = null,
+  fullSync = false,
 ): Promise<TableEvidence> {
   const beforeQueueChildWrite = spec.table === "event_execution_queue"
     ? (rows: SyncRow[]) => repairQueueReservationParents(target, source, rows)
     : undefined;
-  const append = await runAppendSync(spec.fields, spec.telemetry ? TELEMETRY_MAX_PAGES : MAX_APPEND_PAGES, {
+  const append = await runAppendSync(spec.fields, appendPageBudget(spec, fullSync), {
     sourceMaxWatermark: () => maxWatermark(source, spec),
     targetMaxWatermark: () => maxWatermark(target, spec),
     readCheckpoint: () => readCheckpoint(target, spec, checkpointSource(spec)),
@@ -1351,7 +1365,7 @@ export async function main(): Promise<void> {
     // and the next scheduled run continues from the durable checkpoints/cursors.
     for (const spec of SPECS) {
       try {
-        tables[spec.table] = await syncTable(target, source, spec, bootstrapSince);
+        tables[spec.table] = await syncTable(target, source, spec, bootstrapSince, true);
       } catch (error) {
         // An optional table's clone-side schema (ops/research-clone/
         // primary-evidence-outbox-schema.sql) may not be applied yet — a missing
