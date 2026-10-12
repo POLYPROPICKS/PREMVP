@@ -45,8 +45,11 @@ export const RESEARCH_TICK_BUDGET_MS = 8_000;
  */
 export const SOFT_EVENT_START_MIN_REMAINING_MS = 2_500;
 export const SOFT_EVENT_DURATION_SAFETY_FACTOR = 1.25;
+/**
+ * Production retention TARGET for the T20 table. The collector never deletes: expiry is owned by the research-clone sync
+ * (scripts/research-clone-daily-sync.ts), which removes a row only after the identical row is confirmed in DBClone.
+ */
 export const PRODUCTION_RETENTION_DAYS = 7;
-export const RETENTION_DELETE_BATCH = 1_000;
 /** Defensive EVENT-level ceiling (never a raw-row slice). Above it the day fails closed with an explicit diagnostic. */
 export const EVENT_UNIVERSE_CEILING = 800;
 /** Business T20: 9 < minutes_to_start <= 20. */
@@ -507,8 +510,6 @@ export type ResearchStore = {
   /** Distinct physical events already captured for events starting inside the window. */
   capturedEventCount(fromIso: string, toIso: string): Promise<number>;
   writeRows(rows: Record<string, unknown>[]): Promise<void>;
-  /** Deletes at most `limit` rows older than the cutoff; returns the number deleted. */
-  purgeExpired(cutoffIso: string, limit: number): Promise<number>;
 };
 
 export function createResearchStore(getClient: () => RuntimeSupabaseClient | Promise<RuntimeSupabaseClient>): ResearchStore {
@@ -540,17 +541,6 @@ export function createResearchStore(getClient: () => RuntimeSupabaseClient | Pro
       const { error } = await client.from(RESEARCH_TABLE)
         .upsert(rows, { onConflict: "physical_event_id,condition_id,token_id,side", ignoreDuplicates: true });
       if (error) throw new Error("RESEARCH_WRITE_FAILED");
-    },
-    async purgeExpired(cutoffIso, limit) {
-      const client = await getClient();
-      const { data, error } = await client.from(RESEARCH_TABLE).select("id")
-        .lt("observed_at", cutoffIso).order("observed_at").limit(Math.min(limit, RETENTION_DELETE_BATCH));
-      if (error) throw new Error("RESEARCH_PURGE_READ_FAILED");
-      const ids = (data ?? []).map((r: { id: string }) => r.id);
-      if (ids.length === 0) return 0;
-      const { error: delError } = await client.from(RESEARCH_TABLE).delete().in("id", ids);
-      if (delError) throw new Error("RESEARCH_PURGE_DELETE_FAILED");
-      return ids.length;
     },
   };
 }
@@ -616,7 +606,7 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
   const counters = {
     due_event_n: 0, attempted_event_n: 0, deferred_budget_event_n: 0,
     captured_event_n: 0, already_captured_event_n: 0, failed_event_n: 0, token_rows_written_n: 0,
-    token_budget_exceeded_event_n: 0, purged_row_n: 0, event_universe_ceiling_exceeded_day_n: 0,
+    token_budget_exceeded_event_n: 0, event_universe_ceiling_exceeded_day_n: 0,
     provider_start_batch_n: 0, provider_start_refresh_deferred_n: 0, provider_start_unverified_event_n: 0,
     provider_start_unchanged_event_n: 0, provider_start_rescheduled_event_n: 0, provider_start_rescheduled_into_window_event_n: 0,
     identity_ambiguous_event_n: 0, provider_start_cross_utc_day_event_n: 0, provider_start_phase_timeout_n: 0, provider_start_unreconciled_snapshot_window_event_n: 0,
@@ -809,15 +799,7 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
       }
       if (budgetDeferred) break;
     }
-    // Bounded retention: one capped purge call per tick, only while the deadline has not expired. Skipped after a soft
-    // deferral: the leftover budget is by definition too small, and a slow purge must not turn durable progress into a
-    // false RESEARCH_TICK_TIMEOUT (retention is 7 days, so a skipped purge is harmless; the next tick purges).
-    if (live() && !budgetDeferred && remaining() > 500) {
-      const cutoff = new Date(nowMs - PRODUCTION_RETENTION_DAYS * 86_400_000).toISOString();
-      const purged = await deps.store.purgeExpired(cutoff, RETENTION_DELETE_BATCH).catch(() => 0);
-      if (!live()) return expire();
-      counters.purged_row_n = purged;
-    }
+    // No retention delete here: Production T20 expiry is owned by the clone-confirmed purge in the research-clone sync.
     status = counters.captured_event_n > 0 ? "success" : "empty";
     if (counters.event_universe_ceiling_exceeded_day_n > 0) { status = "error"; errorMessage = "RESEARCH_EVENT_UNIVERSE_CEILING_EXCEEDED"; }
   };

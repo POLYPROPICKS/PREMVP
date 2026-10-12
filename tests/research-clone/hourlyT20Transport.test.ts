@@ -93,13 +93,15 @@ test("transport status: synced, pending and schema-pending are reported honestly
   await assert.rejects(runHourlyT20Transport(async () => { throw new Error("RESEARCH_CLONE_SOURCE_READ_x:57014"); }), /57014/);
 });
 
-test("telemetry-only branch runs T20 last, never purges it, keeps existing paths", () => {
+test("telemetry-only branch runs T20 transport last, then purges it only clone-confirmed, keeps existing paths", () => {
   const source = readFileSync(new URL("../../scripts/research-clone-daily-sync.ts", import.meta.url), "utf8");
   const branch = source.slice(source.indexOf('process.argv.includes("--telemetry-only")'), source.indexOf("const outboxProbe"));
   const exec = branch.indexOf("hourlyExecutionSpecs()");
   const t20 = branch.indexOf("runHourlyT20Transport(");
   const success = branch.indexOf('MODE: "TELEMETRY_ONLY"');
-  assert.ok(exec >= 0 && exec < t20 && t20 < success);
+  const t20Purge = branch.indexOf("purgeTelemetry(target, source, Date.now(), false, false, true)");
+  assert.ok(exec >= 0 && exec < t20 && t20 < t20Purge && t20Purge < success);
+  assert.ok(branch.includes('t20Transport.STATUS === "SCHEMA_PENDING" ? null'));
   const line = branch.slice(success, branch.indexOf("\n", success));
   assert.ok(line.includes("T20_TRANSPORT: t20Transport") && line.includes("EXECUTION_TABLES: executionTables"));
   assert.ok(branch.includes('t20Transport.STATUS === "APPEND_PENDING"'));

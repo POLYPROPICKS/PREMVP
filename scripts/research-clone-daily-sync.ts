@@ -249,8 +249,8 @@ const EMPTY_TABLE_EVIDENCE: TableEvidence = {
  * TELEMETRY_05_T20_HOURLY_DBCLONE_PARITY_V1: the hourly `--telemetry-only` run also
  * transports the append-only T20 carrier through its existing SPECS entry (same
  * keyset, projection, bootstrap and page bounds as the FULL daily sync). The T20
- * table is transport-only: it is never part of TELEMETRY_PURGE_ORDER, so no
- * Production delete path can name it.
+ * table is not part of TELEMETRY_PURGE_ORDER. Its 7-day Production expiry is owned by
+ * the clone-confirmed purge (purgeTelemetry t20 mode); the T20 collector never deletes.
  */
 export const HOURLY_T20_TABLE = "research_precontract_t20_observations" as const;
 
@@ -935,6 +935,21 @@ export function executableTelemetryParityConfirmedIds(
     .map((row) => row.id);
 }
 
+/**
+ * Content-parity confirmation for tables whose clone holds the FULL projected row (T20 and in-play): a Production row is
+ * confirmed only when the clone row exists and is identical on every projected column. A clone row copied before a column
+ * joined the projection (NULL there, populated in Production) therefore blocks the delete instead of silently losing data.
+ */
+export function contentParityConfirmedIds(
+  cloneRows: ReadonlyArray<SyncRow>,
+  sourceRows: ReadonlyArray<SyncRow>,
+): string[] {
+  const source = new Map(sourceRows.map((row) => [row.id, stableJson(row)]));
+  return cloneRows.filter((row) => source.get(row.id) === stableJson(row)).map((row) => row.id);
+}
+
+const CONTENT_PARITY_PURGE_TABLES: readonly PurgeTable[] = ["research_precontract_t20_observations", "research_inplay_core_path_observations"];
+
 function telemetryTimeField(table: PurgeTable): string {
   if (table === "generated_signal_research_snapshots") return "snapshot_at";
   return table === "reservation_strategy_observations" ? "evaluated_at" : "observed_at";
@@ -970,7 +985,7 @@ export async function fetchStaleTelemetryPage(
   return rows.map((row) => ({ id: row.id, timestamp: row[field] }));
 }
 
-async function purgeTelemetry(target: Client, source: Client, nowMs: number, researchSnapshots = false, inplay = false) {
+async function purgeTelemetry(target: Client, source: Client, nowMs: number, researchSnapshots = false, inplay = false, t20 = false) {
   return purgeConfirmedTelemetry(nowMs, {
     async readCursor(table) {
       const field = telemetryTimeField(table);
@@ -998,12 +1013,21 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number, res
         const telemeteredIds = new Set(((telemetered.data ?? []) as Array<{ id: string }>).map((row) => row.id));
         return executableTelemetryParityConfirmedIds((clone.data ?? []) as Array<{ id: string; executable_telemetry_version: unknown }>, telemeteredIds);
       }
+      if (CONTENT_PARITY_PURGE_TABLES.includes(table)) {
+        const projection = SPECS.find((entry) => entry.table === table)?.projection;
+        if (!projection) throw new Error(`TELEMETRY_PURGE_PROJECTION_MISSING_${table}`);
+        const clone = await target.from(table).select(projection).in("id", [...ids]);
+        if (clone.error) throw new Error(`TELEMETRY_PURGE_CLONE_CONFIRM_${table}:${safeError(clone.error)}`);
+        const production = await source.from(table).select(projection).in("id", [...ids]);
+        if (production.error) throw new Error(`TELEMETRY_PURGE_READ_${table}:${safeError(production.error)}`);
+        return contentParityConfirmedIds((clone.data ?? []) as unknown as SyncRow[], (production.data ?? []) as unknown as SyncRow[]);
+      }
       const { data, error } = await target.from(table).select("id").in("id", [...ids]);
       if (error) throw new Error(`TELEMETRY_PURGE_CLONE_CONFIRM_${table}:${safeError(error)}`);
       return ((data ?? []) as Array<{ id: string }>).map((row) => row.id);
     },
     async withoutProductionChildren(table, ids) {
-      if (!ids.length || table === "reservation_strategy_observations" || table === "generated_signal_research_snapshots" || table === "research_inplay_core_path_observations") return [...ids];
+      if (!ids.length || table === "reservation_strategy_observations" || table === "generated_signal_research_snapshots" || table === "research_inplay_core_path_observations" || table === "research_precontract_t20_observations") return [...ids];
       const childTable = table === "reservation_market_observations"
         ? "reservation_strategy_observations" : "reservation_market_observations";
       const childKey = table === "reservation_market_observations" ? "market_observation_id" : "capture_run_id";
@@ -1018,6 +1042,8 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number, res
       const deletion = source.from(table).delete().in("id", [...ids]);
       const { error } = await (table === "research_inplay_core_path_observations"
         ? deletion.lte("observed_at", new Date(nowMs - 48 * 60 * 60 * 1000).toISOString())
+        : table === "research_precontract_t20_observations"
+        ? deletion.lte("observed_at", new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString())
         : table === "generated_signal_research_snapshots"
         ? deletion.lte("snapshot_at", new Date(nowMs - 7 * 24 * 60 * 60 * 1000).toISOString())
         : deletion);
@@ -1032,6 +1058,8 @@ async function purgeTelemetry(target: Client, source: Client, nowMs: number, res
     },
   }, TELEMETRY_PAGE_SIZE, TELEMETRY_MAX_PAGES, inplay
     ? { tables: ["research_inplay_core_path_observations"], retentionHours: 48 }
+    : t20
+    ? { tables: ["research_precontract_t20_observations"], retentionDays: 7 }
     : researchSnapshots
     ? { tables: ["generated_signal_research_snapshots"], retentionDays: 7 }
     : {});
@@ -1276,8 +1304,11 @@ export async function main(): Promise<void> {
       // T20 transport runs last and never touches purge: a failure here cannot skip
       // telemetry copy, purge or execution analytics, and is never reported as parity.
       const t20Transport = await runHourlyT20Transport((spec) => syncTable(target, source, spec, PRECONTRACT_T20_BOOTSTRAP_SINCE));
+      // T20 expiry (7 days) is clone-confirmed: only rows older than the retention target AND identical in DBClone are
+      // deleted, in the same bounded pages as every other purge. A schema-pending clone table purges nothing.
+      const t20Purge = t20Transport.STATUS === "SCHEMA_PENDING" ? null : await purgeTelemetry(target, source, Date.now(), false, false, true);
       const pending = TELEMETRY_PURGE_ORDER.some((table) => tables[table].APPEND_PENDING) || t20Transport.STATUS === "APPEND_PENDING";
-      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, T20_TRANSPORT: t20Transport, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge, INPLAY_PURGE: inplayPurge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
+      console.log(JSON.stringify({ STATUS: "SUCCESS", MODE: "TELEMETRY_ONLY", TABLES: tables, EXECUTION_TABLES: executionTables, T20_TRANSPORT: t20Transport, DISCOVERY_AUDIT_REPAIR: discoveryAudit, PURGE: purge, RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge, INPLAY_PURGE: inplayPurge, T20_PURGE: t20Purge, RESUME_PENDING: pending, DURATION_MS: Date.now() - startedAt }));
       return;
     }
 
@@ -1345,6 +1376,8 @@ export async function main(): Promise<void> {
     const researchSnapshotPurge = await purgeTelemetry(target, source, Date.now(), true);
     const inplayPurge = !schemaPendingTables.includes("research_inplay_core_path_observations")
       ? await purgeTelemetry(target, source, Date.now(), false, true) : null;
+    const t20Purge = !schemaPendingTables.includes("research_precontract_t20_observations")
+      ? await purgeTelemetry(target, source, Date.now(), false, false, true) : null;
     const pendingTables: string[] = (Object.keys(tables) as TableName[]).filter(
       (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
     );
@@ -1365,6 +1398,7 @@ export async function main(): Promise<void> {
         TELEMETRY_PURGE: telemetryPurge,
         RESEARCH_SNAPSHOT_PURGE: researchSnapshotPurge,
         INPLAY_PURGE: inplayPurge,
+        T20_PURGE: t20Purge,
         PENDING_TABLES: pendingTables,
         RESUME_PENDING: pendingTables.length > 0,
         DURATION_MS: Date.now() - startedAt,

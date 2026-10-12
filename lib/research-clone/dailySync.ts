@@ -7,7 +7,7 @@ export const TELEMETRY_PURGE_ORDER = [
   "reservation_market_capture_runs",
 ] as const;
 export type TelemetryTable = typeof TELEMETRY_PURGE_ORDER[number];
-export type PurgeTable = TelemetryTable | "generated_signal_research_snapshots" | "research_inplay_core_path_observations";
+export type PurgeTable = TelemetryTable | "generated_signal_research_snapshots" | "research_inplay_core_path_observations" | "research_precontract_t20_observations";
 export type TelemetryPurgeRow = { id: string; timestamp: string };
 export type TelemetryPurgeCursor = { timestamp: string; id: string };
 export interface TelemetryPurgePort {
