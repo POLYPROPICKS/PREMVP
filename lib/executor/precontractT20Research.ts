@@ -17,7 +17,7 @@ import { getBestBidAsk } from "../liquidity/orderbookMath";
 import { physicalMatchId } from "./contractADecisions";
 import {
   classifyExactEventMarket, defaultExactEventReader, defaultGameEventsReader, inventoryTokens, sameGameLiveUniverse,
-  stableTelemetryId, DISCOVERY_AUDIT_OVERFLOW,
+  stableTelemetryId, DISCOVERY_AUDIT_OVERFLOW, PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS,
 } from "./reservationMarketBaseline";
 
 export const PRECONTRACT_RESEARCH_SOURCE = "PRECONTRACT_TOP100_MULTISPORT_T20_RESEARCH_V1";
@@ -289,6 +289,12 @@ export type ResearchCaptureDeps = {
   isLive?: () => boolean;
 };
 export const RESEARCH_DEADLINE_EXPIRED = "RESEARCH_DEADLINE_EXPIRED";
+export const RESEARCH_WRITE_FAILED = "RESEARCH_WRITE_FAILED";
+/**
+ * Exact-reader errors that name a distinct business cause. Anything else stays the generic EVENT_MARKET_SET_UNAVAILABLE,
+ * so the aggregate failure-reason keys are a bounded, fixed set (never raw provider text).
+ */
+const TYPED_EXACT_READ_ERRORS: ReadonlySet<string> = new Set(["RESERVED_EVENT_START_MISMATCH", PHYSICAL_EVENT_GAME_DISCOVERY_AMBIGUOUS]);
 
 /** One bounded event capture: exact event -> same-game full-event universe -> admitted tokens -> books -> scalar rows. */
 export async function captureResearchEvent(
@@ -304,16 +310,25 @@ export async function captureResearchEvent(
     const own = await (deps.readExactEvent ?? defaultExactEventReader)(event.providerEventId, event.eventStartIso);
     if (!live()) return expired();
     const gameIds = new Set(own.map((m) => m.provider_game_id).filter((g): g is string => !!g));
-    if (own.length === 0 || gameIds.size !== 1) return { kind: "FAILED", reason: "EVENT_GAME_IDENTITY_UNRESOLVED", unsupported };
-    const gameId = [...gameIds][0];
-    if (event.providerGameId && event.providerGameId !== gameId) return { kind: "FAILED", reason: "EVENT_GAME_IDENTITY_CONTRADICTION", unsupported };
-    const discovered = await (deps.readGameEvents ?? defaultGameEventsReader)(gameId, event.eventStartIso);
-    if (!live()) return expired();
-    const universe = sameGameLiveUniverse(gameId, event.eventStartIso, own, discovered);
-    if (universe.audit.audit_overflow) return { kind: "FAILED", reason: DISCOVERY_AUDIT_OVERFLOW, unsupported };
-    markets = universe.markets;
-  } catch {
-    return { kind: "FAILED", reason: "EVENT_MARKET_SET_UNAVAILABLE", unsupported };
+    // The provider authors no gameId for some MONEYLINE-only events (e.g. international cricket). physicalMatchId already
+    // keys such an event on its provider event id, and only that event's own MONEYLINE can be admitted, so when neither
+    // the source nor the exact event states a gameId the exact event's own markets are the complete admissible set.
+    // Every other gameId-less event (any other family) still fails closed as unresolved.
+    if (own.length > 0 && gameIds.size === 0 && !event.providerGameId && event.sportFamily && MONEYLINE_ONLY_FAMILIES.has(event.sportFamily)) {
+      markets = own;
+    } else {
+      if (own.length === 0 || gameIds.size !== 1) return { kind: "FAILED", reason: "EVENT_GAME_IDENTITY_UNRESOLVED", unsupported };
+      const gameId = [...gameIds][0];
+      if (event.providerGameId && event.providerGameId !== gameId) return { kind: "FAILED", reason: "EVENT_GAME_IDENTITY_CONTRADICTION", unsupported };
+      const discovered = await (deps.readGameEvents ?? defaultGameEventsReader)(gameId, event.eventStartIso);
+      if (!live()) return expired();
+      const universe = sameGameLiveUniverse(gameId, event.eventStartIso, own, discovered);
+      if (universe.audit.audit_overflow) return { kind: "FAILED", reason: DISCOVERY_AUDIT_OVERFLOW, unsupported };
+      markets = universe.markets;
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    return { kind: "FAILED", reason: TYPED_EXACT_READ_ERRORS.has(message) ? message : "EVENT_MARKET_SET_UNAVAILABLE", unsupported };
   }
   const admittedMarkets = markets.filter((m) => {
     const verdict = admitResearchMarket(event.sportFamily, m.sports_market_type, m.provider_market_slug);
@@ -481,6 +496,9 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
     token_budget_exceeded_event_n: 0, purged_row_n: 0, event_universe_ceiling_exceeded_day_n: 0,
   };
   const unsupportedCounts: Record<string, number> = {};
+  /** Aggregate-only: reason -> number of failed captures this tick (no event ids, no raw provider payloads). */
+  const failedReasonCounts: Record<string, number> = {};
+  const noteFailure = (reason: string) => { counters.failed_event_n++; failedReasonCounts[reason] = (failedReasonCounts[reason] ?? 0) + 1; };
   let cohortDiagnostics: Record<string, unknown> = {};
   let status: "success" | "empty" | "error" = "empty";
   let errorMessage: string | undefined;
@@ -538,13 +556,13 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
         if (!live()) return expire();
         for (const [type, n] of Object.entries(outcome.unsupported)) unsupportedCounts[type] = (unsupportedCounts[type] ?? 0) + n;
         if (outcome.kind === "TOKEN_BUDGET_EXCEEDED") { counters.token_budget_exceeded_event_n++; longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs); continue; }
-        if (outcome.kind === "FAILED") { counters.failed_event_n++; longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs); continue; }
+        if (outcome.kind === "FAILED") { noteFailure(outcome.reason); longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs); continue; }
         try {
           await deps.store.writeRows(outcome.rows);
           if (!live()) return expire();
           counters.captured_event_n++; dayCaptured++;
           counters.token_rows_written_n += outcome.rows.length;
-        } catch { if (!live()) return expire(); counters.failed_event_n++; }
+        } catch { if (!live()) return expire(); noteFailure(RESEARCH_WRITE_FAILED); }
         longestEventMs = Math.max(longestEventMs, performance.now() - eventStartedMs);
       }
       if (budgetDeferred) break;
@@ -582,7 +600,7 @@ export async function runPrecontractT20ResearchTick(nowMs: number, deps: Researc
   const durationMs = Date.now() - startedMs;
   const diagnostics = {
     ...cohortDiagnostics, ...counters, budget_deferred: budgetDeferred, hard_timeout_hit: hardTimeoutHit,
-    unsupported_market_type_counts: unsupportedCounts, duration_ms: durationMs,
+    unsupported_market_type_counts: unsupportedCounts, failed_reason_counts: failedReasonCounts, duration_ms: durationMs,
   };
   try {
     await deps.writeJobRun?.({
