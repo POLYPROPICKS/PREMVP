@@ -6,7 +6,7 @@ import { replayDynamicHarvest, type DynamicExecutionCandidate } from "@/lib/mode
 import { buildPrincipalRecoveryStageA } from "@/lib/modeling/dynamicPrincipalRecoveryVault";
 import { stableHash } from "@/lib/modeling/scientificCapitalArchitecture";
 import { resolveSignalOutcome, type GammaMarket } from "@/lib/feed/resolveSignalOutcome";
-import { buildForwardBetColumns, canonicalGame, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isAuthoritativePreMatch, isScheduledOnlyPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
+import { buildForwardBetColumns, canonicalGame, CLONE_ORIGIN_SOURCE_KIND, evaluateTemporalEligibility, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isAuthoritativePreMatch, isScheduledOnlyPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
 import { syncResearchEvidencePage } from "../research-clone-daily-sync";
 import {
   CAP,
@@ -117,16 +117,35 @@ function projectRef(url: string): string {
   return new URL(url).hostname.split(".")[0];
 }
 
-function resolveClients() {
-  const sourceUrl = process.env.SUPABASE_URL;
-  const sourceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const cloneUrl = process.env.SUPABASE_CLONE_URL;
-  const cloneKey = process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
+export type ShadowOrigin = "PRODUCTION_TO_CLONE" | "CLONE_ORIGIN";
+
+/**
+ * The default origin is the original Production->Clone cycle. CLONE_ORIGIN is selected only by the explicit
+ * `--origin=clone` flag; any other `--origin=` value fails closed instead of silently falling back.
+ */
+export function resolveOrigin(argv: readonly string[]): ShadowOrigin {
+  const flags = argv.filter((arg) => arg.startsWith("--origin"));
+  if (flags.length === 0) return "PRODUCTION_TO_CLONE";
+  if (flags.length === 1 && flags[0] === "--origin=clone") return "CLONE_ORIGIN";
+  throw new Error("UNKNOWN_SHADOW_ORIGIN");
+}
+
+export function resolveClients(origin: ShadowOrigin = "PRODUCTION_TO_CLONE", env: NodeJS.ProcessEnv = process.env) {
+  const cloneUrl = env.SUPABASE_CLONE_URL;
+  const cloneKey = env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
+  const options = { auth: { persistSession: false, autoRefreshToken: false } };
+  if (origin === "CLONE_ORIGIN") {
+    // Only the clone credentials are read in this mode; no Production URL or key is consulted or imitated.
+    if (!cloneUrl || !cloneKey) throw new Error("MISSING_CLONE_ORIGIN_CREDENTIALS");
+    if (projectRef(cloneUrl) !== CLONE_REF) throw new Error("REFUSING_NON_CLONE_TARGET");
+    return { source: null, clone: createClient(cloneUrl, cloneKey, options) };
+  }
+  const sourceUrl = env.SUPABASE_URL;
+  const sourceKey = env.SUPABASE_SERVICE_ROLE_KEY;
   if (!sourceUrl || !sourceKey || !cloneUrl || !cloneKey) throw new Error("MISSING_RESEARCH_SHADOW_CREDENTIALS");
   if (projectRef(sourceUrl) !== PRODUCTION_REF || projectRef(cloneUrl) !== CLONE_REF || sourceUrl === cloneUrl) {
     throw new Error("REFUSING_NON_PRODUCTION_OR_NON_CLONE_TARGET");
   }
-  const options = { auth: { persistSession: false, autoRefreshToken: false } };
   return {
     source: createClient(sourceUrl, sourceKey, options),
     clone: createClient(cloneUrl, cloneKey, options),
@@ -504,24 +523,39 @@ async function main(): Promise<void> {
   const now = new Date();
   const nowIso = now.toISOString();
   const today = minskDateNow(now);
-  const { source, clone } = resolveClients();
+  const origin = resolveOrigin(process.argv.slice(2));
+  const { source, clone } = resolveClients(origin);
+  const cloneOrigin = origin === "CLONE_ORIGIN";
   const priorSnapshot = await readRuntimeSnapshot(clone);
   const dates = deriveRequiredSelectionDates(today, typeof priorSnapshot?.processedThroughDate === "string" ? priorSnapshot.processedThroughDate : null);
   const bootstrapDate = dates[0] ?? today;
   const bootstrapSince = new Date(Date.parse(`${bootstrapDate}T00:00:00.000Z`) - 3 * 60 * 60_000).toISOString();
 
   // The exact V4-only transport reuses the durable research cursor and never runs the broad daily sync.
-  const sync = await syncResearchEvidencePage(clone, source, bootstrapSince);
-  if (sync.APPEND_PENDING) throw new Error("V4_EVIDENCE_SYNC_PENDING");
+  // Clone-origin decides only from evidence already synchronized into the clone: no Production RPC and no sync.
+  if (!cloneOrigin) {
+    const sync = await syncResearchEvidencePage(clone, source!, bootstrapSince);
+    if (sync.APPEND_PENDING) throw new Error("V4_EVIDENCE_SYNC_PENDING");
+  }
 
   const forwardSchema = await probeForwardContractSchema(clone);
+  // Never write legacy-shaped rows labelled as fresh forward evidence.
+  if (cloneOrigin && !forwardSchema) throw new Error("CLONE_ORIGIN_REQUIRES_FORWARD_CONTRACT_SCHEMA");
+  const temporalGate: Record<string, { read: number; eligible: number; rejected: Record<string, number>; decisionAt: string }> = {};
   let ledger = await readAllLedger(clone, forwardSchema);
   const existing = new Set(ledger.map((row) => row.row_key));
   const additions: RuntimeLedgerRow[] = [];
   let blockedDuplicateUnits = 0;
   const selectionSummaries: Record<string, Array<{ model: string; selected: number; football: number; tennis: number; other: number }>> = {};
   for (const date of dates) {
-    const evidenceRows = await readV4DateRows(clone, date);
+    let evidenceRows = await readV4DateRows(clone, date, cloneOrigin ? { sourceKind: CLONE_ORIGIN_SOURCE_KIND } : {});
+    if (cloneOrigin) {
+      // Stamped after the read: every row the gate admits was already in the clone when this decision was generated.
+      const decisionAt = new Date().toISOString();
+      const gate = evaluateTemporalEligibility(evidenceRows, decisionAt);
+      temporalGate[date] = { read: evidenceRows.length, eligible: gate.eligible.length, rejected: gate.rejected, decisionAt };
+      evidenceRows = gate.eligible;
+    }
     const { capped, metadata } = selectedByModel(evidenceRows, date);
     const byIdentity = new Map(evidenceRows.map((row) => [identityFor(row), row]));
     selectionSummaries[date] = [];
@@ -557,7 +591,10 @@ async function main(): Promise<void> {
   // Read the database-authored insert time and any concurrent winner of an ignored replay.
   ledger = await readAllLedger(clone, forwardSchema);
 
-  const settlement = await resolveSelectedUnresolved(ledger);
+  // Clone-origin leaves the historical Gamma corpus untouched; contract rows are settled only by the CLOB journal.
+  const settlement = cloneOrigin
+    ? { updatedRows: [] as RuntimeLedgerRow[], complete: false, queriedConditionN: 0 }
+    : await resolveSelectedUnresolved(ledger);
   await updateSettlements(clone, settlement.updatedRows);
   if (settlement.updatedRows.length) ledger = await readAllLedger(clone, forwardSchema);
 
@@ -589,6 +626,8 @@ async function main(): Promise<void> {
       pnlFreshThrough: settlementFreshThrough,
     },
     processedThroughDate: today,
+    researchOrigin: origin,
+    ...(cloneOrigin ? { temporalEligibility: temporalGate } : {}),
     selectionHashes: byDate,
     selectionSummaries,
     settlement: {
@@ -636,6 +675,9 @@ async function main(): Promise<void> {
   console.log(JSON.stringify({
     LIVE_SHADOW_CYCLE: "SUCCESS",
     currentMinskDate: today,
+    researchOrigin: origin,
+    productionReads: cloneOrigin ? 0 : undefined,
+    temporalEligibility: cloneOrigin ? temporalGate : undefined,
     selectionFreshThrough: snapshot.freshness.selectionFreshThrough,
     settlementFreshThrough: snapshot.freshness.settlementFreshThrough,
     pnlFreshThrough: snapshot.freshness.pnlFreshThrough,

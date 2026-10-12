@@ -344,3 +344,65 @@ export function excludeExistingEconomicUnits<T extends { physicalEventKey: strin
 export function hasExecutableAuthority(row: { executable_buy_price?: number | string | null; executable_price_authority?: string | null }): boolean {
   return row.executable_buy_price !== null && row.executable_buy_price !== undefined && !!row.executable_price_authority;
 }
+
+/** The only evidence origin a clone-origin cycle may decide from: pages synchronized from the production research export. */
+export const CLONE_ORIGIN_SOURCE_KIND = "PRODUCTION_RESEARCH_EVIDENCE_PAGE";
+/**
+ * Slack between the gate's decision time and the database's own first-save time. A row that passes the gate must still be
+ * inside the 7,200s lag bound and before its scheduled start when the trigger stamps first_persisted_at moments later;
+ * otherwise a LATE_OR_REPLAY row would claim its economic unit and block a genuine fresh bet on the same game.
+ */
+export const TEMPORAL_PERSIST_MARGIN_SECONDS = 300;
+/** Outcome-bearing columns that must never reach a decision input. */
+export const FORBIDDEN_DECISION_INPUT_KEYS = ["signal_result", "resolved_at", "winning_outcome", "realized_return_pct", "frozen_label", "label_as_of"] as const;
+
+export type TemporalRejectReason =
+  | "SOURCE_KIND_MISMATCH" | "MISSING_IDENTITY" | "INVALID_PRICE" | "SCORE_MISSING" | "OUTCOME_FIELD_PRESENT"
+  | "OBSERVED_AFTER_DECISION" | "OBSERVATION_TOO_OLD" | "START_UNKNOWN" | "START_NOT_AFTER_DECISION";
+
+export type TemporalEvidenceRow = {
+  observed_at: string;
+  condition_id: string | null;
+  selected_token_id: string | null;
+  entry_price_num: number | string | null;
+  pre_event_score_num: number | string | null;
+  game_start_iso: string | null;
+  source_kind?: string | null;
+};
+
+/**
+ * Decision-time causality gate for a clone-origin cycle. Pure: it removes rows that could not have been a fresh
+ * pre-start decision input at `decisionAtIso` and counts why. It never alters or re-ranks the surviving rows, so model
+ * scoring and portfolio definitions are untouched. `observed_at` is the provider observation time; the clone's mutable
+ * `ingested_at` is deliberately not an input.
+ */
+export function evaluateTemporalEligibility<T extends TemporalEvidenceRow>(rows: readonly T[], decisionAtIso: string, requiredSourceKind: string = CLONE_ORIGIN_SOURCE_KIND): { eligible: T[]; rejected: Record<TemporalRejectReason, number> } {
+  const decisionMs = Date.parse(decisionAtIso);
+  if (!Number.isFinite(decisionMs)) throw new Error("TEMPORAL_GATE_INVALID_DECISION_TIME");
+  const rejected: Record<TemporalRejectReason, number> = {
+    SOURCE_KIND_MISMATCH: 0, MISSING_IDENTITY: 0, INVALID_PRICE: 0, SCORE_MISSING: 0, OUTCOME_FIELD_PRESENT: 0,
+    OBSERVED_AFTER_DECISION: 0, OBSERVATION_TOO_OLD: 0, START_UNKNOWN: 0, START_NOT_AFTER_DECISION: 0,
+  };
+  const eligible: T[] = [];
+  const maxLagMs = (FORWARD_MAX_OBSERVATION_LAG_SECONDS - TEMPORAL_PERSIST_MARGIN_SECONDS) * 1000;
+  const marginMs = TEMPORAL_PERSIST_MARGIN_SECONDS * 1000;
+  for (const row of rows) {
+    const record = row as unknown as Record<string, unknown>;
+    const reject = (reason: TemporalRejectReason) => { rejected[reason] += 1; };
+    if (row.source_kind !== requiredSourceKind) { reject("SOURCE_KIND_MISMATCH"); continue; }
+    if (FORBIDDEN_DECISION_INPUT_KEYS.some((key) => record[key] !== undefined && record[key] !== null)) { reject("OUTCOME_FIELD_PRESENT"); continue; }
+    if (!row.condition_id || !row.selected_token_id) { reject("MISSING_IDENTITY"); continue; }
+    const price = row.entry_price_num === null || row.entry_price_num === "" ? NaN : Number(row.entry_price_num);
+    if (!Number.isFinite(price) || price <= 0 || price >= 1) { reject("INVALID_PRICE"); continue; }
+    const score = row.pre_event_score_num === null || row.pre_event_score_num === "" ? NaN : Number(row.pre_event_score_num);
+    if (!Number.isFinite(score)) { reject("SCORE_MISSING"); continue; }
+    const observedMs = Date.parse(row.observed_at);
+    if (!Number.isFinite(observedMs) || observedMs > decisionMs) { reject("OBSERVED_AFTER_DECISION"); continue; }
+    if (decisionMs - observedMs > maxLagMs) { reject("OBSERVATION_TOO_OLD"); continue; }
+    const startMs = row.game_start_iso ? Date.parse(row.game_start_iso) : NaN;
+    if (!Number.isFinite(startMs)) { reject("START_UNKNOWN"); continue; }
+    if (startMs <= decisionMs + marginMs) { reject("START_NOT_AFTER_DECISION"); continue; }
+    eligible.push(row);
+  }
+  return { eligible, rejected };
+}
