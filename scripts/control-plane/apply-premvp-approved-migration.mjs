@@ -33,6 +33,7 @@ import {
   validateVerifyColumns,
 } from './lib/premvp-migration-https-transport.mjs';
 import { SHADOW_CLONE_REF, SHADOW_MIGRATION_FILE, runShadowMigration, validateShadowMigration } from './lib/premvp-clone-shadow-migration.mjs';
+import { BLIND_CLONE_REF, BLIND_MIGRATION_FILE, runBlindInputMigration, validateBlindInputMigration } from './lib/premvp-clone-blind-input-migration.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = process.argv.slice(2);
@@ -53,6 +54,10 @@ if (args.includes('--clone-schema')) {
 
 if (args.includes('--clone-shadow-immutability')) {
   await runCloneShadowImmutability();
+}
+
+if (args.includes('--clone-blind-input')) {
+  await runCloneBlindInput();
 }
 
 // ── target-only mode ───────────────────────────────────────────────────────
@@ -266,6 +271,33 @@ async function runCloneShadowImmutability() {
     process.exit(0);
   } catch (error) {
     fail(error?.code ?? 'SHADOW_MIGRATION_FAILED', sanitize(String(error?.detail ?? error?.message ?? '')).slice(0, 400));
+  }
+}
+
+async function runCloneBlindInput() {
+  const migrationAbs = path.resolve(root, BLIND_MIGRATION_FILE);
+  const sql = fs.readFileSync(migrationAbs, 'utf8').replace(/\r\n/g, '\n');
+  const validation = validateBlindInputMigration(declaration, sql);
+  if (!validation.ok) fail('BLIND_INPUT_DECLARATION_INVALID', validation.errors);
+  const bridge = bridgePersistentUserEnv({ names: SUPABASE_ENV_NAMES, baseEnv: process.env });
+  const childEnv = bridge.env;
+  const secrets = [childEnv.SUPABASE_DB_PASSWORD, childEnv.SUPABASE_ACCESS_TOKEN, childEnv.SUPABASE_DB_URL].filter(Boolean);
+  const sanitize = (text) => sanitizeDiagnosticText(text, secrets);
+  try {
+    assertHttpsPreconditions({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: BLIND_CLONE_REF, allowlist: PREMVP_RESEARCH_CLONE_PROJECT_REFS,
+      declaredProjectRef: declaration.project_ref, expectedSha256: declaration.target_sha256, actualSha256: sha256OfText(sql),
+    });
+    const apply = assertApplyConfirmation(args, process.env);
+    const transport = createHttpsMigrationTransport({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: BLIND_CLONE_REF, allowlist: PREMVP_RESEARCH_CLONE_PROJECT_REFS,
+      redact: (text, extra) => sanitizeDiagnosticText(text, [...secrets, ...extra]),
+    });
+    const evidence = await runBlindInputMigration({ transport, declaration, sql, apply });
+    process.stdout.write(JSON.stringify({ ok: true, ...evidence, env_bridge: describeBridge(bridge) }) + '\n');
+    process.exit(0);
+  } catch (error) {
+    fail(error?.code ?? 'BLIND_INPUT_MIGRATION_FAILED', sanitize(String(error?.detail ?? error?.message ?? '')).slice(0, 400));
   }
 }
 

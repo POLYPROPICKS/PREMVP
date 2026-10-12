@@ -389,6 +389,56 @@ select
   has_table_privilege('service_role', 'public.prospective_selection_shadow_runtime', 'TRUNCATE') as service_truncate
 from (select to_regprocedure('public.prospective_selection_shadow_guard()') as oid) target
 left join pg_proc p on p.oid = target.oid`;
+// Fixed, read-only effective-privilege read-back for the blind-input release. Counts only; no row of any data table is read.
+export const BLIND_INPUT_CATALOG_SQL = `
+with r(role_name) as (values ('blind_model_reader'), ('blind_horizon_writer'), ('research_ledger_writer'), ('research_settlement_authority')),
+rel as (
+  select c.oid, c.relname, n.nspname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname not in ('pg_catalog', 'information_schema', 'pg_toast') and n.nspname !~ '^pg_(toast_)?temp_'
+    and not exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e')
+),
+priv(p) as (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER'))
+select
+  (select count(*) from pg_roles x join r on r.role_name = x.rolname)::int as roles_present_n,
+  (select count(*) from pg_roles x join r on r.role_name = x.rolname
+    where x.rolsuper or x.rolbypassrls or x.rolcreaterole or x.rolcreatedb or x.rolreplication or x.rolinherit)::int as roles_unsafe_n,
+  (select count(*) from r join pg_roles x on x.rolname <> r.role_name where pg_has_role(r.role_name, x.oid, 'MEMBER'))::int as role_membership_n,
+  (select count(*) from r cross join rel join pg_class c on c.oid = rel.oid cross join priv
+    where c.relkind in ('r', 'p', 'v', 'm', 'f')
+      and case when priv.p in ('SELECT', 'INSERT', 'UPDATE', 'REFERENCES')
+            then has_any_column_privilege(r.role_name, rel.oid, priv.p) else has_table_privilege(r.role_name, rel.oid, priv.p) end
+      and not (rel.nspname = 'blind_obs' and (
+            (r.role_name = 'blind_model_reader' and rel.relname in ('prematch_observations_v1', 't20_observations_v1', 'inplay_observations_v1') and priv.p = 'SELECT')
+         or (r.role_name = 'blind_horizon_writer' and rel.relname = 'model_horizon' and priv.p in ('SELECT', 'INSERT', 'UPDATE')))))::int as relation_exposure_n,
+  (select count(*) from r cross join rel join pg_class c on c.oid = rel.oid
+    where c.relkind = 'S' and (has_sequence_privilege(r.role_name, rel.oid, 'USAGE') or has_sequence_privilege(r.role_name, rel.oid, 'SELECT') or has_sequence_privilege(r.role_name, rel.oid, 'UPDATE')))::int as sequence_exposure_n,
+  (select count(*) from r cross join pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')
+      and not exists (select 1 from pg_depend d where d.classid = 'pg_proc'::regclass and d.objid = p.oid and d.deptype = 'e')
+      and has_function_privilege(r.role_name, p.oid, 'EXECUTE'))::int as definer_function_exposure_n,
+  (select count(*) from r cross join pg_namespace n
+    where n.nspname !~ '^pg_' and n.nspname <> 'information_schema' and has_schema_privilege(r.role_name, n.oid, 'CREATE'))::int
+    + (select count(*) from r where has_database_privilege(r.role_name, current_database(), 'CREATE'))::int as schema_create_exposure_n,
+  (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'blind_obs' and c.relkind = 'v' and 'security_barrier=true' = any (c.reloptions)
+      and not exists (select 1 from unnest(c.reloptions) o where o like 'security_invoker%'))::int as views_ok_n,
+  (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'blind_obs' and c.relkind = 'v' and has_table_privilege('blind_model_reader', c.oid, 'SELECT'))::int as reader_view_select_n,
+  (select count(*) from unnest(array['public.research_model_ready_rows', 'public.research_model_ready_days', 'public.research_model_economics',
+      'public.research_t10_sibling_offpolicy_rows', 'public.prospective_selection_shadow_runtime', 'public.reservation_market_observations',
+      'public.research_precontract_t20_observations', 'public.research_inplay_core_path_observations', 'public.research_strategy_selected_bets']) t(name)
+    where to_regclass(t.name) is not null
+      and (has_any_column_privilege('blind_model_reader', to_regclass(t.name), 'SELECT') or has_any_column_privilege('blind_model_reader', to_regclass(t.name), 'INSERT')
+        or has_any_column_privilege('blind_model_reader', to_regclass(t.name), 'UPDATE') or has_table_privilege('blind_model_reader', to_regclass(t.name), 'DELETE')))::int as reader_forbidden_named_n,
+  (select count(*) from pg_attribute a join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'blind_obs' and c.relkind = 'v' and a.attnum > 0 and not a.attisdropped
+      and (a.atttypid in ('json'::regtype, 'jsonb'::regtype) or a.attname ~* '(settlement|label|winner|pnl|result)'))::int as view_json_or_outcome_columns_n,
+  (select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'blind_obs' and c.relkind in ('r', 'p', 'v', 'm', 'f', 'S'))::int as blind_schema_relations_n,
+  ((select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace
+      where n.nspname = 'blind_obs' and c.relacl is not null
+        and exists (select 1 from aclexplode(c.relacl) a where a.grantee = 0 or a.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated', 'service_role'))))
+   + (select count(*) from pg_namespace n where n.nspname = 'blind_obs' and n.nspacl is not null
+      and exists (select 1 from aclexplode(n.nspacl) a where a.grantee = 0 or a.grantee in (select oid from pg_roles where rolname in ('anon', 'authenticated', 'service_role')))))::int as blind_public_or_api_grants_n`.trim();
 /** Transaction-scoped guards: a DDL that cannot get its lock fails fast instead of queueing behind live traffic. */
 const SQL_LOCAL_TIMEOUTS = "SET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '45s';";
 
@@ -530,6 +580,10 @@ export function createHttpsMigrationTransport({ token, projectRef, allowlist, fe
 
     async readShadowGuardCatalog() {
       return rowsOf(await readOnly(SHADOW_GUARD_CATALOG_SQL))[0] ?? null;
+    },
+
+    async readBlindInputCatalog() {
+      return rowsOf(await readOnly(BLIND_INPUT_CATALOG_SQL))[0] ?? null;
     },
   };
 }
