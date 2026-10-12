@@ -7,10 +7,34 @@ import { validateApprovedMigrationRelease } from "../../scripts/control-plane/li
 import {
   AMERICAN_FOOTBALL_NOT_PROVEN, MAX_NEW_EVENTS_PER_TICK, MAX_RESEARCH_EVENTS_PER_DAY, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT,
   EVENT_UNIVERSE_CEILING, PRECONTRACT_RESEARCH_SOURCE, RESEARCH_TICK_BUDGET_MS, compareUrgency, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, createResearchStore, admitResearchMarket, buildResearchEvents, captureResearchEvent,
-  inT20Window, isAdmittedTargetSport, runPrecontractT20ResearchFailSoft, runPrecontractT20ResearchTick, selectResearchCohort,
+  inT20Window, isAdmittedTargetSport, runPrecontractT20ResearchFailSoft, runPrecontractT20ResearchTick as realTick, selectResearchCohort,
+  createResearchStartState, type ResearchTickDeps, type FetchProviderStarts, type ResearchStartState,
+  T20_RESCHEDULE_HORIZON_MINUTES, MAX_START_RECHECK_BATCHES_PER_TICK, PROVIDER_START_MAX_AGE_MS, PROVIDER_START_SOURCE, PROVIDER_START_SOURCE_LEGACY, PROVIDER_START_REASONS,
   type EventCaptureOutcome, type ResearchEvent, type ResearchEventCandidateRow, type ResearchStore, type CohortSelection,
 } from "../../lib/executor/precontractT20Research";
 import { EARLY_CAPTURE_WINDOW_OPEN_MINUTES } from "../../lib/executor/reservationMarketBaseline";
+
+// TELEMETRY-08C: the tick reconciles Gamma's current start before T20 eligibility. Existing tests model an UNCHANGED provider:
+// the stub answers every requested id with the snapshot start it saw in the store, acquired at the tick time.
+function runPrecontractT20ResearchTick(nowMs: number, deps: ResearchTickDeps) {
+  const seen = new Map<string, { start: string; game: string | null }>();
+  const store: ResearchStore = {
+    ...deps.store,
+    async loadEventCandidates(...a) {
+      const rows = await deps.store.loadEventCandidates(...a);
+      for (const r of rows) seen.set(r.provider_event_id, { start: r.event_start_iso, game: r.provider_game_id });
+      return rows;
+    },
+  };
+  return realTick(nowMs, {
+    startState: createResearchStartState(),
+    fetchProviderStarts: async (ids) => ({
+      acquiredAtMs: nowMs, latencyMs: 1, requestedN: ids.length,
+      events: ids.map((id) => ({ id, gameId: seen.get(id)?.game ?? null, startTime: seen.get(id)?.start ?? null, endDate: null, endDateIso: null })),
+    }),
+    ...deps, store,
+  });
+}
 
 const DAY_START = Date.parse("2026-10-08T18:00:00.000Z");
 const NOW = DAY_START - 15 * 60_000;
@@ -638,4 +662,347 @@ test("T20-REASON-B: job_runs diagnostics carry bounded aggregate failed_reason_c
   failingWrite.store.writeRows = async () => { throw new Error("db down detail"); };
   const w = await runPrecontractT20ResearchTick(NOW, { store: failingWrite.store, ...SOFT, capture: async () => ({ kind: "CAPTURED", rows: [{ id: "x" }], unsupported: {} }) });
   assert.deepEqual([w.diagnostics.failed_event_n, w.diagnostics.failed_reason_counts], [1, { RESEARCH_WRITE_FAILED: 1 }]);
+});
+
+
+// ---- TELEMETRY-08C: rescheduled events are recovered inside their ACTUAL T20 window ----------------------------------
+const R_NOW = Date.parse("2026-10-09T12:00:00.000Z");
+const iso = (ms: number) => new Date(ms).toISOString();
+const min = (m: number) => m * 60_000;
+const rrow = (n: number, vol: number, startMs: number, over: Partial<ResearchEventCandidateRow> = {}) => cand({
+  provider_event_id: String(n), provider_game_id: `G${n}`, snapshot_run_id: `run-${n}`, snapshot_at: iso(R_NOW - 60_000),
+  event_start_iso: iso(startMs), parent_event_volume_24h: vol, provider_sport_family: "tennis", provider_sport_code: null, provider_sport_code_n: 0, ...over,
+});
+type ProvOpts = {
+  starts?: Record<string, string | null>; acquiredAtMs?: number; omit?: string[]; dup?: string[]; extra?: string[]; games?: Record<string, string>;
+  endDates?: Record<string, string>; unavailable?: boolean; nowMs?: number;
+};
+function provider(rows: ResearchEventCandidateRow[], o: ProvOpts = {}) {
+  const calls: string[][] = [];
+  const fn: FetchProviderStarts = async (ids) => {
+    calls.push([...ids]);
+    if (o.unavailable) return null;
+    const events = ids.filter((id) => !(o.omit ?? []).includes(id)).flatMap((id) => {
+      const src = rows.find((r) => r.provider_event_id === id);
+      const e = { id, gameId: o.games?.[id] ?? src?.provider_game_id ?? null,
+        startTime: id in (o.starts ?? {}) ? o.starts![id] : src?.event_start_iso ?? null, endDate: o.endDates?.[id] ?? null, endDateIso: null };
+      return (o.dup ?? []).includes(id) ? [e, e] : [e];
+    });
+    for (const id of o.extra ?? []) events.push({ id, gameId: null, startTime: null, endDate: null, endDateIso: null });
+    return { acquiredAtMs: o.acquiredAtMs ?? (o.nowMs ?? R_NOW), latencyMs: 7, requestedN: ids.length, events };
+  };
+  return { fn, calls };
+}
+function boundedStore(rows: ResearchEventCandidateRow[], persisted: Set<string> = new Set()) {
+  const written: Record<string, unknown>[][] = [];
+  const loads: { from: string; to: string }[] = [];
+  const store: ResearchStore = {
+    async loadEventCandidates(from, to) { loads.push({ from, to }); return rows.filter((r) => r.event_start_iso >= from && r.event_start_iso < to); },
+    async capturedAmong(ids) { return new Set(ids.filter((i) => persisted.has(i))); },
+    async capturedEventCount() { return persisted.size; },
+    async writeRows(r) { written.push(r); for (const x of r) persisted.add(String(x.physical_event_id)); },
+    async purgeExpired() { return 0; },
+  };
+  return { store, written, loads, persisted };
+}
+async function resched(rows: ResearchEventCandidateRow[], o: ProvOpts & { now?: number; persisted?: Set<string>; state?: ResearchStartState; real?: boolean } = {}) {
+  const now = o.now ?? R_NOW;
+  const prov = provider(rows, { nowMs: now, ...o });
+  const bs = boundedStore(rows, o.persisted);
+  const captured: CohortSelection[] = [];
+  const res = await realTick(now, {
+    store: bs.store, startState: o.state ?? createResearchStartState(), fetchProviderStarts: prov.fn, budgetMs: 2_000, softStartMinRemainingMs: 10,
+    ...(o.real ? { readExactEvent: async (id: string, start: string) => gameMarkets(id, `G${id}`, start), readGameEvents: async (g: string, start: string) => gameMarkets(g.slice(1), g, start), fetchBooks: fakeBooks as never, fetchFeeSchedule: noFee as never }
+      : { capture: async (sel: CohortSelection): Promise<EventCaptureOutcome> => { captured.push(sel); return { kind: "CAPTURED", rows: [{ physical_event_id: sel.event.physicalEventId }], unsupported: {} }; } }),
+  });
+  return { res, captured, prov, bs };
+}
+
+test("T20-08C-A: +5/+30/+90 minute LATER reschedules are captured once inside the ACTUAL window although the snapshot window is closed", async () => {
+  for (const shift of [5, 30, 90]) {
+    const actual = R_NOW + min(14);
+    const source = actual - min(shift);
+    assert.equal(inT20Window(iso(source), R_NOW), false, `old-start filter alone would LOSE the +${shift}min event`);
+    const rows = [rrow(1, 500, source)];
+    const { res, captured, bs } = await resched(rows, { starts: { "1": iso(actual) } });
+    assert.equal(captured.length, 1, `+${shift}`);
+    assert.equal(res.diagnostics.provider_start_rescheduled_into_window_event_n, 1);
+    assert.equal(captured[0].event.eventStartIso, iso(source), "snapshot start preserved");
+    assert.equal(captured[0].event.providerStart?.startIso, iso(actual));
+    assert.equal(bs.written.length, 1);
+    const again = await resched(rows, { starts: { "1": iso(actual) }, persisted: bs.persisted });
+    assert.equal(again.captured.length, 0, "exactly once: a second tick does not capture again");
+    assert.equal(again.res.diagnostics.already_captured_event_n, 1);
+  }
+});
+
+test("T20-08C-B: earlier start, unchanged start, old window passed / new not yet open, and the strict 9 < m <= 20 bound on the ACTUAL start", async () => {
+  const cases: [string, number, number, boolean][] = [
+    ["earlier into window", R_NOW + min(70), R_NOW + min(14), true],
+    ["unchanged inside window", R_NOW + min(14), R_NOW + min(14), true],
+    ["earlier past the window", R_NOW + min(14), R_NOW + min(5), false],
+    ["old window passed, new window not open", R_NOW - min(5), R_NOW + min(40), false],
+    ["actual exactly 9min", R_NOW - min(30), R_NOW + min(9), false],
+    ["actual 9.01min", R_NOW - min(30), R_NOW + min(9) + 600, true],
+    ["actual exactly 20min", R_NOW - min(30), R_NOW + min(20), true],
+    ["actual 20.01min", R_NOW - min(30), R_NOW + min(20) + 600, false],
+  ];
+  for (const [name, source, actual, want] of cases) {
+    const { captured } = await resched([rrow(1, 500, source)], { starts: { "1": iso(actual) } });
+    assert.equal(captured.length, want ? 1 : 0, name);
+  }
+  // the new window opens later: the same event is then captured by a later tick, once
+  const rows = [rrow(1, 500, R_NOW - min(5))];
+  const persisted = new Set<string>();
+  const state = createResearchStartState();
+  const early = await resched(rows, { starts: { "1": iso(R_NOW + min(40)) }, persisted, state });
+  assert.equal(early.captured.length, 0);
+  const later = await resched(rows, { starts: { "1": iso(R_NOW + min(40)) }, persisted, state, now: R_NOW + min(26) });
+  assert.equal(later.captured.length, 1);
+});
+
+test("T20-08C-C: a verified start on a DIFFERENT UTC date than the snapshot fails closed (never charged to the wrong day); same-day reschedules still work", async () => {
+  const now = Date.parse("2026-10-09T23:51:00.000Z");
+  const source = Date.parse("2026-10-09T23:40:00.000Z");           // snapshot/physical day 2026-10-09
+  const actual = Date.parse("2026-10-10T00:05:00.000Z");           // actual day 2026-10-10 (in window: 14 min)
+  const rows = [rrow(1, 500, source)];
+  const forward = await resched(rows, { now, starts: { "1": iso(actual) }, real: true });
+  assert.equal(forward.bs.written.length, 0, "cross-date start is not captured");
+  assert.equal(forward.res.diagnostics.provider_start_cross_utc_day_event_n, 1);
+  assert.equal(forward.res.diagnostics.captured_event_n, 0);
+  assert.equal(forward.bs.loads.length, 2, "band still spans two UTC days = the same two existing RPC calls");
+  // the target day is already full (100) and the source day is at 99: neither day's allocation can be consumed by the move
+  for (const full of [new Set(Array.from({ length: 100 }, (_, i) => `other-${i}`)), new Set(Array.from({ length: 99 }, (_, i) => `other-${i}`))]) {
+    const capped = await resched(rows, { now, starts: { "1": iso(actual) }, real: true, persisted: full });
+    assert.equal(capped.bs.written.length, 0);
+    assert.equal(capped.bs.persisted.size, full.size, "no allocation consumed on either day");
+  }
+  // reverse direction: snapshot on D+1, moved EARLIER onto D
+  const back = await resched([rrow(1, 500, Date.parse("2026-10-10T00:10:00.000Z"))], { now: Date.parse("2026-10-09T23:35:00.000Z"), starts: { "1": iso(Date.parse("2026-10-09T23:49:00.000Z")) }, real: true });
+  assert.equal(back.bs.written.length, 0);
+  assert.equal(back.res.diagnostics.provider_start_cross_utc_day_event_n, 1);
+  // same-day +5/+30/+90 right before midnight still recovers on the snapshot day with its snapshot-day identity
+  for (const shift of [5, 30, 90]) {
+    const n2 = Date.parse("2026-10-09T22:00:00.000Z");
+    const act = n2 + min(14);
+    const ok = await resched([rrow(1, 500, act - min(shift))], { now: n2, starts: { "1": iso(act) }, real: true });
+    assert.equal(ok.bs.written.length, 1, `same-day +${shift}`);
+    assert.equal(ok.bs.written[0][0].physical_event_id, "provider:polymarket:game:g1:2026-10-09");
+    assert.equal(ok.bs.written[0][0].provider_start_iso, iso(act));
+  }
+
+  // same match under two UTC-day keys (older generation D, newer generation D+1): exactly one snapshot, on the key owning the actual date
+  const dup = [rrow(1, 500, source, { snapshot_run_id: "old", snapshot_at: iso(now - min(60)) }), rrow(1, 500, actual, { snapshot_run_id: "new", snapshot_at: iso(now - 60_000) })];
+  const d = await resched(dup, { now, real: true, starts: { "1": iso(actual) } });
+  assert.equal(d.bs.written.length, 1, "one physical match -> one snapshot");
+  assert.equal(d.bs.written[0][0].physical_event_id, "provider:polymarket:game:g1:2026-10-10");
+  assert.equal(d.res.diagnostics.provider_start_cross_utc_day_event_n, 1, "the stale-day key fails closed instead of duplicating");
+  const done = await resched(dup, { now, real: true, starts: { "1": iso(actual) }, persisted: new Set(["provider:polymarket:game:g1:2026-10-09"]) });
+  assert.equal(done.bs.written.length, 0, "a captured sibling key counts as captured");
+  const third = await resched(dup, { now, real: true, starts: { "1": iso(actual + min(26 * 60)) } });
+  assert.equal(third.bs.written.length, 0, "neither key owns the verified date");
+});
+
+test("T20-08C-D: provider disagreement, missing, duplicate, partial/unavailable batch, stale, anomalous or start-less response fail closed", async () => {
+  const rows = [rrow(1, 500, R_NOW - min(30)), rrow(2, 400, R_NOW - min(30))];
+  const move = { "1": iso(R_NOW + min(14)), "2": iso(R_NOW + min(14)) };
+  const R = PROVIDER_START_REASONS;
+  const cases: [string, ProvOpts, string, number][] = [
+    ["missing event (partial batch)", { starts: move, omit: ["2"] }, R.EVENT_MISSING, 1],
+    ["duplicate identity", { starts: move, dup: ["1", "2"] }, R.IDENTITY_AMBIGUOUS, 0],
+    ["unavailable batch", { starts: move, unavailable: true }, R.BATCH_UNAVAILABLE, 0],
+    ["stale response", { starts: move, acquiredAtMs: R_NOW - PROVIDER_START_MAX_AGE_MS - 1 }, R.STALE, 0],
+    ["unrequested id poisons the batch", { starts: move, extra: ["999"] }, R.BATCH_ANOMALY, 0],
+    ["gameId contradiction", { starts: move, games: { "1": "OTHER", "2": "OTHER" } }, R.IDENTITY_CONTRADICTION, 0],
+    ["no startTime and no matching endDate", { starts: { "1": null, "2": null } }, R.MISSING, 0],
+    ["no startTime, endDate differs", { starts: { "1": null, "2": null }, endDates: { "1": iso(R_NOW + min(14)), "2": iso(R_NOW + min(14)) } }, R.MISSING, 0],
+  ];
+  for (const [name, o, reason, expectCaptured] of cases) {
+    const { captured, res } = await resched(rows, o);
+    assert.equal(captured.length, expectCaptured, name);
+    const counts = res.diagnostics.provider_start_failure_counts as Record<string, number>;
+    assert.ok((counts[reason] ?? 0) >= 1, `${name}: ${reason}`);
+    assert.equal(res.diagnostics.provider_start_unverified_event_n, 2 - expectCaptured, name);
+  }
+  // the exact-reader legacy match (no startTime, endDate == snapshot start) is preserved and labelled
+  const legacy = await resched([rrow(1, 500, R_NOW + min(14))], { starts: { "1": null }, endDates: { "1": iso(R_NOW + min(14)) }, real: true });
+  assert.equal(legacy.bs.written.length, 1);
+  assert.equal(legacy.bs.written[0][0].provider_start_source, PROVIDER_START_SOURCE_LEGACY);
+});
+
+test("T20-08C-E: cohort membership, rank and volume stay SOURCE-based; provider state never promotes or demotes an event", async () => {
+  // 150 soccer events by descending volume (only 100 fit the daily cap). #1 (top) and #130 (outside the cohort) both reschedule in.
+  const rows = Array.from({ length: 150 }, (_, i) => rrow(i + 1, 10_000 - i, R_NOW + min(60), { provider_sport_family: "soccer" }));
+  const actual = iso(R_NOW + min(14));
+  const { captured, res } = await resched(rows, { starts: { "1": actual, "130": actual } });
+  assert.deepEqual(captured.map((c) => [c.event.providerEventId, c.rank, c.bucket, c.event.volume]), [["1", 1, "SOCCER", 10_000]]);
+  assert.equal(res.diagnostics.eligible_event_n, 150, "complete universe ranked");
+  assert.equal(res.diagnostics.soccer_selected_n, 100, "40 quota + global backfill, capped at the unchanged 100");
+});
+
+test("T20-08C-F: persisted lineage — snapshot start/id/source immutable, verified provider start stored separately with acquisition time and authority", async () => {
+  const source = R_NOW - min(30);
+  const actual = R_NOW + min(14);
+  const rows = [rrow(7, 500, source)];
+  const before = JSON.stringify(rows);
+  const seen: string[] = [];
+  const prov = provider(rows, { starts: { "7": iso(actual) }, acquiredAtMs: R_NOW - 1_234 });
+  const bs = boundedStore(rows);
+  await realTick(R_NOW, { store: bs.store, startState: createResearchStartState(), fetchProviderStarts: prov.fn, budgetMs: 2_000, softStartMinRemainingMs: 10,
+    readExactEvent: async (id, start) => { seen.push(`exact:${start}`); return gameMarkets(id, `G${id}`, start); },
+    readGameEvents: async (g, start) => { seen.push(`game:${start}`); return gameMarkets(g.slice(1), g, start); }, fetchBooks: fakeBooks as never, fetchFeeSchedule: noFee as never });
+  assert.deepEqual(seen, [`exact:${iso(actual)}`, `game:${iso(actual)}`], "provider reads use the verified CURRENT start");
+  const row = bs.written[0][0];
+  assert.equal(row.event_start_iso, iso(source));
+  assert.equal(row.source_id, "generated_signal_research_snapshots:run-7");
+  assert.equal(row.physical_event_id, "provider:polymarket:game:g7:2026-10-09");
+  assert.equal(row.provider_start_iso, iso(actual));
+  assert.equal(row.provider_start_acquired_at, iso(R_NOW - 1_234));
+  assert.equal(row.provider_start_source, PROVIDER_START_SOURCE);
+  assert.equal(JSON.stringify(rows), before, "historical snapshot candidates are never modified");
+  assert.equal(Object.keys(bs.store).some((k) => /update|delete(?!.)/i.test(k)), false);
+});
+
+test("T20-08C-G: provider load is bounded (<=20 ids/batch, <=2 batches/tick), reused within the TTL, and skipped for captured events", async () => {
+  const rows = Array.from({ length: 55 }, (_, i) => rrow(i + 1, 1_000 - i, R_NOW - min(30), { provider_sport_family: "soccer" }));
+  const state = createResearchStartState();
+  const first = await resched(rows, { state, starts: {} });
+  assert.equal(first.prov.calls.length, MAX_START_RECHECK_BATCHES_PER_TICK);
+  assert.ok(first.prov.calls.every((c) => c.length <= 20));
+  assert.equal(first.res.diagnostics.provider_start_refresh_deferred_n, 55 - 40 > 0 ? 55 - 40 : 0);
+  const warm = await resched(rows, { state, now: R_NOW + 8_000 });
+  assert.ok(warm.prov.calls.every((c) => c.every((id) => !first.prov.calls.flat().includes(id))), "fresh entries are not re-requested inside the TTL");
+  assert.equal((await resched([], {})).prov.calls.length, 0, "no band candidates -> zero provider requests");
+  // an already-captured event (memo) is not refreshed again
+  const one = [rrow(1, 500, R_NOW - min(30))];
+  const s2 = createResearchStartState();
+  const a = await resched(one, { state: s2, starts: { "1": iso(R_NOW + min(14)) } });
+  assert.equal(a.captured.length, 1);
+  const b = await resched(one, { state: s2, now: R_NOW + 120_000, starts: { "1": iso(R_NOW + min(14)) } });
+  assert.equal(b.prov.calls.length, 0);
+});
+
+test("T20-08C-H: every hard limit is unchanged and the reschedule band is explicit", async () => {
+  assert.deepEqual([MAX_RESEARCH_EVENTS_PER_DAY, SOCCER_QUOTA, TENNIS_QUOTA, OTHER_QUOTA, MAX_RESEARCH_TOKEN_ROWS_PER_EVENT, MAX_NEW_EVENTS_PER_TICK, RESEARCH_TICK_BUDGET_MS, EVENT_UNIVERSE_CEILING], [100, 40, 20, 40, 128, 5, 8_000, 800]);
+  assert.equal(T20_RESCHEDULE_HORIZON_MINUTES, 120);
+  const rows = Array.from({ length: 9 }, (_, i) => rrow(i + 1, 900 - i, R_NOW - min(40)));
+  const starts = Object.fromEntries(rows.map((r) => [r.provider_event_id, iso(R_NOW + min(14))]));
+  const { captured } = await resched(rows, { starts });
+  assert.equal(captured.length, MAX_NEW_EVENTS_PER_TICK, "<=5 new events per tick even when many events were rescheduled into the window");
+  // reschedules beyond the horizon are out of band: no provider request, no capture (explicit, bounded limit)
+  const far = await resched([rrow(1, 500, R_NOW - min(T20_RESCHEDULE_HORIZON_MINUTES + 30))], { starts: { "1": iso(R_NOW + min(14)) } });
+  assert.equal(far.captured.length, 0);
+  assert.equal(far.prov.calls.length, 0);
+});
+
+// ---- TELEMETRY-08C review: slow / hung Gamma under the real tick deadline ----------------------------------------------
+const settleMs = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+/** Models the real exact reader: it only succeeds when the provider's CURRENT start equals the start it is asked to verify. */
+const exactReaderFor = (providerStarts: Record<string, string>, reads: string[] = []) => async (id: string, start: string) => {
+  reads.push(id);
+  if (Date.parse(providerStarts[id]) !== Date.parse(start)) throw new Error("RESERVED_EVENT_START_MISMATCH");
+  return gameMarkets(id, `G${id}`, start);
+};
+
+test("T20-08C-I: a HUNG Gamma batch under the real 8s tick: provider phase ends at its sub-deadline, ordinary T20 still captured, no late write, no new request", async () => {
+  const unchanged = rrow(1, 900, R_NOW + min(14));
+  const moved = rrow(2, 800, R_NOW - min(30));          // really rescheduled into the window, but unverifiable while Gamma hangs
+  const rows = [unchanged, moved];
+  const providerStarts = { "1": unchanged.event_start_iso, "2": iso(R_NOW + min(14)) };
+  const calls: string[][] = [];
+  let releaseHung!: (v: null) => void;
+  const hung = new Promise<null>((r) => { releaseHung = r; });
+  const bs = boundedStore(rows);
+  const reads: string[] = [];
+  const state = createResearchStartState();
+  const t0 = Date.now();
+  const res = await realTick(R_NOW, {
+    store: bs.store, startState: state, fetchProviderStarts: async (ids) => { calls.push([...ids]); return hung; },   // REAL defaults: 8s budget
+    readExactEvent: exactReaderFor(providerStarts, reads), readGameEvents: async (g, start) => gameMarkets(g.slice(1), g, start), fetchBooks: fakeBooks as never, fetchFeeSchedule: noFee as never,
+  });
+  const elapsed = Date.now() - t0;
+  assert.ok(elapsed < RESEARCH_TICK_BUDGET_MS, `tick returned in ${elapsed}ms < 8000ms`);
+  assert.ok(elapsed >= 2_400 && elapsed < 4_500, `provider phase bounded by its own ~2.5s sub-deadline, not the tick budget (${elapsed}ms)`);
+  assert.equal(res.diagnostics.hard_timeout_hit, false);
+  assert.equal(res.status, "success");
+  assert.equal(res.diagnostics.provider_start_phase_timeout_n, 1);
+  assert.equal(res.diagnostics.captured_event_n, 1, "the ordinary unchanged T20 event is NOT starved");
+  assert.deepEqual(bs.written.map((w) => w[0].provider_event_id), ["1"]);
+  assert.equal(bs.written[0][0].provider_start_iso, null, "no batch verification was obtained for it");
+  assert.equal(res.diagnostics.provider_start_unreconciled_snapshot_window_event_n, 1);
+  assert.deepEqual(reads, ["1"], "the rescheduled-but-unverified event was never read or captured (fail closed)");
+  assert.equal(calls.length, 1, "one bounded batch, never re-requested inside the tick");
+  // after the deadline: a late Gamma answer changes nothing
+  const writesBefore = bs.written.length;
+  releaseHung(null);
+  await settleMs(80);
+  assert.equal(calls.length, 1, "no new provider request after the deadline");
+  assert.equal(bs.written.length, writesBefore, "no late Production write");
+  assert.equal([...state.starts.values()].some((e) => e.ok), false, "the hung batch never populated the provider-start cache");
+});
+
+test("T20-08C-J: a SLOW batch that finishes after the sub-deadline is discarded (never cached/used); an in-time one is used", async () => {
+  const rows = [rrow(1, 900, R_NOW + min(14)), rrow(2, 800, R_NOW - min(30))];
+  const starts = { "1": rows[0].event_start_iso, "2": iso(R_NOW + min(14)) };
+  const slowFetch = (delay: number): FetchProviderStarts => async (ids) => {
+    await settleMs(delay);
+    return provider(rows, { starts, nowMs: R_NOW }).fn(ids);
+  };
+  const capturedIds: string[] = [];
+  const run = (delay: number, state: ResearchStartState) => realTick(R_NOW, {
+    store: boundedStore(rows).store, startState: state, fetchProviderStarts: slowFetch(delay), budgetMs: 1_000, softStartMinRemainingMs: 10, providerStartPhaseBudgetMs: 60,
+    capture: async (sel) => { capturedIds.push(`${sel.event.providerEventId}:${sel.event.providerStart ? "verified" : "snapshot"}`); return { kind: "CAPTURED", rows: [{ physical_event_id: sel.event.physicalEventId }], unsupported: {} }; },
+  });
+  const late = createResearchStartState();
+  const slow = await run(250, late);
+  assert.deepEqual(capturedIds, ["1:snapshot"], "slow batch: only the unchanged snapshot-window event is captured");
+  assert.equal(slow.diagnostics.provider_start_phase_timeout_n, 1);
+  assert.equal(slow.diagnostics.hard_timeout_hit, false);
+  await settleMs(300);
+  assert.equal([...late.starts.values()].some((e) => e.ok), false, "late response discarded");
+  capturedIds.length = 0;
+  const fast = await run(5, createResearchStartState());
+  assert.deepEqual(capturedIds.sort(), ["1:verified", "2:verified"], "in-time batch: both captured, rescheduled one on its verified start");
+  assert.equal(fast.diagnostics.provider_start_phase_timeout_n, 0);
+});
+
+test("T20-08C-K: no budget left for the provider phase -> no provider request at all; snapshot-window events keep their pre-08C path", async () => {
+  const rows = [rrow(1, 900, R_NOW + min(14)), rrow(2, 800, R_NOW - min(30))];
+  const prov = provider(rows, { starts: { "2": iso(R_NOW + min(14)) } });
+  const got: string[] = [];
+  const res = await realTick(R_NOW, {
+    store: boundedStore(rows).store, startState: createResearchStartState(), fetchProviderStarts: prov.fn, budgetMs: 1_000, softStartMinRemainingMs: 10, providerStartPhaseBudgetMs: 0,
+    capture: async (sel) => { got.push(sel.event.providerEventId); return { kind: "CAPTURED", rows: [{ physical_event_id: sel.event.physicalEventId }], unsupported: {} }; },
+  });
+  assert.equal(prov.calls.length, 0);
+  assert.deepEqual(got, ["1"]);
+  assert.equal(res.diagnostics.provider_start_refresh_deferred_n, 2);
+});
+
+test("T20-08C-L: unreachable Gamma never starves ordinary capture, but provider CONTENT disagreement and a real reschedule still fail closed", async () => {
+  const unchanged = rrow(1, 900, R_NOW + min(14));
+  const providerStarts = { "1": iso(R_NOW + min(40)) };    // Gamma (via the exact reader) says it moved out of the window
+  // unreachable batch: an event still in its snapshot window goes through the pre-08C path and the exact reader fails it closed if it moved
+  const moved = await resched([unchanged], { unavailable: true, real: false });
+  assert.equal(moved.captured.length, 1, "unavailable batch + unchanged snapshot window: ordinary capture continues");
+  const reads: string[] = [];
+  const mismatch = await realTick(R_NOW, {
+    store: boundedStore([unchanged]).store, startState: createResearchStartState(), fetchProviderStarts: async () => null, budgetMs: 2_000, softStartMinRemainingMs: 10,
+    readExactEvent: exactReaderFor(providerStarts, reads), readGameEvents: async () => [], fetchBooks: fakeBooks as never,
+  });
+  assert.equal(mismatch.diagnostics.captured_event_n, 0);
+  assert.deepEqual(mismatch.diagnostics.failed_reason_counts, { RESERVED_EVENT_START_MISMATCH: 1 }, "reschedule detected by the exact reader: fail closed, typed");
+  // stale cached answer behaves like unreachable; missing/duplicate/contradiction/anomaly (content) never fall back
+  const stale = await resched([unchanged], { acquiredAtMs: R_NOW - PROVIDER_START_MAX_AGE_MS - 1 });
+  assert.equal(stale.captured.length, 1);
+  for (const o of [{ omit: ["1"] }, { dup: ["1"] }, { games: { "1": "OTHER" } }, { extra: ["999"] }] as ProvOpts[]) {
+    const r = await resched([unchanged], o);
+    assert.equal(r.captured.length, 0, JSON.stringify(o) + JSON.stringify(r.res.diagnostics.provider_start_failure_counts));
+  }
+  // two UTC-day keys of one match + unreachable Gamma: no duplicate snapshot
+  const midnight = Date.parse("2026-10-09T23:46:00.000Z");
+  const dup = [rrow(1, 900, Date.parse("2026-10-09T23:58:00.000Z"), { snapshot_run_id: "a" }), rrow(1, 900, Date.parse("2026-10-10T00:01:00.000Z"), { snapshot_run_id: "b" })];
+  const both = await resched(dup, { unavailable: true, now: midnight });
+  assert.equal(both.captured.length, 0);
+  assert.equal(both.res.diagnostics.identity_ambiguous_event_n, 2, "both keys of the one match fail closed rather than duplicate");
 });

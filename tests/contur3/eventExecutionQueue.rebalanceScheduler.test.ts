@@ -1974,6 +1974,9 @@ test("SOFT-I: event-rebalance completes normal live orchestration even when rese
     },
     writeJobRun: async (j) => { research.status = j.status; research.budget_deferred = j.diagnostics?.budget_deferred; research.deferred = j.diagnostics?.deferred_budget_event_n; },
     budgetMs: 300, softStartMinRemainingMs: 50,
+    // TELEMETRY-08C: deterministic unchanged provider for synthetic events 1 and 2 (current start == snapshot start), isolated state.
+    fetchProviderStarts: async (ids) => ({ acquiredAtMs: IN_WINDOW_MS, latencyMs: 1, requestedN: ids.length, events: ids.map((id) => ({ id, gameId: `G${id}`, startTime: new Date(IN_WINDOW_MS + 15 * 60_000).toISOString(), endDate: null, endDateIso: null })) }),
+    startState: { starts: new Map(), captured: new Set() },
     capture: async (sel) => { await new Promise((r) => setTimeout(r, 250)); return { kind: "CAPTURED", rows: [{ physical_event_id: sel.event.physicalEventId }], unsupported: {} }; },
   });
   assert.deepEqual([research.status, research.budget_deferred, research.deferred], ["success", true, 1], "research ran and soft-deferred");

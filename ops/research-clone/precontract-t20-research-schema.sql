@@ -14,6 +14,10 @@ CREATE TABLE IF NOT EXISTS public.research_precontract_t20_observations (
   observed_at                  timestamptz NOT NULL,
   observation_phase            text NOT NULL,
 
+  provider_start_iso           timestamptz NULL,
+  provider_start_acquired_at   timestamptz NULL,
+  provider_start_source        text NULL,
+
   parent_event_volume_24h      numeric NULL,
   daily_volume_rank            integer NULL,
   sampling_bucket              text NULL,
@@ -49,6 +53,11 @@ CREATE TABLE IF NOT EXISTS public.research_precontract_t20_observations (
 
   CONSTRAINT uq_rp_t20_obs_identity UNIQUE (physical_event_id, condition_id, token_id, side)
 );
+
+-- TELEMETRY-08C additive lineage columns (production migration 20261012090000) for a clone table created before them.
+ALTER TABLE public.research_precontract_t20_observations ADD COLUMN IF NOT EXISTS provider_start_iso timestamptz;
+ALTER TABLE public.research_precontract_t20_observations ADD COLUMN IF NOT EXISTS provider_start_acquired_at timestamptz;
+ALTER TABLE public.research_precontract_t20_observations ADD COLUMN IF NOT EXISTS provider_start_source text;
 
 -- Sync watermark keyset (observed_at, id).
 CREATE INDEX IF NOT EXISTS research_precontract_t20_observations_watermark_idx
