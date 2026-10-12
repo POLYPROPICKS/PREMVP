@@ -30,45 +30,6 @@ create table if not exists public.prospective_selection_shadow_runtime (
   )
 );
 
--- Nullable for pre-existing rows: migration time is never first-persistence evidence.
-alter table public.prospective_selection_shadow_runtime
-  add column if not exists first_persisted_at timestamptz,
-  add column if not exists unresolved_reason text;
-
-create or replace function public.prospective_selection_shadow_guard()
-returns trigger language plpgsql as $$
-begin
-  if tg_op = 'INSERT' then
-    if new.row_kind = 'LEDGER' then
-      new.first_persisted_at := clock_timestamp();
-    end if;
-    return new;
-  end if;
-  if old.row_kind <> 'LEDGER' then return new; end if;
-  if (new.row_key, new.row_kind, new.model_id, new.decision_date,
-      new.candidate_identity, new.physical_event_key, new.decision_timestamp,
-      new.event_start, new.entry_price, new.sport_family, new.condition_id,
-      new.selected_token_id, new.pre_event_score, new.data_coverage,
-      new.first_persisted_at)
-     is distinct from
-     (old.row_key, old.row_kind, old.model_id, old.decision_date,
-      old.candidate_identity, old.physical_event_key, old.decision_timestamp,
-      old.event_start, old.entry_price, old.sport_family, old.condition_id,
-      old.selected_token_id, old.pre_event_score, old.data_coverage,
-      old.first_persisted_at) then
-    raise exception 'IMMUTABLE_SHADOW_CHOICE';
-  end if;
-  return new;
-end;
-$$;
-revoke all on function public.prospective_selection_shadow_guard() from public, anon, authenticated;
-
-drop trigger if exists prospective_selection_shadow_guard_trg
-  on public.prospective_selection_shadow_runtime;
-create trigger prospective_selection_shadow_guard_trg
-before insert or update on public.prospective_selection_shadow_runtime
-for each row execute function public.prospective_selection_shadow_guard();
-
 create index if not exists prospective_selection_shadow_runtime_unqueried_idx
   on public.prospective_selection_shadow_runtime (settlement_checked_at, condition_id)
   where row_kind = 'LEDGER' and settlement_state = 'UNQUERIED';

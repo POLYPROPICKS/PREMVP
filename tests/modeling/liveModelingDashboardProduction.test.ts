@@ -98,7 +98,7 @@ test("closed provider market with a missing selected token cannot become LOSS", 
 });
 
 test("clone schema records DB insertion time without backfilling historical rows", () => {
-  const schema = readFileSync(join(root, "ops/research-clone/prospective-selection-shadow-runtime-schema.sql"), "utf8");
+  const schema = readFileSync(join(root, "ops/research-clone/migrations/20261012150000_prospective_shadow_first_persistence.sql"), "utf8");
   assert.match(schema, /add column if not exists first_persisted_at timestamptz\s*,/i);
   assert.match(schema, /new\.first_persisted_at := clock_timestamp\(\)/i);
   assert.match(schema, /raise exception 'IMMUTABLE_SHADOW_CHOICE'/i);

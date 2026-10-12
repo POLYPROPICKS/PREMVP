@@ -475,8 +475,9 @@ async function main(): Promise<void> {
       },
     },
     firstPersistence: {
-      provenBeforeStart: ledger.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
-      late: ledger.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) >= Date.parse(row.eventStart)).length,
+      beforeScheduledStart: ledger.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
+      lateRelativeToScheduledStart: ledger.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) >= Date.parse(row.eventStart)).length,
+      actualStartUnproven: ledger.filter((row) => row.first_persisted_at).length,
       historicalUnproven: ledger.filter((row) => !row.first_persisted_at).length,
     },
     modelDays: MODEL_IDS.flatMap((model) => [...new Set(ledger.filter((row) => row.model_id === model).map((row) => row.decision_date))].sort().map((date) => {
@@ -485,8 +486,9 @@ async function main(): Promise<void> {
         wins: rows.filter((row) => row.settlementState === "WIN").length,
         losses: rows.filter((row) => row.settlementState === "LOSS").length,
         unresolved: rows.filter((row) => row.settlementState === "UNQUERIED").length,
-        firstPersistProvenBeforeStart: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
-        firstPersistLate: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) >= Date.parse(row.eventStart)).length,
+        firstPersistBeforeScheduledStart: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) < Date.parse(row.eventStart)).length,
+        firstPersistLateRelativeToScheduledStart: rows.filter((row) => row.first_persisted_at && Date.parse(row.first_persisted_at) >= Date.parse(row.eventStart)).length,
+        firstPersistActualStartUnproven: rows.filter((row) => row.first_persisted_at).length,
         firstPersistUnproven: rows.filter((row) => !row.first_persisted_at).length };
     })),
     models: todaySelection,
