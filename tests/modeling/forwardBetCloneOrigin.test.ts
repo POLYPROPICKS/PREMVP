@@ -55,7 +55,7 @@ test("origin selection is explicit and fails closed", () => {
 });
 
 test("clone-origin needs only clone credentials and refuses any other project; production mode is unchanged", () => {
-  const cloneEnv = { SUPABASE_CLONE_URL: "https://nppznoujvnyjargjkmnv.supabase.co", SUPABASE_CLONE_SERVICE_ROLE_KEY: "k" } as NodeJS.ProcessEnv;
+  const cloneEnv = { SUPABASE_CLONE_URL: "https://nppznoujvnyjargjkmnv.supabase.co", SUPABASE_CLONE_SERVICE_ROLE_KEY: "k" } as unknown as NodeJS.ProcessEnv;
   const resolved = resolveClients("CLONE_ORIGIN", cloneEnv);
   assert.equal(resolved.source, null);
   assert.ok(resolved.clone);
