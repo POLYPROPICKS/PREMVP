@@ -33,6 +33,7 @@ import {
   validateVerifyColumns,
 } from './lib/premvp-migration-https-transport.mjs';
 import { FORWARD_BET_CLONE_REF, FORWARD_BET_MIGRATION_FILE, runForwardBetMigration, validateForwardBetMigration } from './lib/premvp-clone-forward-bet-migration.mjs';
+import { FORWARD_BET_ACL_MIGRATION_FILE, runForwardBetAclMigration, validateForwardBetAclMigration } from './lib/premvp-clone-forward-bet-acl-migration.mjs';
 import { SHADOW_CLONE_REF, SHADOW_MIGRATION_FILE, runShadowMigration, validateShadowMigration } from './lib/premvp-clone-shadow-migration.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -58,6 +59,10 @@ if (args.includes('--clone-shadow-immutability')) {
 
 if (args.includes('--clone-forward-bet-contract')) {
   await runCloneForwardBetContract();
+}
+
+if (args.includes('--clone-forward-bet-settlement-acl')) {
+  await runCloneForwardBetSettlementAcl();
 }
 
 // ── target-only mode ───────────────────────────────────────────────────────
@@ -271,6 +276,32 @@ async function runCloneForwardBetContract() {
     process.exit(0);
   } catch (error) {
     fail(error?.code ?? 'FORWARD_BET_MIGRATION_FAILED', sanitize(String(error?.detail ?? error?.message ?? '')).slice(0, 400));
+  }
+}
+
+async function runCloneForwardBetSettlementAcl() {
+  const sql = fs.readFileSync(path.resolve(root, FORWARD_BET_ACL_MIGRATION_FILE), 'utf8').replace(/\r\n/g, '\n');
+  const validation = validateForwardBetAclMigration(declaration, sql);
+  if (!validation.ok) fail('FORWARD_BET_ACL_DECLARATION_INVALID', validation.errors);
+  const bridge = bridgePersistentUserEnv({ names: SUPABASE_ENV_NAMES, baseEnv: process.env });
+  const childEnv = bridge.env;
+  const secrets = [childEnv.SUPABASE_DB_PASSWORD, childEnv.SUPABASE_ACCESS_TOKEN, childEnv.SUPABASE_DB_URL].filter(Boolean);
+  const sanitize = (text) => sanitizeDiagnosticText(text, secrets);
+  try {
+    assertHttpsPreconditions({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: FORWARD_BET_CLONE_REF, allowlist: PREMVP_RESEARCH_CLONE_PROJECT_REFS,
+      declaredProjectRef: declaration.project_ref, expectedSha256: declaration.target_sha256, actualSha256: sha256OfText(sql),
+    });
+    const apply = assertApplyConfirmation(args, process.env);
+    const transport = createHttpsMigrationTransport({
+      token: childEnv.SUPABASE_ACCESS_TOKEN, projectRef: FORWARD_BET_CLONE_REF, allowlist: PREMVP_RESEARCH_CLONE_PROJECT_REFS,
+      redact: (text, extra) => sanitizeDiagnosticText(text, [...secrets, ...extra]),
+    });
+    const evidence = await runForwardBetAclMigration({ transport, declaration, sql, apply });
+    process.stdout.write(JSON.stringify({ ok: true, ...evidence, env_bridge: describeBridge(bridge) }) + '\n');
+    process.exit(0);
+  } catch (error) {
+    fail(error?.code ?? 'FORWARD_BET_ACL_MIGRATION_FAILED', sanitize(String(error?.detail ?? error?.message ?? '')).slice(0, 400));
   }
 }
 

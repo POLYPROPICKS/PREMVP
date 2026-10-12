@@ -9,6 +9,9 @@ import { sha256OfText } from './lib/premvp-target-only-migration.mjs';
 import {
   FORWARD_BET_CLONE_LEDGER_BASELINE, FORWARD_BET_CLONE_REF, FORWARD_BET_MIGRATION_FILE, FORWARD_BET_MIGRATION_MODE, validateForwardBetMigration,
 } from './lib/premvp-clone-forward-bet-migration.mjs';
+import {
+  FORWARD_BET_ACL_LEDGER_BASELINE, FORWARD_BET_ACL_MIGRATION_FILE, FORWARD_BET_ACL_MIGRATION_MODE, validateForwardBetAclMigration,
+} from './lib/premvp-clone-forward-bet-acl-migration.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -17,6 +20,11 @@ export function buildHandoff() {
   const sha = sha256OfText(sql);
   const declaration = { mode: FORWARD_BET_MIGRATION_MODE, project_ref: FORWARD_BET_CLONE_REF, migration_file: FORWARD_BET_MIGRATION_FILE, target_sha256: sha, direct_raw_mutation: false, idempotent: true };
   const validation = validateForwardBetMigration(declaration, sql);
+  const aclSql = fs.readFileSync(path.join(root, FORWARD_BET_ACL_MIGRATION_FILE), 'utf8').replace(/\r\n/g, '\n');
+  const aclSha = sha256OfText(aclSql);
+  const aclDeclaration = { mode: FORWARD_BET_ACL_MIGRATION_MODE, project_ref: FORWARD_BET_CLONE_REF, migration_file: FORWARD_BET_ACL_MIGRATION_FILE, target_sha256: aclSha, direct_raw_mutation: false, idempotent: true };
+  const aclValidation = validateForwardBetAclMigration(aclDeclaration, aclSql);
+  const aclArg = JSON.stringify(aclDeclaration);
   const declarationArg = JSON.stringify(declaration);
   return {
     handoff: 'FORWARD_BET_CONTRACT_V1_DBCLONE_DEPLOYMENT',
@@ -36,6 +44,16 @@ export function buildHandoff() {
       apply: `PREMVP_TARGET_ONLY_APPLY_CONFIRM=1 node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '${declarationArg}' --clone-forward-bet-contract --apply --confirm`,
       dry_run_proves: ['transaction semantics', 'exact SQL executes inside BEGIN..ROLLBACK', 'schema fingerprint and ledger unchanged afterwards'],
       apply_proves: ['ledger gains exactly one entry (20261012180000)', 'contract and settlement columns present and nullable', 'catalog: triggers enabled, non-SECURITY DEFINER, no anon/authenticated grants, service_role cannot UPDATE/DELETE/TRUNCATE settlement history or DELETE/TRUNCATE the ledger, unique indexes present'],
+    },
+    settlement_acl_hardening: {
+      defect: 'service_role keeps default-privilege UPDATE/DELETE/TRUNCATE on virtual_bet_settlement_authority (clone probe: no-op UPDATE/DELETE returned 204, expected 42501); triggers still block row mutation',
+      applies_after: '20261012180000 registered exactly once in the clone ledger; this step never re-runs that DDL',
+      migration: { file: FORWARD_BET_ACL_MIGRATION_FILE, bytes: Buffer.byteLength(aclSql), sha256: aclSha, reviewed_exact_sql_match: aclValidation.ok, validation_errors: aclValidation.errors },
+      ledger_baseline: [...FORWARD_BET_ACL_LEDGER_BASELINE],
+      dry_run: `node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '${aclArg}' --clone-forward-bet-settlement-acl`,
+      apply: `PREMVP_TARGET_ONLY_APPLY_CONFIRM=1 node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '${aclArg}' --clone-forward-bet-settlement-acl --apply --confirm`,
+      requires_env: ['SUPABASE_ACCESS_TOKEN (Supabase management API, scoped to the clone project)'],
+      verify: 'npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (SETTLEMENT_UPDATE_REFUSED and SETTLEMENT_DELETE_REFUSED must be PASS)',
     },
     post_deploy: {
       verify: 'npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (expected PASS)',
