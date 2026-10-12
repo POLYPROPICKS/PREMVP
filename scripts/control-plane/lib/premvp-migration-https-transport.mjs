@@ -372,6 +372,23 @@ export function sqlRepairLedgerVersion(from, to, name) {
 
 export const DRY_RUN_MARKER = 'PREMVP_DRYRUN_COMPLETE';
 export const CLONE_APPLY_MARKER = 'PREMVP_CLONE_APPLY_COMPLETE';
+const SHADOW_GUARD_CATALOG_SQL = `
+select
+  p.oid is not null as function_present,
+  coalesce(p.prosecdef, true) as security_definer,
+  coalesce(position('clock_timestamp()' in p.prosrc) > 0, false) as db_clock_present,
+  coalesce(has_function_privilege('anon', p.oid, 'EXECUTE'), true) as anon_execute,
+  coalesce(has_function_privilege('authenticated', p.oid, 'EXECUTE'), true) as authenticated_execute,
+  exists(select 1 from pg_trigger t where t.tgrelid = 'public.prospective_selection_shadow_runtime'::regclass
+    and t.tgfoid = p.oid and t.tgname = 'prospective_selection_shadow_guard_row_trg'
+    and t.tgtype::int = 31 and t.tgenabled = 'O') as row_trigger_enabled,
+  exists(select 1 from pg_trigger t where t.tgrelid = 'public.prospective_selection_shadow_runtime'::regclass
+    and t.tgfoid = p.oid and t.tgname = 'prospective_selection_shadow_guard_truncate_trg'
+    and t.tgtype::int = 34 and t.tgenabled = 'O') as truncate_trigger_enabled,
+  has_table_privilege('service_role', 'public.prospective_selection_shadow_runtime', 'DELETE') as service_delete,
+  has_table_privilege('service_role', 'public.prospective_selection_shadow_runtime', 'TRUNCATE') as service_truncate
+from (select to_regprocedure('public.prospective_selection_shadow_guard()') as oid) target
+left join pg_proc p on p.oid = target.oid`;
 /** Transaction-scoped guards: a DDL that cannot get its lock fails fast instead of queueing behind live traffic. */
 const SQL_LOCAL_TIMEOUTS = "SET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '45s';";
 
@@ -484,10 +501,10 @@ export function createHttpsMigrationTransport({ token, projectRef, allowlist, fe
     },
 
     /** Native apply: the endpoint owns migration-history recording. */
-    async applyNative({ sql, name }) {
+    async applyNative({ sql, name, localTimeouts = false }) {
       if (!NAME.test(name)) throw new HttpsTransportError('HTTPS_MIGRATION_NAME_INVALID');
       assertNoTransactionControl(sql);
-      await request('POST', '/migrations', { query: sql, name });
+      await request('POST', '/migrations', { query: localTimeouts ? `${SQL_LOCAL_TIMEOUTS}\n${sql}` : sql, name });
       return true;
     },
 
@@ -509,6 +526,10 @@ export function createHttpsMigrationTransport({ token, projectRef, allowlist, fe
       return rowsOf(await readOnly(sqlColumnsProof(schema, table, columns))).filter((r) => r && typeof r === 'object').map((r) => ({
         column_name: String(r.column_name), data_type: String(r.data_type), is_nullable: r.is_nullable === true,
       }));
+    },
+
+    async readShadowGuardCatalog() {
+      return rowsOf(await readOnly(SHADOW_GUARD_CATALOG_SQL))[0] ?? null;
     },
   };
 }
@@ -541,7 +562,7 @@ const proofDetail = (proofs) => JSON.stringify(proofs.map((p) => ({ table: p.tab
  * Target-only lifecycle over HTTPS. `resolveTracked(versions)` returns {missing} for remote-ledger versions that have
  * no local file (remote-ledger consistency gate). Apply REQUIRES verify columns and ENFORCES them.
  */
-export async function runHttpsTargetOnly({ transport, targetBasename, targetSql, targetSha256, resolveTracked, apply = false, verify = null }) {
+export async function runHttpsTargetOnly({ transport, targetBasename, targetSql, targetSha256, resolveTracked, apply = false, verify = null, nativeLocalTimeouts = false }) {
   const { version, name } = parseTargetBasename(targetBasename);
   if (sha256OfText(targetSql) !== targetSha256) throw new HttpsTransportError('HTTPS_TARGET_SHA256_MISMATCH');
   if (apply && validateVerifyColumns(verify, true).length) throw new HttpsTransportError('TARGET_ONLY_VERIFY_COLUMNS_REQUIRED');
@@ -577,7 +598,7 @@ export async function runHttpsTargetOnly({ transport, targetBasename, targetSql,
 
   // 3. apply through the native endpoint, then verify DDL AND ledger
   let applyError = null;
-  try { await transport.applyNative({ sql: targetSql, name }); } catch (error) { applyError = error; }
+  try { await transport.applyNative({ sql: targetSql, name, localTimeouts: nativeLocalTimeouts }); } catch (error) { applyError = error; }
   const ledgerAfter = await transport.readLedger();
   const added = ledgerAfter.filter((v) => !ledgerBefore.includes(v));
   const removed = ledgerBefore.filter((v) => !ledgerAfter.includes(v));

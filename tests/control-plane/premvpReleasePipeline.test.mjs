@@ -529,7 +529,7 @@ test('bounded prune transition accepts only the exact function replacement; gene
     sql.replace('LANGUAGE plpgsql', 'LANGUAGE plpgsql SECURITY DEFINER'),
     sql.replace('TO service_role', 'TO PUBLIC'),
     sql.replace('TO service_role;', 'TO service_role;\nGRANT EXECUTE ON FUNCTION public.prune_current_signal_pair_serving(integer, uuid[]) TO anon;'),
-    sql.replace('public.prune_current_signal_pair_serving(\n', 'public.other_fn(\n'),
+    sql.replace(/public\.prune_current_signal_pair_serving\(\r?\n/, (match) => match.replace('public.prune_current_signal_pair_serving', 'public.other_fn')),
     sql.replace("serving.projection_status = 'ACTIVE'", "serving.projection_status IS NOT NULL"),
     sql.replace('      FOR UPDATE SKIP LOCKED', '      FOR UPDATE'),
     sql + '\nDELETE FROM public.current_signal_pair_serving;',
@@ -537,7 +537,7 @@ test('bounded prune transition accepts only the exact function replacement; gene
     sql + '\nDROP TABLE public.current_signal_pair_serving;',
     sql + '\nTRUNCATE TABLE public.current_signal_pair_serving;',
     '-- PREMVP_APPLICATION_MIGRATION_V1\nDELETE FROM public.current_signal_pair_serving;',
-    sql.replace('-- PREMVP_APPLICATION_MIGRATION_V1\n', ''),
+    sql.replace(/^-- PREMVP_APPLICATION_MIGRATION_V1\r?\n/, ''),
   ].entries()) assert.equal(check(mutated).ok, false, `mutation ${idx}`);
   // Generic classes keep the DELETE FROM ban, even for the very same function SQL.
   for (const safety_class of ['ADDITIVE_COMPATIBLE', 'COMPATIBILITY_TRANSITION']) {

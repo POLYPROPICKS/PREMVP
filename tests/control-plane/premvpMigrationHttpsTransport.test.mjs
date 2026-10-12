@@ -300,10 +300,17 @@ test('the transaction guard is enforced on the dry-run and apply PATHS, independ
   assert.equal(api.log.length, 0);
 });
 
+test('opted-in native apply sends bounded transaction-local timeouts before exact target SQL', async () => {
+  const api = fakeApi();
+  await transportFor(api).applyNative({ sql: TARGET_SQL, name: 'bounded_shadow', localTimeouts: true });
+  const native = api.log.find((entry) => entry.method === 'POST' && entry.path === '/migrations');
+  assert.equal(native.query, `SET LOCAL lock_timeout = '5s';\nSET LOCAL statement_timeout = '45s';\n${TARGET_SQL}`);
+});
+
 test('no generic SQL surface is exported from the transport', async () => {
   const api = fakeApi();
   const transport = transportFor(api);
-  assert.deepEqual(Object.keys(transport).sort(), ['applyCloneSql', 'applyNative', 'dryRunExactSql', 'projectRef', 'proveTransactionSemantics', 'readColumns', 'readLedger', 'readSchemaFingerprint', 'repairLedgerVersion']);
+  assert.deepEqual(Object.keys(transport).sort(), ['applyCloneSql', 'applyNative', 'dryRunExactSql', 'projectRef', 'proveTransactionSemantics', 'readColumns', 'readLedger', 'readSchemaFingerprint', 'readShadowGuardCatalog', 'repairLedgerVersion']);
   const mod = await import('../../scripts/control-plane/lib/premvp-migration-https-transport.mjs');
   for (const name of Object.keys(mod)) assert.doesNotMatch(name, /^(run|exec|execute|query|sql)$/i);
 });
