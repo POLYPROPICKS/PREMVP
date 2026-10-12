@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS public.research_inplay_core_path_observations (
   orderbook_fetch_started_at timestamptz,
   orderbook_fetch_completed_at timestamptz,
   orderbook_provider_timestamp_at timestamptz,
+  executable_full_stake_state text,
+  taker_fee_state text,
+  taker_fee_reason text,
+  quote_cycle_legs smallint,
+  quote_cycle_span_ms integer,
   persistence_reason text NOT NULL,
   sequence_in_event integer NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -60,6 +65,12 @@ ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXIS
 ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS orderbook_fetch_started_at timestamptz;
 ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS orderbook_fetch_completed_at timestamptz;
 ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS orderbook_provider_timestamp_at timestamptz;
+-- INPLAY_EXECUTABLE_STATE_V4 (TELEMETRY-09): additive, applied to an already-created clone table BEFORE the Production DDL.
+ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS executable_full_stake_state text;
+ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS taker_fee_state text;
+ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS taker_fee_reason text;
+ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS quote_cycle_legs smallint;
+ALTER TABLE public.research_inplay_core_path_observations ADD COLUMN IF NOT EXISTS quote_cycle_span_ms integer;
 CREATE INDEX IF NOT EXISTS research_inplay_core_path_event_time_idx ON public.research_inplay_core_path_observations (physical_event_id, observed_at);
 CREATE INDEX IF NOT EXISTS research_inplay_core_path_retention_idx ON public.research_inplay_core_path_observations (observed_at, id);
 ALTER TABLE public.research_inplay_core_path_observations ENABLE ROW LEVEL SECURITY;

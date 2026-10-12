@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { deriveStructuredState, deriveSportState, STATE_MAX_AGE_MS, admitPhysicalEvent, selectPrimaryCoreMarkets, decidePersistenceReason, MAX_DAILY_PHYSICAL_EVENTS,
   MAX_TRACKED_TOKENS_PER_EVENT, MAX_PERSISTED_OBSERVATIONS_PER_EVENT, MAX_TOTAL_ROWS_PER_DAY,
-  MAX_INPLAY_LOGICAL_MB_PER_DAY, PRODUCTION_RETENTION_HOURS } from "../../lib/research/inplayCorePath";
+  MAX_INPLAY_LOGICAL_MB_PER_DAY, PRODUCTION_RETENTION_HOURS, SOURCE_VERSION, INPLAY_RESEARCH_EXECUTION_PRICE_CAP, linkedQuoteSpanMs } from "../../lib/research/inplayCorePath";
 import { admitResearchMarket } from "../../lib/executor/precontractT20Research";
+import { buildExecutableSiblingColumns } from "../../lib/executor/t10ExecutableSiblingTelemetry";
 import { purgeConfirmedTelemetry, type TelemetryPurgePort } from "../../lib/research-clone/dailySync";
 
 const migration = readFileSync("supabase/migrations/20261008090000_research_inplay_core_path_v1.sql", "utf8");
@@ -202,15 +203,32 @@ test("american-football fails closed: stale, future, no receipt, malformed perio
   assert.equal(n({ score: "x" }).periodNum, 1);                          // bad score does not discard a valid quarter
 });
 
-test("tennis, cricket, basketball, baseball, hockey stay NULL; cricket cannot even be admitted (no gameId)", () => {
-  for (const family of ["tennis", "cricket", "basketball", "baseball", "hockey"]) {
+test("cricket, basketball, baseball, hockey stay NULL; cricket cannot even be admitted (no gameId)", () => {
+  for (const family of ["cricket", "basketball", "baseball", "hockey"]) {
     assert.deepEqual(deriveSportState(tennis, family, "LIVE", NOW, NOW), deriveSportState({}, family, "LIVE", NOW, NOW));
     assert.deepEqual(deriveSportState(nfl, family, "LIVE", NOW, NOW).sideAScore, null);
     assert.deepEqual(deriveSportState({ ...tennis, score: "2-1", period: "Q1", elapsed: "8:17" }, family, "LIVE", NOW, NOW).clockSecondsRemaining, null);
   }
-  assert.equal(deriveSportState(tennis, "tennis", "LIVE", NOW, NOW).receivedAt, null);   // set scores are never collapsed into a match total
   assert.equal(deriveStructuredState(cricket), null);                                      // metadataGameId only
   assert.equal(deriveSportState(cricket, "cricket", "LIVE", NOW, NOW).sideAScore, null);   // "87-0" is runs-wickets of one batting side
+});
+
+test("TELEMETRY-09 tennis: only the current set number is typed; set scores are never collapsed into side A/B", () => {
+  const t = (over: object, status: "LIVE" | "FINAL" = "LIVE", at: number | undefined = NOW) => deriveSportState({ ...tennis, ...over }, "tennis", status, at, NOW);
+  assert.deepEqual(t({}), { periodNum: 2, clockSecondsElapsed: null, clockSecondsRemaining: null, sideAScore: null, sideBScore: null, receivedAt: new Date(NOW).toISOString() });
+  // Real payload 2026-10-12 (ATP, game 6421934): three set scores, period S3, tiebreak set in brackets.
+  assert.equal(t({ score: "6-4, 6-7(2-7), 2-2", period: "S3" }).periodNum, 3);
+  assert.equal(t({ score: "6-4, 6-7(2-7), 2-2", period: "S3" }).sideAScore, null);
+  assert.equal(t({ score: "0-0", period: "S1" }).periodNum, 1);
+  assert.equal(t({ score: "6-4, 3-6, 6-3, 2-6, 1-0", period: "S5" }).periodNum, 5);
+  // Period token and score must agree on the set count; anything else fails closed.
+  for (const bad of [{ period: "S3" }, { period: "S1" }, { period: "S6" }, { period: "S0" }, { period: "TB" }, { period: "2H" }, { period: "" }, { period: 2 },
+    { score: "6-4, x-y" }, { score: "6-4,2-1" }, { score: "" }, { score: null }, { score: "7-6(7-4), 2-1, " }]) assert.equal(t(bad).periodNum, null, JSON.stringify(bad));
+  assert.equal(t({}, "FINAL").periodNum, null);                                     // final-state token unobserved for tennis
+  assert.equal(deriveSportState(tennis, "tennis", "LIVE", undefined, NOW).periodNum, null);   // no receipt time
+  assert.equal(t({}, "LIVE", NOW - STATE_MAX_AGE_MS - 1).periodNum, null);          // stale
+  assert.equal(t({}, "LIVE", NOW + 1).periodNum, null);                             // from the future
+  assert.equal(t({}).clockSecondsElapsed ?? t({}).clockSecondsRemaining, null);      // tennis has no clock
 });
 
 test("typed fields reach the persisted row, migration, clone DDL and clone projection; caps unchanged", () => {
@@ -599,7 +617,7 @@ test("TELEMETRY-06: capture wires per-token timing into the row; observed_at, id
   assert.match(collector, /\.\.\.orderbookTimingColumns\(result, token\.tokenId\), persistence_reason: reason,/);
   assert.match(collector, /id: stableTelemetryId\(physicalEventId, token\.tokenId, observedAt, reason\),/);
   assert.match(collector, /const books = await fetchOrderBooksConcurrent\(tokens\.map\(\(t\) => t\.tokenId\), 5\);/);
-  assert.match(collector, /const exec = buildExecutableSiblingColumns\(\{ token, result, fee: fees\.get\(token\.tokenId\) \?\? null \}\);/);
+  assert.match(collector, /const exec = buildExecutableSiblingColumns\(\{ token, result, fee: fees\.get\(token\.tokenId\) \?\? null, hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP \}\);/);
   assert.match(collector, /const exit = book && shares !== null \? computeExecutableExit\(book\.bids, shares, 0\.02\) : null;/);
   assert.match(collector, /full_stake_executable_vwap: exec\.full_stake_executable_vwap \?\? null,/);
   assert.match(collector, /taker_fee_usd: exec\.taker_fee_usd \?\? null,/);
@@ -609,6 +627,7 @@ test("TELEMETRY-06: capture wires per-token timing into the row; observed_at, id
 });
 
 const newMigration = readFileSync("supabase/migrations/20261011120000_research_inplay_orderbook_timing_v3.sql", "utf8");
+const V4_COLS = ["executable_full_stake_state", "taker_fee_state", "taker_fee_reason", "quote_cycle_legs", "quote_cycle_span_ms"];
 const TIMING_COLS = ["orderbook_fetch_started_at", "orderbook_fetch_completed_at", "orderbook_provider_timestamp_at"];
 const PRE_EXISTING_PROJECTION = "id,physical_event_id,provider_game_id,provider_event_id,provider_sport_family,provider_sport_code,provider_sport_source,event_start_iso,observed_at,source_version,event_live_status,state_authority,state_phase,state_period_num,state_clock_seconds_remaining,state_clock_seconds_elapsed,state_received_at,side_a_score,side_b_score,side_a_red_cards,side_b_red_cards,condition_id,token_id,side,canonical_market_family,canonical_market_type,provider_market_type_raw,market_slug,best_bid,best_ask,mid_price,spread_abs,tick_size,minimum_order_size,bid_depth_relevant_usd,ask_depth_relevant_usd,full_stake_executable_vwap,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled,taker_fee_usd,orderbook_fetch_status,persistence_reason,sequence_in_event,created_at".split(",");
 
@@ -635,8 +654,9 @@ test("TELEMETRY-06: row size stays within the 1000-byte writer limit", () => {
 test("TELEMETRY-06: timing fields survive Production→DBClone projection and clone DDL declares every projected column", () => {
   const projection = /INPLAY_CORE_PATH_PROJECTION = "([^"]*)"/.exec(sync)![1].split(",");
   for (const c of TIMING_COLS) assert.ok(projection.includes(c), `${c} projected`);
+  for (const c of V4_COLS) assert.ok(projection.includes(c), `${c} projected`);
   for (const c of PRE_EXISTING_PROJECTION) assert.ok(projection.includes(c), `${c} still projected`);
-  assert.equal(projection.length, PRE_EXISTING_PROJECTION.length + 3);
+  assert.equal(projection.length, PRE_EXISTING_PROJECTION.length + 3 + V4_COLS.length);
   assert.equal(new Set(projection).size, projection.length);
   assert.ok(projection.indexOf("orderbook_fetch_status") < projection.indexOf("orderbook_fetch_started_at"));
   const createBlock = /CREATE TABLE IF NOT EXISTS[^(]*\(([\s\S]*?)\n\);/.exec(clone)![1];
@@ -656,4 +676,94 @@ test("TELEMETRY-06: a missing clone/Production COLUMN is a loud error, never a s
   assert.equal(isOptionalTableAbsent(new Error("column research_inplay_core_path_observations.orderbook_fetch_started_at does not exist")), false);
   assert.equal(isOptionalTableAbsent(new Error("42703 undefined_column")), false);
   assert.equal(isOptionalTableAbsent(new Error("connection reset")), false);
+});
+
+// ── TELEMETRY-09 ────────────────────────────────────────────────────────────
+
+const v4 = readFileSync("supabase/migrations/20261012120000_research_inplay_executable_state_v4.sql", "utf8");
+const v4Sql = v4.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
+
+function execInput(askPrice: number, minOrder: number | null, fee: boolean) {
+  const tokenId = "tok1";
+  return {
+    token: { conditionId: "c1", tokenId, side: "YES", outcome: "Yes", market: { sports_market_type: "moneyline", provider_market_slug: "m" } } as never,
+    result: { ok: true, tokenId, book: { tokenId, bids: [{ price: askPrice - 0.02, size: 500 }], asks: [{ price: askPrice, size: 500 }], tickSize: 0.01, minimumOrderSize: minOrder } } as never,
+    fee: fee ? ({ ok: true, takerRate: 0.03, formulaVersion: "F1", conditionId: "c1" } as never) : ({ ok: false, errorCode: "FEE_BUDGET_EXCEEDED" } as never),
+  };
+}
+
+test("TELEMETRY-09: the in-play research walk is not capped by the pre-game Queue entry cap", () => {
+  assert.equal(SOURCE_VERSION, "INPLAY_CORE_PATH_V2");
+  assert.equal(INPLAY_RESEARCH_EXECUTION_PRICE_CAP, 0.99);
+  const favorite = execInput(0.7, 2, true);
+  const queueCapped = buildExecutableSiblingColumns(favorite);
+  assert.equal(queueCapped.executable_full_stake_state, "NOT_EXECUTABLE_DEPTH_AT_CAP");  // the old behaviour: a 0.70 ask looked like "no liquidity"
+  assert.equal(queueCapped.full_stake_executable_vwap, null);
+  const research = buildExecutableSiblingColumns({ ...favorite, hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP });
+  assert.equal(research.executable_full_stake_state, "EXECUTABLE");
+  assert.equal(research.full_stake_executable_vwap, 0.7);
+  assert.equal(typeof research.taker_fee_usd, "number");
+  // Genuinely empty/short depth stays a typed non-executable state, never a fabricated price.
+  const thin = execInput(0.7, 2, true);
+  (thin.result as any).book.asks = [{ price: 0.7, size: 1 }];
+  const short = buildExecutableSiblingColumns({ ...thin, hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP });
+  assert.equal(short.executable_full_stake_state, "NOT_EXECUTABLE_DEPTH_AT_CAP");
+  assert.equal(short.full_stake_executable_vwap, null);
+  // An ask at/above the research cap is outside the walk.
+  assert.equal(buildExecutableSiblingColumns({ ...execInput(0.995, 5, true), hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP }).full_stake_executable_vwap, null);
+});
+
+test("TELEMETRY-09: min-order failure and unknown fee are distinguishable from missing liquidity in the persisted columns", () => {
+  const minOrder = buildExecutableSiblingColumns({ ...execInput(0.6, 5, true), hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP });   // $2.50 / 0.60 = 4.17 shares < 5
+  assert.equal(minOrder.executable_full_stake_state, "NOT_EXECUTABLE_MIN_ORDER_SIZE");
+  assert.notEqual(minOrder.full_stake_executable_vwap, null);     // depth exists; the state column is what says it is not placeable
+  // At the fixed $2.50 research stake any ask above 0.50 is below a 5-share minimum order by construction.
+  assert.equal(buildExecutableSiblingColumns({ ...execInput(0.5, 5, true), hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP }).executable_full_stake_state, "EXECUTABLE");
+  assert.equal(buildExecutableSiblingColumns({ ...execInput(0.51, 5, true), hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP }).executable_full_stake_state, "NOT_EXECUTABLE_MIN_ORDER_SIZE");
+  const unknownFee = buildExecutableSiblingColumns({ ...execInput(0.4, 5, false), hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP });
+  assert.equal(unknownFee.taker_fee_state, "UNKNOWN");
+  assert.equal(unknownFee.taker_fee_reason, "FEE_BUDGET_EXCEEDED");
+  assert.equal(unknownFee.taker_fee_usd, null);                    // an unknown fee is never imputed as zero
+  assert.notEqual(unknownFee.full_stake_executable_vwap, null);
+  const known = buildExecutableSiblingColumns({ ...execInput(0.4, 5, true), hardCap: INPLAY_RESEARCH_EXECUTION_PRICE_CAP });
+  assert.equal(known.taker_fee_state, "KNOWN");
+  assert.equal(known.taker_fee_reason, null);
+  assert.match(collector, /executable_full_stake_state: reasonToken\(exec\.executable_full_stake_state\), taker_fee_state: reasonToken\(exec\.taker_fee_state\),/);
+  assert.match(collector, /taker_fee_reason: reasonToken\(exec\.taker_fee_reason\),/);
+});
+
+test("TELEMETRY-09: per-cycle linked quote span needs every leg's own validated window and never imputes", () => {
+  const w = (s: number, c: number) => ({ startedAtMs: s, completedAtMs: c });
+  assert.equal(linkedQuoteSpanMs([w(1_000, 1_300), w(1_100, 2_050), w(1_200, 1_900)]), 1_050);
+  assert.equal(linkedQuoteSpanMs([w(1_000, 1_300)]), 300);
+  assert.equal(linkedQuoteSpanMs([w(1_000, 1_300), null]), null);        // a failed/mismatched leg makes the span unknown
+  assert.equal(linkedQuoteSpanMs([undefined, w(1_000, 1_300)]), null);
+  assert.equal(linkedQuoteSpanMs([]), null);
+  assert.match(collector, /const cycleSpanMs = linkedQuoteSpanMs\(tokens\.map\(\(t, i\) => validateAcquisitionWindow\(books\[i\], t\.tokenId, wallNowMs\)\)\);/);
+  assert.match(collector, /quote_cycle_legs: tokens\.length, quote_cycle_span_ms: cycleSpanMs,/);
+  assert.doesNotMatch(collector, /quote_cycle_span_ms:\s*(0|nowMs|observedAt)/);
+});
+
+test("TELEMETRY-09: migration is additive-nullable only; clone DDL mirrors it; writer RPC, caps, retention untouched", () => {
+  const types: Record<string, string> = { executable_full_stake_state: "text", taker_fee_state: "text", taker_fee_reason: "text", quote_cycle_legs: "smallint", quote_cycle_span_ms: "integer" };
+  for (const c of V4_COLS) {
+    assert.match(v4Sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${c} ${types[c]};`));
+    assert.match(clone, new RegExp(`ADD COLUMN IF NOT EXISTS ${c} ${types[c]};`));
+    assert.match(clone, new RegExp(`^  ${c} ${types[c]},$`, "m"));
+  }
+  assert.equal((v4Sql.match(/ADD COLUMN/g) ?? []).length, V4_COLS.length);
+  assert.doesNotMatch(v4Sql, /ADD COLUMN[^;]*(NOT NULL|DEFAULT)|DROP|UPDATE |DELETE |INSERT |CREATE (OR REPLACE )?FUNCTION|CREATE INDEX|research_insert_inplay_core_path|pg_column_size/i);
+  for (const state of ["EXECUTABLE", "NOT_EXECUTABLE_MIN_ORDER_SIZE", "NOT_EXECUTABLE_DEPTH_AT_CAP", "UNKNOWN_BOOK_UNAVAILABLE", "UNKNOWN_MIN_ORDER_SIZE", "UNKNOWN_TELEMETRY_COMPUTE_FAILED"]) assert.match(v4Sql, new RegExp(`'${state}'`));
+  assert.match(v4Sql, /taker_fee_state IN \('KNOWN', 'UNKNOWN'\)/);
+  assert.match(migration, /pg_column_size\(p_row\) > 1000/);
+});
+
+test("TELEMETRY-09: row size with the new columns stays far below the 1000-byte writer limit", () => {
+  // Largest stored row 608 bytes before TELEMETRY-06; +24 +7 +1 for the timing columns; the new text values are bounded
+  // enum/token strings (state <= 34, fee state <= 7, reason <= 40 chars + 1-byte varlena headers) plus 2 + 4 fixed bytes
+  // and at most 8 bytes alignment padding.
+  const worstGrowth = (34 + 1) + (7 + 1) + (40 + 1) + 2 + 4 + 8;
+  assert.ok(608 + 32 + worstGrowth < 760);
+  assert.ok(608 + 32 + worstGrowth < 1000);
+  assert.match(collector, /function reasonToken[\s\S]*\{1,40\}/);
 });
