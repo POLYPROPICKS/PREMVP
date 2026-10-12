@@ -46,9 +46,14 @@ export type ForwardCandidate = {
 };
 
 /** Contract columns the writer supplies. Lead times, timing_class, contract_status and first_persisted_at are DB-computed. */
+export type GameIdentityBasis = "TEAM_PAIR_START_TEXT" | "PROVIDER_EVENT_ONLY";
+export type ScopeBasis = "STRUCTURED_MONEYLINE" | "TEXT_HEURISTIC";
+
 export type ForwardBetColumns = {
   contract_version: typeof FORWARD_BET_CONTRACT_VERSION;
   canonical_game_key: string | null;
+  game_identity_basis: GameIdentityBasis;
+  scope_basis: ScopeBasis;
   provider_event_id: string | null;
   market_family: MarketFamily;
   market_type: string | null;
@@ -90,11 +95,44 @@ export function selectionReasonFor(modelId: string): string | null {
   return SELECTION_REASONS[modelId] ?? null;
 }
 
-/** One physical game per model, independent of the Minsk day or observation instant (cross-date reselection is the same unit). */
-export function canonicalGameKey(sportFamily: string | null | undefined, providerEventId: string | null | undefined): string | null {
-  const event = (providerEventId ?? "").trim();
-  if (!event) return null;
-  return `${(sportFamily ?? "unknown").trim().toLowerCase() || "unknown"}:${event}`;
+function stripDiacritics(value: string): string {
+  return value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function normTeam(value: string): string {
+  return stripDiacritics(value).toLowerCase().replace(/^will\s+/, "").replace(/\s+(end in a draw|win|to win)\b.*$/, "").replace(/[?.]+$/g, "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Text heuristic: the two competitor names from "Prefix: A vs B - suffix" style titles. It can only fail to merge
+ * (an unparsed shard keeps a provider-event key and is reported as unverified); two different fixtures never share a
+ * normalized sorted pair AND the same scheduled start, so it cannot invent a false merge of distinct games.
+ */
+export function extractTeamPair(...texts: Array<string | null | undefined>): [string, string] | null {
+  for (const text of texts) {
+    if (!text) continue;
+    const afterPrefix = /:\s*[^:]*\s+vs\.?\s+/i.test(text) ? text.slice(text.indexOf(":") + 1) : text;
+    const match = /^\s*(.+?)\s+vs\.?\s+(.+?)\s*(?:\(|\s-\s|:|\?|$)/i.exec(afterPrefix);
+    if (!match) continue;
+    const a = normTeam(match[1]);
+    const b = normTeam(match[2]);
+    if (a && b && a !== b) return a <= b ? [a, b] : [b, a];
+  }
+  return null;
+}
+
+/**
+ * Root physical game identity. Provider event ids are market-shard ids (soccer "more markets" events carry their own
+ * id), so the key is the competitor pair plus the scheduled start. Without a parseable pair or start the key falls
+ * back to the provider event and is flagged PROVIDER_EVENT_ONLY, which keeps the row out of "independent proven games".
+ */
+export function canonicalGame(input: { sportFamily: string | null | undefined; providerEventId: string | null | undefined; eventTitle?: string | null; marketQuestion?: string | null; scheduledStartIso?: string | null }): { key: string | null; basis: GameIdentityBasis } {
+  const sport = (input.sportFamily ?? "unknown").trim().toLowerCase() || "unknown";
+  const pair = extractTeamPair(input.eventTitle, input.marketQuestion);
+  const start = input.scheduledStartIso ? Date.parse(input.scheduledStartIso) : NaN;
+  if (pair && Number.isFinite(start)) return { key: `${sport}:${pair[0]}|${pair[1]}@${new Date(start).toISOString()}`, basis: "TEAM_PAIR_START_TEXT" };
+  const event = (input.providerEventId ?? "").trim();
+  return { key: event ? `${sport}:pe:${event}` : null, basis: "PROVIDER_EVENT_ONLY" };
 }
 
 export function economicUnitKey(gameKey: string | null): string | null {
@@ -151,10 +189,12 @@ export function parseSelectedLine(family: MarketFamily, question: string | null,
     const pairs = [...text.matchAll(/([^():]+?)\s*\(([+-]\d+(?:\.\d+)?)\)/g)].map((m) => ({ team: norm(m[1].replace(/^.*?:\s*/, "").replace(/\bvs\.?\s*$/i, "")), line: numberFrom(m[2]) }));
     if (pairs.length === 0) return null;
     const side = norm(selectedOutcome);
+    // A side we cannot name (or a Yes/No/Over/Under answer) never gets a guessed sign.
+    if (!side || ["yes", "no", "over", "under"].includes(side)) return null;
     const own = pairs.find((p) => p.team === side || side.includes(p.team) || p.team.includes(side));
     if (own && own.line !== null) return own.line;
     const first = pairs[0];
-    if (pairs.length === 1 && first.line !== null && side) return -first.line;
+    if (pairs.length === 1 && first.line !== null) return -first.line;
     return null;
   }
   return null;
@@ -196,15 +236,23 @@ export function buildForwardBetColumns(input: {
 }): ForwardBetColumns {
   const { source, candidate } = input;
   const family = classifyMarketFamily(source.market_type, source.market_question);
-  const gameKey = canonicalGameKey(source.provider_sport_family ?? candidate.sportFamily, source.provider_event_id);
+  const game = canonicalGame({
+    sportFamily: source.provider_sport_family ?? candidate.sportFamily, providerEventId: source.provider_event_id,
+    eventTitle: source.event_title, marketQuestion: source.market_question, scheduledStartIso: source.game_start_iso,
+  });
+  const gameKey = game.key;
+  const line = parseSelectedLine(family, source.market_question, source.selected_outcome ?? null);
+  const period = classifyPeriodScope(source.market_type, source.market_question);
   return {
     contract_version: FORWARD_BET_CONTRACT_VERSION,
     canonical_game_key: gameKey,
+    game_identity_basis: game.basis,
+    scope_basis: source.market_type === "moneyline" && family === "MONEYLINE" && line === null && period === "FULL_MATCH" ? "STRUCTURED_MONEYLINE" : "TEXT_HEURISTIC",
     provider_event_id: source.provider_event_id,
     market_family: family,
     market_type: source.market_type,
-    line_value: parseSelectedLine(family, source.market_question, source.selected_outcome ?? null),
-    period_scope: classifyPeriodScope(source.market_type, source.market_question),
+    line_value: line,
+    period_scope: period,
     selected_outcome: source.selected_outcome ?? null,
     observed_at: source.observed_at,
     decision_generated_at: input.decisionGeneratedAt,
@@ -228,19 +276,29 @@ export function buildForwardBetColumns(input: {
 
 /**
  * Cross-date reselection guard: a model never takes a second independent bet on a physical game it already holds,
- * whether the earlier row is legacy-shaped or a contract row.
+ * whether the earlier row is legacy-shaped or a contract row, and whether it came through the same provider event or
+ * another market shard of the same fixture.
  */
 export function excludeExistingEconomicUnits<T extends { physicalEventKey: string }>(
   model: string,
   chosen: readonly T[],
-  existing: ReadonlyArray<{ model_id: string; physicalEventKey: string }>,
+  existing: ReadonlyArray<{ model_id: string; physicalEventKey: string; canonical_game_key?: string | null }>,
+  gameKeyOf: (candidate: T) => string | null = () => null,
 ): { fresh: T[]; blockedDuplicateUnitN: number } {
-  const held = new Set(existing.filter((row) => row.model_id === model).map((row) => row.physicalEventKey));
+  const heldEvents = new Set<string>();
+  const heldGames = new Set<string>();
+  for (const row of existing) {
+    if (row.model_id !== model) continue;
+    heldEvents.add(row.physicalEventKey);
+    if (row.canonical_game_key) heldGames.add(row.canonical_game_key);
+  }
   const fresh: T[] = [];
   let blocked = 0;
   for (const candidate of chosen) {
-    if (held.has(candidate.physicalEventKey)) { blocked += 1; continue; }
-    held.add(candidate.physicalEventKey);
+    const game = gameKeyOf(candidate);
+    if (heldEvents.has(candidate.physicalEventKey) || (game !== null && heldGames.has(game))) { blocked += 1; continue; }
+    heldEvents.add(candidate.physicalEventKey);
+    if (game !== null) heldGames.add(game);
     fresh.push(candidate);
   }
   return { fresh, blockedDuplicateUnitN: blocked };

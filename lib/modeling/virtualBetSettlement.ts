@@ -136,10 +136,11 @@ export function classifyClobSettlement(bet: SettlementBet, market: ClobMarket | 
       check_kind: "TERMINAL", outcome: winner === bet.selectedTokenId ? "WIN" : "LOSS", reason: "CLOB_EXACT_WINNER_TOKEN",
       source_authority: "CLOB_WINNER_TOKEN", independent_of_selection: true, winner_token_id: winner, provider_closed: true,
       provider_resolved_at: resolvedAt, provider_digest: digest,
-      provider_answer: answer({ gamma_agrees: auxiliary === winner ? true : auxiliary === null ? null : false }),
+      provider_answer: answer({ gamma_agrees: auxiliary === winner ? true : auxiliary === null ? null : false, resolved_at_source: resolvedAt ? "GAMMA_closedTime_AUXILIARY" : null }),
     });
   }
-  if (winners.length === 0 && (market.is_50_50_outcome === true || tokens.every((t) => t.price === 0.5))) {
+  // VOID only on the provider's explicit 50-50 flag: a closed market whose prices merely sit at 0.5 is not a resolution.
+  if (winners.length === 0 && market.is_50_50_outcome === true) {
     return check({
       check_kind: "TERMINAL", outcome: "VOID", reason: "PROVIDER_5050_RESOLUTION_NOT_A_WIN_OR_LOSS",
       source_authority: "CLOB_5050", independent_of_selection: true, provider_closed: true,

@@ -5,7 +5,8 @@ import { test } from "node:test";
 
 import {
   buildForwardBetColumns,
-  canonicalGameKey,
+  canonicalGame,
+  extractTeamPair,
   classifyForwardTiming,
   classifyMarketFamily,
   classifyPeriodScope,
@@ -37,6 +38,8 @@ test("selection invariance: a future outcome in the evidence rows cannot change 
   const reader = readFileSync(join(process.cwd(), "scripts/modeling/prospective-selection-shadow.ts"), "utf8");
   const projection = /const columns = "([^"]+)"/.exec(reader)![1];
   assert.doesNotMatch(projection, /signal_result|settle|winner|result/);
+  // the selected side is a pre-decision fact and must be read, or every row would be INCOMPLETE:selected_outcome
+  assert.match(projection, /selected_outcome/);
 });
 
 test("one model x canonical physical game: cross-date reselection is the same economic unit", () => {
@@ -45,8 +48,24 @@ test("one model x canonical physical game: cross-date reselection is the same ec
   const result = excludeExistingEconomicUnits("P50_52_SAFE", chosen, existing);
   assert.deepEqual(result.fresh, [{ physicalEventKey: "EV2" }]);
   assert.equal(result.blockedDuplicateUnitN, 2);
-  assert.equal(canonicalGameKey("Tennis", "1174651"), "tennis:1174651");
-  assert.equal(canonicalGameKey("tennis", null), null);
+  const shard = (providerEventId: string, title: string) => canonicalGame({ sportFamily: "soccer", providerEventId, eventTitle: title, marketQuestion: null, scheduledStartIso: "2026-10-12T19:15:00Z" });
+  // soccer "more markets" shards carry their own provider event id but are the same fixture
+  assert.equal(shard("1104527", "FC Famalicão vs. FC Alverca").key, shard("1107765", "Fc Alverca vs FC Famalicao - More Markets").key);
+  assert.equal(shard("1104527", "FC Famalicão vs. FC Alverca").basis, "TEAM_PAIR_START_TEXT");
+  // another fixture with the same team pair at another time is another game
+  assert.notEqual(shard("1", "A vs B").key, canonicalGame({ sportFamily: "soccer", providerEventId: "1", eventTitle: "A vs B", scheduledStartIso: "2026-10-19T19:15:00Z" }).key);
+  // unparsed or start-less shards fall back to the provider event and are flagged unverified
+  const fallback = canonicalGame({ sportFamily: "Tennis", providerEventId: "1174651", eventTitle: "Spread: Stal (-4.5)", scheduledStartIso: "2026-10-12T17:00:00Z" });
+  assert.deepEqual([fallback.key, fallback.basis], ["tennis:pe:1174651", "PROVIDER_EVENT_ONLY"]);
+  assert.equal(canonicalGame({ sportFamily: "tennis", providerEventId: null }).key, null);
+  assert.deepEqual(extractTeamPair("W100 Edmond, OK: Chloe Noel vs Valeriya Strakhova"), ["chloe noel", "valeriya strakhova"]);
+  assert.deepEqual(extractTeamPair("Counter-Strike: HOTU vs fnatic (BO3) - Stake Pulse Beat III Group C"), ["fnatic", "hotu"]);
+  assert.deepEqual(extractTeamPair("Honor of Kings: JD Gaming vs Rogue Warriors - Game 1 Winner"), ["jd gaming", "rogue warriors"]);
+  assert.equal(extractTeamPair("Games Total: O/U 4.5"), null);
+  // an existing bet through another shard of the same fixture blocks a new one
+  const viaShard = excludeExistingEconomicUnits("P50_52_SAFE", [{ physicalEventKey: "E-2", g: "k1" }, { physicalEventKey: "E-3", g: "k2" }],
+    [{ model_id: "P50_52_SAFE", physicalEventKey: "E-1", canonical_game_key: "k1" }], (c) => c.g);
+  assert.deepEqual(viaShard.fresh.map((c) => c.physicalEventKey), ["E-3"]);
 });
 
 test("forward columns carry identity, times, numeric reference price and no fabricated executable price or actual kickoff", () => {
@@ -54,8 +73,10 @@ test("forward columns carry identity, times, numeric reference price and no fabr
   const [candidate] = selectedByModel([source], "2026-10-12").capped.get("P50_52_SAFE")!;
   const columns = buildForwardBetColumns({ model: "P50_52_SAFE", source, candidate, decisionGeneratedAt: "2026-10-12T10:02:00.000Z" });
   assert.equal(columns.contract_version, "FORWARD_BET_V1");
-  assert.equal(columns.canonical_game_key, "tennis:EV1");
-  assert.equal(columns.economic_unit_key, "tennis:EV1");
+  assert.equal(columns.canonical_game_key, "tennis:player a1|player b1@2026-10-12T17:00:00.000Z");
+  assert.equal(columns.economic_unit_key, columns.canonical_game_key);
+  assert.equal(columns.game_identity_basis, "TEAM_PAIR_START_TEXT");
+  assert.equal(columns.scope_basis, "STRUCTURED_MONEYLINE");
   assert.equal(columns.reference_price, 0.505);
   assert.equal(columns.reference_price_type, "EVIDENCE_REFERENCE_NOT_EXECUTABLE");
   assert.equal(columns.observed_at, source.observed_at);
@@ -108,6 +129,8 @@ test("market scope parsing: family, period and signed selected line", () => {
   assert.equal(parseSelectedLine("SPREAD", "Spread: Sivasspor (-4.5)", "Bandirmaspor"), 4.5);
   assert.equal(parseSelectedLine("HANDICAP", "Map Handicap: GLS (-1.5) vs Bounty Hunters Esports (+1.5)", "Bounty Hunters Esports"), 1.5);
   assert.equal(parseSelectedLine("MONEYLINE", "A vs B", "A"), null);
+  assert.equal(parseSelectedLine("SPREAD", "Spread: Sivasspor (-4.5)", null), null);
+  assert.equal(parseSelectedLine("SPREAD", "Spread: Sivasspor (-4.5)", "Yes"), null);
 });
 
 type Call = { table: string; op: string; payload?: any; options?: any };

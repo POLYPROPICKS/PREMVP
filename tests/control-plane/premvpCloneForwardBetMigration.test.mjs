@@ -82,3 +82,21 @@ test('apply needs the full catalog proof, an unchanged ledger baseline and the c
   await assert.rejects(runForwardBetMigration({ transport: { ...transport(), projectRef: 'nbnldzfsxffztsfrrxqy' }, declaration, sql }), /FORWARD_BET_TRANSPORT_PROJECT_MISMATCH/);
   await assert.rejects(runForwardBetMigration({ transport: transport({ ledgerDrift: true }), declaration, sql }), /TARGET_ONLY_REMOTE_TRACKED_FILE_MISSING_LOCALLY/);
 });
+
+test('deployment handoff pins the exact reviewed SQL, the baseline and the registered route', async () => {
+  const { buildHandoff } = await import('../../scripts/control-plane/forward-bet-deployment-handoff.mjs');
+  const handoff = buildHandoff();
+  assert.equal(handoff.migration.sha256, sha256OfText(sql));
+  assert.equal(handoff.migration.reviewed_exact_sql_match, true);
+  assert.equal(handoff.target.project_ref, FORWARD_BET_CLONE_REF);
+  assert.deepEqual(handoff.ledger_baseline.expected_versions, [...FORWARD_BET_CLONE_LEDGER_BASELINE]);
+  assert.match(handoff.registered_route.apply, /--clone-forward-bet-contract --apply --confirm/);
+  assert.doesNotMatch(JSON.stringify(handoff.registered_route), /nbnldzfsxffztsfrrxqy/);
+  assert.deepEqual(buildHandoff(), handoff);
+});
+
+test('the committed handoff evidence is current with the reviewed SQL', async () => {
+  const { buildHandoff } = await import('../../scripts/control-plane/forward-bet-deployment-handoff.mjs');
+  const committed = JSON.parse(fs.readFileSync(new URL('../../modeling/evidence/forward-bet-ledger-v1/DEPLOYMENT_HANDOFF.json', import.meta.url), 'utf8'));
+  assert.deepEqual(committed, buildHandoff());
+});

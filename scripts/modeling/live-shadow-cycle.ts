@@ -6,7 +6,7 @@ import { replayDynamicHarvest, type DynamicExecutionCandidate } from "@/lib/mode
 import { buildPrincipalRecoveryStageA } from "@/lib/modeling/dynamicPrincipalRecoveryVault";
 import { stableHash } from "@/lib/modeling/scientificCapitalArchitecture";
 import { resolveSignalOutcome, type GammaMarket } from "@/lib/feed/resolveSignalOutcome";
-import { buildForwardBetColumns, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isForwardPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
+import { buildForwardBetColumns, canonicalGame, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isForwardPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
 import { syncResearchEvidencePage } from "../research-clone-daily-sync";
 import {
   CAP,
@@ -471,7 +471,11 @@ async function main(): Promise<void> {
       const chosen = capped.get(model) ?? [];
       const notYetPersisted = chosen.filter((candidate) => !existing.has(`LEDGER:${model}:${candidate.candidateIdentity}`));
       // Same model x same physical game on a later date/observation is the same economic unit, not a new bet.
-      const { fresh, blockedDuplicateUnitN } = excludeExistingEconomicUnits(model, notYetPersisted, [...ledger, ...additions].map((row) => ({ model_id: row.model_id, physicalEventKey: row.physicalEventKey })));
+      const heldRows = [...ledger, ...additions].map((row) => ({ model_id: row.model_id, physicalEventKey: row.physicalEventKey, canonical_game_key: row.canonical_game_key ?? row.forward?.canonical_game_key ?? null }));
+      const { fresh, blockedDuplicateUnitN } = excludeExistingEconomicUnits(model, notYetPersisted, heldRows, (candidate) => {
+        const source = byIdentity.get(candidate.candidateIdentity);
+        return source ? canonicalGame({ sportFamily: source.provider_sport_family, providerEventId: source.provider_event_id, eventTitle: source.event_title, marketQuestion: source.market_question, scheduledStartIso: source.game_start_iso }).key : null;
+      });
       blockedDuplicateUnits += blockedDuplicateUnitN;
       const newCandidates = fresh.slice(0, CAP - priorCount);
       for (const candidate of newCandidates) {

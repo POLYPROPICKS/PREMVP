@@ -36,6 +36,7 @@ export type V4EvidenceRow = {
   market_type: string | null;
   event_title: string | null;
   market_question: string | null;
+  selected_outcome?: string | null;
   game_start_iso: string | null;
   data_coverage: number | string | null;
 };
@@ -100,7 +101,7 @@ export async function readV4DateRows(db: ReturnType<typeof resolveClone>, date: 
   const from = utcStartOfMinskDate(date);
   const until = new Date(Date.parse(from) + 24 * 60 * 60_000).toISOString();
   const rows: V4EvidenceRow[] = [];
-  const columns = "observation_id,observed_at,item_observation_id,condition_id,selected_token_id,entry_price_num,pre_event_score_num,provider_event_id,provider_sport_family,market_type,event_title,market_question,game_start_iso,data_coverage";
+  const columns = "observation_id,observed_at,item_observation_id,condition_id,selected_token_id,entry_price_num,pre_event_score_num,provider_event_id,provider_sport_family,market_type,event_title,market_question,selected_outcome,game_start_iso,data_coverage";
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await db.from("research_evidence_page_rows")
       .select(columns)

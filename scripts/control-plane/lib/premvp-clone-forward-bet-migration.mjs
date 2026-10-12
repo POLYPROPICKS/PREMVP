@@ -30,6 +30,8 @@ $$;
 alter table public.prospective_selection_shadow_runtime
   add column if not exists contract_version text,
   add column if not exists canonical_game_key text,
+  add column if not exists game_identity_basis text,
+  add column if not exists scope_basis text,
   add column if not exists provider_event_id text,
   add column if not exists market_family text,
   add column if not exists market_type text,
@@ -68,6 +70,8 @@ alter table public.prospective_selection_shadow_runtime
       contract_version = 'FORWARD_BET_V1'
       and row_kind = 'LEDGER'
       and decision_kind = 'BET'
+      and (game_identity_basis is null or game_identity_basis in ('TEAM_PAIR_START_TEXT', 'PROVIDER_EVENT_ONLY'))
+      and (scope_basis is null or scope_basis in ('STRUCTURED_MONEYLINE', 'TEXT_HEURISTIC'))
       and (reference_price is null or (reference_price > 0 and reference_price < 1))
       and ((executable_buy_price is null) = (executable_price_authority is null))
       and ((executable_buy_price is null) = (executable_quote_at is null))
@@ -101,7 +105,7 @@ begin
       persisted := clock_timestamp();
       new.first_persisted_at := persisted;
       if new.contract_version is null then
-        if num_nonnulls(new.canonical_game_key, new.provider_event_id, new.market_family, new.market_type,
+        if num_nonnulls(new.canonical_game_key, new.game_identity_basis, new.scope_basis, new.provider_event_id, new.market_family, new.market_type,
           new.line_value, new.period_scope, new.selected_outcome, new.observed_at, new.decision_generated_at,
           new.scheduled_start_at, new.authoritative_start_at, new.reference_price, new.executable_buy_price,
           new.model_version, new.selection_reason, new.decision_kind, new.economic_unit_key, new.timing_class,
@@ -111,7 +115,9 @@ begin
       else
         if exists (select 1 from public.prospective_selection_shadow_runtime r
           where r.row_kind = 'LEDGER' and r.model_id = new.model_id
-            and r.physical_event_key = new.physical_event_key and r.row_key <> new.row_key) then
+            and r.row_key <> new.row_key
+            and (r.physical_event_key = new.physical_event_key
+              or (new.canonical_game_key is not null and r.canonical_game_key = new.canonical_game_key))) then
           raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
         end if;
         if new.decision_generated_at is null or new.observed_at is null then
@@ -138,6 +144,8 @@ begin
           else 'START_UNKNOWN' end;
         missing := array_remove(array[
           case when new.canonical_game_key is null then 'canonical_game_key' end,
+          case when new.game_identity_basis is distinct from 'TEAM_PAIR_START_TEXT' then 'root_game_unverified' end,
+          case when new.scope_basis is null then 'scope_basis' end,
           case when new.provider_event_id is null then 'provider_event_id' end,
           case when new.condition_id is null then 'condition_id' end,
           case when new.selected_token_id is null then 'selected_token_id' end,
@@ -169,6 +177,7 @@ begin
      new.event_start, new.entry_price, new.sport_family, new.condition_id,
      new.selected_token_id, new.pre_event_score, new.data_coverage,
      new.first_persisted_at, new.contract_version, new.canonical_game_key,
+     new.game_identity_basis, new.scope_basis,
      new.provider_event_id, new.market_family, new.market_type, new.line_value,
      new.period_scope, new.selected_outcome, new.observed_at, new.decision_generated_at,
      new.scheduled_start_at, new.authoritative_start_at, new.authoritative_start_source,
@@ -184,6 +193,7 @@ begin
      old.event_start, old.entry_price, old.sport_family, old.condition_id,
      old.selected_token_id, old.pre_event_score, old.data_coverage,
      old.first_persisted_at, old.contract_version, old.canonical_game_key,
+     old.game_identity_basis, old.scope_basis,
      old.provider_event_id, old.market_family, old.market_type, old.line_value,
      old.period_scope, old.selected_outcome, old.observed_at, old.decision_generated_at,
      old.scheduled_start_at, old.authoritative_start_at, old.authoritative_start_source,

@@ -1,0 +1,107 @@
+{
+  "handoff": "FORWARD_BET_CONTRACT_V1_DBCLONE_DEPLOYMENT",
+  "target": {
+    "project_ref": "nppznoujvnyjargjkmnv",
+    "scope": "DBCLONE_ONLY",
+    "forbidden_refs": [
+      "nbnldzfsxffztsfrrxqy"
+    ]
+  },
+  "migration": {
+    "file": "ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql",
+    "bytes": 15763,
+    "sha256": "339900253836f08561bae0cb959f742ea55f4f78c9eaff153af73aa9cc4a5f3f",
+    "reviewed_exact_sql_match": true,
+    "validation_errors": []
+  },
+  "ledger_baseline": {
+    "expected_versions": [
+      "20260812152531",
+      "20260812152539",
+      "20260812154439",
+      "20260813111146",
+      "20260814083257",
+      "20260907090854",
+      "20260907090911",
+      "20260916182024",
+      "20260919072722",
+      "20260923104049",
+      "20260923121955",
+      "20260924192128",
+      "20260924201147",
+      "20260925052246",
+      "20260925071724",
+      "20260925072111",
+      "20260925092253",
+      "20260925092300",
+      "20260925133329",
+      "20260925133336",
+      "20260930081720",
+      "20260930104845",
+      "20260930120158",
+      "20261007125949",
+      "20261010093450",
+      "20261011075303",
+      "20261011075337",
+      "20261011075355",
+      "20261011173709",
+      "20261012081337",
+      "20261012091611",
+      "20261012150000"
+    ],
+    "count": 32,
+    "drift_policy": "ANY difference aborts before apply (FORWARD_BET_CLONE_LEDGER_DRIFT)"
+  },
+  "schema_baseline_before": {
+    "prospective_selection_shadow_runtime_has_columns": [
+      "first_persisted_at",
+      "unresolved_reason"
+    ],
+    "prospective_selection_shadow_runtime_lacks_columns": [
+      "contract_version",
+      "canonical_game_key",
+      "game_identity_basis",
+      "scope_basis",
+      "economic_unit_key",
+      "timing_class",
+      "contract_status"
+    ],
+    "virtual_bet_settlement_authority_exists": false,
+    "probe": "npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (expected FAIL before apply: columns/table absent)"
+  },
+  "registered_route": {
+    "script": "scripts/control-plane/apply-premvp-approved-migration.mjs",
+    "requires_env": [
+      "SUPABASE_ACCESS_TOKEN (Supabase management API, scoped to the clone project)"
+    ],
+    "dry_run": "node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '{\"mode\":\"PREMVP_CLONE_FORWARD_BET_CONTRACT_V1\",\"project_ref\":\"nppznoujvnyjargjkmnv\",\"migration_file\":\"ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql\",\"target_sha256\":\"339900253836f08561bae0cb959f742ea55f4f78c9eaff153af73aa9cc4a5f3f\",\"direct_raw_mutation\":false,\"idempotent\":true}' --clone-forward-bet-contract",
+    "apply": "PREMVP_TARGET_ONLY_APPLY_CONFIRM=1 node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '{\"mode\":\"PREMVP_CLONE_FORWARD_BET_CONTRACT_V1\",\"project_ref\":\"nppznoujvnyjargjkmnv\",\"migration_file\":\"ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql\",\"target_sha256\":\"339900253836f08561bae0cb959f742ea55f4f78c9eaff153af73aa9cc4a5f3f\",\"direct_raw_mutation\":false,\"idempotent\":true}' --clone-forward-bet-contract --apply --confirm",
+    "dry_run_proves": [
+      "transaction semantics",
+      "exact SQL executes inside BEGIN..ROLLBACK",
+      "schema fingerprint and ledger unchanged afterwards"
+    ],
+    "apply_proves": [
+      "ledger gains exactly one entry (20261012180000)",
+      "contract and settlement columns present and nullable",
+      "catalog: triggers enabled, non-SECURITY DEFINER, no anon/authenticated grants, service_role cannot UPDATE/DELETE/TRUNCATE settlement history or DELETE/TRUNCATE the ledger, unique indexes present"
+    ]
+  },
+  "post_deploy": {
+    "verify": "npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (expected PASS)",
+    "invariants": [
+      "2858 historical rows still have NULL first_persisted_at and NULL contract fields",
+      "Chloe Noel precedent row identical and contract-less",
+      "DELETE on ledger and UPDATE/DELETE on settlement history refused with 42501"
+    ],
+    "first_natural_proof": "the next modeling:shadow-cycle run writes FORWARD_BET_V1 rows; then npm run modeling:forward-bet-ceo-report"
+  },
+  "order_independence": "The cycle and settlement script probe the schema and run in legacy/no-op mode until the migration exists, so merge-then-migrate and migrate-then-merge are both safe; the natural proof starts only when both are live.",
+  "rollback": "Additive and nullable. Do not drop columns or the settlement table; if the contract must be paused, stop writing it (revert the code) and leave the immutable rows in place.",
+  "never": [
+    "production project",
+    "Ireland",
+    "backfilling historical rows",
+    "raw SQL outside this route"
+  ]
+}

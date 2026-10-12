@@ -24,9 +24,9 @@ function ok(text) { const r = q(text); assert.equal(r.ok, true, `${text}\n${r.er
 function fails(text, pattern) { const r = q(text); assert.equal(r.ok, false, `expected failure: ${text}`); assert.match(r.err, pattern); }
 
 const BASE = `insert into prospective_selection_shadow_runtime(row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state`;
-function contractInsert(key, { model = 'P50_52_SAFE', game = `G-${key}`, observed = "now() - interval '5 minutes'", decided = 'now()', scheduled = "now() + interval '3 hours'", authoritative = 'null', family = "'MONEYLINE'", extra = '', extraCols = '', timing = '', onConflict = '' } = {}) {
-  return `${BASE},contract_version,canonical_game_key,provider_event_id,market_family,market_type,period_scope,selected_outcome,observed_at,decision_generated_at,scheduled_start_at,authoritative_start_at,reference_price,reference_price_source,reference_price_type,reference_price_acquired_at,model_version,selection_reason,decision_kind,economic_unit_key${extraCols})
-  values ('${key}','LEDGER','${model}','2026-10-12','id-${key}','${game}',now(),now() + interval '3 hours',0.505,'tennis','0xcond-${key}','tok-${key}','UNQUERIED','FORWARD_BET_V1','tennis:${game}','${game}',${family},'moneyline','FULL_MATCH','Player A',${observed},${decided},${scheduled},${authoritative},0.505,'src','EVIDENCE_REFERENCE_NOT_EXECUTABLE',${observed},'${model}@v1','reason','BET','tennis:${game}'${extra}) ${onConflict}`;
+function contractInsert(key, { model = 'P50_52_SAFE', game = `G-${key}`, canonical = `tennis:${game}`, basis = 'TEAM_PAIR_START_TEXT', observed = "now() - interval '5 minutes'", decided = 'now()', scheduled = "now() + interval '3 hours'", authoritative = 'null', family = "'MONEYLINE'", extra = '', extraCols = '', timing = '', onConflict = '' } = {}) {
+  return `${BASE},contract_version,canonical_game_key,game_identity_basis,scope_basis,provider_event_id,market_family,market_type,period_scope,selected_outcome,observed_at,decision_generated_at,scheduled_start_at,authoritative_start_at,reference_price,reference_price_source,reference_price_type,reference_price_acquired_at,model_version,selection_reason,decision_kind,economic_unit_key${extraCols})
+  values ('${key}','LEDGER','${model}','2026-10-12','id-${key}','${game}',now(),now() + interval '3 hours',0.505,'tennis','0xcond-${key}','tok-${key}','UNQUERIED','FORWARD_BET_V1','${canonical}','${basis}','STRUCTURED_MONEYLINE','${game}',${family},'moneyline','FULL_MATCH','Player A',${observed},${decided},${scheduled},${authoritative},0.505,'src','EVIDENCE_REFERENCE_NOT_EXECUTABLE',${observed},'${model}@v1','reason','BET','${canonical}'${extra}) ${onConflict}`;
 }
 
 before(() => {
@@ -87,6 +87,15 @@ test('time-travel and incomplete contracts fail closed', { skip }, () => {
   assert.equal(ok("select contract_status from prospective_selection_shadow_runtime where row_key='INC'"), 'INCOMPLETE:market_family');
   ok(contractInsert('INC2', { family: "'TOTAL'" }));
   assert.equal(ok("select contract_status from prospective_selection_shadow_runtime where row_key='INC2'"), 'INCOMPLETE:line_value');
+});
+
+test('root game identity: a second market shard of the same fixture is the same economic unit; unverified identity is INCOMPLETE', { skip }, () => {
+  ok(contractInsert('S1', { game: 'EV-SHARD-A', canonical: 'soccer:a|b@2026-10-12T19:15:00.000Z' }));
+  fails(contractInsert('S2', { game: 'EV-SHARD-B', canonical: 'soccer:a|b@2026-10-12T19:15:00.000Z' }), /DUPLICATE_ECONOMIC_UNIT/);
+  ok(contractInsert('S3', { game: 'EV-SHARD-B', canonical: 'soccer:a|b@2026-10-12T19:15:00.000Z', model: 'QUALITY_FILL_D_SAFE' }));
+  ok(contractInsert('S4', { game: 'EV-PE-ONLY', canonical: 'soccer:pe:EV-PE-ONLY', basis: 'PROVIDER_EVENT_ONLY' }));
+  assert.equal(ok("select contract_status from prospective_selection_shadow_runtime where row_key='S4'"), 'INCOMPLETE:root_game_unverified');
+  fails(contractInsert('S5', { game: 'EV-S5', basis: 'MADE_UP' }), /forward_contract_ck/);
 });
 
 test('executable BUY price needs an explicit authority; a missing book is never a price', { skip }, () => {

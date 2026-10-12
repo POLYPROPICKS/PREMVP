@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { FORWARD_BET_CONTRACT_VERSION, hasExecutableAuthority, isForwardPreMatch } from "@/lib/modeling/forwardBetContract";
+import { buildTrackRegistry, type TrackInfo } from "@/lib/research/strategyTrackLabels";
 import { MODEL_IDS } from "./prospective-selection-shadow";
 
 const CLONE_REF = "nppznoujvnyjargjkmnv";
@@ -69,6 +70,53 @@ export function buildCeoRows(ledger: readonly LedgerLine[], terminals: readonly 
   return MODEL_IDS.map(rows);
 }
 
+
+export type DecisionLine = { strategy_id: string; status: string; provenance_class: string | null; entry_cost_authority: string | null; physical_event_id: string };
+export const TEN_TRACK_HEADER = "| Стратегия | Independent games | BET | WIN–LOSS–VOID–UNKNOWN | Timing proof | Price proof | Gross/Fees/Net ROI | Confidence | Verdict |\n|---|---|---|---|---|---|---|---|---|";
+
+/** One compact row per approved research track. Labels are display-only; modes come from the strategy registries. */
+export function buildTenTrackRows(safe: ReturnType<typeof buildCeoRows>, decisions: readonly DecisionLine[], registry: readonly TrackInfo[] = buildTrackRegistry()) {
+  return registry.map((track) => {
+    const base = { canonicalId: track.canonicalId, displayName: track.displayName, group: track.group, mode: track.mode, canEmitBet: track.canEmitBet };
+    if (track.group === "PREMATCH") {
+      const row = safe.find((r) => r.strategy === track.canonicalId)!;
+      const unprovenBets = row.historical.bet + row.legacyForwardWithoutContract.bet;
+      return {
+        ...base, independentGames: row.forward.independentProvenGames, bet: row.forward.bet, wlvu: row.forward.wlvu,
+        timingProof: row.forward.independentProvenGames > 0
+          ? `по расписанию (старт не подтверждён): ${row.forward.independentProvenGames}; авторитетный старт: 0; без доказательства: ${unprovenBets}`
+          : `forward-доказательств нет; без доказательства времени: ${unprovenBets}`,
+        priceProof: row.forward.bet > 0 ? "REFERENCE (не исполнимая цена)" : UNPROVEN,
+        economics: `${row.forward.gross}/${row.forward.fees}/${row.forward.netRoi}`, confidence: row.forward.confidence, verdict: row.forward.verdict,
+      };
+    }
+    const mine = decisions.filter((d) => d.strategy_id === track.canonicalId);
+    const bets = mine.filter((d) => d.status === "BET");
+    const count = (cls: string) => bets.filter((d) => d.provenance_class === cls).length;
+    if (!track.canEmitBet) {
+      return { ...base, independentGames: 0, bet: bets.length, wlvu: "n/a", timingProof: "n/a (facts-only)", priceProof: "n/a (facts-only)", economics: `${UNPROVEN}/${UNPROVEN}/${UNPROVEN}`, confidence: "n/a", verdict: bets.length === 0 ? "FACTS_ONLY_NO_BET" : "VIOLATION_ALPHA_BET_PRESENT" };
+    }
+    const executable = bets.filter((d) => d.entry_cost_authority === "FULL_STAKE_EXECUTABLE_BUY_VWAP").length;
+    const games = new Set(bets.map((d) => d.physical_event_id)).size;
+    return {
+      ...base, independentGames: games, bet: bets.length, wlvu: `${UNPROVEN} (результат не сохраняется в Ledger)`,
+      timingProof: `DELAYED_PAPER: ${count("DELAYED_PAPER")}; LIVE_PROSPECTIVE: ${count("LIVE_PROSPECTIVE")}; TIMING_UNPROVEN: ${count("TIMING_UNPROVEN")}`,
+      priceProof: bets.length === 0 ? UNPROVEN : `исполнимый BUY VWAP полного стейка: ${executable}/${bets.length}`,
+      economics: `${UNPROVEN}/${UNPROVEN}/${UNPROVEN}`, confidence: games < MIN_FORWARD_GAMES_FOR_VERDICT ? `INSUFFICIENT (games n=${games})` : "SUFFICIENT_FOR_COMPARISON",
+      verdict: count("LIVE_PROSPECTIVE") === bets.length && bets.length > 0 ? "LIVE_PROSPECTIVE" : "DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE",
+    };
+  });
+}
+
+export function renderTenTrackMarkdown(rows: ReturnType<typeof buildTenTrackRows>): string {
+  const body = rows.map((r) => `| ${r.displayName} (\`${r.canonicalId}\`) | ${r.independentGames} | ${r.bet} | ${r.wlvu} | ${r.timingProof} | ${r.priceProof} | ${r.economics} | ${r.confidence} | ${r.verdict} |`);
+  const modes = rows.map((r) => `| ${r.displayName} | \`${r.canonicalId}\` | ${r.group} | ${r.mode} | ${r.canEmitBet} |`);
+  return [
+    "## Десять исследовательских дорожек", TEN_TRACK_HEADER, ...body, "",
+    "## Режимы дорожек (из реестров стратегий, названия — только отображение)", "| Название | Canonical ID | Группа | Режим | canEmitBet |\n|---|---|---|---|---|", ...modes, "",
+  ].join("\n");
+}
+
 export function renderMarkdown(generatedAt: string, table: ReturnType<typeof buildCeoRows>): string {
   const head = "| Strategy | independent proven games | BET | WIN–LOSS–VOID–UNKNOWN | original WIN% | semantically validated WIN% | Gross | Fees | Net ROI | confidence | further games needed | verdict |\n|---|---|---|---|---|---|---|---|---|---|---|---|";
   const forward = table.map((r) => `| ${r.strategy} | ${r.forward.independentProvenGames} | ${r.forward.bet} | ${r.forward.wlvu} | ${r.forward.originalWinPct} | ${r.forward.semanticallyValidatedWinPct} | ${r.forward.gross} | ${r.forward.fees} | ${r.forward.netRoi} | ${r.forward.confidence} | ${r.forward.furtherGamesNeeded} | ${r.forward.verdict} |`);
@@ -109,12 +157,21 @@ async function main() {
     const authority = await db.from("virtual_bet_settlement_authority").select("bet_row_key,outcome").eq("check_kind", "TERMINAL");
     if (!authority.error) terminals = (authority.data ?? []) as TerminalLine[];
   }
+  const decisionLines: DecisionLine[] = [];
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await db.from("research_inplay_paper_decisions").select("strategy_id,status,provenance_class,entry_cost_authority,physical_event_id").order("decision_id", { ascending: true }).range(from, from + 999);
+    if (error) throw new Error(`decisions:${error.code ?? error.message}`);
+    decisionLines.push(...(data ?? []) as DecisionLine[]);
+    if ((data ?? []).length < 1000) break;
+  }
   const generatedAt = new Date().toISOString();
   const table = buildCeoRows(ledger, terminals);
+  const tenTracks = buildTenTrackRows(table, decisionLines);
   mkdirSync(OUTPUT_DIR, { recursive: true });
-  writeFileSync(join(OUTPUT_DIR, "CEO_REPORT.json"), `${JSON.stringify({ generatedAt, contractSchemaApplied: schema, ledgerRowN: ledger.length, table }, null, 2)}\n`);
-  writeFileSync(join(OUTPUT_DIR, "CEO_REPORT.md"), renderMarkdown(generatedAt, table));
-  console.log(renderMarkdown(generatedAt, table));
+  writeFileSync(join(OUTPUT_DIR, "CEO_REPORT.json"), `${JSON.stringify({ generatedAt, contractSchemaApplied: schema, ledgerRowN: ledger.length, decisionRowN: decisionLines.length, tenTracks, table }, null, 2)}\n`);
+  const markdown = `${renderTenTrackMarkdown(tenTracks)}\n${renderMarkdown(generatedAt, table)}`;
+  writeFileSync(join(OUTPUT_DIR, "CEO_REPORT.md"), markdown);
+  console.log(markdown);
   console.log(`CONTRACT_SCHEMA_APPLIED=${schema} LEDGER_ROWS=${ledger.length}`);
 }
 
