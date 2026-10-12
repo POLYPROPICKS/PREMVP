@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { FORWARD_BET_CONTRACT_VERSION, hasExecutableAuthority, isForwardPreMatch } from "@/lib/modeling/forwardBetContract";
+import { FORWARD_BET_CONTRACT_VERSION, hasExecutableAuthority, isAuthoritativePreMatch, isScheduledOnlyPreMatch } from "@/lib/modeling/forwardBetContract";
 import { buildTrackRegistry, type TrackInfo } from "@/lib/research/strategyTrackLabels";
 import { MODEL_IDS } from "./prospective-selection-shadow";
 
@@ -17,6 +17,7 @@ export const UNPROVEN = "UNPROVEN";
 export type LedgerLine = {
   row_key: string; model_id: string; physical_event_key: string; settlement_state: string | null;
   first_persisted_at: string | null; contract_version: string | null; contract_status: string | null; timing_class: string | null;
+  verification_status?: string | null; game_identity_basis?: string | null; canonical_game_key?: string | null;
   executable_buy_price: number | string | null; executable_price_authority: string | null;
 };
 export type TerminalLine = { bet_row_key: string; outcome: "WIN" | "LOSS" | "VOID" };
@@ -31,24 +32,52 @@ function wilson(wins: number, n: number): string {
 }
 const pct = (wins: number, n: number) => n === 0 ? UNPROVEN : `${(wins / n * 100).toFixed(1)}%`;
 
+/**
+ * Six separate counts per strategy, never merged into one "proven" number:
+ *  recordedBet                       every stored BET (historical corpus + legacy DB-first + contract);
+ *  dbFirstPersisted                  rows with a database-owned first-save time;
+ *  scheduledOnlyPreMatch             contract rows saved before the SCHEDULED start (actual start unproven);
+ *  authoritativelyProvenPreMatchGames  saved before an independently sourced actual start (distinct games);
+ *  verifiedIndependentGames          timing + physical-game identity + scope each proven (distinct games);
+ *  settled                           independent CLOB terminal results (W/L/V) and the remainder UNKNOWN.
+ */
 export function buildCeoRows(ledger: readonly LedgerLine[], terminals: readonly TerminalLine[]) {
   const terminalByBet = new Map(terminals.map((t) => [t.bet_row_key, t.outcome]));
+  const gameKey = (r: LedgerLine) => r.canonical_game_key ?? r.physical_event_key;
+  const distinctGames = (rows: readonly LedgerLine[]) => new Set(rows.map(gameKey)).size;
+  const wlvu = (rows: readonly LedgerLine[]) => {
+    const w = rows.filter((r) => terminalByBet.get(r.row_key) === "WIN").length;
+    const l = rows.filter((r) => terminalByBet.get(r.row_key) === "LOSS").length;
+    const v = rows.filter((r) => terminalByBet.get(r.row_key) === "VOID").length;
+    return { w, l, v, u: rows.length - w - l - v, text: `${w}–${l}–${v}–${rows.length - w - l - v}` };
+  };
   const rows = (model: string) => {
     const mine = ledger.filter((r) => r.model_id === model);
     const historical = mine.filter((r) => !r.first_persisted_at);
     const legacyForward = mine.filter((r) => r.first_persisted_at && r.contract_version !== FORWARD_BET_CONTRACT_VERSION);
     const forward = mine.filter((r) => r.contract_version === FORWARD_BET_CONTRACT_VERSION);
-    const proven = forward.filter((r) => r.contract_status === "COMPLETE" && isForwardPreMatch(r.timing_class));
-    const provenGames = new Set(proven.map((r) => r.physical_event_key));
+    const scheduledOnly = forward.filter((r) => isScheduledOnlyPreMatch(r.timing_class));
+    const authoritative = forward.filter((r) => isAuthoritativePreMatch(r.timing_class));
+    const verified = forward.filter((r) => r.verification_status === "VERIFIED");
+    const lateOrReplay = forward.filter((r) => r.timing_class === "LATE_OR_REPLAY");
+    const timingUnproven = forward.filter((r) => r.timing_class === "TIMING_UNPROVEN" || !r.timing_class);
     const count = (set: readonly LedgerLine[], state: string) => set.filter((r) => r.settlement_state === state).length;
     const hw = count(historical, "WIN"), hl = count(historical, "LOSS"), hu = count(historical, "UNQUERIED");
-    const fw = proven.filter((r) => terminalByBet.get(r.row_key) === "WIN").length;
-    const fl = proven.filter((r) => terminalByBet.get(r.row_key) === "LOSS").length;
-    const fv = proven.filter((r) => terminalByBet.get(r.row_key) === "VOID").length;
-    const fu = proven.length - fw - fl - fv;
-    const settled = fw + fl;
-    const executable = proven.filter(hasExecutableAuthority).length;
-    const economics = executable > 0 && executable === proven.length ? "REQUIRES_EXECUTABLE_PNL_RUN" : UNPROVEN;
+    const allSettlement = wlvu(forward);
+    const verifiedSettlement = wlvu(verified);
+    const verifiedDecided = verifiedSettlement.w + verifiedSettlement.l;
+    const executable = forward.filter(hasExecutableAuthority).length;
+    const economics = verified.length > 0 && executable === forward.length ? "REQUIRES_EXECUTABLE_PNL_RUN" : UNPROVEN;
+    const unprovenLinks = forward.reduce<Record<string, number>>((acc, r) => {
+      const status = r.verification_status ?? "UNVERIFIED:contract_incomplete";
+      if (status === "VERIFIED") return acc;
+      for (const link of status.replace("UNVERIFIED:", "").split(",")) acc[link] = (acc[link] ?? 0) + 1;
+      return acc;
+    }, {});
+    const verdict = forward.length === 0 ? "NO_FORWARD_CONTRACT_BETS_YET"
+      : verified.length === 0 ? "FORWARD_RECORDED_NOT_VERIFIED"
+      : verifiedDecided === 0 ? "TERMINAL_OUTCOME_PENDING"
+      : verifiedDecided < MIN_FORWARD_GAMES_FOR_VERDICT ? "NO_VERDICT_INSUFFICIENT_FORWARD_SAMPLE" : "ELIGIBLE_FOR_HOLDOUT_COMPARISON";
     return {
       strategy: model,
       historical: {
@@ -56,20 +85,31 @@ export function buildCeoRows(ledger: readonly LedgerLine[], terminals: readonly 
         independentProvenGames: 0, semanticallyValidatedWinPct: UNPROVEN, gross: UNPROVEN, fees: UNPROVEN, netRoi: UNPROVEN,
         verdict: "HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE",
       },
-      legacyForwardWithoutContract: { bet: legacyForward.length, note: "DB-first persisted before the contract existed; not counted as proven" },
+      legacyForwardWithoutContract: { bet: legacyForward.length, note: "DB-first persisted before the contract existed; timing and identity unproven" },
+      funnel: {
+        recordedBet: mine.length,
+        dbFirstPersisted: mine.filter((r) => !!r.first_persisted_at).length,
+        scheduledOnlyPreMatch: scheduledOnly.length,
+        authoritativelyProvenPreMatchGames: distinctGames(authoritative),
+        verifiedIndependentGames: distinctGames(verified),
+        settled: { contractWlvu: allSettlement.text, verifiedWlvu: verifiedSettlement.text },
+        lateOrReplay: lateOrReplay.length, timingUnproven: timingUnproven.length, unprovenLinks,
+      },
       forward: {
-        independentProvenGames: provenGames.size, bet: forward.length, wlvu: `${fw}–${fl}–${fv}–${fu}`,
-        originalWinPct: UNPROVEN, semanticallyValidatedWinPct: pct(fw, settled), semanticallyValidatedInterval95: wilson(fw, settled),
+        // Display key kept for the table: only verified games are "independent".
+        independentProvenGames: distinctGames(verified), verifiedIndependentGames: distinctGames(verified), bet: forward.length, wlvu: allSettlement.text,
+        originalWinPct: UNPROVEN,
+        semanticallyValidatedWinPct: pct(verifiedSettlement.w, verifiedDecided), semanticallyValidatedInterval95: wilson(verifiedSettlement.w, verifiedDecided),
+        settlementOnlyWinPctUnverifiedScope: pct(allSettlement.w, allSettlement.w + allSettlement.l),
         gross: economics, fees: economics, netRoi: economics,
-        confidence: settled < MIN_FORWARD_GAMES_FOR_VERDICT ? `INSUFFICIENT (settled n=${settled})` : "SUFFICIENT_FOR_COMPARISON",
-        furtherGamesNeeded: Math.max(0, MIN_FORWARD_GAMES_FOR_VERDICT - settled),
-        verdict: settled === 0 ? (provenGames.size === 0 ? "NO_FORWARD_CONTRACT_BETS_YET" : "TERMINAL_OUTCOME_PENDING") : settled < MIN_FORWARD_GAMES_FOR_VERDICT ? "NO_VERDICT_INSUFFICIENT_FORWARD_SAMPLE" : "ELIGIBLE_FOR_HOLDOUT_COMPARISON",
+        confidence: verifiedDecided < MIN_FORWARD_GAMES_FOR_VERDICT ? `INSUFFICIENT (verified settled n=${verifiedDecided})` : "SUFFICIENT_FOR_COMPARISON",
+        furtherGamesNeeded: Math.max(0, MIN_FORWARD_GAMES_FOR_VERDICT - verifiedDecided),
+        verdict,
       },
     };
   };
   return MODEL_IDS.map(rows);
 }
-
 
 export type DecisionLine = { strategy_id: string; status: string; provenance_class: string | null; entry_cost_authority: string | null; physical_event_id: string };
 export const TEN_TRACK_HEADER = "| Стратегия | Independent games | BET | WIN–LOSS–VOID–UNKNOWN | Timing proof | Price proof | Gross/Fees/Net ROI | Confidence | Verdict |\n|---|---|---|---|---|---|---|---|---|";
@@ -80,12 +120,11 @@ export function buildTenTrackRows(safe: ReturnType<typeof buildCeoRows>, decisio
     const base = { canonicalId: track.canonicalId, displayName: track.displayName, group: track.group, mode: track.mode, canEmitBet: track.canEmitBet };
     if (track.group === "PREMATCH") {
       const row = safe.find((r) => r.strategy === track.canonicalId)!;
-      const unprovenBets = row.historical.bet + row.legacyForwardWithoutContract.bet;
+      const f = row.funnel;
+      const noTime = row.historical.bet + row.legacyForwardWithoutContract.bet;
       return {
-        ...base, independentGames: row.forward.independentProvenGames, bet: row.forward.bet, wlvu: row.forward.wlvu,
-        timingProof: row.forward.independentProvenGames > 0
-          ? `по расписанию (старт не подтверждён): ${row.forward.independentProvenGames}; авторитетный старт: 0; без доказательства: ${unprovenBets}`
-          : `forward-доказательств нет; без доказательства времени: ${unprovenBets}`,
+        ...base, independentGames: f.verifiedIndependentGames, bet: row.forward.bet, wlvu: row.forward.wlvu,
+        timingProof: `авторитетно до старта: ${f.authoritativelyProvenPreMatchGames}; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): ${f.scheduledOnlyPreMatch}; поздно/повтор: ${f.lateOrReplay}; без доказательства: ${f.timingUnproven + noTime}`,
         priceProof: row.forward.bet > 0 ? "REFERENCE (не исполнимая цена)" : UNPROVEN,
         economics: `${row.forward.gross}/${row.forward.fees}/${row.forward.netRoi}`, confidence: row.forward.confidence, verdict: row.forward.verdict,
       };
@@ -117,8 +156,14 @@ export function renderTenTrackMarkdown(rows: ReturnType<typeof buildTenTrackRows
   ].join("\n");
 }
 
+export function renderFunnelMarkdown(table: ReturnType<typeof buildCeoRows>): string {
+  const head = "| Стратегия | Все записанные BET | DB-first (время в БД) | До старта по расписанию | Авторитетно до старта (игры) | Проверенные независимые игры | Независимый расчёт W–L–VOID–UNKNOWN | Первые недоказанные звенья |\n|---|---|---|---|---|---|---|---|";
+  const body = table.map((r) => `| ${r.strategy} | ${r.funnel.recordedBet} | ${r.funnel.dbFirstPersisted} | ${r.funnel.scheduledOnlyPreMatch} | ${r.funnel.authoritativelyProvenPreMatchGames} | ${r.funnel.verifiedIndependentGames} | ${r.funnel.settled.contractWlvu} | ${Object.entries(r.funnel.unprovenLinks).map(([k, v]) => `${k}:${v}`).join(", ") || (r.forward.bet === 0 ? "контрактных BET ещё нет" : "—")} |`);
+  return ["## Воронка доказательств (пять прематч-стратегий; уровни не смешиваются)", head, ...body, ""].join("\n");
+}
+
 export function renderMarkdown(generatedAt: string, table: ReturnType<typeof buildCeoRows>): string {
-  const head = "| Strategy | independent proven games | BET | WIN–LOSS–VOID–UNKNOWN | original WIN% | semantically validated WIN% | Gross | Fees | Net ROI | confidence | further games needed | verdict |\n|---|---|---|---|---|---|---|---|---|---|---|---|";
+  const head = "| Strategy | verified independent games | BET | WIN–LOSS–VOID–UNKNOWN | original WIN% | semantically validated WIN% | Gross | Fees | Net ROI | confidence | further games needed | verdict |\n|---|---|---|---|---|---|---|---|---|---|---|---|";
   const forward = table.map((r) => `| ${r.strategy} | ${r.forward.independentProvenGames} | ${r.forward.bet} | ${r.forward.wlvu} | ${r.forward.originalWinPct} | ${r.forward.semanticallyValidatedWinPct} | ${r.forward.gross} | ${r.forward.fees} | ${r.forward.netRoi} | ${r.forward.confidence} | ${r.forward.furtherGamesNeeded} | ${r.forward.verdict} |`);
   const history = table.map((r) => `| ${r.strategy} | ${r.historical.independentProvenGames} | ${r.historical.bet} | ${r.historical.wlvu} | ${r.historical.originalWinPct} ${r.historical.originalWinPctInterval95} | ${r.historical.semanticallyValidatedWinPct} | ${r.historical.gross} | ${r.historical.fees} | ${r.historical.netRoi} | n/a (reference) | n/a | ${r.historical.verdict} |`);
   return [
@@ -149,7 +194,7 @@ async function main() {
   const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
   const probe = await db.from("prospective_selection_shadow_runtime").select("contract_version").limit(1);
   const schema = !probe.error;
-  const columns = "row_key,model_id,physical_event_key,settlement_state,first_persisted_at" + (schema ? ",contract_version,contract_status,timing_class,executable_buy_price,executable_price_authority" : "");
+  const columns = "row_key,model_id,physical_event_key,settlement_state,first_persisted_at" + (schema ? ",contract_version,contract_status,verification_status,game_identity_basis,canonical_game_key,timing_class,executable_buy_price,executable_price_authority" : "");
   const raw = await readLedgerRows(db, columns);
   const ledger: LedgerLine[] = raw.map((r) => ({ contract_version: null, contract_status: null, timing_class: null, executable_buy_price: null, executable_price_authority: null, ...r })) as unknown as LedgerLine[];
   let terminals: TerminalLine[] = [];
@@ -169,7 +214,7 @@ async function main() {
   const tenTracks = buildTenTrackRows(table, decisionLines);
   mkdirSync(OUTPUT_DIR, { recursive: true });
   writeFileSync(join(OUTPUT_DIR, "CEO_REPORT.json"), `${JSON.stringify({ generatedAt, contractSchemaApplied: schema, ledgerRowN: ledger.length, decisionRowN: decisionLines.length, tenTracks, table }, null, 2)}\n`);
-  const markdown = `${renderTenTrackMarkdown(tenTracks)}\n${renderMarkdown(generatedAt, table)}`;
+  const markdown = `${renderTenTrackMarkdown(tenTracks)}\n${renderFunnelMarkdown(table)}\n${renderMarkdown(generatedAt, table)}`;
   writeFileSync(join(OUTPUT_DIR, "CEO_REPORT.md"), markdown);
   console.log(markdown);
   console.log(`CONTRACT_SCHEMA_APPLIED=${schema} LEDGER_ROWS=${ledger.length}`);

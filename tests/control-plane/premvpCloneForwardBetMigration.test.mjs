@@ -55,10 +55,9 @@ function transport({ catalog = goodCatalog, ledgerDrift = false } = {}) {
     async proveTransactionSemantics() { calls.push('transaction'); },
     async dryRunExactSql(value) { assert.equal(value, sql); calls.push('dry_run'); },
     async applyNative({ sql: value, name, localTimeouts }) { assert.equal(value, sql); assert.equal(name, 'virtual_bet_forward_contract_v1'); assert.equal(localTimeouts, true); applied = true; calls.push('native_apply'); },
-    async readColumns(schema, table) {
+    async readColumns(schema, table, columns) {
       calls.push('columns');
-      const names = table === 'virtual_bet_settlement_authority' ? ['check_kind', 'outcome', 'provider_digest', 'checked_at'] : ['contract_version', 'canonical_game_key', 'economic_unit_key', 'timing_class', 'contract_status', 'executable_buy_price', 'executable_price_authority'];
-      return names.map((column_name) => ({ column_name, data_type: 'text', is_nullable: true }));
+      return columns.map((column_name) => ({ column_name, data_type: 'text', is_nullable: true }));
     },
     async readForwardBetCatalog() { calls.push('catalog'); return catalog; },
   };

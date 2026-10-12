@@ -6,7 +6,7 @@ import { replayDynamicHarvest, type DynamicExecutionCandidate } from "@/lib/mode
 import { buildPrincipalRecoveryStageA } from "@/lib/modeling/dynamicPrincipalRecoveryVault";
 import { stableHash } from "@/lib/modeling/scientificCapitalArchitecture";
 import { resolveSignalOutcome, type GammaMarket } from "@/lib/feed/resolveSignalOutcome";
-import { buildForwardBetColumns, canonicalGame, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isForwardPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
+import { buildForwardBetColumns, canonicalGame, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isAuthoritativePreMatch, isScheduledOnlyPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
 import { syncResearchEvidencePage } from "../research-clone-daily-sync";
 import {
   CAP,
@@ -39,6 +39,9 @@ type RuntimeLedgerRow = LedgerRow & {
   contract_version?: string | null;
   contract_status?: string | null;
   timing_class?: string | null;
+  verification_status?: string | null;
+  game_identity_basis?: string | null;
+  scope_basis?: string | null;
   canonical_game_key?: string | null;
   forward?: ForwardBetColumns | null;
 };
@@ -93,7 +96,7 @@ function resolveClients() {
 }
 
 const LEDGER_PROJECTION = "row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,pre_event_score,data_coverage,settlement_state,settlement_checked_at,settled_at,result,first_persisted_at,unresolved_reason";
-const FORWARD_PROJECTION = ",contract_version,contract_status,timing_class,canonical_game_key,executable_buy_price,executable_price_authority,observation_lag_seconds,lead_time_scheduled_seconds,lead_time_authoritative_seconds";
+const FORWARD_PROJECTION = ",contract_version,contract_status,verification_status,timing_class,timing_detail,game_identity_basis,scope_basis,canonical_game_key,executable_buy_price,executable_price_authority,observation_lag_seconds,lead_time_scheduled_seconds,lead_time_authoritative_seconds";
 
 /**
  * The forward contract columns arrive by a DBClone-only migration. A cycle deployed before that migration runs in
@@ -434,7 +437,15 @@ export function forwardContractSummary(ledger: readonly RuntimeLedgerRow[], sche
     legacyUnclassifiedRowN: ledger.length - contractRows.length,
     timingClassCounts: count("timing_class"),
     contractStatusCounts: count("contract_status"),
-    forwardPreMatchN: contractRows.filter((row) => row.contract_status === "COMPLETE" && isForwardPreMatch(row.timing_class)).length,
+    // Separate facts, never one number: every stored contract row is DB-first; only the later classes add proof.
+    dbFirstPersistedN: contractRows.filter((row) => !!row.first_persisted_at).length,
+    scheduledOnlyPreMatchN: contractRows.filter((row) => isScheduledOnlyPreMatch(row.timing_class)).length,
+    authoritativelyProvenPreMatchN: contractRows.filter((row) => isAuthoritativePreMatch(row.timing_class)).length,
+    lateOrReplayN: contractRows.filter((row) => row.timing_class === "LATE_OR_REPLAY").length,
+    timingUnprovenN: contractRows.filter((row) => row.timing_class === "TIMING_UNPROVEN").length,
+    verifiedBetN: contractRows.filter((row) => row.verification_status === "VERIFIED").length,
+    verificationStatusCounts: count("verification_status"),
+    gameIdentityBasisCounts: count("game_identity_basis"),
     executableAuthorityN: contractRows.filter((row) => (row as unknown as Record<string, unknown>).executable_buy_price !== null && (row as unknown as Record<string, unknown>).executable_buy_price !== undefined).length,
     duplicateEconomicUnitBlockedN,
   };

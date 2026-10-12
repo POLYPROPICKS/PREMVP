@@ -24,9 +24,9 @@ function ok(text) { const r = q(text); assert.equal(r.ok, true, `${text}\n${r.er
 function fails(text, pattern) { const r = q(text); assert.equal(r.ok, false, `expected failure: ${text}`); assert.match(r.err, pattern); }
 
 const BASE = `insert into prospective_selection_shadow_runtime(row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state`;
-function contractInsert(key, { model = 'P50_52_SAFE', game = `G-${key}`, canonical = `tennis:${game}`, basis = 'TEAM_PAIR_START_TEXT', observed = "now() - interval '5 minutes'", decided = 'now()', scheduled = "now() + interval '3 hours'", authoritative = 'null', family = "'MONEYLINE'", extra = '', extraCols = '', timing = '', onConflict = '' } = {}) {
-  return `${BASE},contract_version,canonical_game_key,game_identity_basis,scope_basis,provider_event_id,market_family,market_type,period_scope,selected_outcome,observed_at,decision_generated_at,scheduled_start_at,authoritative_start_at,reference_price,reference_price_source,reference_price_type,reference_price_acquired_at,model_version,selection_reason,decision_kind,economic_unit_key${extraCols})
-  values ('${key}','LEDGER','${model}','2026-10-12','id-${key}','${game}',now(),now() + interval '3 hours',0.505,'tennis','0xcond-${key}','tok-${key}','UNQUERIED','FORWARD_BET_V1','${canonical}','${basis}','STRUCTURED_MONEYLINE','${game}',${family},'moneyline','FULL_MATCH','Player A',${observed},${decided},${scheduled},${authoritative},0.505,'src','EVIDENCE_REFERENCE_NOT_EXECUTABLE',${observed},'${model}@v1','reason','BET','${canonical}'${extra}) ${onConflict}`;
+function contractInsert(key, { model = 'P50_52_SAFE', game = `G-${key}`, canonical = `tennis:${game}`, basis = 'TEAM_PAIR_START_DEDUP', rootId = 'null', rootSource = null, authSource = null, scope = 'STRUCTURED_MONEYLINE', observed = "now() - interval '5 minutes'", decided = 'now()', scheduled = "now() + interval '3 hours'", authoritative = 'null', family = "'MONEYLINE'", extra = '', extraCols = '', timing = '', onConflict = '' } = {}) {
+  return `${BASE},contract_version,canonical_game_key,game_identity_basis,provider_root_game_id,provider_root_game_source,scope_basis,provider_event_id,market_family,market_type,period_scope,selected_outcome,observed_at,decision_generated_at,scheduled_start_at,authoritative_start_at,authoritative_start_source,reference_price,reference_price_source,reference_price_type,reference_price_acquired_at,model_version,selection_reason,decision_kind,economic_unit_key${extraCols})
+  values ('${key}','LEDGER','${model}','2026-10-12','id-${key}','${game}',now(),now() + interval '3 hours',0.505,'tennis','0xcond-${key}','tok-${key}','UNQUERIED','FORWARD_BET_V1','${canonical}','${basis}',${rootId},${rootId === 'null' ? 'null' : `'${rootSource ?? 'POLYMARKET_GAMMA_GAME_ID'}'`},'${scope}','${game}',${family},'moneyline','FULL_MATCH','Player A',${observed},${decided},${scheduled},${authoritative},${authoritative === 'null' ? 'null' : `'${authSource ?? 'OFFICIAL_SOURCE_CONFIRMED_START'}'`},0.505,'src','EVIDENCE_REFERENCE_NOT_EXECUTABLE',${observed},'${model}@v1','reason','BET','${canonical}'${extra}) ${onConflict}`;
 }
 
 before(() => {
@@ -63,21 +63,54 @@ test('contract insert: DB owns first-save time, lead time, timing class and comp
   assert.equal(row, 'PRE_START_SCHEDULED_ONLY|COMPLETE|t|t|t|t|t');
 });
 
-test('timing classes: late, unknown start, replay, reschedule and authoritative start are distinguished', { skip }, () => {
+test('timing authority: scheduled-only, late, replay, unknown and authoritative are distinguished', { skip }, () => {
   const cases = [
-    ['T-LATE', { scheduled: "now() - interval '10 minutes'" }, 'LATE_SCHEDULED'],
-    ['T-UNK', { scheduled: 'null' }, 'START_UNKNOWN'],
-    ['T-REPLAY', { observed: "now() - interval '5 hours'", decided: "now() - interval '5 hours'" }, 'HISTORICAL_REPLAY'],
-    ['T-AUTH', { authoritative: "now() + interval '1 hour'" }, 'PRE_START_AUTHORITATIVE'],
-    // scheduled start already past but authoritative (rescheduled) start still ahead: proven only through the authoritative boundary
-    ['T-RESCHED', { scheduled: "now() - interval '1 hour'", authoritative: "now() + interval '2 hours'" }, 'PRE_START_AUTHORITATIVE'],
-    // scheduled start ahead but verified actual start already passed: never "proven pre-kickoff"
-    ['T-EARLYSTART', { scheduled: "now() + interval '2 hours'", authoritative: "now() - interval '5 minutes'" }, 'LATE_AUTHORITATIVE'],
+    ['T-SCHED', {}, 'PRE_START_SCHEDULED_ONLY', ''],
+    ['T-LATE', { scheduled: "now() - interval '10 minutes'" }, 'LATE_OR_REPLAY', 'LATE_SCHEDULED'],
+    ['T-UNK', { scheduled: 'null' }, 'TIMING_UNPROVEN', 'START_UNKNOWN'],
+    ['T-REPLAY', { observed: "now() - interval '5 hours'", decided: "now() - interval '5 hours'" }, 'LATE_OR_REPLAY', 'HISTORICAL_REPLAY'],
+    ['T-AUTH', { authoritative: "now() + interval '1 hour'" }, 'PRE_START_AUTHORITATIVE', ''],
+    // scheduled start already past but the independently sourced start is still ahead: proven only through the authoritative boundary
+    ['T-RESCHED', { scheduled: "now() - interval '1 hour'", authoritative: "now() + interval '2 hours'" }, 'PRE_START_AUTHORITATIVE', ''],
+    // scheduled start ahead but the verified actual start already passed: never "proven before start"
+    ['T-EARLYSTART', { scheduled: "now() + interval '2 hours'", authoritative: "now() - interval '5 minutes'" }, 'LATE_OR_REPLAY', 'LATE_AUTHORITATIVE'],
   ];
-  for (const [key, options, expected] of cases) {
+  for (const [key, options, expectedClass, expectedDetail] of cases) {
     ok(contractInsert(key, options));
-    assert.equal(ok(`select timing_class from prospective_selection_shadow_runtime where row_key='${key}'`), expected, key);
+    assert.equal(ok(`select timing_class, coalesce(timing_detail, '') from prospective_selection_shadow_runtime where row_key='${key}'`), `${expectedClass}|${expectedDetail}`, key);
   }
+});
+
+test('an authoritative start can only come with a registered independent source; a scheduled time is never one', { skip }, () => {
+  fails(contractInsert('AS1', { authoritative: "now() + interval '1 hour'", authSource: 'SCHEDULED_START' }), /forward_contract_ck/);
+  fails(contractInsert('AS2', { authoritative: "now() + interval '1 hour'", authSource: 'GAMMA_GAME_START_TIME' }), /forward_contract_ck/);
+  // a source without a time is as invalid as a time without a source
+  fails(contractInsert('AS3').replace(",null,0.505,'src'", ",'OFFICIAL_SOURCE_CONFIRMED_START',0.505,'src'"), /forward_contract_ck/);
+  ok(contractInsert('AS4', { authoritative: "now() + interval '1 hour'", authSource: 'PROVIDER_PUBLISHED_ACTUAL_START' }));
+});
+
+test('verification_status: a complete contract is not a VERIFIED BET and names each unproven link', { skip }, () => {
+  const status = (key) => ok(`select verification_status from prospective_selection_shadow_runtime where row_key='${key}'`);
+  ok(contractInsert('V-TODAY'));
+  assert.equal(status('V-TODAY'), 'UNVERIFIED:timing_scheduled_only,game_identity_dedup_only');
+  ok(contractInsert('V-HEUR', { scope: 'TEXT_HEURISTIC', basis: 'PROVIDER_EVENT_ONLY' }));
+  assert.equal(status('V-HEUR'), 'UNVERIFIED:timing_scheduled_only,game_identity_provider_event_only,scope_text_heuristic');
+  ok(contractInsert('V-LATE', { scheduled: "now() - interval '10 minutes'" }));
+  assert.equal(status('V-LATE'), 'UNVERIFIED:timing_late_or_replay,game_identity_dedup_only');
+  ok(contractInsert('V-INC', { family: 'null' }));
+  assert.match(status('V-INC'), /^UNVERIFIED:contract_incomplete,/);
+  // every link proven -> VERIFIED
+  ok(contractInsert('V-OK', { authoritative: "now() + interval '1 hour'", basis: 'PROVIDER_ROOT_CONFIRMED', rootId: "'ROOT-1'" }));
+  assert.equal(status('V-OK'), 'VERIFIED');
+  // root id and basis cannot be filled independently of each other
+  fails(contractInsert('V-R1', { basis: 'TEAM_PAIR_START_DEDUP', rootId: "'ROOT-2'" }), /forward_contract_ck/);
+  fails(contractInsert('V-R2', { basis: 'PROVIDER_ROOT_CONFIRMED' }), /forward_contract_ck/);
+  // a root id without a registered provenance source is refused
+  fails(contractInsert('V-R3', { basis: 'PROVIDER_ROOT_CONFIRMED', rootId: "'ROOT-3'", rootSource: 'TITLE_TEXT' }), /forward_contract_ck/);
+  fails(contractInsert('V-R4').replace("'BET'", "null"), /forward_contract_ck|not-null|null value/);
+  // the verification verdict is immutable like every other first-save fact
+  fails("update prospective_selection_shadow_runtime set verification_status='VERIFIED' where row_key='V-TODAY'", /IMMUTABLE_SHADOW_CHOICE/);
+  fails("update prospective_selection_shadow_runtime set timing_detail=null where row_key='V-LATE'", /IMMUTABLE_SHADOW_CHOICE/);
 });
 
 test('time-travel and incomplete contracts fail closed', { skip }, () => {
@@ -89,12 +122,12 @@ test('time-travel and incomplete contracts fail closed', { skip }, () => {
   assert.equal(ok("select contract_status from prospective_selection_shadow_runtime where row_key='INC2'"), 'INCOMPLETE:line_value');
 });
 
-test('root game identity: a second market shard of the same fixture is the same economic unit; unverified identity is INCOMPLETE', { skip }, () => {
+test('root game identity: a second market shard of the same fixture is the same economic unit; a provider-event-only identity is UNVERIFIED', { skip }, () => {
   ok(contractInsert('S1', { game: 'EV-SHARD-A', canonical: 'soccer:a|b@2026-10-12T19:15:00.000Z' }));
   fails(contractInsert('S2', { game: 'EV-SHARD-B', canonical: 'soccer:a|b@2026-10-12T19:15:00.000Z' }), /DUPLICATE_ECONOMIC_UNIT/);
   ok(contractInsert('S3', { game: 'EV-SHARD-B', canonical: 'soccer:a|b@2026-10-12T19:15:00.000Z', model: 'QUALITY_FILL_D_SAFE' }));
   ok(contractInsert('S4', { game: 'EV-PE-ONLY', canonical: 'soccer:pe:EV-PE-ONLY', basis: 'PROVIDER_EVENT_ONLY' }));
-  assert.equal(ok("select contract_status from prospective_selection_shadow_runtime where row_key='S4'"), 'INCOMPLETE:root_game_unverified');
+  assert.equal(ok("select contract_status, verification_status from prospective_selection_shadow_runtime where row_key='S4'"), 'COMPLETE|UNVERIFIED:timing_scheduled_only,game_identity_provider_event_only');
   fails(contractInsert('S5', { game: 'EV-S5', basis: 'MADE_UP' }), /forward_contract_ck/);
 });
 

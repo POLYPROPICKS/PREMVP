@@ -20,7 +20,7 @@ export type Check = { id: string; verdict: "PASS" | "FAIL" | "UNPROVEN"; detail:
 export async function verifyDeployedSchema(db: SupabaseClient): Promise<Check[]> {
   const checks: Check[] = [];
   const add = (id: string, ok: boolean | null, detail: string) => checks.push({ id, verdict: ok === null ? "UNPROVEN" : ok ? "PASS" : "FAIL", detail });
-  const cols = await db.from(LEDGER).select("contract_version,canonical_game_key,game_identity_basis,scope_basis,economic_unit_key,timing_class,contract_status,executable_buy_price,executable_price_authority,first_persisted_at").limit(1);
+  const cols = await db.from(LEDGER).select("contract_version,canonical_game_key,game_identity_basis,provider_root_game_id,scope_basis,economic_unit_key,timing_class,timing_detail,contract_status,verification_status,executable_buy_price,executable_price_authority,first_persisted_at").limit(1);
   add("LEDGER_CONTRACT_COLUMNS", !cols.error, cols.error ? `${cols.error.code}:${cols.error.message}` : "all contract columns selectable");
   const auth = await db.from(AUTHORITY).select("check_id,check_kind,outcome,provider_digest,checked_at").limit(1);
   add("SETTLEMENT_AUTHORITY_TABLE", !auth.error, auth.error ? `${auth.error.code}:${auth.error.message}` : "table selectable");

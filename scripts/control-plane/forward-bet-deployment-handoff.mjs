@@ -25,7 +25,7 @@ export function buildHandoff() {
     ledger_baseline: { expected_versions: [...FORWARD_BET_CLONE_LEDGER_BASELINE], count: FORWARD_BET_CLONE_LEDGER_BASELINE.length, drift_policy: 'ANY difference aborts before apply (FORWARD_BET_CLONE_LEDGER_DRIFT)' },
     schema_baseline_before: {
       prospective_selection_shadow_runtime_has_columns: ['first_persisted_at', 'unresolved_reason'],
-      prospective_selection_shadow_runtime_lacks_columns: ['contract_version', 'canonical_game_key', 'game_identity_basis', 'scope_basis', 'economic_unit_key', 'timing_class', 'contract_status'],
+      prospective_selection_shadow_runtime_lacks_columns: ['contract_version', 'canonical_game_key', 'game_identity_basis', 'provider_root_game_id', 'provider_root_game_source', 'scope_basis', 'economic_unit_key', 'timing_class', 'timing_detail', 'contract_status', 'verification_status'],
       virtual_bet_settlement_authority_exists: false,
       probe: 'npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (expected FAIL before apply: columns/table absent)',
     },
@@ -39,7 +39,7 @@ export function buildHandoff() {
     },
     post_deploy: {
       verify: 'npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (expected PASS)',
-      invariants: ['2858 historical rows still have NULL first_persisted_at and NULL contract fields', 'Chloe Noel precedent row identical and contract-less', 'DELETE on ledger and UPDATE/DELETE on settlement history refused with 42501'],
+      invariants: ['timing_class vocabulary is PRE_START_AUTHORITATIVE | PRE_START_SCHEDULED_ONLY | LATE_OR_REPLAY | TIMING_UNPROVEN; an authoritative start requires a registered independent source', 'verification_status is VERIFIED only with authoritative timing + provider-confirmed root game + structured scope; text dedup and scheduled-only rows are UNVERIFIED with named links', '2858 historical rows still have NULL first_persisted_at and NULL contract fields', 'Chloe Noel precedent row identical and contract-less', 'DELETE on ledger and UPDATE/DELETE on settlement history refused with 42501'],
       first_natural_proof: 'the next modeling:shadow-cycle run writes FORWARD_BET_V1 rows; then npm run modeling:forward-bet-ceo-report',
     },
     order_independence: 'The cycle and settlement script probe the schema and run in legacy/no-op mode until the migration exists, so merge-then-migrate and migrate-then-merge are both safe; the natural proof starts only when both are live.',

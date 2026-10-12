@@ -9,8 +9,8 @@
   },
   "migration": {
     "file": "ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql",
-    "bytes": 15763,
-    "sha256": "339900253836f08561bae0cb959f742ea55f4f78c9eaff153af73aa9cc4a5f3f",
+    "bytes": 19106,
+    "sha256": "e90a75c9023699441f10982466f03d9bd6c2d397e6c255ab48bef04e2694a3fe",
     "reviewed_exact_sql_match": true,
     "validation_errors": []
   },
@@ -61,10 +61,14 @@
       "contract_version",
       "canonical_game_key",
       "game_identity_basis",
+      "provider_root_game_id",
+      "provider_root_game_source",
       "scope_basis",
       "economic_unit_key",
       "timing_class",
-      "contract_status"
+      "timing_detail",
+      "contract_status",
+      "verification_status"
     ],
     "virtual_bet_settlement_authority_exists": false,
     "probe": "npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (expected FAIL before apply: columns/table absent)"
@@ -74,8 +78,8 @@
     "requires_env": [
       "SUPABASE_ACCESS_TOKEN (Supabase management API, scoped to the clone project)"
     ],
-    "dry_run": "node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '{\"mode\":\"PREMVP_CLONE_FORWARD_BET_CONTRACT_V1\",\"project_ref\":\"nppznoujvnyjargjkmnv\",\"migration_file\":\"ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql\",\"target_sha256\":\"339900253836f08561bae0cb959f742ea55f4f78c9eaff153af73aa9cc4a5f3f\",\"direct_raw_mutation\":false,\"idempotent\":true}' --clone-forward-bet-contract",
-    "apply": "PREMVP_TARGET_ONLY_APPLY_CONFIRM=1 node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '{\"mode\":\"PREMVP_CLONE_FORWARD_BET_CONTRACT_V1\",\"project_ref\":\"nppznoujvnyjargjkmnv\",\"migration_file\":\"ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql\",\"target_sha256\":\"339900253836f08561bae0cb959f742ea55f4f78c9eaff153af73aa9cc4a5f3f\",\"direct_raw_mutation\":false,\"idempotent\":true}' --clone-forward-bet-contract --apply --confirm",
+    "dry_run": "node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '{\"mode\":\"PREMVP_CLONE_FORWARD_BET_CONTRACT_V1\",\"project_ref\":\"nppznoujvnyjargjkmnv\",\"migration_file\":\"ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql\",\"target_sha256\":\"e90a75c9023699441f10982466f03d9bd6c2d397e6c255ab48bef04e2694a3fe\",\"direct_raw_mutation\":false,\"idempotent\":true}' --clone-forward-bet-contract",
+    "apply": "PREMVP_TARGET_ONLY_APPLY_CONFIRM=1 node scripts/control-plane/apply-premvp-approved-migration.mjs --declaration '{\"mode\":\"PREMVP_CLONE_FORWARD_BET_CONTRACT_V1\",\"project_ref\":\"nppznoujvnyjargjkmnv\",\"migration_file\":\"ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql\",\"target_sha256\":\"e90a75c9023699441f10982466f03d9bd6c2d397e6c255ab48bef04e2694a3fe\",\"direct_raw_mutation\":false,\"idempotent\":true}' --clone-forward-bet-contract --apply --confirm",
     "dry_run_proves": [
       "transaction semantics",
       "exact SQL executes inside BEGIN..ROLLBACK",
@@ -90,6 +94,8 @@
   "post_deploy": {
     "verify": "npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts  (expected PASS)",
     "invariants": [
+      "timing_class vocabulary is PRE_START_AUTHORITATIVE | PRE_START_SCHEDULED_ONLY | LATE_OR_REPLAY | TIMING_UNPROVEN; an authoritative start requires a registered independent source",
+      "verification_status is VERIFIED only with authoritative timing + provider-confirmed root game + structured scope; text dedup and scheduled-only rows are UNVERIFIED with named links",
       "2858 historical rows still have NULL first_persisted_at and NULL contract fields",
       "Chloe Noel precedent row identical and contract-less",
       "DELETE on ledger and UPDATE/DELETE on settlement history refused with 42501"

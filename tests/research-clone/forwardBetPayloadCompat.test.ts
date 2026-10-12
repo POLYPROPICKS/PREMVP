@@ -54,7 +54,9 @@ test("the cycle's real payload satisfies the migrated schema and is classified b
   const inserted = insertPayload(payload);
   assert.equal(inserted.ok, true, inserted.err);
   const got = psql(DB, ["-c", "select contract_status, timing_class, game_identity_basis, scope_basis, selected_outcome, reference_price, executable_buy_price is null, first_persisted_at is not null, lead_time_authoritative_seconds is null from prospective_selection_shadow_runtime where row_key like 'LEDGER:TENNIS%'"]);
-  assert.equal(got.out, "COMPLETE|PRE_START_SCHEDULED_ONLY|TEAM_PAIR_START_TEXT|STRUCTURED_MONEYLINE|Player A1|0.505|t|t|t");
+  assert.equal(got.out, "COMPLETE|PRE_START_SCHEDULED_ONLY|TEAM_PAIR_START_DEDUP|STRUCTURED_MONEYLINE|Player A1|0.505|t|t|t");
+  // today's evidence can reach DB-first + scheduled-only + text dedup, and must NOT be labelled verified
+  assert.equal(psql(DB, ["-c", "select verification_status from prospective_selection_shadow_runtime where row_key like 'LEDGER:TENNIS%'"]).out, "UNVERIFIED:timing_scheduled_only,game_identity_dedup_only");
   // the same physical game via a second shard on the next day is refused by the database even if the cycle guard were bypassed
   const shard = { ...source, provider_event_id: "EV1-more-markets", condition_id: "0xcond1b", selected_token_id: "tok1b", observed_at: new Date(Date.now() - 4 * 60_000).toISOString() };
   const second = runtimeRow("TENNIS_P50_52_SAFE", "2026-10-13", { ...candidate, candidateIdentity: "0xcond1b::tok1b::x", physicalEventKey: "EV1-more-markets", decisionTimestamp: shard.observed_at }, shard, { scoreLevel: 64, dataCoverage: 80 }, new Date().toISOString());
@@ -63,11 +65,11 @@ test("the cycle's real payload satisfies the migrated schema and is classified b
   assert.match(refused.err, /DUPLICATE_ECONOMIC_UNIT/);
 });
 
-test("a replayed observation is stored but classified HISTORICAL_REPLAY and is never counted as a forward pre-match BET", { skip }, () => {
+test("a replayed observation is stored but classified LATE_OR_REPLAY/HISTORICAL_REPLAY and is never counted as a pre-match BET", { skip }, () => {
   const source = evidence(2, { observed_at: new Date(Date.now() - 6 * 3600_000).toISOString() });
   const day = minskDateNow(new Date(source.observed_at));
   const [candidate] = selectedByModel([source], day).capped.get("TENNIS_P50_52_SAFE")!;
   const row = runtimeRow("TENNIS_P50_52_SAFE", day, candidate, source, { scoreLevel: 64, dataCoverage: 80 }, new Date().toISOString());
   assert.equal(insertPayload(toDatabaseLedger(row)).ok, true);
-  assert.equal(psql(DB, ["-c", "select timing_class from prospective_selection_shadow_runtime where physical_event_key='EV2'"]).out, "HISTORICAL_REPLAY");
+  assert.equal(psql(DB, ["-c", "select timing_class || '/' || timing_detail || '/' || verification_status from prospective_selection_shadow_runtime where physical_event_key='EV2'"]).out, "LATE_OR_REPLAY/HISTORICAL_REPLAY/UNVERIFIED:timing_late_or_replay,game_identity_dedup_only");
 });

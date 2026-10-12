@@ -12,7 +12,9 @@ import {
   classifyPeriodScope,
   excludeExistingEconomicUnits,
   hasExecutableAuthority,
-  isForwardPreMatch,
+  isAuthoritativePreMatch,
+  isScheduledOnlyPreMatch,
+  classifyVerification,
   parseSelectedLine,
 } from "../../lib/modeling/forwardBetContract";
 import { insertChoices, probeForwardContractSchema, runtimeRow, toDatabaseLedger } from "../../scripts/modeling/live-shadow-cycle";
@@ -51,7 +53,7 @@ test("one model x canonical physical game: cross-date reselection is the same ec
   const shard = (providerEventId: string, title: string) => canonicalGame({ sportFamily: "soccer", providerEventId, eventTitle: title, marketQuestion: null, scheduledStartIso: "2026-10-12T19:15:00Z" });
   // soccer "more markets" shards carry their own provider event id but are the same fixture
   assert.equal(shard("1104527", "FC Famalicão vs. FC Alverca").key, shard("1107765", "Fc Alverca vs FC Famalicao - More Markets").key);
-  assert.equal(shard("1104527", "FC Famalicão vs. FC Alverca").basis, "TEAM_PAIR_START_TEXT");
+  assert.equal(shard("1104527", "FC Famalicão vs. FC Alverca").basis, "TEAM_PAIR_START_DEDUP");
   // another fixture with the same team pair at another time is another game
   assert.notEqual(shard("1", "A vs B").key, canonicalGame({ sportFamily: "soccer", providerEventId: "1", eventTitle: "A vs B", scheduledStartIso: "2026-10-19T19:15:00Z" }).key);
   // unparsed or start-less shards fall back to the provider event and are flagged unverified
@@ -75,8 +77,10 @@ test("forward columns carry identity, times, numeric reference price and no fabr
   assert.equal(columns.contract_version, "FORWARD_BET_V1");
   assert.equal(columns.canonical_game_key, "tennis:player a1|player b1@2026-10-12T17:00:00.000Z");
   assert.equal(columns.economic_unit_key, columns.canonical_game_key);
-  assert.equal(columns.game_identity_basis, "TEAM_PAIR_START_TEXT");
+  assert.equal(columns.game_identity_basis, "TEAM_PAIR_START_DEDUP");
   assert.equal(columns.scope_basis, "STRUCTURED_MONEYLINE");
+  assert.deepEqual([columns.provider_root_game_id, columns.provider_root_game_source], [null, null]);
+  assert.equal(columns.authoritative_start_source, null);
   assert.equal(columns.reference_price, 0.505);
   assert.equal(columns.reference_price_type, "EVIDENCE_REFERENCE_NOT_EXECUTABLE");
   assert.equal(columns.observed_at, source.observed_at);
@@ -98,21 +102,48 @@ test("forward columns carry identity, times, numeric reference price and no fabr
   assert.equal("contract_version" in legacy, false);
 });
 
-test("timing classes never present scheduled-only, rescheduled or replayed rows as proven pre-kickoff", () => {
+test("timing authority: five separate facts; scheduled-only, rescheduled and replayed rows are never authoritative", () => {
   const base = { observedAt: "2026-10-12T12:02:00Z", firstPersistedAt: "2026-10-12T12:31:00Z" };
   const scheduledOnly = classifyForwardTiming({ ...base, scheduledStartAt: "2026-10-12T17:00:00Z", authoritativeStartAt: null });
-  assert.equal(scheduledOnly.timingClass, "PRE_START_SCHEDULED_ONLY");
+  assert.deepEqual([scheduledOnly.timingClass, scheduledOnly.timingDetail], ["PRE_START_SCHEDULED_ONLY", null]);
   assert.equal(scheduledOnly.leadTimeScheduledSeconds, 16140);
   assert.equal(scheduledOnly.leadTimeAuthoritativeSeconds, null);
-  assert.equal(classifyForwardTiming({ ...base, scheduledStartAt: null, authoritativeStartAt: null }).timingClass, "START_UNKNOWN");
-  assert.equal(classifyForwardTiming({ ...base, scheduledStartAt: "2026-10-12T12:00:00Z", authoritativeStartAt: null }).timingClass, "LATE_SCHEDULED");
-  assert.equal(classifyForwardTiming({ ...base, scheduledStartAt: "2026-10-12T12:00:00Z", authoritativeStartAt: "2026-10-12T14:00:00Z" }).timingClass, "PRE_START_AUTHORITATIVE");
-  assert.equal(classifyForwardTiming({ ...base, scheduledStartAt: "2026-10-12T17:00:00Z", authoritativeStartAt: "2026-10-12T12:10:00Z" }).timingClass, "LATE_AUTHORITATIVE");
+  assert.equal(isScheduledOnlyPreMatch(scheduledOnly.timingClass), true);
+  assert.equal(isAuthoritativePreMatch(scheduledOnly.timingClass), false);
+  const unknown = classifyForwardTiming({ ...base, scheduledStartAt: null, authoritativeStartAt: null });
+  assert.deepEqual([unknown.timingClass, unknown.timingDetail], ["TIMING_UNPROVEN", "START_UNKNOWN"]);
+  const late = classifyForwardTiming({ ...base, scheduledStartAt: "2026-10-12T12:00:00Z", authoritativeStartAt: null });
+  assert.deepEqual([late.timingClass, late.timingDetail], ["LATE_OR_REPLAY", "LATE_SCHEDULED"]);
+  // rescheduled later: the old scheduled time is past, but only the independently sourced start can prove "before start"
+  const resched = classifyForwardTiming({ ...base, scheduledStartAt: "2026-10-12T12:00:00Z", authoritativeStartAt: "2026-10-12T14:00:00Z" });
+  assert.equal(resched.timingClass, "PRE_START_AUTHORITATIVE");
+  assert.equal(isAuthoritativePreMatch(resched.timingClass), true);
+  const earlyStart = classifyForwardTiming({ ...base, scheduledStartAt: "2026-10-12T17:00:00Z", authoritativeStartAt: "2026-10-12T12:10:00Z" });
+  assert.deepEqual([earlyStart.timingClass, earlyStart.timingDetail], ["LATE_OR_REPLAY", "LATE_AUTHORITATIVE"]);
   const replay = classifyForwardTiming({ observedAt: "2026-10-12T05:00:00Z", firstPersistedAt: "2026-10-12T12:31:00Z", scheduledStartAt: "2026-10-12T17:00:00Z", authoritativeStartAt: null });
-  assert.equal(replay.timingClass, "HISTORICAL_REPLAY");
-  assert.equal(isForwardPreMatch(replay.timingClass), false);
-  assert.equal(isForwardPreMatch("PRE_START_SCHEDULED_ONLY"), true);
-  assert.equal(isForwardPreMatch("LATE_SCHEDULED"), false);
+  assert.deepEqual([replay.timingClass, replay.timingDetail], ["LATE_OR_REPLAY", "HISTORICAL_REPLAY"]);
+  assert.equal(isScheduledOnlyPreMatch(replay.timingClass) || isAuthoritativePreMatch(replay.timingClass), false);
+});
+
+test("verification: a complete contract is not a VERIFIED BET; every unproven link is named", () => {
+  const ok = { contractStatus: "COMPLETE", timingClass: "PRE_START_AUTHORITATIVE", gameIdentityBasis: "PROVIDER_ROOT_CONFIRMED", scopeBasis: "STRUCTURED_MONEYLINE" };
+  assert.deepEqual(classifyVerification(ok), { verified: true, status: "VERIFIED", unprovenLinks: [] });
+  assert.equal(classifyVerification({ ...ok, timingClass: "PRE_START_SCHEDULED_ONLY" }).status, "UNVERIFIED:timing_scheduled_only");
+  assert.equal(classifyVerification({ ...ok, gameIdentityBasis: "TEAM_PAIR_START_DEDUP" }).status, "UNVERIFIED:game_identity_dedup_only");
+  assert.equal(classifyVerification({ ...ok, gameIdentityBasis: "PROVIDER_EVENT_ONLY" }).status, "UNVERIFIED:game_identity_provider_event_only");
+  assert.equal(classifyVerification({ ...ok, scopeBasis: "TEXT_HEURISTIC" }).status, "UNVERIFIED:scope_text_heuristic");
+  assert.equal(classifyVerification({ ...ok, timingClass: "LATE_OR_REPLAY" }).unprovenLinks[0], "timing_late_or_replay");
+  assert.equal(classifyVerification({ ...ok, contractStatus: "INCOMPLETE:line_value" }).verified, false);
+  // what the pipeline can produce today: scheduled-only + text dedup identity
+  assert.equal(classifyVerification({ ...ok, timingClass: "PRE_START_SCHEDULED_ONLY", gameIdentityBasis: "TEAM_PAIR_START_DEDUP" }).status, "UNVERIFIED:timing_scheduled_only,game_identity_dedup_only");
+});
+
+test("a provider root id upgrades identity; text and provider-event keys never do", () => {
+  const text = canonicalGame({ sportFamily: "soccer", providerEventId: "1", eventTitle: "A vs B", scheduledStartIso: "2026-10-12T19:15:00Z" });
+  const root = canonicalGame({ sportFamily: "soccer", providerEventId: "1", providerRootGameId: "G-77", eventTitle: "A vs B", scheduledStartIso: "2026-10-12T19:15:00Z" });
+  assert.deepEqual([text.basis, text.providerRootGameId], ["TEAM_PAIR_START_DEDUP", null]);
+  assert.deepEqual([root.basis, root.providerRootGameId, root.key], ["PROVIDER_ROOT_CONFIRMED", "G-77", text.key]);
+  assert.equal(canonicalGame({ sportFamily: "soccer", providerEventId: "1" }).basis, "PROVIDER_EVENT_ONLY");
 });
 
 test("market scope parsing: family, period and signed selected line", () => {
