@@ -35,7 +35,7 @@ Historical August–September evidence stays separate from real October prospect
 database-level blindness of any research selector was unproven (and false by construction). Removing labels from the
 historical archive is **not** the fix (D5); making them unreachable for the model identity is.
 
-## 3. Mechanism (DBClone migration `20261012160000_blind_model_input_authority.sql`)
+## 3. Mechanism (DBClone migration `20261012200000_blind_model_input_authority.sql`)
 
 * **Roles** (all `NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`, no password, no
   membership): `blind_model_reader` (the only model-facing identity), `blind_horizon_writer` (privileged orchestrator that
@@ -75,9 +75,16 @@ historical archive is **not** the fix (D5); making them unreachable for the mode
   before apply. The in-transaction assertion above is the gate that can still roll back. After commit the adapter reads
   the catalog back (`readBlindInputCatalog`) and fails the run if any count differs; that is a confirmation, not a rollback
   path (a mismatch after commit means stop and remediate under review).
-* **Release order**: apply `clone-shadow` (`20261012150000`) **before** this migration. This mode accepts the ledger with or
-  without the shadow version, but `clone-shadow` accepts only the exact pre-shadow baseline, so applying this first would
-  make the shadow release fail with ledger drift and out of version order.
+* **Release order and ledger**: DBClone already carries `20261012150000` (prospective shadow), `20261012180000` (virtual-bet
+  forward contract) and `20261012190000` (settlement ACL hardening) on top of the reviewed 31-version baseline; this migration
+  is `20261012200000` so it sorts after the last applied version. The mode accepts exactly that ledger, in order, and nothing
+  else: an older shape, a missing/extra/reordered version, or an already-recorded target all fail closed. Already-applied
+  releases are never edited and no ledger row is written by hand.
+* **Availability evidence**: rows are selected by `observed_at <= horizon`, but `observed_at` is not proof the row was
+  available at decision time. Every projection therefore carries `asof_evidence`: `CREATED_AT_LE_HORIZON` only when the row's own
+  ingestion timestamp is also at or before the horizon, otherwise `OBSERVED_AT_ONLY`. T20 has no ingestion timestamp and is
+  always `OBSERVED_AT_ONLY`. Historical rows stay visible; a forward-input claim MUST filter on `CREATED_AT_LE_HORIZON`, and even
+  that is only as strong as the clone's `created_at` (it is a clone-side value, not an independent receipt time).
 
 ## 4. What is proven, and what is not
 
@@ -103,7 +110,7 @@ repository and must be checked at the reviewed apply (RUNTIME_UNVERIFIED).
 
 ## 5. Known limits (stated, not hidden)
 
-1. The as-of clock is `observed_at`. Availability time (when the Clone received a late sync) is not modelled; T20 has no
+1. The as-of clock is `observed_at`; `asof_evidence` (section 3) flags, but cannot prove, ingestion time. Availability time (when the Clone received a late sync) is not modelled; T20 has no
    `created_at`. Several exposed columns can post-date `observed_at` for a row (`created_at`, in-play
    `state_received_at` and `orderbook_*_at`, T20 `provider_start_acquired_at`), and the derivation of T20
    `daily_volume_rank` / `sampling_bucket` is not shown to be as-of; a selector MUST NOT use them as decision-time inputs
@@ -130,10 +137,39 @@ repository and must be checked at the reviewed apply (RUNTIME_UNVERIFIED).
 
 ## 6. Not in this release (next stages, in order)
 
-1. Reviewed apply of exactly this SQL to DBClone through `--clone-blind-input`, then real login-probe negative tests with
+1. Reviewed apply of exactly this SQL to DBClone, then real login-probe negative tests with
    the restricted credential (credential deployed by the founder-held channel, never by `service_role`).
 2. Execute one frozen selector against `blind_obs` with no `service_role` in its process environment.
 3. Market-scoped independent Box B and the fixed SQL scorer; append-only archive/parity; randomised stratified audit.
 4. Daily replenishment and freshness gates (D11) and Production-purge proof (D12).
 
 Reference `PR #526` is untouched by this work.
+
+## 7. DBClone read-only observations used to prepare this release (2026-10-13 ~05:15Z, aggregates only)
+
+Taken through the sanctioned DBClone REST endpoint (schema shape and counts; no row of outcome data), target ref confirmed as
+`nppznoujvnyjargjkmnv`. The migration ledger, owners and ACLs are **not** readable from the executor and rest on the
+independent preflight recorded in PR #528; the operator script re-asserts the ledger itself.
+
+| Raw table (projected) | Rows | Oldest `observed_at` | Newest `observed_at` |
+|---|---:|---|---|
+| `reservation_market_observations` (prematch) | 39,598 | 2026-09-30 | 2026-10-12 22:00Z |
+| `research_precontract_t20_observations` (T20) | 4,640 | 2026-10-07 | 2026-10-13 04:20Z |
+| `research_inplay_core_path_observations` (in-play) | 54,289 | 2026-10-08 | 2026-10-13 05:00Z |
+
+* All projected columns exist on the real tables (0 missing); the only unprojected columns are `capture_run_id`,
+  `reservation_id`, `live_policy_eligibility`, `live_policy_rejection_reason`.
+* **Coverage gap, not closed**: `research_evidence_page_rows` (599,149 rows) is not connected to any projection. A passing
+  boundary check MUST NOT be read as coverage of the historical research corpus. Prematch capture is event-driven, so a quiet
+  window (the newest prematch row was about seven hours old at read time) is not by itself a sync fault; T20 and in-play were
+  under an hour old. Freshness is a measurement, not a completeness claim for a model day.
+* Replenishment: the views read the raw tables directly, so new rows from the existing collectors appear with no copy step
+  (proved on PostgreSQL 17.6 with a fixture write; a real-clone check follows the apply).
+
+## 8. Release route for this migration
+
+The registered route is `--clone-blind-input` (needs a Management API access token). Where the executor has none, a single
+DBClone-only operator script (`ops/research-clone/operator/20261012200000_blind_model_input_authority.operator.sql`) wraps the
+byte-identical pinned migration with a target guard (exact ledger, PostgreSQL 17, nothing already applied, raw tables present),
+timeouts, one transaction and a final catalog read-back. It is **not** a registered release and writes no ledger row; the receipt
+is reconciled later through the registered mode, before any restricted `LOGIN` credential is deployed.

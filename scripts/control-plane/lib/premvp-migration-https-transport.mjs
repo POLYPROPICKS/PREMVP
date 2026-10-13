@@ -426,7 +426,8 @@ select
     where n.nspname = 'blind_obs' and c.relkind = 'v' and has_table_privilege('blind_model_reader', c.oid, 'SELECT'))::int as reader_view_select_n,
   (select count(*) from unnest(array['public.research_model_ready_rows', 'public.research_model_ready_days', 'public.research_model_economics',
       'public.research_t10_sibling_offpolicy_rows', 'public.prospective_selection_shadow_runtime', 'public.reservation_market_observations',
-      'public.research_precontract_t20_observations', 'public.research_inplay_core_path_observations', 'public.research_strategy_selected_bets']) t(name)
+      'public.research_precontract_t20_observations', 'public.research_inplay_core_path_observations', 'public.research_strategy_selected_bets',
+      'public.virtual_bet_settlement_authority', 'public.research_inplay_paper_settlement_reports']) t(name)
     where to_regclass(t.name) is not null
       and (has_any_column_privilege('blind_model_reader', to_regclass(t.name), 'SELECT') or has_any_column_privilege('blind_model_reader', to_regclass(t.name), 'INSERT')
         or has_any_column_privilege('blind_model_reader', to_regclass(t.name), 'UPDATE') or has_table_privilege('blind_model_reader', to_regclass(t.name), 'DELETE')))::int as reader_forbidden_named_n,

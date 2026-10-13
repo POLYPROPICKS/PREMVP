@@ -1,14 +1,14 @@
 import { sha256OfText } from './premvp-target-only-migration.mjs';
 import { assertNoTransactionControl, lexSql, runHttpsTargetOnly } from './premvp-migration-https-transport.mjs';
-import { SHADOW_CLONE_LEDGER_BASELINE, SHADOW_MIGRATION_FILE } from './premvp-clone-shadow-migration.mjs';
+import { SHADOW_CLONE_LEDGER_BASELINE } from './premvp-clone-shadow-migration.mjs';
 
 export const BLIND_MIGRATION_MODE = 'PREMVP_CLONE_BLIND_MODEL_INPUT_V1';
 export const BLIND_CLONE_REF = 'nppznoujvnyjargjkmnv';
-export const BLIND_MIGRATION_FILE = 'ops/research-clone/migrations/20261012160000_blind_model_input_authority.sql';
+export const BLIND_MIGRATION_FILE = 'ops/research-clone/migrations/20261012200000_blind_model_input_authority.sql';
 // Reviewed-delta pin. Changing one byte of the SQL requires changing this constant in a reviewed commit; a declaration
 // hash alone can never authorize a different file. This mode is NOT a general executor and shares no allow-list with
 // `clone-schema` (which cannot create roles/views/ACLs) or `clone-shadow` (which stays pinned to its own SQL).
-export const BLIND_MIGRATION_SHA256 = 'dd8b9b4812bcf690db6ca293d358f7f5d8a6efbf862e48a547431f7793ab2978';
+export const BLIND_MIGRATION_SHA256 = '2eaf16c933f51f51036faee38d9b247dd04b727f94a0ad9a8c9796125f6bdf18';
 
 const BLIND_VIEWS = Object.freeze({
   prematch_observations_v1: 'reservation_market_observations',
@@ -18,12 +18,12 @@ const BLIND_VIEWS = Object.freeze({
 const VIEW_NAMES = Object.keys(BLIND_VIEWS).join('|');
 const RAW_TABLES = Object.values(BLIND_VIEWS).join('|');
 
-// Ledger accepted by this mode: the reviewed baseline, with or without the (separately released) shadow migration.
-const SHADOW_VERSION = SHADOW_MIGRATION_FILE.split('/').at(-1).split('_')[0];
-const ACCEPTED_LEDGERS = Object.freeze([
-  SHADOW_CLONE_LEDGER_BASELINE,
-  Object.freeze([...SHADOW_CLONE_LEDGER_BASELINE, SHADOW_VERSION]),
-]);
+// Exact DBClone ledger observed by the independent read-only preflight before this release: the reviewed 31-version baseline plus
+// the three releases already applied (150000 prospective shadow, 180000 virtual-bet forward contract, 190000 settlement ACL
+// hardening). One accepted shape only, compared strictly and in order: any other history (older, newer, extra, missing, reordered)
+// fails closed and requires a fresh review. The blind version sorts after the last applied one.
+export const BLIND_APPLIED_AFTER_BASELINE = Object.freeze(['20261012150000', '20261012180000', '20261012190000']);
+export const BLIND_EXPECTED_LEDGER = Object.freeze([...SHADOW_CLONE_LEDGER_BASELINE, ...BLIND_APPLIED_AFTER_BASELINE]);
 
 // The ONLY top-level statements the file may contain (judged on lexed code: comments gone, strings/DO bodies blanked).
 const STATEMENT_ALLOWLIST = Object.freeze([
@@ -33,7 +33,7 @@ const STATEMENT_ALLOWLIST = Object.freeze([
   /^revoke all on schema blind_obs from public, anon, authenticated, service_role$/,
   /^create table if not exists blind_obs\.model_horizon \([a-z_ ,()0-9]+\)$/,
   new RegExp(`^revoke all on blind_obs\\.(?:model_horizon|${VIEW_NAMES}) from public, anon, authenticated, service_role$`),
-  new RegExp(`^create or replace view blind_obs\\.(${VIEW_NAMES}) with \\(security_barrier = true\\) as select [a-z0-9_., ]+ from public\\.(${RAW_TABLES}) o join blind_obs\\.model_horizon h on h\\.singleton where o\\.observed_at <= h\\.as_of(?: and o\\.observed_at < o\\.event_start_iso)?$`),
+  new RegExp(`^create or replace view blind_obs\\.(${VIEW_NAMES}) with \\(security_barrier = true\\) as select [a-z0-9_.,:' <=]+ from public\\.(${RAW_TABLES}) o join blind_obs\\.model_horizon h on h\\.singleton where o\\.observed_at <= h\\.as_of(?: and o\\.observed_at < o\\.event_start_iso)?$`),
   /^grant usage on schema blind_obs to (?:blind_model_reader|blind_horizon_writer)$/,
   new RegExp(`^grant select on blind_obs\\.(?:${VIEW_NAMES}) to blind_model_reader$`),
   /^grant select, insert, update on blind_obs\.model_horizon to blind_horizon_writer$/,
@@ -115,7 +115,7 @@ export async function runBlindInputMigration({ transport, declaration, sql, appl
     targetBasename: BLIND_MIGRATION_FILE.split('/').at(-1),
     targetSql: sql,
     targetSha256: declaration.target_sha256,
-    resolveTracked: (versions) => ({ missing: ACCEPTED_LEDGERS.some((ledger) => sameList(versions, ledger)) ? [] : ['BLIND_CLONE_LEDGER_DRIFT'] }),
+    resolveTracked: (versions) => ({ missing: sameList(versions, BLIND_EXPECTED_LEDGER) ? [] : ['BLIND_CLONE_LEDGER_DRIFT'] }),
     nativeLocalTimeouts: true,
     verify: verifyColumns,
     apply,

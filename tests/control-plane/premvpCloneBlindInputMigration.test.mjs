@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { test } from 'node:test';
 import {
-  BLIND_CATALOG_EXPECTED, BLIND_CLONE_REF, BLIND_MIGRATION_FILE, BLIND_MIGRATION_MODE, BLIND_MIGRATION_SHA256,
+  BLIND_APPLIED_AFTER_BASELINE, BLIND_EXPECTED_LEDGER, BLIND_CATALOG_EXPECTED, BLIND_CLONE_REF, BLIND_MIGRATION_FILE, BLIND_MIGRATION_MODE, BLIND_MIGRATION_SHA256,
   assertBlindSqlShape, evaluateBlindCatalog, runBlindInputMigration, validateBlindInputMigration,
 } from '../../scripts/control-plane/lib/premvp-clone-blind-input-migration.mjs';
 import {
   SHADOW_CLONE_LEDGER_BASELINE, SHADOW_CLONE_REF, SHADOW_MIGRATION_FILE, SHADOW_MIGRATION_MODE, validateShadowMigration,
 } from '../../scripts/control-plane/lib/premvp-clone-shadow-migration.mjs';
-import { assertCloneSqlSafe, lexSql, validateCloneSchemaDeclaration } from '../../scripts/control-plane/lib/premvp-migration-https-transport.mjs';
+import { BLIND_INPUT_CATALOG_SQL, assertCloneSqlSafe, lexSql, validateCloneSchemaDeclaration } from '../../scripts/control-plane/lib/premvp-migration-https-transport.mjs';
 import { sha256OfText } from '../../scripts/control-plane/lib/premvp-target-only-migration.mjs';
 
 const read = (rel) => fs.readFileSync(new URL(`../../${rel}`, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -30,7 +30,7 @@ test('wrong project, production target, wrong file or mode and raw-mutation decl
   for (const patch of [
     { project_ref: PRODUCTION_REF }, { project_ref: 'abcdefghijklmnopqrst' }, { project_ref: SHADOW_CLONE_REF + 'x' },
     { migration_file: 'ops/research-clone/migrations/20261012150000_prospective_shadow_first_persistence.sql' },
-    { migration_file: 'supabase/migrations/20261012160000_blind_model_input_authority.sql' },
+    { migration_file: 'supabase/migrations/20261012200000_blind_model_input_authority.sql' },
     { mode: 'PREMVP_CLONE_SHADOW_IMMUTABILITY_V1' }, { mode: undefined },
     { direct_raw_mutation: true }, { idempotent: false }, { target_sha256: 'f'.repeat(64) }, { target_sha256: 'short' },
   ]) assert.equal(validateBlindInputMigration({ ...declaration, ...patch }, sql).ok, false, JSON.stringify(patch));
@@ -94,7 +94,11 @@ test('projection allow-lists exclude lineage, policy and outcome-bearing columns
   const views = [...sql.matchAll(/create or replace view blind_obs\.([a-z0-9_]+) with \(security_barrier = true\) as\nselect\n([\s\S]*?)\nfrom public\./g)];
   assert.equal(views.length, 3);
   for (const [, name, list] of views) {
-    const columns = list.split(',').map((c) => c.trim().replace(/^o\./, '')).filter(Boolean);
+    const items = list.split(',').map((c) => c.trim()).filter(Boolean);
+    const derived = items.filter((c) => !/^o\.[a-z0-9_]+$/.test(c));
+    assert.equal(derived.length, 1, `${name} derived columns`);
+    assert.match(derived[0], /^(?:case when o\.created_at <= h\.as_of then 'CREATED_AT_LE_HORIZON' else 'OBSERVED_AT_ONLY' end|'OBSERVED_AT_ONLY'::text) as asof_evidence$/);
+    const columns = items.filter((c) => !derived.includes(c)).map((c) => c.replace(/^o\./, ''));
     assert.equal(new Set(columns).size, columns.length, `${name} duplicates`);
     for (const forbidden of ['reservation_id', 'capture_run_id', 'live_policy_eligibility', 'live_policy_rejection_reason'])
       assert.ok(!columns.includes(forbidden), `${name}.${forbidden}`);
@@ -103,14 +107,14 @@ test('projection allow-lists exclude lineage, policy and outcome-bearing columns
   }
 });
 
-function ledgerOf(extra = []) { return [...SHADOW_CLONE_LEDGER_BASELINE, ...extra]; }
+function ledgerOf(extra = BLIND_APPLIED_AFTER_BASELINE) { return [...SHADOW_CLONE_LEDGER_BASELINE, ...extra]; }
 function fakeTransport({ ledger = ledgerOf(), catalog = { ...BLIND_CATALOG_EXPECTED } } = {}) {
   const calls = [];
   let applied = false;
   let fingerprintReads = 0;
   return {
     projectRef: BLIND_CLONE_REF, calls,
-    async readLedger() { calls.push('ledger'); return applied ? [...ledger, '20261012160000'] : [...ledger]; },
+    async readLedger() { calls.push('ledger'); return applied ? [...ledger, '20261012200000'] : [...ledger]; },
     async readSchemaFingerprint() { calls.push('fingerprint'); return { fingerprint: ++fingerprintReads < 3 ? 'before' : 'after' }; },
     async proveTransactionSemantics() { calls.push('transaction'); },
     async dryRunExactSql(value) { assert.equal(value, sql); calls.push('dry_run'); },
@@ -135,11 +139,21 @@ test('dry-run proves rollback and never applies, never reads the catalog and nev
   assert.equal(transport.calls.includes('catalog'), false);
 });
 
-test('ledger is accepted only as the reviewed baseline, with or without the shadow release', async () => {
-  await runBlindInputMigration({ transport: fakeTransport({ ledger: ledgerOf(['20261012150000']) }), declaration, sql });
+test('ledger is accepted only as the exact observed DBClone history (baseline + 150000 + 180000 + 190000), in order', async () => {
+  assert.deepEqual(BLIND_APPLIED_AFTER_BASELINE, ['20261012150000', '20261012180000', '20261012190000']);
+  assert.equal(BLIND_EXPECTED_LEDGER.length, SHADOW_CLONE_LEDGER_BASELINE.length + 3);
+  assert.ok(BLIND_MIGRATION_FILE.includes('20261012200000_') && '20261012200000' > BLIND_EXPECTED_LEDGER.at(-1), 'blind version sorts after the last applied one');
+  await runBlindInputMigration({ transport: fakeTransport(), declaration, sql });
   const drift = (error) => error.code === 'TARGET_ONLY_REMOTE_TRACKED_FILE_MISSING_LOCALLY' && /BLIND_CLONE_LEDGER_DRIFT/.test(error.detail);
-  await assert.rejects(runBlindInputMigration({ transport: fakeTransport({ ledger: ledgerOf().slice(1) }), declaration, sql }), drift);
-  await assert.rejects(runBlindInputMigration({ transport: fakeTransport({ ledger: ledgerOf(['20261012155999']) }), declaration, sql }), drift);
+  const reject = async (ledger) => assert.rejects(runBlindInputMigration({ transport: fakeTransport({ ledger }), declaration, sql }), drift);
+  await reject(ledgerOf([]));                                                                     // the old pre-shadow baseline
+  await reject(ledgerOf(['20261012150000']));                                                     // the old baseline + shadow shape
+  await reject(ledgerOf(['20261012150000', '20261012180000']));                                   // 190000 missing
+  await reject(ledgerOf(['20261012150000', '20261012190000']));                                   // 180000 missing
+  await reject(ledgerOf(['20261012150000', '20261012190000', '20261012180000']));                 // reordered
+  await reject(ledgerOf([...BLIND_APPLIED_AFTER_BASELINE, '20261012195999']));                    // unknown extra
+  await reject(ledgerOf([...BLIND_APPLIED_AFTER_BASELINE, '20261012200000']));                    // target already recorded
+  await reject(ledgerOf().slice(1));                                                              // baseline entry dropped
 });
 
 test('transport bound to another project is refused before any call', async () => {
@@ -184,4 +198,23 @@ test('adapter exposes exactly one blind-input entry and requires the two apply c
   assert.match(body, /assertApplyConfirmation\(args, process\.env\)/);
   assert.match(body, /allowlist: PREMVP_RESEARCH_CLONE_PROJECT_REFS/);
   assert.doesNotMatch(body, /service_role|SUPABASE_CLONE_SERVICE_ROLE_KEY/);
+});
+
+test('the single operator script embeds the pinned migration byte-for-byte, guards the target, and is atomic', () => {
+  const op = read('ops/research-clone/operator/20261012200000_blind_model_input_authority.operator.sql');
+  assert.ok(op.includes(sql.trimEnd()), 'migration body is embedded verbatim');
+  assert.ok(op.includes(BLIND_INPUT_CATALOG_SQL), 'catalog read-back is the fixed one');
+  assert.ok(op.includes(`SHA-256: ${BLIND_MIGRATION_SHA256}`));
+  const guard = op.slice(op.indexOf('begin;'), op.indexOf(sql.slice(0, 40)));
+  for (const version of BLIND_EXPECTED_LEDGER) assert.ok(guard.includes(`'${version}'`), version);
+  assert.equal((guard.match(/'\d{14}'/g) ?? []).length, BLIND_EXPECTED_LEDGER.length, 'exact ledger, nothing extra');
+  assert.match(guard, /OPERATOR_LEDGER_DRIFT_NOT_DBCLONE_OR_CHANGED/);
+  assert.match(guard, /OPERATOR_ALREADY_APPLIED_OR_PARTIAL/);
+  assert.match(guard, /set local lock_timeout = '5s'/);
+  assert.match(op, /nppznoujvnyjargjkmnv/);
+  assert.equal(op.match(/\bcommit;/g).length, 1);
+  const wrapper = lexSql(op.replace(sql.trimEnd(), '').replace(BLIND_INPUT_CATALOG_SQL, '')).code;
+  assert.doesNotMatch(wrapper, /\b(?:insert|update|delete|drop|truncate|grant|revoke|create|alter)\b/i, 'wrapper adds no write statement of its own');
+  assert.doesNotMatch(op, /supabase_migrations\.schema_migrations\s*\(|insert into supabase_migrations/i);
+  assert.ok(!op.includes('nbnldzfsxffztsfrrxqy') || /NEVER run on nbnldzfsxffztsfrrxqy/.test(op));
 });

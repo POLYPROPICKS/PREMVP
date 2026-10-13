@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import { after, before, describe, test } from 'node:test';
-import { BLIND_CATALOG_EXPECTED, BLIND_MIGRATION_FILE, evaluateBlindCatalog } from '../../scripts/control-plane/lib/premvp-clone-blind-input-migration.mjs';
+import { BLIND_CATALOG_EXPECTED, BLIND_EXPECTED_LEDGER, BLIND_MIGRATION_FILE, evaluateBlindCatalog } from '../../scripts/control-plane/lib/premvp-clone-blind-input-migration.mjs';
 import { BLIND_INPUT_CATALOG_SQL } from '../../scripts/control-plane/lib/premvp-migration-https-transport.mjs';
 
 const HOST = process.env.BLIND_INPUT_PG_HOST;
@@ -16,6 +16,7 @@ const root = (rel) => new URL(`../../${rel}`, import.meta.url);
 const migrationSql = fs.readFileSync(root(BLIND_MIGRATION_FILE), 'utf8').replace(/\r\n/g, '\n');
 const FIXTURE_DDL = ['precontract-t20-research-schema', 'inplay-core-path-schema', 'reservation-telemetry-schema', 'model-ready-schema', 't10-sibling-offpolicy-schema', 'prospective-selection-shadow-runtime-schema']
   .map((name) => fs.readFileSync(root(`ops/research-clone/${name}.sql`), 'utf8'));
+const operatorSql = fs.readFileSync(root('ops/research-clone/operator/20261012200000_blind_model_input_authority.operator.sql'), 'utf8').replace(/\r\n/g, '\n');
 const OWNER = 'sim_postgres';
 const EXISTING_RPC = 'public.record_football_execution_matrix_s1s2s3_evidence';
 const CLUSTER_ROLES = ['blind_model_reader', 'blind_horizon_writer', 'research_ledger_writer', 'research_settlement_authority', OWNER, 'anon', 'authenticated', 'service_role'];
@@ -40,6 +41,10 @@ function freshDb(name, { prepare = '' } = {}) {
   assert.ok(asOwner(name, `alter default privileges for role ${OWNER} grant all on tables to anon, authenticated, service_role;
     alter default privileges for role ${OWNER} grant execute on functions to anon, authenticated, service_role;`).ok);
   for (const ddl of FIXTURE_DDL) { const r = asOwner(name, ddl); assert.ok(r.ok, r.err); }
+  // Registered ledger exactly as observed on DBClone before this release.
+  const ledger = asOwner(name, `create schema supabase_migrations; create table supabase_migrations.schema_migrations(version text primary key, name text);
+    insert into supabase_migrations.schema_migrations(version) values ${BLIND_EXPECTED_LEDGER.map((v) => `('${v}')`).join(', ')};`);
+  assert.ok(ledger.ok, ledger.err);
   // Real DBClone state found by the read-only preflight (PostgreSQL 17.6): an existing SECURITY DEFINER RPC that is
   // executable by PUBLIC *and* carries explicit anon/authenticated/service_role grants (default privileges + PUBLIC default).
   const fx = asOwner(name, `create function ${EXISTING_RPC}(payload jsonb) returns jsonb language sql security definer as $$ select payload $$;`);
@@ -202,6 +207,92 @@ describe('blind input authority on real PostgreSQL', { skip: SKIP }, () => {
     denied(psql('blind_horizon_writer', DB, `select 1 from public.research_model_ready_rows limit 1;`), /permission denied/);
     denied(psql('blind_horizon_writer', DB, `delete from blind_obs.model_horizon;`), /permission denied for table model_horizon/);
     denied(psql('blind_horizon_writer', DB, `select 1 from blind_obs.t20_observations_v1;`), /permission denied/);
+  });
+});
+
+describe('availability evidence, automatic replenishment and the single operator script', { skip: SKIP }, () => {
+  const DBX = 'blind_sem_asof';
+  before(() => {
+    freshDb(DBX);
+    assert.ok(asOwner(DBX, seed).ok);
+    const applied = asOwner(DBX, wrap(migrationSql, 'COMMIT'));
+    assert.ok(applied.ok, applied.err);
+    assert.ok(admin('alter role blind_model_reader login;', DBX).ok);
+  });
+  after(() => { admin(`drop database if exists ${DBX};`); dropClusterRoles(); });
+  const groups = (view) => asReader(DBX, `select asof_evidence || '=' || count(*) from ${view} group by asof_evidence order by asof_evidence;`).out.split('\n').join(',');
+
+  test('observed_at alone is never presented as proof of availability: the flag separates ingestion-evidenced rows from the rest', () => {
+    setHorizon(DBX, '2026-10-01T12:25Z');
+    assert.ok(asOwner(DBX, `
+      insert into public.reservation_market_observations(id,capture_run_id,reservation_id,physical_event_id,event_start_iso,observation_phase,observed_at,minutes_to_start,condition_id,token_id,side,orderbook_fetch_status,source_version,created_at,best_ask)
+        values (gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'e1','2026-10-01T12:00Z','T_MINUS_30','2026-10-01T10:20Z',100,'c','t5','YES','OK','v','2026-10-01T10:21Z',0.43);
+      insert into public.research_inplay_core_path_observations(id,physical_event_id,provider_event_id,provider_sport_family,provider_sport_source,event_start_iso,observed_at,source_version,event_live_status,state_authority,condition_id,token_id,side,canonical_market_family,canonical_market_type,orderbook_fetch_status,persistence_reason,sequence_in_event,best_ask,created_at)
+        values (gen_random_uuid(),'e1','p1','tennis','x','2026-10-01T12:00Z','2026-10-01T12:15Z','v','LIVE','a','c','t6','YES','M','ML','OK','r',9,0.52,'2026-10-01T12:16Z');`).ok);
+    assert.equal(groups('prematch_observations_v1'), 'CREATED_AT_LE_HORIZON=1,OBSERVED_AT_ONLY=3');
+    assert.equal(groups('inplay_observations_v1'), 'CREATED_AT_LE_HORIZON=1,OBSERVED_AT_ONLY=2');
+    assert.equal(groups('t20_observations_v1'), 'OBSERVED_AT_ONLY=3');  // T20 has no ingestion timestamp: never forward-evidenced
+    // an old row whose ingestion time is AFTER the horizon stays visible (history preserved) but is not forward-input evidence
+    assert.equal(asReader(DBX, `select count(*) from prematch_observations_v1 where asof_evidence = 'OBSERVED_AT_ONLY' and observed_at < '2026-10-01T12:25Z';`).out, '3');
+  });
+
+  test('new raw observations written by the normal source appear in the permitted views with no copy step, and only inside the horizon', () => {
+    const before = asReader(DBX, 'select count(*) from t20_observations_v1;').out;
+    assert.ok(asOwner(DBX, `insert into public.research_precontract_t20_observations(id,physical_event_id,source_id,source_version,event_start_iso,observed_at,observation_phase,condition_id,token_id,side,best_ask)
+      values (gen_random_uuid(),'e1','s','v','2026-10-01T12:00Z','2026-10-01T11:40Z','T20','c','t7','YES',0.44),
+             (gen_random_uuid(),'e1','s','v','2026-10-01T12:00Z','2026-10-01T12:26Z','T20','c','t8','YES',0.97);`).ok);
+    assert.equal(Number(asReader(DBX, 'select count(*) from t20_observations_v1;').out), Number(before) + 1);
+    assert.equal(asReader(DBX, `select count(*) from t20_observations_v1 where token_id = 't8';`).out, '0');
+  });
+
+  test('stored view columns: every column of each projection exists on the raw table, derived flag included, and none is outcome-shaped', () => {
+    const cols = asReader(DBX, `select table_name || ':' || count(*) from information_schema.columns where table_schema = 'blind_obs' group by table_name order by 1;`).out;
+    assert.equal(cols, 'inplay_observations_v1:54\nprematch_observations_v1:47\nt20_observations_v1:40');
+  });
+
+});
+
+describe('the single operator script on PostgreSQL', { skip: SKIP }, () => {
+  test('operator script: runs atomically on the exact DBClone ledger and yields the expected catalog proof', () => {
+    freshDb('blind_sem_op');
+    try {
+      const run = psql(OWNER, 'blind_sem_op', operatorSql);
+      assert.ok(run.ok, run.err);
+      const proof = JSON.parse(psql(OWNER, 'blind_sem_op', `select row_to_json(t) from (${BLIND_INPUT_CATALOG_SQL}) t;`).out);
+      assert.deepEqual(evaluateBlindCatalog(proof), []);
+      assert.equal(asOwner('blind_sem_op', `select count(*) from supabase_migrations.schema_migrations;`).out, String(BLIND_EXPECTED_LEDGER.length), 'script writes nothing to the ledger');
+      const again = psql(OWNER, 'blind_sem_op', operatorSql);
+      assert.equal(again.ok, false);
+      assert.match(again.err, /OPERATOR_ALREADY_APPLIED_OR_PARTIAL/);
+    } finally { admin('drop database if exists blind_sem_op;'); dropClusterRoles(); }
+  });
+
+  test('operator script fails closed on ledger drift (e.g. Production or a changed clone) and leaves nothing behind', () => {
+    for (const mutate of [
+      `delete from supabase_migrations.schema_migrations where version = '20261012190000';`,
+      `insert into supabase_migrations.schema_migrations(version) values ('20261012195000');`,
+      `delete from supabase_migrations.schema_migrations;`,
+    ]) {
+      freshDb('blind_sem_op', { prepare: mutate });
+      try {
+        const run = psql(OWNER, 'blind_sem_op', operatorSql);
+        assert.equal(run.ok, false);
+        assert.match(run.err, /OPERATOR_LEDGER_DRIFT_NOT_DBCLONE_OR_CHANGED/);
+        assert.equal(admin(`select count(*) from pg_roles where rolname like 'blind_%';`).out, '0');
+        assert.equal(admin(`select count(*) from pg_namespace where nspname = 'blind_obs';`, 'blind_sem_op').out, '0');
+      } finally { admin('drop database if exists blind_sem_op;'); dropClusterRoles(); }
+    }
+  });
+
+  test('operator script rolls back everything when the in-script ACL assertion fails (different PUBLIC definer function)', () => {
+    freshDb('blind_sem_op', { prepare: `create function public.other_definer() returns int language sql security definer as $$ select 1 $$; grant execute on function public.other_definer() to public;` });
+    try {
+      const run = psql(OWNER, 'blind_sem_op', operatorSql);
+      assert.equal(run.ok, false);
+      assert.match(run.err, /BLIND_DEFINER_FUNCTION_EXPOSURE:blind_model_reader:public\.other_definer/);
+      assert.equal(admin(`select count(*) from pg_roles where rolname like 'blind_%';`).out, '0');
+      assert.equal(admin(`select has_function_privilege('anon', 'public.record_football_execution_matrix_s1s2s3_evidence(jsonb)', 'EXECUTE')::text || ':' || (select count(*) from pg_proc p cross join lateral aclexplode(p.proacl) a where p.proname = 'record_football_execution_matrix_s1s2s3_evidence' and a.grantee = 0);`, 'blind_sem_op').out, 'true:1', 'revoke rolled back with the transaction');
+    } finally { admin('drop database if exists blind_sem_op;'); dropClusterRoles(); }
   });
 });
 
