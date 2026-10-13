@@ -1,0 +1,79 @@
+{
+  "schema_version": "1",
+  "completion_id": "BOX_B_SINGLE_RELEASE_FINAL_V2__2026-10-13__release-hold",
+  "task_id": "BOX_B_SINGLE_RELEASE_FINAL_V2",
+  "task_class": "env-deploy / DBClone-only migration payload consolidation",
+  "risk_class": "R4_CONTUR_PRODUCTION_BOUNDARY",
+  "executor": "claude_code_cloud",
+  "environment": "claude.ai cloud container (linux); local PostgreSQL 16.15 scratch cluster only; no real database contacted",
+  "repository": "POLYPROPICKS/PREMVP",
+  "branch": "claude/vigilant-wozniak-sqw3fb",
+  "base_sha": "809093ee09c46ff7ecb588cdc30266465d018c0b",
+  "result_sha": "84bcb90babc495017426863ccf74b560fb443e32",
+  "origin_main_sha": "2673a7e90e0309cbbeb7bbec17028b6c61405eae",
+  "worktree_before": "clean",
+  "worktree_after": "clean",
+  "files_changed": [
+    "ops/research-clone/box-b/build_release_payload_v2.py",
+    "ops/research-clone/box-b/release_v2/RELEASE_V2.md",
+    "ops/research-clone/box-b/release_v2/manifest.json",
+    "ops/research-clone/box-b/release_v2/payload.sql",
+    "ops/research-clone/box-b/release_v2/pg_test_receipt.txt",
+    "tests/research-clone/boxBApplyOneQuery.mjs",
+    "tests/research-clone/boxBReleaseV2Behavior.sh",
+    "tests/research-clone/boxBReleaseV2Static.test.ts"
+  ],
+  "commands_run": [
+    {"command": "python3 ops/research-clone/box-b/build_release_payload_v2.py (x2, and again in a fresh worktree)", "exit_code": 0, "purpose": "Deterministic build; payload sha256 3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8 identical every time; zero diff after rebuild"},
+    {"command": "node --import tsx --test tests/research-clone/boxBReleaseV2Static.test.ts tests/research-clone/boxBOutcomeStatic.test.ts", "exit_code": 0, "purpose": "Static byte-level gate: 10/10"},
+    {"command": "bash tests/research-clone/boxBReleaseV2Behavior.sh ops/research-clone/box-b/release_v2/pg_test_receipt.txt", "exit_code": 0, "purpose": "PostgreSQL 16 semantic suite on the payload sent as one simple-protocol query: BOXB_PG_V2_RESULT=PASS"},
+    {"command": "npm run control-plane:check", "exit_code": 0, "purpose": "Control-plane validation; 439 control-plane tests pass"},
+    {"command": "git diff --check", "exit_code": 0, "purpose": "Whitespace check clean"}
+  ],
+  "tests": [
+    {"name": "Byte-level hashes and verbatim composition (static)", "result": "PASS", "detail": "10/10 incl. v1 gate; payload embeds migration 0643c807, pilot c45455b1, operator verification block verbatim; 41 receipt + 20 revision inserts; no tx control, no supabase_migrations, no sentinel"},
+    {"name": "PostgreSQL 16 semantic suite", "result": "PASS", "detail": "56 probes; append-only; ACL for anon/authenticated/PUBLIC/blind_model_reader/service_role; 20 distinct condition_id and 20 FINAL; 11 negative controls detected"},
+    {"name": "Idempotency / replay / atomicity", "result": "PASS", "detail": "pilot reload twice keeps 20/41; second apply refused by replay guard; mid-batch failure and failing verification roll back schema and rows; supabase_migrations unchanged"},
+    {"name": "control-plane:check", "result": "PASS", "detail": "439 tests, snapshot and project-package checks"},
+    {"name": "PostgreSQL 17 / real Supabase endpoint behaviour", "result": "NOT_RUN", "detail": "Only PG16 scratch cluster; single-batch atomicity of the real migration API not verified"},
+    {"name": "Gate 1 (/verify)", "result": "NOT_RUN", "detail": "HOLD: ops/ and tests/ unclassified; no Founder-approved SQL-only exception exists"},
+    {"name": "Independent R4 on final payload", "result": "NOT_RUN", "detail": "Not run: STOP condition (no approved gate)"},
+    {"name": "DBClone business verification (20 FINAL, 41 receipts, ACL, ledger)", "result": "NOT_RUN", "detail": "Nothing applied; Architect verifies after separately authorized apply"}
+  ],
+  "required_reviewers": ["premvp.reviewer.contur_gate.v1"],
+  "invoked_reviewers": [],
+  "reviewer_receipts": [],
+  "evidence": [
+    {"id": "E1_PAYLOAD", "evidence_class": "PROVEN_IN_RUNTIME", "statement": "Single payload ops/research-clone/box-b/release_v2/payload.sql, 262273 bytes, sha256 3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8, built from frozen PR #529 inputs at 809093ee; reproducible from a fresh checkout of 84bcb90b.", "business_result": false},
+    {"id": "E2_LOCAL_PG", "evidence_class": "PROVEN_IN_RUNTIME", "statement": "On a local PostgreSQL 16.15 scratch cluster the payload applies as one simple-protocol batch to 20 distinct FINAL revisions and 41 receipts; failures roll back completely; ledger untouched. This is not DBClone evidence.", "business_result": false},
+    {"id": "E3_TARGET", "evidence_class": "SUPPORTED", "statement": "Target identity is delegated to the project-bound migration API (exact project ref nppznoujvnyjargjkmnv); the payload contains no identity claim. No Production credential was used and no database was contacted.", "business_result": false},
+    {"id": "E4_GATE1", "evidence_class": "PROVEN_IN_RUNTIME", "statement": "Gate 1 remains HOLD (verify.md: unknown path category). No Founder approval of a limited SQL-only exception exists in the mission text, in PR #529 comments or in the repository, so none is recorded and none is presented as PASS.", "business_result": false},
+    {"id": "E5_R4", "evidence_class": "NOT_PROVEN", "statement": "No R4 receipt exists for this payload. Per the mission STOP rule (no approved gate) it was not requested; the earlier R4 claim on 809093ee does not cover the changed executable wrapper and added checks.", "business_result": false},
+    {"id": "E6_RESIDUAL", "evidence_class": "NOT_PROVEN", "statement": "Residual risks: single-batch atomicity of the real Supabase migration endpoint and PG17 privilege behaviour are unverified; both Gamma and CLOB receipts come from Polymarket infrastructure.", "business_result": false}
+  ],
+  "capability_changes": [],
+  "state_delta_proposal": null,
+  "runtime_changed": false,
+  "deployment_changed": false,
+  "database_changed": false,
+  "forbidden_actions_respected": true,
+  "verdict": "BLOCKED",
+  "outcome_class": "HARD_BLOCKED",
+  "hard_stop": {
+    "hard_stop_id": "MISSING_REQUIRED_FOUNDER_AUTHORIZATION",
+    "recovery_attempts": [
+      {"id": "R_FIND_EXCEPTION", "action": "Searched the mission text, PR #529 comments and the repository for a Founder-approved limited SQL-only Gate 1 exception", "outcome": "None found", "exhausted": true},
+      {"id": "R_CANONICAL_GATE", "action": "Re-checked verify.md modes: docs misclassifies executable SQL, full requires a build excluded by the mission", "outcome": "No permitted canonical DBClone-only gate", "exhausted": true}
+    ],
+    "unrecoverable_evidence": "Mission STOP rule: without an approved Gate 1 exception the independent R4 and the handoff cannot proceed. Approving the exception is a Founder-only decision; the agent may not self-authorize or mislabel executable SQL as docs."
+  },
+  "operator_actions": null,
+  "blockers": [
+    "Gate 1 = HOLD and no Founder-approved limited SQL-only exception",
+    "Independent R4 premvp.reviewer.contur_gate.v1 on payload 3e852ebe and its stored receipt not obtained (blocked by the missing exception)",
+    "Single-batch atomicity of the real migration API and PG17 privileges unverified",
+    "No separate Founder authorization for the apply"
+  ],
+  "founder_action": "Reply with one line approving (or refusing) a limited Gate 1 exception for SQL-only payload 3e852ebe at commit 84bcb90b, recorded as an exception and not as PASS; on approval R4 is run and its receipt committed under release_v2/r4/.",
+  "execution_economics": null
+}
