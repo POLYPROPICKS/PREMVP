@@ -55,8 +55,8 @@ historical archive is **not** the fix (D5); making them unreachable for the mode
     there and not on the real views.
   * Definer views read the raw tables with the executing owner's rights; the migration therefore also asserts that the
     owner can read them (including the RLS owner-bypass rule) so the views cannot silently become empty.
-* **As-of horizon** (`blind_obs.model_horizon`, single row): readable and writable by neither the reader nor the API
-  roles; written only by `blind_horizon_writer`. No row means **no visible observation** (fail closed). The horizon is
+* **As-of horizon** (`blind_obs.model_horizon`, single row): not directly readable and not writable by the reader or the API
+  roles (its position can still be inferred from which rows and `asof_evidence` values the reader sees); written only by `blind_horizon_writer`. No row means **no visible observation** (fail closed). The horizon is
   run-scoped: one horizon per decision cut, set by the orchestrator, never by the model.
 * **Fail-closed assertion inside the migration** (PostgreSQL's own effective-privilege functions, so `PUBLIC` grants,
   inherited membership and column ACLs are all counted): the four roles hold no relation, sequence, `SECURITY DEFINER`
@@ -148,8 +148,9 @@ Reference `PR #526` is untouched by this work.
 ## 7. DBClone read-only observations used to prepare this release (2026-10-13 ~05:15Z, aggregates only)
 
 Taken through the sanctioned DBClone REST endpoint (schema shape and counts; no row of outcome data), target ref confirmed as
-`nppznoujvnyjargjkmnv`. The migration ledger, owners and ACLs are **not** readable from the executor and rest on the
-independent preflight recorded in PR #528; the operator script re-asserts the ledger itself.
+`nppznoujvnyjargjkmnv`. The migration ledger, owners and ACLs are **not** readable from the executor: that the real ledger equals the 34-version history,
+and the ACL facts, are `RUNTIME_UNVERIFIED` here and rest on the independent preflight recorded in PR #528; the operator script's
+own guard is the runtime check.
 
 | Raw table (projected) | Rows | Oldest `observed_at` | Newest `observed_at` |
 |---|---:|---|---|
@@ -160,8 +161,8 @@ independent preflight recorded in PR #528; the operator script re-asserts the le
 * All projected columns exist on the real tables (0 missing); the only unprojected columns are `capture_run_id`,
   `reservation_id`, `live_policy_eligibility`, `live_policy_rejection_reason`.
 * **Coverage gap, not closed**: `research_evidence_page_rows` (599,149 rows) is not connected to any projection. A passing
-  boundary check MUST NOT be read as coverage of the historical research corpus. Prematch capture is event-driven, so a quiet
-  window (the newest prematch row was about seven hours old at read time) is not by itself a sync fault; T20 and in-play were
+  boundary check MUST NOT be read as coverage of the historical research corpus. The newest prematch row was about seven hours old at read time;
+  whether that is a quiet capture window or a sync gap is an **unverified assumption either way** and must be checked against the collector; T20 and in-play were
   under an hour old. Freshness is a measurement, not a completeness claim for a model day.
 * Replenishment: the views read the raw tables directly, so new rows from the existing collectors appear with no copy step
   (proved on PostgreSQL 17.6 with a fixture write; a real-clone check follows the apply).
@@ -171,5 +172,7 @@ independent preflight recorded in PR #528; the operator script re-asserts the le
 The registered route is `--clone-blind-input` (needs a Management API access token). Where the executor has none, a single
 DBClone-only operator script (`ops/research-clone/operator/20261012200000_blind_model_input_authority.operator.sql`) wraps the
 byte-identical pinned migration with a target guard (exact ledger, PostgreSQL 17, nothing already applied, raw tables present),
-timeouts, one transaction and a final catalog read-back. It is **not** a registered release and writes no ledger row; the receipt
+timeouts, one transaction and a final catalog read-back. It is **not** a registered release, has **no dry-run** (the registered mode does; the section 3 rule of a mandatory rolled-back dry-run
+is met only by the registered route), and writes no ledger row. Its one-transaction atomicity is proved with psql on PostgreSQL 17.6;
+the Supabase SQL Editor's behaviour on a mid-script error is `RUNTIME_UNVERIFIED`; the receipt
 is reconciled later through the registered mode, before any restricted `LOGIN` credential is deployed.

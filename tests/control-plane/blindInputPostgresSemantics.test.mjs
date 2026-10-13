@@ -119,6 +119,19 @@ describe('blind input authority on real PostgreSQL', { skip: SKIP }, () => {
     assert.equal(asReader(DB, `select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace where p.prosecdef and n.nspname = 'public' and has_function_privilege('blind_model_reader', p.oid, 'EXECUTE');`).out, '0');
   });
 
+  test('reconcile path: re-applying the exact body over an applied state succeeds while the roles are still NOLOGIN, and changes nothing', () => {
+    const fingerprint = () => admin(`select md5(string_agg(x, '|' order by x)) from (
+      select 'r:' || rolname || rolsuper || rolbypassrls || rolinherit || rolcanlogin as x from pg_roles where rolname like 'blind_%' or rolname like 'research_ledger%' or rolname like 'research_settlement%'
+      union all select 'c:' || n.nspname || '.' || c.relname || ':' || coalesce(c.relacl::text, '') || coalesce(c.reloptions::text, '') from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'blind_obs'
+      union all select 'f:' || proname || coalesce(proacl::text, '') from pg_proc where proname = 'record_football_execution_matrix_s1s2s3_evidence') t;`, DB).out;
+    assert.ok(admin('alter role blind_model_reader nologin; alter role blind_horizon_writer nologin;', DB).ok);
+    const before = fingerprint();
+    const again = asOwner(DB, wrap(migrationSql, 'COMMIT'));
+    assert.ok(again.ok, again.err);
+    assert.equal(fingerprint(), before);
+    assert.ok(admin('alter role blind_model_reader login; alter role blind_horizon_writer login;', DB).ok);
+  });
+
   test('no horizon row = fail closed: the reader sees zero observations', () => {
     assert.equal(counts(DB), '0|0|0');
   });

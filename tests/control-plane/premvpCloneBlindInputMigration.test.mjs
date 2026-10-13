@@ -212,6 +212,11 @@ test('the single operator script embeds the pinned migration byte-for-byte, guar
   assert.match(guard, /OPERATOR_ALREADY_APPLIED_OR_PARTIAL/);
   assert.match(guard, /set local lock_timeout = '5s'/);
   assert.match(op, /nppznoujvnyjargjkmnv/);
+  const header = op.slice(0, op.indexOf('begin;'));
+  for (const [key, want] of Object.entries(BLIND_CATALOG_EXPECTED)) assert.ok(header.includes(`${key}=${want}`), `header states expected ${key}=${want}`);
+  assert.equal((header.match(/\b[a-z_]+_n=\d+/g) ?? []).length, Object.keys(BLIND_CATALOG_EXPECTED).length, 'header lists exactly the expected proof');
+  assert.match(header, /There is NO dry-run on this route/);
+  assert.match(header, /RUNTIME_UNVERIFIED/);
   assert.equal(op.match(/\bcommit;/g).length, 1);
   const wrapper = lexSql(op.replace(sql.trimEnd(), '').replace(BLIND_INPUT_CATALOG_SQL, '')).code;
   assert.doesNotMatch(wrapper, /\b(?:insert|update|delete|drop|truncate|grant|revoke|create|alter)\b/i, 'wrapper adds no write statement of its own');

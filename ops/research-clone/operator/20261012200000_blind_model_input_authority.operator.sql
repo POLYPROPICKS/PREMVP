@@ -1,14 +1,23 @@
 -- =====================================================================================================================
 -- DBCLONE-ONLY OPERATOR SCRIPT: BLIND_MODEL_INPUT_AUTHORITY_V1 (migration 20261012200000_blind_model_input_authority)
 -- Run ONCE, as the project owner role, in the Supabase SQL Editor of project nppznoujvnyjargjkmnv (Research DBClone, PostgreSQL 17.x).
--- Confirm the project ref in the browser URL first. NEVER run on nbnldzfsxffztsfrrxqy (Production): the target guard below aborts
--- unless the migration ledger is exactly the DBClone history observed before this release.
+-- Confirm the project ref in the browser URL first. NEVER run on nbnldzfsxffztsfrrxqy (Production). The guard below checks the migration
+-- LEDGER (exactly the DBClone history observed before this release); it proves history, not project identity, and the in-body
+-- fail-closed assertions are the second line of defence.
 -- Reviewed migration SHA-256: 2eaf16c933f51f51036faee38d9b247dd04b727f94a0ad9a8c9796125f6bdf18  (PR #528; body below is byte-identical to the Git file)
--- Atomic: any failed guard or assertion rolls back everything (roles, schema, views, ACL change). No data row is read or written.
+-- One transaction: any failed guard or assertion aborts and nothing is committed (proved with psql on PostgreSQL 17.6; how the
+-- Supabase SQL Editor reports and handles an error mid-script is RUNTIME_UNVERIFIED: on ANY error treat the run as not applied and
+-- report the error text, do not retry blindly). There is NO dry-run on this route (the registered mode has one; this script does not).
+-- No business data row is read or written (the guard reads migration-ledger rows only).
 -- Limitation (not a registered release): the SQL Editor creates no registered migration receipt and this script writes nothing to
--- supabase_migrations. Reconcile the receipt later through the registered --clone-blind-input mode (the body is re-runnable until a
--- restricted LOGIN credential is deployed; reconcile BEFORE deploying it).
--- Result: the last statement returns one row of effective-privilege counts; every value must equal the expected proof (see the PR).
+-- supabase_migrations. Reconcile the receipt later through the registered --clone-blind-input mode BEFORE any restricted LOGIN
+-- credential is deployed (the body re-applies cleanly over an applied state while the roles are still NOLOGIN; tested on PG 17.6).
+-- EXPECTED RESULT of the final SELECT (one row), every value exact:
+--   roles_present_n=4  roles_unsafe_n=0  role_membership_n=0  relation_exposure_n=0  sequence_exposure_n=0
+--   definer_function_exposure_n=0  schema_create_exposure_n=0  views_ok_n=3  reader_view_select_n=3
+--   reader_forbidden_named_n=0  view_json_or_outcome_columns_n=0  blind_schema_relations_n=4  blind_public_or_api_grants_n=0
+-- If the script aborts with BLIND_DEFINER_FUNCTION_EXPOSURE / BLIND_RELATION_EXPOSURE / OPERATOR_LEDGER_DRIFT..., nothing changed:
+-- send the full error text (it names the object); do not edit the script.
 -- =====================================================================================================================
 begin;
 set local lock_timeout = '5s';
