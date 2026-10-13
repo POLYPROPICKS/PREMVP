@@ -1,0 +1,18 @@
+payload.sql sha256: 70691844fd8649be93605a9096bca5ddbbd598355707450035e40409e0984838
+test.sql sha256: 0a580dd432f1ea7c3747c8184ea4aa9fb6f65822dfe9e4c2c6373e3f0d067c81
+server: PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.
+NOTICE:  PASS T1.1 model role inserted 8 BET + 1 SKIP
+NOTICE:  PASS T1.2 model role denied on Box B, ledger select, join and scoreboard (42501)
+NOTICE:  PASS T1.3 FINAL / VOID / CONFLICT / FINAL->PENDING-regressed markets rejected by definer guard without Box B access
+NOTICE:  PASS T1.4 model role has no UPDATE/DELETE privilege
+NOTICE:  PASS T2.1 UPDATE/DELETE/TRUNCATE rejected for table owner/superuser
+NOTICE:  PASS T2.2 replay (ON CONFLICT DO NOTHING / duplicate) leaves digest and frozen_at unchanged; 9 rows
+NOTICE:  PASS T3.1 client-supplied frozen_at ignored (server clock)
+NOTICE:  PASS T3.2 future observation and incomplete BET economics rejected
+NOTICE:  PASS T4.1 before any outcome: LOOKUP_FAILED:1,PENDING:7 (no false LOSS)
+NOTICE:  PASS T5.1 all eight states (7 required + NOT_FORWARD) reachable and separate: CONFLICT:1,FINAL_LOSS:1,FINAL_WIN:1,LOOKUP_FAILED:1,NOT_FORWARD:1,PENDING:1,UNKNOWN_FEE_AUTHORITY:1,VOID:1
+NOTICE:  PASS T5.2 UNKNOWN-fee and NOT_FORWARD rows never scored; outcome_result set only on FINAL_WIN/FINAL_LOSS (2 rows)
+NOTICE:  PASS T5.3 scoreboard net_roi = NOT_PROVEN on every row
+NOTICE:  PASS T6.1 service_role reads join, cannot write decisions (reconciliation separated from decision writes)
+NOTICE:  PASS T6.2 anon/authenticated/blind_model_reader hold zero privileges on ledger objects
+ ALL_TESTS_PASSED
