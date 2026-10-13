@@ -1,0 +1,20 @@
+# Verbatim reviewer report (premvp.reviewer.contur_gate.v1), reviewed_sha 7bc0148e3d5e4355d43d36ac95b34c83a12ef648
+CONTUR_GATE_REVIEW_V1:
+profile_version: CONTUR_GATE_REVIEWER_V1
+CURRENT_SCOPE_VERDICT: PASS
+NEXT_PHASE_READINESS: NOT_IN_SCOPE
+weather_contract_loaded: NO
+child_shell_used: NO
+BLOCKING findings: none.
+(a) Can a market be skipped permanently by the new head/recheck cursor logic? No. The only permanent advance past a market is a BoxBRejected one (counted, makes that cycle FAILED, retried at the 7-day resweep).
+(b) Can any failure path exit 0 with STATUS SUCCESS? Only in narrow low-volume cases (provider outage with < 10 processed markets; outage diluted by unchanged rechecks; one permanently failing triage chunk while other intake progresses). None can create a LOSS or a FINAL. Non-blocking (N1, N4).
+(c) Can the intermediate checkpoint writes make the reader pick a stale or foreign state? No for the single-run case (reader selects source = market-outcome-collector-v1 ordered by finished_at desc, limit 1; the final row is always newest).
+Non-blocking findings:
+N1 fetch_lookup_failed counted only on the persist path (outage under-detection)  -> FIXED in e928b463.
+N2 trailing comment swallowed generated_count/rejected_count in writeCheckpoint  -> FIXED in e928b463.
+N3 head scan keys on observed_at; a late-synced row older than watermark-60s is found only by the 7-day backfill resweep (delayed, not permanent; design as in the PASS-reviewed parent).
+N4 a triage chunk failing every cycle with a non-429 error holds recheck_cursor behind it; stalled_cycles resets when other work progresses (low likelihood).
+N5 finished_at comes from the app clock; without an overlap guard an older instance's final row could land last (rework only, revisions are idempotent).
+N6 job_runs.status is always "success"; the real verdict lives in diagnostics.stats.verdict, the console STATUS line and the exit code.
+N7 the cron exit fold covers D, S and C only; failures of sync/model-ready/direct/conveyor do not turn the run red (pre-existing, outside this change).
+N8 the capacity guard uses an estimated count and can trigger late rather than early.

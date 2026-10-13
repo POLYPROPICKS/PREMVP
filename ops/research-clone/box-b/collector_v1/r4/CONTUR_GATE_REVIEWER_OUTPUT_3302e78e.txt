@@ -1,0 +1,5 @@
+# Verbatim summary of the first reviewer report, reviewed_sha 3302e78e5cfa58f5d4fa87e8347761251d3b589a (superseded by e928b463)
+CURRENT_SCOPE_VERDICT: PASS; NEXT_PHASE_READINESS: NOT_IN_SCOPE; BLOCKING findings: none.
+Non-blocking N1-N9 (triage failures invisible in STATUS, persistent 429 exits 0, deterministic non-BOX_B DB error stalls a source, BoxBRejected skipped,
+outage burns budget on LOOKUP_FAILED, strict observed_at > at page edge, job_runs.status always success, readRecheckPage grows, test gaps)
+-> items 1, 2, 5 (partly), 6, 7 (comment only), 9 addressed in 7bc0148e / e928b463.

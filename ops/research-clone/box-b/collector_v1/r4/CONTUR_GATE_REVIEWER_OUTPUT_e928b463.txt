@@ -1,0 +1,42 @@
+# Verbatim reviewer report (premvp.reviewer.contur_gate.v1), reviewed_sha e928b4633ff4c209868fb3c255b344c722f9c398
+CONTUR_GATE_REVIEW_V1:
+profile_version: CONTUR_GATE_REVIEWER_V1
+CURRENT_SCOPE_VERDICT: PASS
+NEXT_PHASE_READINESS: NOT_IN_SCOPE
+weather_contract_loaded: NO
+child_shell_used: NO
+findings:
+Scope: reviewed_sha e928b4633ff4c209868fb3c255b344c722f9c398. I read only lib/research/marketOutcomeCollector.ts and lib/research/marketOutcomeCollectorStore.ts. I did not open the test file or run anything. The test results (28/28, build, control-plane, 264/265) are taken from the packet and not independently verified. 0 blocking findings. N1 and N2 are both applied correctly.
+
+N1 (fetched_total / fetch_lookup_failed):
+- In persistMarket, stats.fetched_total++ and `if (c.status === "LOOKUP_FAILED") stats.fetch_lookup_failed++` now run before the sameSubstance early return and before the try block.
+- In cycleVerdict, the outage rule is fetched_total >= 5 && fetch_lookup_failed/fetched_total > 0.5.
+- The fetched_total field is added to CycleStats and emptyStats. It is additive JSON in job_runs diagnostics.
+
+N2 (writeCheckpoint):
+- The comment now sits on its own line (line 27). generated_count: stats.revisions_inserted and rejected_count: stats.db_rejected + stats.db_errors are on line 28 and are written.
+- The reviewer did not read the guarding test.
+
+(a) Double-count or missed paths: none found.
+- 429: processMarkets checks m.rateLimited and returns (halt) before persistMarket, so a 429 market is counted in neither counter. 429 is no verdict and stays out of the outage ratio. Correct.
+- Unchanged skip: counted once, before the early return. This is the intended fix, because an outage over already-failed markets is still an outage.
+- DB error / RETRY: counted once in fetched_total and fetch_lookup_failed before the try block. The market is not in `done`. It cannot be re-fetched in the same cycle: ctx.attempted is added before the fetch, and newOnly filters on it for the head and backfill phases. The recheck phase only selects ids that already have a revision; head and backfill only take ids with none, so the sets are disjoint. The cycle is FAILED anyway through db_errors > 0.
+- BoxBRejected: counted once before the try, returns DONE, and is not retried in the cycle. The cycle is FAILED through db_rejected > 0.
+- The Node event loop makes the increments synchronous, so concurrency 4 cannot race them.
+- Other paths: 5xx and network errors become LOOKUP_FAILED and count correctly. They are retried inside getReceipt but counted once per market.
+- Pre-existing and not a regression: unchanged skips do not increment by_status.
+
+(b) False FAILED from the 5-market floor in a realistic steady state: unlikely today, with one conditional risk. Non-blocking.
+- Live DBClone has 0 LOOKUP_FAILED across 1,120 markets, so the rule cannot fire now.
+- LOOKUP_FAILED is a RECHECK status. Every recheck rotation (6h gap, up to 60 per cycle) re-fetches every such market. Those re-fetches are unchanged skips, and N1 now counts them in the ratio.
+- If at least 5 markets became permanently LOOKUP_FAILED (e.g. a Gamma [] giving gamma_shape_ok=false for a delisted market), a recheck cycle with few new or changed markets could see failed/fetched above 0.5 and report FAILED, which exits 1 without a real provider outage. Fresh head intake in the same cycle dilutes this.
+- Deliberate trade-off of N1; the old processed >= 10 rule could miss real outages.
+- Mitigations, if it ever shows up: exclude unchanged-LOOKUP_FAILED rechecks from the denominator, or raise the floor. Monitor diagnostics.stats.verdict_reasons for provider_outage. No change needed for this SHA.
+- A FAILED verdict has no data-safety consequence: the final checkpoint is still written, cursors are unaffected, nothing is persisted from a 429.
+
+(c) Invariants from 7bc0148e: no regression.
+- Cursor safety: the settledPrefix, `clean`, firstOpen and head_watermark never-moves-backwards logic is untouched. The N1 counters sit outside done/RETRY semantics, so return values are unchanged.
+- No LOSS from absence or 429: classifyOutcome is unchanged. Absence or failure gives LOOKUP_FAILED, closed without a proven winner never gives FINAL, and a 429 persists nothing.
+- DBClone-only writes: the store writes only job_runs (the checkpoint), market_outcome_provider_receipts and market_outcome_revisions. N2 only changes the job_runs row contents. No new tables or paths.
+
+Next phase: none is named in the packet, so NEXT_PHASE_READINESS is NOT_IN_SCOPE.
