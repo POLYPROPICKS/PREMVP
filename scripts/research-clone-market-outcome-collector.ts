@@ -2,10 +2,11 @@
 // Flags: --report (read-only coverage report, no provider calls, no writes)
 //        --force-recheck (proof only: ignore the recheck rotation gap)
 //        --max-new=N --max-rechecks=N --deadline-ms=N (bounded overrides; env MARKET_OUTCOME_* also honoured)
-// Never reads production credentials. Exit 1 on DB/code failure or provider outage (visible in Railway); it is a separate
+// Never reads production credentials. STATUS is SUCCESS|PARTIAL|FAILED from cycleVerdict(); exit 1 only for FAILED (DB/code failure,
+// provider outage, capacity limit, or 429/triage failures with no progress for 3 cycles). It is a separate
 // `;` step in the scheduled command, so its failure cannot suppress sync, paper decisions or paper settlement.
 import { createClient } from "@supabase/supabase-js";
-import { DEFAULT_CONFIG, COLLECTOR_SOURCE, cycleFailed, runCollectorCycle, type CollectorConfig } from "../lib/research/marketOutcomeCollector";
+import { DEFAULT_CONFIG, COLLECTOR_SOURCE, cycleVerdict, runCollectorCycle, type CollectorConfig } from "../lib/research/marketOutcomeCollector";
 import { createSupabaseStore } from "../lib/research/marketOutcomeCollectorStore";
 
 const CLONE_REF = "nppznoujvnyjargjkmnv";
@@ -53,13 +54,13 @@ async function main() {
     forceRecheck: process.argv.includes("--force-recheck"),
     concurrency: num("concurrency", "MARKET_OUTCOME_CONCURRENCY", DEFAULT_CONFIG.concurrency),
   };
+  const stop = new AbortController();
+  process.once("SIGTERM", () => stop.abort()); // Railway stop/redeploy: finish in-flight work, persist the checkpoint, exit
+  cfg.abortSignal = stop.signal;
   const { stats, state } = await runCollectorCycle(createSupabaseStore(db), { fetchImpl: fetch, now: () => new Date(), timeoutMs: 20_000 }, cfg);
-  const failed = cycleFailed(stats);
-  console.log(JSON.stringify({
-    STATUS: failed ? "FAILED" : stats.rate_limited || stats.deadline_hit ? "PARTIAL" : "SUCCESS",
-    source: COLLECTOR_SOURCE, stats, cursors: state,
-  }));
-  if (failed) process.exitCode = 1;
+  const verdict = cycleVerdict(stats);
+  console.log(JSON.stringify({ STATUS: verdict.status, reasons: verdict.reasons, source: COLLECTOR_SOURCE, stats, cursors: state }));
+  if (verdict.exit_code !== 0) process.exitCode = verdict.exit_code;
 }
 
 main().catch((e) => {

@@ -3,10 +3,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { createServer } from "node:http";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
-  BoxBRejected, DEFAULT_CONFIG, DISCOVERY_SOURCES, classifyOutcome, cycleFailed, emptyState, runCollectorCycle, sha256Hex,
-  type CollectorConfig, type CollectorState, type CollectorStore, type CycleStats, type DiscoverySource, type LatestRevision, type Receipt, type RevisionRow,
+  BoxBRejected, DEFAULT_CONFIG, DISCOVERY_SOURCES, STALL_FAIL_CYCLES, classifyOutcome, cycleFailed, cycleVerdict, emptyState, emptyStats, runCollectorCycle, sha256Hex,
+  type CollectorConfig, type CollectorState, type CollectorStore, type CycleStats, type DiscoverySource, type HeadPos, type LatestRevision, type Receipt, type RevisionRow,
 } from "../../lib/research/marketOutcomeCollector";
 
 const cid = (n: number) => "0x" + n.toString(16).padStart(64, "0");
@@ -52,6 +56,7 @@ function bodies(n: number, m: Mkt) {
 class World {
   markets = new Map<string, Mkt>();
   throttle = new Set<string>();
+  throttleTriage = false;
   down = false;
   calls = 0;
   add(n: number, m: Mkt) { this.markets.set(cid(n), m); }
@@ -66,6 +71,7 @@ class World {
     const m = this.markets.get(cond);
     if (url.includes("clob.polymarket.com")) return m ? resp(200, bodies(n, m).cl) : resp(404, '{"error":"not found"}');
     if (url.includes("condition_ids=") && url.split("condition_ids=").length > 2) { // batch triage
+      if (this.throttleTriage) return resp(429, "slow down");
       const ids = [...url.matchAll(/condition_ids=(0x[0-9a-f]{64})/g)].map((x) => x[1]!);
       return resp(200, JSON.stringify(ids.filter((i) => this.markets.get(i)?.closed).map((i) => JSON.parse(bodies(parseInt(i.slice(2), 16), this.markets.get(i)!).g)[0])));
     }
@@ -83,12 +89,18 @@ class FakeStore implements CollectorStore {
   src: Record<DiscoverySource, { condition_id: string; observed_at: string }[]> = Object.fromEntries(DISCOVERY_SOURCES.map((s) => [s, []])) as any;
   pageReads = 0;
   failInsertFor: { cond: string; err: Error } | null = null;
+  failFinalWrite = false; // simulates a kill between the last phase save and the final checkpoint row
+  receiptCountOverride: number | null = null;
   seed(table: DiscoverySource, ns: (number | string)[], at = "2026-10-01T09:00:00.000Z") { // older than the head window: only the backfill sweep sees it
     for (const n of ns) this.src[table].push({ condition_id: typeof n === "number" ? cid(n) : n, observed_at: at });
     this.src[table].sort((a, b) => (a.condition_id < b.condition_id ? -1 : 1));
   }
   async readCheckpoint() { return this.state ? structuredClone(this.state) : null; }
-  async writeCheckpoint(s: CollectorState, st: CycleStats) { this.state = structuredClone(s); this.jobRuns.push(structuredClone(st)); }
+  async writeCheckpoint(s: CollectorState, st: CycleStats) {
+    if (this.failFinalWrite && st.verdict !== null) throw new Error("KILLED_BEFORE_FINAL_CHECKPOINT");
+    this.state = structuredClone(s); this.jobRuns.push(structuredClone(st));
+  }
+  async countReceipts() { return this.receiptCountOverride ?? this.receipts.length; }
   async readBackfillPage(t: DiscoverySource, after: string | null, limit: number) {
     this.pageReads++;
     const rows = this.src[t].filter((r) => after === null || r.condition_id > after).slice(0, limit);
@@ -96,10 +108,14 @@ class FakeStore implements CollectorStore {
     for (const r of rows) { if (!/^0x[0-9a-f]{64}$/.test(r.condition_id)) { bad++; continue; } if (!ids.includes(r.condition_id)) ids.push(r.condition_id); }
     return { ids, malformed: bad, last: rows.length ? rows[rows.length - 1]!.condition_id : null, exhausted: rows.length < limit };
   }
-  async readHeadPage(t: DiscoverySource, since: string, limit: number) {
-    const rows = [...this.src[t]].filter((r) => r.observed_at > since).sort((a, b) => (a.observed_at < b.observed_at ? -1 : 1)).slice(0, limit);
+  async readHeadPage(t: DiscoverySource, pos: HeadPos, limit: number) {
+    const after = (r: { condition_id: string; observed_at: string }) =>
+      r.observed_at > pos.t || (pos.id !== null && r.observed_at === pos.t && r.condition_id > pos.id);
+    const rows = this.src[t].filter(after)
+      .sort((a, b) => (a.observed_at === b.observed_at ? (a.condition_id < b.condition_id ? -1 : 1) : a.observed_at < b.observed_at ? -1 : 1)).slice(0, limit);
+    const last = rows.length ? rows[rows.length - 1]! : null;
     return { rows: rows.filter((r) => /^0x[0-9a-f]{64}$/.test(r.condition_id)).map((r) => ({ id: r.condition_id, observed_at: r.observed_at })),
-      tail: rows.length ? rows[rows.length - 1]!.observed_at : null, malformed: 0, exhausted: rows.length < limit };
+      tail: last ? { t: last.observed_at, id: last.condition_id } : null, malformed: 0, exhausted: rows.length < limit };
   }
   async latestRevisions(ids: string[]) {
     const out = new Map<string, LatestRevision>();
@@ -281,7 +297,7 @@ test("malformed ids are counted and skipped; new markets appearing later are fou
   w.add(500, { closed: true, winner: 0 });
   await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100 }));
   assert.equal(s.count(), 6);
-  assert.ok(s.jobRuns[0]!.malformed_ids_skipped >= 2);
+  assert.ok(s.jobRuns[s.jobRuns.length - 1]!.malformed_ids_skipped >= 2);
   // a market first observed after the backfill finished (id sorts BELOW the cursor) is still discovered
   s.src.research_inplay_core_path_observations.push({ condition_id: cid(500), observed_at: "2026-10-13T11:00:00.000Z" });
   const after = s.pageReads;
@@ -327,4 +343,232 @@ test("head scan cut by the budget resumes at the first unsettled market's FIRST 
   }
   assert.equal(s.count(), N);
   assert.equal(s.revisions.length, N, "each market exactly one revision");
+});
+
+// ======================= BOX_B_ACTIVATE_AND_PROVE_HOURLY_V1: continuity hardening =======================
+
+function headWorld(n: number, observedAt: (i: number) => string) {
+  const w = new World(); const s = new FakeStore(); s.state = emptyState();
+  for (const k of Object.keys(s.state.sources)) s.state.sources[k]!.backfill_done_at = new Date().toISOString(); // isolate the head scan: the backfill sweep must not rescue lost rows
+  for (let i = 1; i <= n; i++) {
+    w.add(i, { closed: true, winner: 0 });
+    s.src.reservation_market_observations.push({ condition_id: cid(i), observed_at: observedAt(i) });
+  }
+  return { w, s };
+}
+
+test("head scan: markets tied on observed_at across a page edge are not lost (composite cursor), even when the tie is larger than a page", async () => {
+  const T = new Date(Date.now() - 3_600_000).toISOString();
+  const { w, s } = headWorld(23, () => T); // 23 rows share one timestamp, page size 5
+  await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 1000, pageSize: 5, headMaxPagesPerSource: 10, maxRechecks: 0 }));
+  assert.equal(s.count(), 23, "every tied market is discovered in the same cycle");
+  assert.equal(s.revisions.length, 23);
+});
+
+test("head scan: ties split across cycles by the market budget still lose nothing", async () => {
+  const T = new Date(Date.now() - 3_600_000).toISOString();
+  const { w, s } = headWorld(14, () => T);
+  for (let i = 0; i < 6 && s.count() < 14; i++) await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 4, pageSize: 5, headMaxPagesPerSource: 10, maxRechecks: 0 }));
+  assert.equal(s.count(), 14);
+});
+
+test("status model: SUCCESS / PARTIAL / FAILED and exit codes are derived in one place", () => {
+  const base = emptyStats(new Date());
+  assert.deepEqual([cycleVerdict(base).status, cycleVerdict(base).exit_code], ["SUCCESS", 0]);
+  for (const patch of [{ rate_limited: true }, { triage_failed: 2 }, { deadline_hit: true }] as Partial<CycleStats>[]) {
+    const v = cycleVerdict({ ...base, ...patch });
+    assert.deepEqual([v.status, v.exit_code], ["PARTIAL", 0], JSON.stringify(patch));
+    assert.ok(v.reasons.length > 0);
+  }
+  for (const patch of [{ db_errors: 1 }, { db_rejected: 1 }, { capacity_limit_hit: true, receipts_total: 9 }, { stalled_cycles: STALL_FAIL_CYCLES },
+    { processed_new: 20, fetch_lookup_failed: 15 }] as Partial<CycleStats>[]) {
+    const v = cycleVerdict({ ...base, ...patch });
+    assert.deepEqual([v.status, v.exit_code], ["FAILED", 1], JSON.stringify(patch));
+  }
+  assert.equal(cycleFailed({ ...base, rate_limited: true }), false);
+});
+
+test("persistent 429 on new markets: PARTIAL while it lasts, FAILED after 3 cycles without progress, recovers and resets", async () => {
+  const { w, s } = seeded(10);
+  for (const c of w.markets.keys()) w.throttle.add(c);
+  const verdicts: string[] = [];
+  for (let i = 0; i < STALL_FAIL_CYCLES; i++) {
+    const { stats } = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100, concurrency: 1 }));
+    verdicts.push(`${cycleVerdict(stats).status}:${cycleVerdict(stats).exit_code}`);
+    assert.equal(s.revisions.length, 0, "a 429 never becomes an outcome");
+  }
+  assert.deepEqual(verdicts, ["PARTIAL:0", "PARTIAL:0", "FAILED:1"]);
+  assert.equal(s.state!.stalled_cycles, STALL_FAIL_CYCLES);
+  w.throttle.clear();
+  const ok = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100 }));
+  assert.equal(cycleVerdict(ok.stats).status, "SUCCESS");
+  assert.equal(s.state!.stalled_cycles, 0);
+  assert.equal(s.count(), 10);
+});
+
+test("triage failures (429 and non-200) are visible: triage 429 halts as rate limit, PARTIAL, then FAILED when it never recovers; cursor stays behind", async () => {
+  const { w, s } = seeded(10);
+  await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100 }));
+  const pendingBefore = s.count("PENDING");
+  assert.ok(pendingBefore >= 2);
+  w.throttleTriage = true;
+  const out: string[] = [];
+  for (let i = 0; i < STALL_FAIL_CYCLES; i++) {
+    const { stats } = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 0, forceRecheck: true }));
+    assert.ok(stats.triage_failed >= 1); assert.equal(stats.rate_limited, true);
+    out.push(cycleVerdict(stats).status);
+  }
+  assert.deepEqual(out, ["PARTIAL", "PARTIAL", "FAILED"]);
+  assert.equal(s.state!.recheck_cursor, null, "cursor did not skip the triage-failed markets");
+  w.throttleTriage = false;
+  w.markets.set(cid(5), { closed: true, winner: 1 }); // resolves while triage was down
+  const rec = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 0, forceRecheck: true }));
+  assert.equal(cycleVerdict(rec.stats).status, "SUCCESS");
+  assert.equal(s.revisions.filter((r) => r.condition_id === cid(5)).at(-1)!.outcome_status, "FINAL");
+});
+
+test("checkpoint stays recoverable: a kill after a phase save resumes from the saved cursor without redoing or losing markets", async () => {
+  const base = Date.now() - 3 * 3_600_000;
+  const { w, s } = headWorld(12, (i) => new Date(base + i * 60_000).toISOString());
+  s.failFinalWrite = true;
+  await assert.rejects(runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 6, pageSize: 100, maxRechecks: 0 })), /COLLECTOR_CYCLE_FATAL|KILLED_BEFORE_FINAL_CHECKPOINT/);
+  assert.equal(s.count(), 6);
+  const saved = s.state!.sources.reservation_market_observations!.head_watermark;
+  assert.ok(saved, "head progress was persisted by the phase save, before the final row");
+  s.failFinalWrite = false;
+  const callsBefore = w.calls;
+  const { stats } = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100, pageSize: 100, maxRechecks: 0 }));
+  assert.equal(s.count(), 12);
+  assert.equal(s.revisions.length, 12, "no market written twice");
+  assert.equal(stats.processed_new, 6);
+  assert.ok(w.calls - callsBefore <= 6 * 3, "only the remaining markets hit the providers");
+});
+
+test("abort (SIGTERM) stops starting work, still writes the final checkpoint, and reports PARTIAL", async () => {
+  const { w, s } = seeded(10);
+  const ac = new AbortController(); ac.abort();
+  const { stats } = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100, abortSignal: ac.signal }));
+  assert.equal(stats.deadline_hit, true);
+  assert.equal(cycleVerdict(stats).status, "PARTIAL");
+  assert.equal(s.jobRuns.at(-1)!.verdict, "PARTIAL");
+  assert.equal(s.revisions.length, 0);
+});
+
+test("capacity limit: at the receipt cap new intake stops, rechecks still run, and the cycle is FAILED with the reason", async () => {
+  const { w, s } = seeded(10);
+  s.receiptCountOverride = 400_000;
+  const { stats } = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100 }));
+  assert.equal(s.revisions.length, 0);
+  assert.equal(stats.capacity_limit_hit, true);
+  const v = cycleVerdict(stats);
+  assert.deepEqual([v.status, v.exit_code], ["FAILED", 1]);
+  assert.match(v.reasons.join(), /capacity_limit/);
+});
+
+// ---- the script's real exit code / STATUS against a minimal PostgREST stand-in (no network, no real DB) ----
+async function runScript(mode: "ok" | "count_500" | "capacity"): Promise<{ code: number | null; out: string }> {
+  const server = createServer((req, res) => {
+    const url = req.url ?? "";
+    if (req.method === "HEAD" && url.includes("market_outcome_provider_receipts")) {
+      if (mode === "count_500") { res.writeHead(500, { "content-type": "application/json" }); return res.end(); }
+      res.writeHead(200, { "content-range": `*/${mode === "capacity" ? 999999999 : 5}` }); return res.end();
+    }
+    if (req.method === "POST") { res.writeHead(201); return res.end(); }
+    res.writeHead(200, { "content-type": "application/json" }); res.end("[]");
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  const port = (server.address() as { port: number }).port;
+  try {
+    return await new Promise((resolve) => {
+      const child = spawn(process.execPath, ["--import", "tsx", "scripts/research-clone-market-outcome-collector.ts"], {
+        env: { ...process.env, SUPABASE_CLONE_URL: `http://127.0.0.1:${port}/nppznoujvnyjargjkmnv`, SUPABASE_CLONE_SERVICE_ROLE_KEY: "test-key", NO_PROXY: "127.0.0.1", no_proxy: "127.0.0.1", HTTPS_PROXY: "", HTTP_PROXY: "" },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let out = "";
+      child.stdout.on("data", (d) => (out += d)); child.stderr.on("data", (d) => (out += d));
+      child.on("close", (code) => resolve({ code, out }));
+    });
+  } finally { server.close(); }
+}
+
+test("script: empty healthy DBClone -> STATUS SUCCESS exit 0", async () => {
+  const r = await runScript("ok");
+  assert.equal(r.code, 0, r.out);
+  assert.equal(JSON.parse(r.out.trim().split("\n").at(-1)!).STATUS, "SUCCESS");
+});
+
+test("script: capacity limit -> STATUS FAILED exit 1 with the reason; DB failure -> FAILED exit 1 (never a green run)", async () => {
+  const cap = await runScript("capacity");
+  assert.equal(cap.code, 1, cap.out);
+  const j = JSON.parse(cap.out.trim().split("\n").at(-1)!);
+  assert.equal(j.STATUS, "FAILED"); assert.match(j.reasons.join(), /capacity_limit/);
+  const bad = await runScript("count_500");
+  assert.equal(bad.code, 1, bad.out);
+  assert.match(bad.out, /"STATUS":"FAILED"/);
+});
+
+test("script refuses a non-DBClone target before doing anything", () => {
+  const r = spawnSync(process.execPath, ["--import", "tsx", "scripts/research-clone-market-outcome-collector.ts"], {
+    env: { ...process.env, SUPABASE_CLONE_URL: "https://someotherproject.supabase.co", SUPABASE_CLONE_SERVICE_ROLE_KEY: "k" }, encoding: "utf8",
+  });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /NOT_THE_RESEARCH_CLONE/);
+});
+
+// ---- the REAL cron start command, executed by /bin/sh with stubbed `npm` and `date` ----
+function startCommand(): string {
+  const line = readFileSync("ops/railway/research-clone-daily-sync.toml", "utf8").split("\n").find((l) => l.startsWith("startCommand"))!;
+  return line.slice(line.indexOf('"') + 1, line.lastIndexOf('"')).replace(/\\"/g, '"');
+}
+function runCron(hour: string, failing: string[]): { code: number | null; steps: string[] } {
+  const dir = mkdtempSync(join(tmpdir(), "cron-"));
+  const bin = join(dir, "bin"); mkdirSync(bin);
+  const log = join(dir, "steps.log");
+  writeFileSync(join(bin, "npm"), `#!/bin/sh\necho "$*" >> "${log}"\nfor f in $FAIL_STEPS; do case "$*" in *"$f"*) exit 1;; esac; done\nexit 0\n`);
+  writeFileSync(join(bin, "date"), `#!/bin/sh\necho ${hour}\n`);
+  chmodSync(join(bin, "npm"), 0o755); chmodSync(join(bin, "date"), 0o755);
+  const r = spawnSync("/bin/sh", ["-c", startCommand()], { env: { ...process.env, PATH: `${bin}:/usr/bin:/bin`, FAIL_STEPS: failing.join(" ") }, encoding: "utf8" });
+  let steps: string[] = [];
+  try { steps = readFileSync(log, "utf8").trim().split("\n").map((l) => l.replace(/^run /, "")); } catch { /* no steps ran */ }
+  return { code: r.status, steps };
+}
+const COLLECTOR = "research-clone:market-outcome-collector";
+
+test("cron shell (hourly branch): collector runs last; all green -> exit 0", () => {
+  const r = runCron("05", []);
+  assert.equal(r.code, 0);
+  assert.deepEqual(r.steps.map((s) => s.split(" ")[0]), ["research-clone:sync", "research-clone:inplay-paper-decisions", "research-clone:inplay-paper-settlement-cycle", COLLECTOR]);
+});
+
+test("cron shell: collector failure turns the run red but never skips an earlier step; decisions/settlement failures never skip the collector", () => {
+  for (const hour of ["05", "02"]) {
+    const c = runCron(hour, [COLLECTOR]);
+    assert.notEqual(c.code, 0, `${hour}: collector failure must be visible`);
+    assert.equal(c.steps.at(-1)!.split(" ")[0], COLLECTOR);
+    assert.ok(c.steps.some((s) => s.startsWith("research-clone:inplay-paper-settlement-cycle")));
+    for (const failing of ["research-clone:inplay-paper-decisions", "research-clone:inplay-paper-settlement-cycle"]) {
+      const r = runCron(hour, [failing]);
+      assert.notEqual(r.code, 0, `${hour}: ${failing} failure must stay visible`);
+      assert.equal(r.steps.at(-1)!.split(" ")[0], COLLECTOR, `${hour}: ${failing} must not suppress the collector`);
+      assert.ok(r.steps.some((s) => s.startsWith("research-clone:inplay-paper-decisions")) && r.steps.some((s) => s.startsWith("research-clone:inplay-paper-settlement-cycle")));
+    }
+  }
+});
+
+test("cron shell: a failing sync never suppresses decisions, settlement or the collector in either branch", () => {
+  const h = runCron("05", ["research-clone:sync"]);
+  assert.deepEqual(h.steps.map((s) => s.split(" ")[0]).slice(1), ["research-clone:inplay-paper-decisions", "research-clone:inplay-paper-settlement-cycle", COLLECTOR]);
+  const n = runCron("02", ["research-clone:sync"]); // legacy `&&` gating of model-ready on sync is unchanged
+  const names = n.steps.map((s) => s.split(" ")[0]);
+  assert.ok(!names.includes("research-clone:model-ready"));
+  assert.deepEqual(names.slice(-3), ["research-clone:inplay-paper-decisions", "research-clone:inplay-paper-settlement-cycle", COLLECTOR]);
+});
+
+test("cron shell, 02:00 branch all green: legacy steps unchanged and in order, collector last", () => {
+  const r = runCron("02", []);
+  assert.equal(r.code, 0);
+  assert.deepEqual(r.steps.map((s) => s.split(" ")[0]), [
+    "research-clone:sync", "research-clone:model-ready", "research-clone:model-ready-direct", "research-clone:modeling-conveyor",
+    "research-clone:modeling-dashboard-refresh", "research-clone:inplay-paper-decisions", "research-clone:inplay-paper-settlement-cycle", COLLECTOR,
+  ]);
 });

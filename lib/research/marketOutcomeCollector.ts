@@ -197,10 +197,11 @@ export async function fetchMarket(deps: FetchDeps, cond: string): Promise<Market
 }
 
 /** Cheap triage for PENDING markets: which of these ids does Gamma now list as closed. null = triage failed (no verdict). */
-export async function triageClosed(deps: FetchDeps, ids: string[]): Promise<Set<string> | null> {
+export async function triageClosed(deps: FetchDeps, ids: string[]): Promise<Set<string> | "RATE_LIMITED" | null> {
   if (ids.length === 0) return new Set();
   const url = `${GAMMA_MARKETS}?closed=true&limit=${ids.length}&${ids.map((i) => `condition_ids=${i}`).join("&")}`;
   const rc = await getReceipt(deps, "gamma", ids[0]!, url);
+  if (rc.http_status === 429) return "RATE_LIMITED";
   if (rc.http_status !== 200) return null;
   const body = parseJson(rc.raw_body);
   if (!Array.isArray(body)) return null;
@@ -215,6 +216,8 @@ export interface CollectorState {
   sources: Record<string, SourceCursor>;
   recheck_cursor: string | null;
   recheck_not_before: string | null;
+  /** Consecutive degraded (429 / triage failure) cycles with zero progress; FAILED at STALL_FAIL_CYCLES. */
+  stalled_cycles?: number;
 }
 export const emptyState = (): CollectorState => ({
   v: 1,
@@ -240,13 +243,18 @@ export interface RevisionRow {
 
 export class BoxBRejected extends Error {}
 
+/** Head-scan position. `id === null` means "everything after observed_at t" (cycle start, covered by the overlap). */
+export interface HeadPos { t: string; id: string | null }
+
 export interface CollectorStore {
   readCheckpoint(): Promise<CollectorState | null>;
   writeCheckpoint(state: CollectorState, stats: CycleStats): Promise<void>;
   /** distinct valid ids of one page after `after`, ascending; `last` = last row id read (cursor), `exhausted` = short page. */
   readBackfillPage(table: DiscoverySource, after: string | null, limit: number): Promise<{ ids: string[]; malformed: number; last: string | null; exhausted: boolean }>;
-  /** rows with observed_at > since, ascending; ids in time order, with the observed_at of each row. */
-  readHeadPage(table: DiscoverySource, since: string, limit: number): Promise<{ rows: { id: string; observed_at: string }[]; tail: string | null; malformed: number; exhausted: boolean }>;
+  /** rows strictly after the composite position (observed_at, condition_id), ascending by that pair: ties on observed_at cannot be lost at a page edge. */
+  readHeadPage(table: DiscoverySource, pos: HeadPos, limit: number): Promise<{ rows: { id: string; observed_at: string }[]; tail: HeadPos | null; malformed: number; exhausted: boolean }>;
+  /** estimated total provider receipts (capacity guard). */
+  countReceipts(): Promise<number>;
   latestRevisions(ids: string[]): Promise<Map<string, LatestRevision>>;
   /** Box B markets whose revisions include a recheck status, ascending after `after`. */
   readRecheckPage(after: string | null, limit: number): Promise<{ ids: string[]; last: string | null; exhausted: boolean }>;
@@ -274,12 +282,18 @@ export interface CycleStats {
   db_errors: number;
   fetch_lookup_failed: number;
   error_samples: string[];
+  stalled_cycles: number;
+  receipts_total: number | null;
+  capacity_limit_hit: boolean;
+  verdict: "SUCCESS" | "PARTIAL" | "FAILED" | null;
+  verdict_reasons: string[];
 }
 export const emptyStats = (now: Date): CycleStats => ({
   started_at: now.toISOString(), finished_at: null, processed_new: 0, processed_recheck: 0, by_status: {},
   revisions_inserted: 0, revisions_noop: 0, unchanged_skipped: 0, already_covered_skipped: 0, malformed_ids_skipped: 0,
   triage_closed: 0, triage_failed: 0, rate_limited: false, deadline_hit: false, db_rejected: 0, db_errors: 0,
-  fetch_lookup_failed: 0, error_samples: [],
+  fetch_lookup_failed: 0, error_samples: [], stalled_cycles: 0, receipts_total: null, capacity_limit_hit: false,
+  verdict: null, verdict_reasons: [],
 });
 
 export interface CollectorConfig {
@@ -297,11 +311,16 @@ export interface CollectorConfig {
   triageChunk: number;
   /** Operator/proof only: ignore the rotation gap and re-scan the recheck set now. */
   forceRecheck?: boolean;
+  /** Explicit capacity limit: at/above this many receipts new-market intake stops and the cycle reports FAILED. */
+  maxReceipts: number;
+  /** SIGTERM etc.: stop starting work, write the checkpoint, exit. */
+  abortSignal?: AbortSignal;
 }
 export const DEFAULT_CONFIG: CollectorConfig = {
   maxNewMarkets: 600, maxRechecks: 60, recheckScan: 400, concurrency: 4, deadlineMs: 7 * 60_000, pageSize: 1000,
   headMaxPagesPerSource: 6, headOverlapMs: 60_000, headInitLookbackMs: 6 * 3_600_000,
   recheckMinGapMs: 6 * 3_600_000, resweepAfterMs: 7 * 24 * 3_600_000, triageChunk: 40,
+  maxReceipts: 400_000, // measured 3.3 KB/receipt (9.2 KB/market): ~1.3 GB of raw bodies; the full ~45k-market backlog needs ~0.4 GB
 };
 
 // ------------------------------------------------------------------ per-market processing
@@ -391,12 +410,15 @@ async function headPhase(ctx: CycleCtx, state: CollectorState, budget: { left: n
   const now = Date.now();
   for (const src of DISCOVERY_SOURCES) {
     const cur = state.sources[src]!;
-    let since = cur.head_watermark
-      ? new Date(Date.parse(cur.head_watermark) - ctx.cfg.headOverlapMs).toISOString()
-      : new Date(now - ctx.cfg.headInitLookbackMs).toISOString();
+    let pos: HeadPos = {
+      t: cur.head_watermark
+        ? new Date(Date.parse(cur.head_watermark) - ctx.cfg.headOverlapMs).toISOString()
+        : new Date(now - ctx.cfg.headInitLookbackMs).toISOString(),
+      id: null,
+    };
     for (let page = 0; page < ctx.cfg.headMaxPagesPerSource && budget.left > 0 && !ctx.halted(); page++) {
       if (Date.now() > ctx.deadlineAt) { ctx.halt("deadline"); break; }
-      const p = await ctx.store.readHeadPage(src, since, ctx.cfg.pageSize);
+      const p = await ctx.store.readHeadPage(src, pos, ctx.cfg.pageSize);
       ctx.stats.malformed_ids_skipped += p.malformed;
       if (p.tail === null) { cur.head_watermark = cur.head_watermark ?? new Date(now).toISOString(); break; }
       const distinct: string[] = []; const seen = new Set<string>(); const firstRowOf = new Map<string, string>();
@@ -405,14 +427,13 @@ async function headPhase(ctx: CycleCtx, state: CollectorState, budget: { left: n
       const take = fresh.slice(0, budget.left);
       const done = await processMarkets(ctx, take, "new", latest);
       budget.left -= done.size;
-      const pageEnd = p.tail!;
       const clean = take.length === fresh.length && done.size === take.length;
       if (clean) {
-        since = pageEnd;
-        if (!cur.head_watermark || Date.parse(pageEnd) > Date.parse(cur.head_watermark)) cur.head_watermark = pageEnd; // never moves backwards
+        pos = p.tail; // composite (observed_at, condition_id): rows tied on observed_at past the page edge are read next, never skipped
+        if (!cur.head_watermark || Date.parse(p.tail.t) > Date.parse(cur.head_watermark)) cur.head_watermark = p.tail.t; // never moves backwards
         if (p.exhausted) break;
       } else {
-        // budget/halt cut the page: resume from just before the first unsettled market's last observation
+        // budget/halt cut the page: resume from just before the first unsettled market's FIRST observation
         const firstOpen = take.find((i) => !done.has(i)) ?? fresh[take.length];
         const resumeAt = firstOpen ? firstRowOf.get(firstOpen) : undefined;
         if (resumeAt) cur.head_watermark = new Date(Math.max(Date.parse(cur.head_watermark ?? resumeAt), Date.parse(resumeAt) - 1)).toISOString();
@@ -466,6 +487,7 @@ async function recheckPhase(ctx: CycleCtx, state: CollectorState): Promise<void>
   for (let i = 0; i < pending.length && !ctx.halted(); i += ctx.cfg.triageChunk) {
     const chunk = pending.slice(i, i + ctx.cfg.triageChunk);
     const closed = await triageClosed(ctx.fetchDeps, chunk);
+    if (closed === "RATE_LIMITED") { ctx.stats.triage_failed++; chunk.forEach((c) => triageFailed.add(c)); ctx.halt("rate"); break; }
     if (closed === null) { ctx.stats.triage_failed++; chunk.forEach((c) => triageFailed.add(c)); continue; }
     for (const c of chunk) if (closed.has(c)) { direct.add(c); ctx.stats.triage_closed++; }
   }
@@ -497,29 +519,72 @@ export async function runCollectorCycle(
   let halted = false;
   const ctx: CycleCtx = {
     store, fetchDeps, cfg, stats, deadlineAt: Date.now() + cfg.deadlineMs, attempted: new Set(),
-    halted: () => halted,
+    halted: () => {
+      if (cfg.abortSignal?.aborted && !halted) { halted = true; stats.deadline_hit = true; }
+      return halted;
+    },
     halt: (why) => { halted = true; if (why === "rate") stats.rate_limited = true; else stats.deadline_hit = true; },
   };
   const budget = { left: cfg.maxNewMarkets };
   let fatal: unknown = null;
+  // Durable progress: the state is saved after every phase that moved it, so a crash/kill between phases loses at most one phase.
+  let lastSaved = JSON.stringify(state);
+  const save = async () => {
+    const now = JSON.stringify(state);
+    if (now === lastSaved) return;
+    stats.finished_at = fetchDeps.now().toISOString();
+    await store.writeCheckpoint(state, stats);
+    lastSaved = now;
+  };
   try {
+    stats.receipts_total = await store.countReceipts();
+    if (stats.receipts_total >= cfg.maxReceipts) { stats.capacity_limit_hit = true; budget.left = 0; } // new intake stops; rechecks still finalize known markets
     await headPhase(ctx, state, budget);
-    if (!halted) await recheckPhase(ctx, state);
-    if (!halted) await backfillPhase(ctx, state, budget);
+    await save();
+    if (!ctx.halted()) { await recheckPhase(ctx, state); await save(); }
+    if (!ctx.halted()) { await backfillPhase(ctx, state, budget); }
   } catch (e) {
     fatal = e;
     stats.db_errors++;
     if (stats.error_samples.length < 5) stats.error_samples.push(`FATAL:${e instanceof Error ? e.message.slice(0, 160) : "UNKNOWN"}`);
   }
+  const progress = stats.processed_new + stats.processed_recheck + stats.triage_closed > 0;
+  const degraded = stats.rate_limited || stats.triage_failed > 0;
+  state.stalled_cycles = degraded && !progress ? (state.stalled_cycles ?? 0) + 1 : 0;
+  stats.stalled_cycles = state.stalled_cycles;
+  const verdict = cycleVerdict(stats);
+  stats.verdict = verdict.status; stats.verdict_reasons = verdict.reasons;
   stats.finished_at = fetchDeps.now().toISOString();
-  await store.writeCheckpoint(state, stats); // progress is saved even after a partial/failed cycle (cursors only moved past settled ids)
+  await store.writeCheckpoint(state, stats); // final row always written, even after a partial/failed cycle (cursors only moved past settled ids)
   if (fatal) throw Object.assign(new Error("COLLECTOR_CYCLE_FATAL"), { stats, state, cause: fatal });
   return { stats, state };
 }
 
-/** Exit policy: DB/code failures and provider outage are loud; a rate-limit halt is reported but resumes by itself. */
-export function cycleFailed(s: CycleStats): boolean {
+export const STALL_FAIL_CYCLES = 3;
+
+/**
+ * Single source of truth for the status line and the process exit code.
+ * FAILED (exit 1): DB/code failure, provider outage, capacity limit, or a degraded state (429 / triage failure) with no progress for STALL_FAIL_CYCLES cycles.
+ * PARTIAL (exit 0, but never printed as SUCCESS): rate limit, triage failure or deadline in an otherwise progressing cycle; it resumes by itself.
+ */
+export function cycleVerdict(s: CycleStats): { status: "SUCCESS" | "PARTIAL" | "FAILED"; exit_code: 0 | 1; reasons: string[] } {
   const processed = s.processed_new + s.processed_recheck;
-  const outage = processed >= 10 && s.fetch_lookup_failed / processed > 0.5;
-  return s.db_errors > 0 || s.db_rejected > 0 || outage;
+  const failed: string[] = [];
+  if (s.db_errors > 0) failed.push(`db_errors=${s.db_errors}`);
+  if (s.db_rejected > 0) failed.push(`db_rejected=${s.db_rejected}`);
+  if (processed >= 10 && s.fetch_lookup_failed / processed > 0.5) failed.push(`provider_outage lookup_failed=${s.fetch_lookup_failed}/${processed}`);
+  if (s.capacity_limit_hit) failed.push(`capacity_limit receipts=${s.receipts_total}`);
+  if (s.stalled_cycles >= STALL_FAIL_CYCLES) failed.push(`stalled_cycles=${s.stalled_cycles}`);
+  if (failed.length) return { status: "FAILED", exit_code: 1, reasons: failed };
+  const partial: string[] = [];
+  if (s.rate_limited) partial.push("rate_limited");
+  if (s.triage_failed > 0) partial.push(`triage_failed=${s.triage_failed}`);
+  if (s.deadline_hit) partial.push("deadline_or_abort");
+  if (partial.length) return { status: "PARTIAL", exit_code: 0, reasons: partial };
+  return { status: "SUCCESS", exit_code: 0, reasons: [] };
+}
+
+/** Back-compat helper: true iff the verdict is FAILED. */
+export function cycleFailed(s: CycleStats): boolean {
+  return cycleVerdict(s).status === "FAILED";
 }

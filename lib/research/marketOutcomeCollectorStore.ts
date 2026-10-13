@@ -3,7 +3,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   BoxBRejected, COLLECTOR_SOURCE, COND_RE, emptyState, RECHECK_STATUSES,
-  type CollectorState, type CollectorStore, type CycleStats, type DiscoverySource, type LatestRevision, type Receipt, type RevisionRow,
+  type CollectorState, type CollectorStore, type CycleStats, type HeadPos, type DiscoverySource, type LatestRevision, type Receipt, type RevisionRow,
 } from "./marketOutcomeCollector";
 
 const IN_CHUNK = 40;
@@ -13,7 +13,7 @@ export function createSupabaseStore(db: SupabaseClient): CollectorStore {
   return {
     async readCheckpoint() {
       const { data, error } = await db.from("job_runs").select("diagnostics")
-        .eq("source", COLLECTOR_SOURCE).eq("status", "success").order("started_at", { ascending: false }).limit(1);
+        .eq("source", COLLECTOR_SOURCE).order("finished_at", { ascending: false }).limit(1); // newest write wins; every row of this source carries the state
       if (error) throw fail("CHECKPOINT_READ", error);
       const st = (data?.[0]?.diagnostics as { state?: CollectorState } | undefined)?.state;
       if (!st || st.v !== 1) return null;
@@ -24,7 +24,7 @@ export function createSupabaseStore(db: SupabaseClient): CollectorStore {
       const { error } = await db.from("job_runs").insert({
         source: COLLECTOR_SOURCE, formula_version: COLLECTOR_SOURCE,
         started_at: stats.started_at, finished_at: stats.finished_at ?? new Date().toISOString(),
-        status: "success", generated_count: stats.revisions_inserted, rejected_count: stats.db_rejected + stats.db_errors,
+        status: "success", // reader contract; the real cycle verdict is diagnostics.stats.verdict generated_count: stats.revisions_inserted, rejected_count: stats.db_rejected + stats.db_errors,
         duration_ms: Math.max(0, Date.parse(stats.finished_at ?? stats.started_at) - Date.parse(stats.started_at)),
         diagnostics: { state, stats },
       });
@@ -46,19 +46,30 @@ export function createSupabaseStore(db: SupabaseClient): CollectorStore {
       return { ids, malformed: bad.size, last: rows.length ? rows[rows.length - 1]!.condition_id : null, exhausted: rows.length < limit };
     },
 
-    async readHeadPage(table: DiscoverySource, since, limit) {
-      const { data, error } = await db.from(table).select("condition_id,observed_at")
-        .gt("observed_at", since).order("observed_at", { ascending: true }).limit(limit);
+    async readHeadPage(table: DiscoverySource, pos: HeadPos, limit) {
+      let q = db.from(table).select("condition_id,observed_at")
+        .order("observed_at", { ascending: true }).order("condition_id", { ascending: true }).limit(limit);
+      q = pos.id === null
+        ? q.gt("observed_at", pos.t)
+        : q.or(`observed_at.gt.${pos.t},and(observed_at.eq.${pos.t},condition_id.gt.${pos.id})`);
+      const { data, error } = await q;
       if (error) throw fail(`HEAD_${table}`, error);
       const rows = (data ?? []) as { condition_id: string; observed_at: string }[];
       const bad = new Set<string>();
       const ok = rows.filter((r) => { if (COND_RE.test(r.condition_id)) return true; bad.add(r.condition_id); return false; });
-      // the watermark follows the page tail even when its last rows are malformed
+      // the position follows the page tail even when its last rows are malformed
+      const last = rows.length ? rows[rows.length - 1]! : null;
       return {
         rows: ok.map((r) => ({ id: r.condition_id, observed_at: r.observed_at })),
-        tail: rows.length ? rows[rows.length - 1]!.observed_at : null,
+        tail: last ? { t: last.observed_at, id: last.condition_id } : null,
         malformed: bad.size, exhausted: rows.length < limit,
       };
+    },
+
+    async countReceipts() {
+      const { count, error } = await db.from("market_outcome_provider_receipts").select("receipt_id", { count: "estimated", head: true });
+      if (error) throw fail("RECEIPT_COUNT", error);
+      return count ?? 0;
     },
 
     async latestRevisions(ids: string[]) {
