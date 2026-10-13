@@ -1,0 +1,133 @@
+CONTUR_GATE_REVIEW_V1:
+profile_version: CONTUR_GATE_REVIEWER_V1
+CURRENT_SCOPE_VERDICT: PASS
+NEXT_PHASE_READINESS: NOT_READY
+weather_contract_loaded: NO
+child_shell_used: NO
+findings:
+
+Target: payload.sql, SHA-256 3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8, reviewed_sha 9bd9e320bcc82a29a9605af9eaf6310cbe857c7e.
+I could not recompute hashes or rerun any tests (Read only). The static test source, the behavior runner, the SQL test, the receipt and manifest are internally consistent with the packet's claims.
+
+BLOCKING findings against the current scope: none.
+
+Checks (a) to (g) against the packet's section 7:
+
+(a) Abort of the whole batch: PASS.
+- The replay guard (payload L6-14) and both verification DO blocks (L659-707 and L709-723) raise exceptions.
+- In one simple-protocol Query, an exception aborts the whole implicit transaction.
+- Support for this: the runner sends the payload through `boxBApplyOneQuery.mjs` (`db.unsafe(sql).simple()`) and checks three failure cases.
+  - A second apply is refused by the guard.
+  - A pre-existing `market_outcome_current` table fails mid-batch, and both Box B tables are then absent.
+  - A mutated verification (`<> 42`) leaves no tables.
+- A failure inside a DO block cannot be skipped within one Query.
+- This is proven only for a local simple-protocol client. See the first NON-BLOCKING finding below.
+
+(b) Transaction control, ledger, sentinel: PASS.
+- I read L1-20 and L300-310 and L514-723, and the schema text in the packet. There is no top-level begin, commit, rollback, savepoint or set, and no `supabase_migrations` reference.
+- There is no `research_inplay_core_path_observations` reference or sentinel in what I read. The only `to_regclass` calls are on `public.market_outcome_*`.
+- Writes go only to the two Box B tables.
+- The manifest says `transaction_control: false` and `writes_supabase_migrations: false`.
+- The ledger test is only a seeded-row check. It is trivially true because the payload never names the ledger. The static test is the real evidence.
+
+(c) Append-only enforcement and receipt-backed validation: PASS.
+- Row triggers (before update or delete) and statement-level TRUNCATE triggers are on both tables. The insert-time revision guard is on revisions only.
+- The verification expects exactly 5 non-internal triggers (2 on receipts, 3 on revisions), which matches the DDL.
+- `market_outcome_validate_receipts` checks, from the stored raw bodies:
+  - provider identity and HTTP 200;
+  - condition match and closed state;
+  - token-set equality between Gamma and CLOB;
+  - for FINAL, exactly one price of 1 (the rest 0), one CLOB winner flag, and the winner at the price-1 index;
+  - `resolved_at` equal to the provider timestamp named by `resolution_time_source`.
+- The table check constraints enforce Gamma and CLOB winner agreement, the digest of the raw body, and the revision chain.
+- I traced 20 revision inserts (L519-658). Each selects its receipts by provider, kind, key and digest, so the subselects are scalar and unique.
+- Seq 10 is a token_id lookup receipt whose digest equals its Gamma receipt, but its kind and key differ. That is why there are 41 receipts, not 40.
+
+(d) ACL: PASS.
+- RLS is enabled on both tables.
+- Revokes cover public, anon and authenticated on both tables, the view and the sequence.
+- Revokes cover the three functions' PUBLIC, anon and authenticated EXECUTE.
+- blind_model_reader gets explicit revokes when the role exists, and service_role is reduced to select and insert.
+- The view uses `security_invoker = true`.
+- The in-batch verification (L676-701) checks anon, authenticated, PUBLIC and blind_model_reader with `has_*_privilege`, which includes inheritance.
+- If a worst-case default privilege were present, the verification would raise and abort.
+
+(e) Added v2 checks: PASS, not vacuous.
+- They check 20 distinct condition_id, 20 FINAL in revisions, 20 FINAL in `market_outcome_current`, 20 revisions and 41 receipts.
+- The view check is meaningful because the view is `distinct on` the condition.
+
+(f) Verbatim composition and counts: PASS.
+- Section order is guard, schema, data, operator verification, v2 verification.
+- The 20 condition_ids I saw in L519-658 are distinct and match the 20 entries in `receipts_index.json`.
+- The index holds 20 gamma, 20 clob and 1 token receipt, which gives 41. All 20 entries have status FINAL.
+- The static test checks that the migration, pilot and operator verification block are included verbatim, and the byte hashes against the manifest.
+
+(g) Test evidence supports the claims, with one overstatement (finding 2).
+- The behavior runner tests what the receipt says it tests.
+- The 11 negative controls are real mutations and each is matched against a specific FAIL label.
+- The scratch cluster simulates worst-case Supabase default privileges, including auto-grants to blind_model_reader.
+
+NON-BLOCKING findings:
+
+1. Atomicity of the official Supabase API is unverified.
+   - Location: the whole payload (L1-723), which has no transaction control.
+   - Reason: the payload has no begin or commit of its own, so its all-or-nothing behavior rests on the API sending it as one simple-protocol Query. If the API splits statements, runs them in autocommit, or retries, a failure leaves partial Box B state.
+     - With triggers blocking row deletion, cleanup would need an owner-level drop.
+     - The replay guard would also block a clean retry.
+   - This is declared in packet section 6 and in GATE1_EXCEPTION.md. It is the gate for the next phase (see readiness below).
+
+2. The "56 semantic probes" claim is overstated by one.
+   - Location: `pg_test_receipt.txt` L66 and `boxBReleaseV2Behavior.sh` L81.
+   - Reason: the count is `grep -c PASS` over the output. The receipt lists 55 distinct PASS probes (T1: 5, T2: 5, T3: 11, T4: 12, T5: 14, T6: 8). The 56th match is the `BOXB_SEMANTIC_ALL_PASS` sentinel line. The suite itself is sound.
+
+3. Target identity depends entirely on the API's project binding.
+   - Location: replay guard, payload L6-14.
+   - Reason: the guard only tests that two Box B tables are absent. Run against the wrong project, the payload would create Box B there. This is a declared residual. The apply step must record project-ref binding as evidence (`nppznoujvnyjargjkmnv`).
+
+4. EXECUTE on the two trigger functions is not explicitly revoked from blind_model_reader and service_role.
+   - Location: the DO block at payload L289-310 and the revokes at about L231-233.
+   - Reason: only `market_outcome_validate_receipts` is revoked from them and verified. In a worst-case default-privilege environment the two trigger functions keep that EXECUTE.
+     - `market_outcome_append_only_guard` and `market_outcome_revision_guard` return trigger.
+     - A trigger function cannot be called directly, so there is no practical exposure.
+     - Tables, the view and the sequence are fully denied and verified.
+   - This is a hardening note only.
+
+5. Verification gaps (none a defect).
+   - `has_table_privilege` does not see column-level grants. No probe asserts the view's `security_invoker` reloption. The view text itself is verbatim.
+   - The L709-723 `winner_token_id is null` check cannot fire, because the FINAL check constraint already guarantees a winner. The `count(*) from market_outcome_revisions <> 20` test is a duplicate of L663.
+   - The checks count rows but do not pin the exact 20 condition_ids or digests. That is acceptable, because the data is inside the same batch and the digest and receipt constraints bind it.
+
+6. Environment fidelity.
+   - Location: `boxBReleaseV2Behavior.sh` L26-36.
+   - Reason: the tests ran on PostgreSQL 16.15 as a real superuser with simulated nologin roles. Supabase runs PG17 with real owner and default-ACL structure. `security_invoker` and the other constructs used are valid on PG15 and later. Any difference in the real environment would surface as a fail-closed verification exception, but only if the batch is atomic (finding 1).
+
+7. Provenance note for seq 10.
+   - Location: `receipts_index.json` entry seq 10.
+   - Reason: the input condition_id was a malformed, shortened value. It was repaired by an exact Gamma `clob_token_ids` match with `closed=true`. The payload stores the resolved id `0x932da2...a41818`, and the token-lookup receipt is receipt 41. No revision references that receipt, and it is correctly counted in the 41. This repair is disclosed in the index but not in the revision `status_reason` text.
+
+8. Review limits.
+   - I did not read the raw provider bodies at L319-513 line by line (about 107k tokens).
+   - For that range I relied on three things:
+     - the anchored static regexes, which allow only 41 receipt inserts and 20 revision inserts and forbid update, delete, drop table and truncate at line start;
+     - the per-row digest check constraint;
+     - the successful end-to-end PG run with its counts.
+   - `$bb$` dollar-quoting would also cause a parse failure, not silent execution, if a body broke out.
+   - The static transaction-control regex catches only line-start `commit`, `rollback`, `savepoint` and `begin;`. My manual read of the non-data regions found none of those, nor `start transaction`, `end;` or `abort;`.
+
+NEXT_PHASE_READINESS: NOT_READY, for "DBClone apply via the official project-bound Supabase migration API".
+- Missing evidence 1: confirmation that the official API runs this payload as one atomic batch. GATE1_EXCEPTION.md lists it as UNVERIFIED.
+- Missing evidence 2: separate Founder write authorization. GATE1_EXCEPTION.md lists the apply as NOT AUTHORIZED.
+- Missing evidence 3: a recorded project-ref binding to `nppznoujvnyjargjkmnv` (finding 3).
+- Gate 1 remains HOLD; the exception is not a PASS.
+- The payload is not at fault for any of this. These are readiness conditions, not defects.
+
+Relevant files, all under /var/tmp/boxb_r4_review:
+- ops/research-clone/box-b/release_v2/payload.sql
+- ops/research-clone/box-b/release_v2/pg_test_receipt.txt
+- ops/research-clone/box-b/release_v2/manifest.json
+- ops/research-clone/box-b/release_v2/GATE1_EXCEPTION.md
+- ops/research-clone/box-b/receipts/receipts_index.json
+- tests/research-clone/boxBReleaseV2Static.test.ts
+- tests/research-clone/boxBReleaseV2Behavior.sh
+- tests/research-clone/boxBApplyOneQuery.mjs
+- tests/research-clone/boxBOutcomeBehavior.sql

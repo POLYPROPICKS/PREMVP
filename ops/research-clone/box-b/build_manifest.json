@@ -1,0 +1,12 @@
+{
+ "migration": {
+  "path": "research-clone/migrations/20261013130000_market_outcome_box_b_authority_v1.sql",
+  "sha256": "0643c807eae6b17475d2948af3146251838dd9b86e52955a5d8456c0c4dc4766"
+ },
+ "pilot_insert_sha256": "c45455b18c966dde1ce04ee61004d0ab5eccc32d69dbe2850f22a67da0582f6a",
+ "operator_sql_sha256": "26bc5ed895570a0c8605fcd98331e504e24521de2e8972d75e88f77ff374a58f",
+ "frozen_input_sha256": "1cd9b923ee4055f5900af4f3bb9cf0a4d63071cc33018e7cfc777556a585ba81",
+ "receipts_index_sha256": "2cb76f8c37a8e3ed9fe7932e97c088993777ff19e4d43038038793508b043551",
+ "receipt_rows": 41,
+ "revision_rows": 20
+}

@@ -1,0 +1,219 @@
+{
+  "schema_version": "1",
+  "completion_id": "BOX_B_SINGLE_RELEASE_FINAL_V2__2026-10-13__r4-pass-apply-not-authorized",
+  "task_id": "BOX_B_SINGLE_RELEASE_FINAL_V2",
+  "task_class": "env-deploy / DBClone-only migration payload consolidation",
+  "risk_class": "R4_CONTUR_PRODUCTION_BOUNDARY",
+  "executor": "claude_code_cloud",
+  "environment": "claude.ai cloud container (linux); local PostgreSQL 16.15 scratch cluster only; no real database contacted",
+  "repository": "POLYPROPICKS/PREMVP",
+  "branch": "claude/vigilant-wozniak-sqw3fb",
+  "base_sha": "809093ee09c46ff7ecb588cdc30266465d018c0b",
+  "result_sha": "9bd9e320bcc82a29a9605af9eaf6310cbe857c7e",
+  "origin_main_sha": "2673a7e90e0309cbbeb7bbec17028b6c61405eae",
+  "worktree_before": "clean",
+  "worktree_after": "clean",
+  "files_changed": [
+    "ops/research-clone/box-b/build_release_payload_v2.py",
+    "ops/research-clone/box-b/release_v2/GATE1_EXCEPTION.md",
+    "ops/research-clone/box-b/release_v2/RELEASE_V2.md",
+    "ops/research-clone/box-b/release_v2/completion_envelope.json",
+    "ops/research-clone/box-b/release_v2/manifest.json",
+    "ops/research-clone/box-b/release_v2/payload.sql",
+    "ops/research-clone/box-b/release_v2/pg_test_receipt.txt",
+    "ops/research-clone/box-b/release_v2/r4/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json",
+    "ops/research-clone/box-b/release_v2/r4/CONTUR_GATE_REVIEWER_OUTPUT.txt",
+    "ops/research-clone/box-b/release_v2/r4/EXACT_SHA_REVIEW_PACKET.md",
+    "tests/research-clone/boxBApplyOneQuery.mjs",
+    "tests/research-clone/boxBReleaseV2Behavior.sh",
+    "tests/research-clone/boxBReleaseV2Static.test.ts"
+  ],
+  "commands_run": [
+    {
+      "command": "python3 ops/research-clone/box-b/build_release_payload_v2.py (x2, and again in a fresh worktree)",
+      "exit_code": 0,
+      "purpose": "Deterministic build; payload sha256 3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8 identical every time; zero diff after rebuild"
+    },
+    {
+      "command": "node --import tsx --test tests/research-clone/boxBReleaseV2Static.test.ts tests/research-clone/boxBOutcomeStatic.test.ts",
+      "exit_code": 0,
+      "purpose": "Static byte-level gate: 10/10"
+    },
+    {
+      "command": "bash tests/research-clone/boxBReleaseV2Behavior.sh ops/research-clone/box-b/release_v2/pg_test_receipt.txt",
+      "exit_code": 0,
+      "purpose": "PostgreSQL 16 semantic suite on the payload sent as one simple-protocol query: BOXB_PG_V2_RESULT=PASS"
+    },
+    {
+      "command": "npm run control-plane:check",
+      "exit_code": 0,
+      "purpose": "Control-plane validation; 439 control-plane tests pass"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "purpose": "Whitespace check clean"
+    },
+    {
+      "command": "Agent contur-gate-reviewer (premvp.reviewer.contur_gate.v1) on reviewed_sha 9bd9e320 via exact-SHA packet",
+      "exit_code": 0,
+      "purpose": "Independent R4: CURRENT_SCOPE_VERDICT PASS, NEXT_PHASE_READINESS NOT_READY, 0 blocking findings"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Byte-level hashes and verbatim composition (static)",
+      "result": "PASS",
+      "detail": "10/10 incl. v1 gate; payload embeds migration 0643c807, pilot c45455b1, operator verification block verbatim; 41 receipt + 20 revision inserts; no tx control, no supabase_migrations, no sentinel"
+    },
+    {
+      "name": "PostgreSQL 16 semantic suite",
+      "result": "PASS",
+      "detail": "55 probes (earlier '56' counted the sentinel line); append-only; ACL for anon/authenticated/PUBLIC/blind_model_reader/service_role; 20 distinct condition_id and 20 FINAL; 11 negative controls detected"
+    },
+    {
+      "name": "Idempotency / replay / atomicity",
+      "result": "PASS",
+      "detail": "pilot reload twice keeps 20/41; second apply refused by replay guard; mid-batch failure and failing verification roll back schema and rows; supabase_migrations unchanged"
+    },
+    {
+      "name": "control-plane:check",
+      "result": "PASS",
+      "detail": "439 tests, snapshot and project-package checks"
+    },
+    {
+      "name": "PostgreSQL 17 / real Supabase endpoint behaviour",
+      "result": "NOT_RUN",
+      "detail": "Only PG16 scratch cluster; single-batch atomicity of the real migration API not verified"
+    },
+    {
+      "name": "Gate 1 (/verify)",
+      "result": "NOT_RUN",
+      "detail": "HOLD retained; Founder-approved one-time SQL-only exception recorded in GATE1_EXCEPTION.md (exception, not PASS)"
+    },
+    {
+      "name": "Independent R4 on final payload",
+      "result": "PASS",
+      "detail": "premvp.reviewer.contur_gate.v1 on 9bd9e320 / payload 3e852ebe: PASS, 0 blocking findings; receipt in release_v2/r4/"
+    },
+    {
+      "name": "DBClone business verification (20 FINAL, 41 receipts, ACL, ledger)",
+      "result": "NOT_RUN",
+      "detail": "Nothing applied; Architect verifies after separately authorized apply"
+    },
+    {
+      "name": "Official Supabase API single-batch atomicity",
+      "result": "NOT_RUN",
+      "detail": "Unverified; Founder requires confirmation before any write is authorized"
+    }
+  ],
+  "required_reviewers": [
+    "premvp.reviewer.contur_gate.v1"
+  ],
+  "invoked_reviewers": [
+    "premvp.reviewer.contur_gate.v1"
+  ],
+  "reviewer_receipts": [
+    {
+      "agent_id": "premvp.reviewer.contur_gate.v1",
+      "implementation_identity": "claude_code_cloud adapter :: project-scoped Agent .claude/agents/contur-gate-reviewer.md (separate subagent, Read-only tool)",
+      "definition_hash": "sha256:6fd37c2d0e226548a59081686a899493643e9d35694b1e5aef8bd69704c4f31e",
+      "configured_model": "sonnet",
+      "reasoning_policy": "effort:high",
+      "independence_group": "contur_gate",
+      "reviewed_sha": "9bd9e320bcc82a29a9605af9eaf6310cbe857c7e",
+      "verdict": "PASS",
+      "evidence_refs": [
+        "ops/research-clone/box-b/release_v2/r4/EXACT_SHA_REVIEW_PACKET.md sha256:72fc7f78f5f1f91178a2587c737f9531bc401fb290ea5a1ad2fb637292ca3d05",
+        "ops/research-clone/box-b/release_v2/r4/CONTUR_GATE_REVIEWER_OUTPUT.txt sha256:6b9948ffe143a316c88feccc76254d092a0c3568bce5fa6ba6e3877bb6bffefd (reviewer report, verbatim)",
+        "reviewer verdict: CURRENT_SCOPE_VERDICT PASS; NEXT_PHASE_READINESS NOT_READY; weather_contract_loaded NO; child_shell_used NO; BLOCKING findings: none",
+        "reviewer read the packet and payload ranges L1-20, L300-310, L514-723 plus tests, manifest, receipt and receipts_index; it did not read raw provider bodies L319-513 line by line and could not recompute hashes or rerun tests (Read only)",
+        "parent-run evidence at the reviewed commit: static 10/10, PostgreSQL 16 suite BOXB_PG_V2_RESULT=PASS, control-plane:check PASS, git diff --check clean, deterministic rebuild byte-identical"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E1_PAYLOAD",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Single payload ops/research-clone/box-b/release_v2/payload.sql, 262273 bytes, sha256 3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8, built from frozen PR #529 inputs at 809093ee; reproducible from a fresh checkout of 84bcb90b.",
+      "business_result": false
+    },
+    {
+      "id": "E2_LOCAL_PG",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "On a local PostgreSQL 16.15 scratch cluster the payload applies as one simple-protocol batch to 20 distinct FINAL revisions and 41 receipts; failures roll back completely; ledger untouched. This is not DBClone evidence.",
+      "business_result": false
+    },
+    {
+      "id": "E3_TARGET",
+      "evidence_class": "SUPPORTED",
+      "statement": "Target identity is delegated to the project-bound migration API (exact project ref nppznoujvnyjargjkmnv); the payload contains no identity claim. No Production credential was used and no database was contacted.",
+      "business_result": false
+    },
+    {
+      "id": "E6_RESIDUAL",
+      "evidence_class": "NOT_PROVEN",
+      "statement": "Residual risks: single-batch atomicity of the real Supabase migration endpoint and PG17 privilege behaviour are unverified; both Gamma and CLOB receipts come from Polymarket infrastructure.",
+      "business_result": false
+    },
+    {
+      "id": "E4_GATE1",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "statement": "Gate 1 stays HOLD (unclassified ops/ and tests/). The Founder approved a one-time, SQL-only, documented exception for payload 3e852ebe (GATE1_EXCEPTION.md). Recorded as an exception, not a PASS; static, PostgreSQL and control-plane checks remained mandatory and passed.",
+      "business_result": false
+    },
+    {
+      "id": "E5_R4",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Independent R4 receipt committed in Git (release_v2/r4/): reviewed_sha 9bd9e320, verdict PASS, no blocking findings, next phase (DBClone apply via official API) NOT_READY. Reviewer was Read-only and did not recompute hashes or read raw provider bodies line by line (L319-513); parent evidence covers those.",
+      "business_result": false
+    },
+    {
+      "id": "E7_WRITE_GATE",
+      "evidence_class": "NOT_PROVEN",
+      "statement": "DBClone write is forbidden by the Founder until separate authorization AND confirmation that the official Supabase API executes the payload atomically. Neither exists. No DBClone data was read or written, so 20 FINAL / 41 receipts / ACL / ledger in the real DBClone are unverified.",
+      "business_result": false
+    }
+  ],
+  "capability_changes": [],
+  "state_delta_proposal": null,
+  "runtime_changed": false,
+  "deployment_changed": false,
+  "database_changed": false,
+  "forbidden_actions_respected": true,
+  "verdict": "BLOCKED",
+  "outcome_class": "HARD_BLOCKED",
+  "hard_stop": {
+    "hard_stop_id": "MISSING_REQUIRED_FOUNDER_AUTHORIZATION",
+    "recovery_attempts": [
+      {
+        "id": "R_GATE1_EXCEPTION",
+        "action": "Obtained and recorded the Founder one-time SQL-only Gate 1 exception",
+        "outcome": "Recorded in GATE1_EXCEPTION.md",
+        "exhausted": true
+      },
+      {
+        "id": "R_R4",
+        "action": "Ran independent R4 on the exact payload/SHA and stored the receipt in Git",
+        "outcome": "PASS, 0 blocking findings",
+        "exhausted": true
+      },
+      {
+        "id": "R_WRITE_PATH",
+        "action": "Checked whether any permitted write/verify route exists",
+        "outcome": "None permitted: Founder explicitly forbids DBClone apply until separate authorization and API atomicity confirmation",
+        "exhausted": true
+      }
+    ],
+    "unrecoverable_evidence": "The final package is complete and R4-approved, but the Founder expressly withheld DBClone write permission until a separate authorization and confirmation of atomic execution through the official Supabase API. Only the Founder can grant it; the executor must not apply or probe the DBClone."
+  },
+  "operator_actions": null,
+  "blockers": [
+    "DBClone apply not authorized by the Founder (separate authorization required)",
+    "Atomic execution of the payload through the official project-bound Supabase migration API is unconfirmed",
+    "Business acceptance (20 FINAL, 41 receipts, blind_model_reader denial, ledger, source tables) cannot be shown until an authorized apply"
+  ],
+  "founder_action": "When ready, give the separate DBClone write authorization for payload 3e852ebe at reviewed commit 9bd9e320 so Architect can confirm API atomicity, apply through the project-bound migration API for nppznoujvnyjargjkmnv, and run the acceptance queries in RELEASE_V2.md.",
+  "execution_economics": null
+}

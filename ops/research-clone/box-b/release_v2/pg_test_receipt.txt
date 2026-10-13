@@ -1,0 +1,82 @@
+postgres: PostgreSQL 16.15 (Ubuntu 16.15-0ubuntu0.24.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit
+migration_sha256: 0643c807eae6b17475d2948af3146251838dd9b86e52955a5d8456c0c4dc4766
+payload_sha256:   3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8
+pilot_sha256:     c45455b18c966dde1ce04ee61004d0ab5eccc32d69dbe2850f22a67da0582f6a
+PASS release payload applies atomically as one simple-protocol batch
+PASS payload does not touch supabase_migrations (version registration is left to the API)
+INFO pilot reloaded twice; counts: 20 revisions / 41 receipts
+PASS idempotent pilot reload keeps 20 revisions / 41 receipts
+PASS 20 distinct condition_id, 20 FINAL
+NOTICE:  PASS T1.1 no bet/ROI/stake/ledger/paper-decision columns in Box B
+NOTICE:  PASS T1.2 no foreign key crossing the Box B boundary
+NOTICE:  PASS T1.3 no outside view depends on Box B
+NOTICE:  PASS T1.4 observation table rows unchanged by Box B apply
+NOTICE:  PASS T1.5 observation table columns/ACL/triggers unchanged
+NOTICE:  PASS T2.1 20 revisions
+NOTICE:  PASS T2.2 41 receipts
+NOTICE:  PASS T2.3 every pilot row is FINAL revision 1 with a winner
+NOTICE:  PASS T2.4 every stored receipt body re-hashes to its digest
+NOTICE:  PASS T2.5 current view exposes 20 FINAL markets
+NOTICE:  PASS T3.1 anon/authenticated/blind_model_reader hold zero privileges
+NOTICE:  PASS T3.10 validator EXECUTE denied to anon/authenticated/PUBLIC/blind_model_reader, kept for service_role
+NOTICE:  PASS T3.11 receipt identity sequence is closed to every application role
+NOTICE:  PASS T3.2 PUBLIC holds zero privileges
+NOTICE:  PASS T3.3 service_role is select+insert only
+NOTICE:  PASS T3.4 RLS enabled on both tables
+NOTICE:  PASS T3.5 blind_model_reader cannot read revisions: 42501 (permission denied for table market_outcome_revisions)
+NOTICE:  PASS T3.6 blind_model_reader cannot read current view: 42501 (permission denied for view market_outcome_current)
+NOTICE:  PASS T3.7 blind_model_reader cannot read receipts: 42501 (permission denied for table market_outcome_provider_receipts)
+NOTICE:  PASS T3.8 anon denied: 42501 (permission denied for table market_outcome_revisions)
+NOTICE:  PASS T3.9 authenticated denied: 42501 (permission denied for view market_outcome_current)
+NOTICE:  PASS T4.1 owner UPDATE revisions: 23001 (BOX_B_APPEND_ONLY: UPDATE on market_outcome_revisions is forbidden)
+NOTICE:  PASS T4.2 owner DELETE revisions: 23001 (BOX_B_APPEND_ONLY: DELETE on market_outcome_revisions is forbidden)
+NOTICE:  PASS T4.3 owner TRUNCATE revisions: 23001 (BOX_B_APPEND_ONLY: TRUNCATE on market_outcome_revisions is forbidden)
+NOTICE:  PASS T4.4 owner UPDATE receipts: 23001 (BOX_B_APPEND_ONLY: UPDATE on market_outcome_provider_receipts is forbi)
+NOTICE:  PASS T4.5 owner DELETE receipts: 23001 (BOX_B_APPEND_ONLY: DELETE on market_outcome_provider_receipts is forbi)
+NOTICE:  PASS T4.6 owner TRUNCATE receipts: 0A000 (cannot truncate a table referenced in a foreign key constraint)
+NOTICE:  PASS T4.6b owner TRUNCATE both tables: 23001 (BOX_B_APPEND_ONLY: TRUNCATE on market_outcome_provider_receipts is for)
+NOTICE:  PASS T4.7 upsert-update path blocked: 23001 (BOX_B_APPEND_ONLY: UPDATE on market_outcome_provider_receipts is forbi)
+NOTICE:  PASS T4.8 service_role UPDATE revisions: 42501 (permission denied for table market_outcome_revisions)
+NOTICE:  PASS T4.9 service_role DELETE revisions: 42501 (permission denied for table market_outcome_revisions)
+NOTICE:  PASS T4.10 service_role TRUNCATE revisions: 42501 (permission denied for table market_outcome_revisions)
+NOTICE:  PASS T4.11 service_role DELETE receipts: 42501 (permission denied for table market_outcome_provider_receipts)
+NOTICE:  PASS T5.1 wrong digest rejected: 23514 (new row for relation "market_outcome_provider_receipts" violates check)
+NOTICE:  PASS T5.2 unknown provider rejected: 23514 (new row for relation "market_outcome_provider_receipts" violates check)
+NOTICE:  PASS T5.3 FINAL naming the LOSER token is refused by receipt validation: P0001 (BOX_B_FINAL_NOT_BACKED_BY_RECEIPTS)
+NOTICE:  PASS T5.4 FINAL with gamma/clob winner disagreement refused: 23514 (new row for relation "market_outcome_revisions" violates check constra)
+NOTICE:  PASS T5.5 FINAL without resolution time/source refused: P0001 (BOX_B_RESOLUTION_TIME_SOURCE_UNKNOWN)
+NOTICE:  PASS T5.6 VOID on receipts that show a winner refused: P0001 (BOX_B_RECEIPT_TOKEN_SET_MISMATCH)
+NOTICE:  PASS T5.7 PENDING carrying a winner refused: 23514 (new row for relation "market_outcome_revisions" violates check constra)
+NOTICE:  PASS T5.8 CONFLICT without reason refused: 23514 (new row for relation "market_outcome_revisions" violates check constra)
+NOTICE:  PASS T5.9 malformed condition_id refused: 23514 (new row for relation "market_outcome_revisions" violates check constra)
+NOTICE:  PASS T5.10 caller-supplied wrong revision_no refused: P0001 (BOX_B_REVISION_NO_MISMATCH)
+NOTICE:  PASS T5.11 swapped provider receipts refused: P0001 (BOX_B_RECEIPT_PROVIDER_MISMATCH)
+NOTICE:  PASS T5.12 FINAL with a resolved_at the receipt does not show refused: P0001 (BOX_B_RESOLVED_AT_NOT_BACKED_BY_RECEIPT)
+NOTICE:  PASS T5.13 FINAL with an unknown resolution_time_source refused: P0001 (BOX_B_RESOLUTION_TIME_SOURCE_UNKNOWN)
+NOTICE:  PASS T5.14 VOID with missing outcomePrices refused: P0001 (BOX_B_RECEIPT_PRICES_OR_TOKENS_MISSING)
+NOTICE:  PASS T6.1 identical evidence re-load inserts nothing (service_role)
+NOTICE:  PASS T6.2 still 20 revisions
+NOTICE:  PASS T6.3 conflict is revision 2, chained to revision 1, no winner
+NOTICE:  PASS T6.4 revision digest recomputes independently
+NOTICE:  PASS T6.5 current view follows the newest claim
+NOTICE:  PASS T6.6 A->B->A keeps all three revisions
+NOTICE:  PASS T6.7 LOOKUP_FAILED never hides FINAL but advances last_checked_at
+NOTICE:  PASS T6.8 fixtures fully rolled back
+BOXB_SEMANTIC_ALL_PASS
+PASS semantic suite: 56 probes
+PASS second apply refused by replay guard
+PASS mid-batch failure rolled back everything (no partial Box B)
+PASS failing verification rolls back schema AND all inserted rows
+PASS ledger still has exactly the seeded row (no duplicate, no manual registration)
+PASS negative control nc_drop_appendonly detected (FAIL T4.1)
+PASS negative control nc_grant_blind detected (FAIL T3.1)
+PASS negative control nc_service_update detected (FAIL T3.3)
+PASS negative control nc_validator_off detected (FAIL T5.3)
+PASS negative control nc_bet_column detected (FAIL T1.1)
+PASS negative control nc_outside_fk detected (FAIL T1.2)
+PASS negative control nc_obs_touched detected (FAIL T1.4)
+PASS negative control nc_fn_exec detected (FAIL T3.10)
+PASS negative control nc_seq_grant detected (FAIL T3.11)
+PASS negative control nc_rls_off detected (FAIL T3.4)
+PASS negative control nc_public_grant detected (FAIL T3.1)
+BOXB_PG_V2_RESULT=PASS

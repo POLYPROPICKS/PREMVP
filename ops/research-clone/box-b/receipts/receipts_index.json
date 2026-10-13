@@ -1,0 +1,920 @@
+[
+ {
+  "classification": {
+   "clob_winner_token_id": "64536053840563797886753858447897158555269652108423423147763437678588697641940",
+   "gamma_winner_token_id": "64536053840563797886753858447897158555269652108423423147763437678588697641940",
+   "market_token_ids": [
+    "64536053840563797886753858447897158555269652108423423147763437678588697641940",
+    "112115679621644998891718135304768542510491213556405527105882130103781326008512"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T15:29:31+00:00",
+   "status": "FINAL",
+   "winner_token_id": "64536053840563797886753858447897158555269652108423423147763437678588697641940"
+  },
+  "clob_receipt": {
+   "bytes": 2796,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:52.008813Z",
+   "file": "01_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "d5c124fe6720d9c0893c972181980765959d4fd030bbc32b2ee98f59b3e41220",
+   "request_key": "0x1720920991843e094f3121247275663d87537bb3cf112e914adf133f15e5c1e3",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x1720920991843e094f3121247275663d87537bb3cf112e914adf133f15e5c1e3"
+  },
+  "condition_id": "0x1720920991843e094f3121247275663d87537bb3cf112e914adf133f15e5c1e3",
+  "gamma_receipt": {
+   "bytes": 6554,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:51.805664Z",
+   "file": "01_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "00e1464aa9cfd0763e8c2b29243fd875106320d76e01c84709acc0ca4d2e2dd0",
+   "request_key": "0x1720920991843e094f3121247275663d87537bb3cf112e914adf133f15e5c1e3",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x1720920991843e094f3121247275663d87537bb3cf112e914adf133f15e5c1e3&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0x1720920991843e094f3121247275663d87537bb3cf112e914adf133f15e5c1e3",
+  "input_token_id": "112115679621644998891718135304768542510491213556405527105882130103781326008512",
+  "seq": 1,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "95361808633189038185590150632584859542963034810700169236197920930746869403712",
+   "gamma_winner_token_id": "95361808633189038185590150632584859542963034810700169236197920930746869403712",
+   "market_token_ids": [
+    "95361808633189038185590150632584859542963034810700169236197920930746869403712",
+    "28093979493965004286378956545014527362002952533024281061725521447599401208127"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T10:45:27+00:00",
+   "status": "FINAL",
+   "winner_token_id": "95361808633189038185590150632584859542963034810700169236197920930746869403712"
+  },
+  "clob_receipt": {
+   "bytes": 2392,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:52.570531Z",
+   "file": "02_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "e5a957eb3dadb34e86acedd35fb420d9df2468bfc9ac3ecf80cb43d1ff5c5511",
+   "request_key": "0x6e15658c0107795cfb1ab5962e299c28cae658582af9d678b1ca209e479df673",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x6e15658c0107795cfb1ab5962e299c28cae658582af9d678b1ca209e479df673"
+  },
+  "condition_id": "0x6e15658c0107795cfb1ab5962e299c28cae658582af9d678b1ca209e479df673",
+  "gamma_receipt": {
+   "bytes": 6799,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:52.439938Z",
+   "file": "02_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "6d8eae4f75373f291cdc7fbd1a8ff719a6234c73a2ec8f77a5897c1c390ab2cd",
+   "request_key": "0x6e15658c0107795cfb1ab5962e299c28cae658582af9d678b1ca209e479df673",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x6e15658c0107795cfb1ab5962e299c28cae658582af9d678b1ca209e479df673&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0x6e15658c0107795cfb1ab5962e299c28cae658582af9d678b1ca209e479df673",
+  "input_token_id": "28093979493965004286378956545014527362002952533024281061725521447599401208127",
+  "seq": 2,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "12085594969001097859378502721733711185248848911728970981437875877857262983268",
+   "gamma_winner_token_id": "12085594969001097859378502721733711185248848911728970981437875877857262983268",
+   "market_token_ids": [
+    "66924672567482970306933035322941448604569760299329120400131827097327367920989",
+    "12085594969001097859378502721733711185248848911728970981437875877857262983268"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T09:37:30+00:00",
+   "status": "FINAL",
+   "winner_token_id": "12085594969001097859378502721733711185248848911728970981437875877857262983268"
+  },
+  "clob_receipt": {
+   "bytes": 2351,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:53.139596Z",
+   "file": "03_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "496a68a8c6e375aef6dce5db3387261648d05026f238dc2833f8c963bb1e2d12",
+   "request_key": "0xeee5fdb97643684271c5a8c7ada8c23c52b7d2e3f63f1e281b6c2f2ef595c123",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0xeee5fdb97643684271c5a8c7ada8c23c52b7d2e3f63f1e281b6c2f2ef595c123"
+  },
+  "condition_id": "0xeee5fdb97643684271c5a8c7ada8c23c52b7d2e3f63f1e281b6c2f2ef595c123",
+  "gamma_receipt": {
+   "bytes": 6733,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:52.994357Z",
+   "file": "03_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "ed2d109fb3a28253ca8829aee2a86f9908277f9e38e960d54663d308eafac0c9",
+   "request_key": "0xeee5fdb97643684271c5a8c7ada8c23c52b7d2e3f63f1e281b6c2f2ef595c123",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0xeee5fdb97643684271c5a8c7ada8c23c52b7d2e3f63f1e281b6c2f2ef595c123&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0xeee5fdb97643684271c5a8c7ada8c23c52b7d2e3f63f1e281b6c2f2ef595c123",
+  "input_token_id": "12085594969001097859378502721733711185248848911728970981437875877857262983268",
+  "seq": 3,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "97377573332032829436170630104067932906415383705168551102307787532407190269709",
+   "gamma_winner_token_id": "97377573332032829436170630104067932906415383705168551102307787532407190269709",
+   "market_token_ids": [
+    "97377573332032829436170630104067932906415383705168551102307787532407190269709",
+    "31221421468843732743122904763290995844070318318359926560091761757344192025110"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T14:11:31+00:00",
+   "status": "FINAL",
+   "winner_token_id": "97377573332032829436170630104067932906415383705168551102307787532407190269709"
+  },
+  "clob_receipt": {
+   "bytes": 2368,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:53.673956Z",
+   "file": "04_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "35225b94dc9860b2717007840ba0f6f949981b38bbd2d429e968cc26a4cd4f53",
+   "request_key": "0xb9e108842935949a5ba869fc476df2ff09def44eaa2902b61482d57cd5cb14b2",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0xb9e108842935949a5ba869fc476df2ff09def44eaa2902b61482d57cd5cb14b2"
+  },
+  "condition_id": "0xb9e108842935949a5ba869fc476df2ff09def44eaa2902b61482d57cd5cb14b2",
+  "gamma_receipt": {
+   "bytes": 6744,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:53.550781Z",
+   "file": "04_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "5d8b405e77cfe9a8a2bbde292eba8020fefcec5defee12c79852b0d9495ca993",
+   "request_key": "0xb9e108842935949a5ba869fc476df2ff09def44eaa2902b61482d57cd5cb14b2",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0xb9e108842935949a5ba869fc476df2ff09def44eaa2902b61482d57cd5cb14b2&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0xb9e108842935949a5ba869fc476df2ff09def44eaa2902b61482d57cd5cb14b2",
+  "input_token_id": "31221421468843732743122904763290995844070318318359926560091761757344192025110",
+  "seq": 4,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "103753172346322708244006914776087915026656146826888873384026465474749162165465",
+   "gamma_winner_token_id": "103753172346322708244006914776087915026656146826888873384026465474749162165465",
+   "market_token_ids": [
+    "113208584255632823175667658157575624770994678853147373990806532733243248659930",
+    "103753172346322708244006914776087915026656146826888873384026465474749162165465"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T15:31:31+00:00",
+   "status": "FINAL",
+   "winner_token_id": "103753172346322708244006914776087915026656146826888873384026465474749162165465"
+  },
+  "clob_receipt": {
+   "bytes": 2795,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:54.208437Z",
+   "file": "05_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "e936059d647d6e11c810e7abd55c79bb4548bc3398400ebb1b505d891342883f",
+   "request_key": "0x173579dbc69c5ad040dbb9bfd87fe801ba2248fb0d1081ffaf10a3af6805ace4",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x173579dbc69c5ad040dbb9bfd87fe801ba2248fb0d1081ffaf10a3af6805ace4"
+  },
+  "condition_id": "0x173579dbc69c5ad040dbb9bfd87fe801ba2248fb0d1081ffaf10a3af6805ace4",
+  "gamma_receipt": {
+   "bytes": 6540,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:54.078875Z",
+   "file": "05_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "c215a6bdf6e435ccd08b4e9fa45ae8fe14e20556282baef2a9d91d4618be79fd",
+   "request_key": "0x173579dbc69c5ad040dbb9bfd87fe801ba2248fb0d1081ffaf10a3af6805ace4",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x173579dbc69c5ad040dbb9bfd87fe801ba2248fb0d1081ffaf10a3af6805ace4&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0x173579dbc69c5ad040dbb9bfd87fe801ba2248fb0d1081ffaf10a3af6805ace4",
+  "input_token_id": "103753172346322708244006914776087915026656146826888873384026465474749162165465",
+  "seq": 5,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "58604537483071354898180964395639115807494575157196626397450940195446622382546",
+   "gamma_winner_token_id": "58604537483071354898180964395639115807494575157196626397450940195446622382546",
+   "market_token_ids": [
+    "89728589611760605297164214123695339885037302755408751570769387522479313528517",
+    "58604537483071354898180964395639115807494575157196626397450940195446622382546"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T15:38:18+00:00",
+   "status": "FINAL",
+   "winner_token_id": "58604537483071354898180964395639115807494575157196626397450940195446622382546"
+  },
+  "clob_receipt": {
+   "bytes": 2795,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:54.803881Z",
+   "file": "06_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "8b281b2d2c951f6afb361970de038f519fbd6601d7829667a3b4cc629a54212b",
+   "request_key": "0x76549b927201450925dad835397db090af432bd9bb8450dd5659e97807c41b01",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x76549b927201450925dad835397db090af432bd9bb8450dd5659e97807c41b01"
+  },
+  "condition_id": "0x76549b927201450925dad835397db090af432bd9bb8450dd5659e97807c41b01",
+  "gamma_receipt": {
+   "bytes": 6584,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:54.624068Z",
+   "file": "06_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "4c25b4267203eef3572f74e86f2301fbf7a2ad7a116240ce020fdce11817051a",
+   "request_key": "0x76549b927201450925dad835397db090af432bd9bb8450dd5659e97807c41b01",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x76549b927201450925dad835397db090af432bd9bb8450dd5659e97807c41b01&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0x76549b927201450925dad835397db090af432bd9bb8450dd5659e97807c41b01",
+  "input_token_id": "58604537483071354898180964395639115807494575157196626397450940195446622382546",
+  "seq": 6,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "80510694716694830985024466206993606877781645885643781258808556295905086298942",
+   "gamma_winner_token_id": "80510694716694830985024466206993606877781645885643781258808556295905086298942",
+   "market_token_ids": [
+    "80510694716694830985024466206993606877781645885643781258808556295905086298942",
+    "68126025136128223324749848935618051892761547924763398744503751771338747839219"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T13:50:15+00:00",
+   "status": "FINAL",
+   "winner_token_id": "80510694716694830985024466206993606877781645885643781258808556295905086298942"
+  },
+  "clob_receipt": {
+   "bytes": 2755,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:55.346613Z",
+   "file": "07_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "a037734464566f714414934f0412a6dd992f0dbaf77840a20e95307e70edc537",
+   "request_key": "0xe5072ab231e74132bef25a6783a17309a602d1ef52f6be04306f2d798f1f3d93",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0xe5072ab231e74132bef25a6783a17309a602d1ef52f6be04306f2d798f1f3d93"
+  },
+  "condition_id": "0xe5072ab231e74132bef25a6783a17309a602d1ef52f6be04306f2d798f1f3d93",
+  "gamma_receipt": {
+   "bytes": 6644,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:55.215761Z",
+   "file": "07_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "dfda081aa6a0cec7abad6bf0117af659c29c3344dca3768971c812e2cb925dc0",
+   "request_key": "0xe5072ab231e74132bef25a6783a17309a602d1ef52f6be04306f2d798f1f3d93",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0xe5072ab231e74132bef25a6783a17309a602d1ef52f6be04306f2d798f1f3d93&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0xe5072ab231e74132bef25a6783a17309a602d1ef52f6be04306f2d798f1f3d93",
+  "input_token_id": "68126025136128223324749848935618051892761547924763398744503751771338747839219",
+  "seq": 7,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "14125642685812903272989427426084461750360429007983890190146265302800253136692",
+   "gamma_winner_token_id": "14125642685812903272989427426084461750360429007983890190146265302800253136692",
+   "market_token_ids": [
+    "14125642685812903272989427426084461750360429007983890190146265302800253136692",
+    "59392820736797192065479651303387356388772128970405231740279239430683072477921"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T16:04:31+00:00",
+   "status": "FINAL",
+   "winner_token_id": "14125642685812903272989427426084461750360429007983890190146265302800253136692"
+  },
+  "clob_receipt": {
+   "bytes": 2335,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:56.162079Z",
+   "file": "08_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "5588989b3390ff090034ddfafbf1b576a012c807e02ba555d82d5d70be2e44cd",
+   "request_key": "0x2743aca0d4795ed67712700b41ca3ed063c629bf4facc85a35db074d174e387b",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x2743aca0d4795ed67712700b41ca3ed063c629bf4facc85a35db074d174e387b"
+  },
+  "condition_id": "0x2743aca0d4795ed67712700b41ca3ed063c629bf4facc85a35db074d174e387b",
+  "gamma_receipt": {
+   "bytes": 6387,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:56.029120Z",
+   "file": "08_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "da19fe6ba77e498ec02af0b13934ae4046031a113c7be2a1041f88dc0d3d9a4d",
+   "request_key": "0x2743aca0d4795ed67712700b41ca3ed063c629bf4facc85a35db074d174e387b",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x2743aca0d4795ed67712700b41ca3ed063c629bf4facc85a35db074d174e387b&closed=true"
+  },
+  "has_paper_decision_evidence_only": true,
+  "input_condition_id": "0x2743aca0d4795ed67712700b41ca3ed063c629bf4facc85a35db074d174e387b",
+  "input_token_id": "14125642685812903272989427426084461750360429007983890190146265302800253136692",
+  "seq": 8,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "48592185224431234366667594088258564715064688105448855313929522240689047296528",
+   "gamma_winner_token_id": "48592185224431234366667594088258564715064688105448855313929522240689047296528",
+   "market_token_ids": [
+    "89901563256336342454237263721405099212656166427371834635739813575302194755144",
+    "48592185224431234366667594088258564715064688105448855313929522240689047296528"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-09T02:13:57+00:00",
+   "status": "FINAL",
+   "winner_token_id": "48592185224431234366667594088258564715064688105448855313929522240689047296528"
+  },
+  "clob_receipt": {
+   "bytes": 1805,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:56.707635Z",
+   "file": "09_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "0f7ec14a09b77a47b92ed4d2d88b0e96ffd56adebe0f8e8155e4acaf3bb960cf",
+   "request_key": "0x714dc8537a09922a5a4ee75088c3788bc2c610dc4f30ba6404f020165e12ad64",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x714dc8537a09922a5a4ee75088c3788bc2c610dc4f30ba6404f020165e12ad64"
+  },
+  "condition_id": "0x714dc8537a09922a5a4ee75088c3788bc2c610dc4f30ba6404f020165e12ad64",
+  "gamma_receipt": {
+   "bytes": 5384,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:56.583835Z",
+   "file": "09_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "a6373549c8851e53cda667ae2324d9d06ee42743541ddcef9b342bd2bc67171d",
+   "request_key": "0x714dc8537a09922a5a4ee75088c3788bc2c610dc4f30ba6404f020165e12ad64",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x714dc8537a09922a5a4ee75088c3788bc2c610dc4f30ba6404f020165e12ad64&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0x714dc8537a09922a5a4ee75088c3788bc2c610dc4f30ba6404f020165e12ad64",
+  "input_token_id": "48592185224431234366667594088258564715064688105448855313929522240689047296528",
+  "seq": 9,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "4643526496696931920190399884323517790404430565454588990520370178380467738855",
+   "gamma_winner_token_id": "4643526496696931920190399884323517790404430565454588990520370178380467738855",
+   "market_token_ids": [
+    "4643526496696931920190399884323517790404430565454588990520370178380467738855",
+    "42864287263233196805104385532281659669948042251596575489111281888525732333976"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T07:07:43+00:00",
+   "status": "FINAL",
+   "winner_token_id": "4643526496696931920190399884323517790404430565454588990520370178380467738855"
+  },
+  "clob_receipt": {
+   "bytes": 2411,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:57.497953Z",
+   "file": "10_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "c3536f359e05af9ccb508296c1761169d39ad95ab35f683e54270ed55188d46b",
+   "request_key": "0x932da2432f49631d03571050c7dfc33f851607d840147bc2eea3ea3acaa41818",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x932da2432f49631d03571050c7dfc33f851607d840147bc2eea3ea3acaa41818"
+  },
+  "condition_id": "0x932da2432f49631d03571050c7dfc33f851607d840147bc2eea3ea3acaa41818",
+  "gamma_receipt": {
+   "bytes": 6855,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:57.261822Z",
+   "file": "10_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "b2c0d56b6a463c83457c9eb7bb83fda81f6fe96b97d03831cae517067cb294b3",
+   "request_key": "0x932da2432f49631d03571050c7dfc33f851607d840147bc2eea3ea3acaa41818",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x932da2432f49631d03571050c7dfc33f851607d840147bc2eea3ea3acaa41818&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "identity_repair": {
+   "input_is_subsequence_of_provider_id": true,
+   "input_len": 63,
+   "resolved_condition_id": "0x932da2432f49631d03571050c7dfc33f851607d840147bc2eea3ea3acaa41818",
+   "resolved_via": "gamma clob_token_ids exact match, closed=true"
+  },
+  "input_condition_id": "0x932da2432f49631d03571050c7dfc33f851607d840147bc2eea3acaa41818",
+  "input_token_id": "42864287263233196805104385532281659669948042251596575489111281888525732333976",
+  "seq": 10,
+  "token_lookup_receipt": {
+   "bytes": 6855,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:57.136028Z",
+   "file": "10_gamma_token.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "b2c0d56b6a463c83457c9eb7bb83fda81f6fe96b97d03831cae517067cb294b3",
+   "request_key": "42864287263233196805104385532281659669948042251596575489111281888525732333976",
+   "request_kind": "token_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?clob_token_ids=42864287263233196805104385532281659669948042251596575489111281888525732333976&closed=true"
+  },
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "101627592609991492116654955363045265733496552605531829916494410859142298460036",
+   "gamma_winner_token_id": "101627592609991492116654955363045265733496552605531829916494410859142298460036",
+   "market_token_ids": [
+    "101627592609991492116654955363045265733496552605531829916494410859142298460036",
+    "93483069569417915397985016937180359670937177299335029518397115414880754191154"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-09T19:21:43+00:00",
+   "status": "FINAL",
+   "winner_token_id": "101627592609991492116654955363045265733496552605531829916494410859142298460036"
+  },
+  "clob_receipt": {
+   "bytes": 2768,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:58.049904Z",
+   "file": "11_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "c093f4dda09b625efd024c80ca878772857c2378f134b8e0153652d18ad83ff4",
+   "request_key": "0x03b9c4701a5b6ecad3805404489fbde58f96e9ef7b91a99d36e8c1a280652990",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x03b9c4701a5b6ecad3805404489fbde58f96e9ef7b91a99d36e8c1a280652990"
+  },
+  "condition_id": "0x03b9c4701a5b6ecad3805404489fbde58f96e9ef7b91a99d36e8c1a280652990",
+  "gamma_receipt": {
+   "bytes": 6770,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:57.914897Z",
+   "file": "11_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "61601a15a144084677686c56c29c446479032c8d193fb0c859253b092cd900a1",
+   "request_key": "0x03b9c4701a5b6ecad3805404489fbde58f96e9ef7b91a99d36e8c1a280652990",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x03b9c4701a5b6ecad3805404489fbde58f96e9ef7b91a99d36e8c1a280652990&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0x03b9c4701a5b6ecad3805404489fbde58f96e9ef7b91a99d36e8c1a280652990",
+  "input_token_id": "101627592609991492116654955363045265733496552605531829916494410859142298460036",
+  "seq": 11,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "101082548092320306719963945569912885349932152872247558938038692713159044729243",
+   "gamma_winner_token_id": "101082548092320306719963945569912885349932152872247558938038692713159044729243",
+   "market_token_ids": [
+    "63490772592399525912022988674319194195433725814720710118029711522260283738901",
+    "101082548092320306719963945569912885349932152872247558938038692713159044729243"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-09T05:38:57+00:00",
+   "status": "FINAL",
+   "winner_token_id": "101082548092320306719963945569912885349932152872247558938038692713159044729243"
+  },
+  "clob_receipt": {
+   "bytes": 1819,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:58.672845Z",
+   "file": "12_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "edb61391259f5d04fdb12845c1d4d15368cb71f9296a6d67939c23189a2eec0e",
+   "request_key": "0xb85ad4c07c098cf1cdacd238c1cfd39bcc52e7fef372cdaf2c6df7e375c2fa65",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0xb85ad4c07c098cf1cdacd238c1cfd39bcc52e7fef372cdaf2c6df7e375c2fa65"
+  },
+  "condition_id": "0xb85ad4c07c098cf1cdacd238c1cfd39bcc52e7fef372cdaf2c6df7e375c2fa65",
+  "gamma_receipt": {
+   "bytes": 5396,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:58.549081Z",
+   "file": "12_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "bf2aa3515f5e919225bc8ccaf62b468237f0ea8b587c1d9805a4ca941271f011",
+   "request_key": "0xb85ad4c07c098cf1cdacd238c1cfd39bcc52e7fef372cdaf2c6df7e375c2fa65",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0xb85ad4c07c098cf1cdacd238c1cfd39bcc52e7fef372cdaf2c6df7e375c2fa65&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0xb85ad4c07c098cf1cdacd238c1cfd39bcc52e7fef372cdaf2c6df7e375c2fa65",
+  "input_token_id": "101082548092320306719963945569912885349932152872247558938038692713159044729243",
+  "seq": 12,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "91681990564965165688873937795203423318597138402559026083427660411133623583660",
+   "gamma_winner_token_id": "91681990564965165688873937795203423318597138402559026083427660411133623583660",
+   "market_token_ids": [
+    "110451841840558593379941848648903788766947244440973665334696310419688068076642",
+    "91681990564965165688873937795203423318597138402559026083427660411133623583660"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-10T11:27:43+00:00",
+   "status": "FINAL",
+   "winner_token_id": "91681990564965165688873937795203423318597138402559026083427660411133623583660"
+  },
+  "clob_receipt": {
+   "bytes": 2814,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:59.241809Z",
+   "file": "13_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "03c930c978c69c9d063c9683b8d94811dc4c3d32ef3dc3db7f86c9c861ae1ecd",
+   "request_key": "0xb1db5441e1f4b9477b3a39a03a53c7d3a6a85080ce20938570efa11cf0d548e2",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0xb1db5441e1f4b9477b3a39a03a53c7d3a6a85080ce20938570efa11cf0d548e2"
+  },
+  "condition_id": "0xb1db5441e1f4b9477b3a39a03a53c7d3a6a85080ce20938570efa11cf0d548e2",
+  "gamma_receipt": {
+   "bytes": 6297,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:59.112830Z",
+   "file": "13_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "54b6a2058e0019a906f73f06e8dd37a6aef8d9a3df25a00f76daae12f4e00042",
+   "request_key": "0xb1db5441e1f4b9477b3a39a03a53c7d3a6a85080ce20938570efa11cf0d548e2",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0xb1db5441e1f4b9477b3a39a03a53c7d3a6a85080ce20938570efa11cf0d548e2&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0xb1db5441e1f4b9477b3a39a03a53c7d3a6a85080ce20938570efa11cf0d548e2",
+  "input_token_id": "110451841840558593379941848648903788766947244440973665334696310419688068076642",
+  "seq": 13,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "4808774637637728381685904626295403217873897057286290849238153929667031014278",
+   "gamma_winner_token_id": "4808774637637728381685904626295403217873897057286290849238153929667031014278",
+   "market_token_ids": [
+    "2029208777870490549350981561317467220813125402477647864080592130737027912360",
+    "4808774637637728381685904626295403217873897057286290849238153929667031014278"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-11T01:55:47+00:00",
+   "status": "FINAL",
+   "winner_token_id": "4808774637637728381685904626295403217873897057286290849238153929667031014278"
+  },
+  "clob_receipt": {
+   "bytes": 2857,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:59.808370Z",
+   "file": "14_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "adbfab701ce3b79ece4da31cb9e52be11da2ffabb16f55b829ebc1729b426ad9",
+   "request_key": "0x843b9358b9869b111cbecb00e40b728cb247e0c3716bab2bd55b29e3e4d70b97",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x843b9358b9869b111cbecb00e40b728cb247e0c3716bab2bd55b29e3e4d70b97"
+  },
+  "condition_id": "0x843b9358b9869b111cbecb00e40b728cb247e0c3716bab2bd55b29e3e4d70b97",
+  "gamma_receipt": {
+   "bytes": 6510,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:49:59.670661Z",
+   "file": "14_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "d5cfb1794f82a4d49cb3691cd335405f6a93967e5ea2f030903aaf0f39a8a72f",
+   "request_key": "0x843b9358b9869b111cbecb00e40b728cb247e0c3716bab2bd55b29e3e4d70b97",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x843b9358b9869b111cbecb00e40b728cb247e0c3716bab2bd55b29e3e4d70b97&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0x843b9358b9869b111cbecb00e40b728cb247e0c3716bab2bd55b29e3e4d70b97",
+  "input_token_id": "2029208777870490549350981561317467220813125402477647864080592130737027912360",
+  "seq": 14,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "9579263675818564781522504874735726788429490476675052641931793317605729650400",
+   "gamma_winner_token_id": "9579263675818564781522504874735726788429490476675052641931793317605729650400",
+   "market_token_ids": [
+    "9579263675818564781522504874735726788429490476675052641931793317605729650400",
+    "34378596757862145898669904798999760224115265466349166685781854298265706031774"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-09T05:09:42+00:00",
+   "status": "FINAL",
+   "winner_token_id": "9579263675818564781522504874735726788429490476675052641931793317605729650400"
+  },
+  "clob_receipt": {
+   "bytes": 2781,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:00.366103Z",
+   "file": "15_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "f7784ef8a1a55c5faf66e2f3a9e8d7172489a4f45013e5f284f646fb4eb53247",
+   "request_key": "0x8da7644456df9ebc38f9b03b2bd834b0c1cae324f57631b3b28a6895c80ee82e",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x8da7644456df9ebc38f9b03b2bd834b0c1cae324f57631b3b28a6895c80ee82e"
+  },
+  "condition_id": "0x8da7644456df9ebc38f9b03b2bd834b0c1cae324f57631b3b28a6895c80ee82e",
+  "gamma_receipt": {
+   "bytes": 6637,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:00.237667Z",
+   "file": "15_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "38348ccb80a8e8f0dc78874162b8ae39b663d514f391c277c1409256fceb45a0",
+   "request_key": "0x8da7644456df9ebc38f9b03b2bd834b0c1cae324f57631b3b28a6895c80ee82e",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x8da7644456df9ebc38f9b03b2bd834b0c1cae324f57631b3b28a6895c80ee82e&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0x8da7644456df9ebc38f9b03b2bd834b0c1cae324f57631b3b28a6895c80ee82e",
+  "input_token_id": "34378596757862145898669904798999760224115265466349166685781854298265706031774",
+  "seq": 15,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "99762890406524240853108615885344629655020855642073430483323322073923205345379",
+   "gamma_winner_token_id": "99762890406524240853108615885344629655020855642073430483323322073923205345379",
+   "market_token_ids": [
+    "99762890406524240853108615885344629655020855642073430483323322073923205345379",
+    "33981090806712729713306908094550209980352127788091589737870744939302285279326"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-09T01:43:56+00:00",
+   "status": "FINAL",
+   "winner_token_id": "99762890406524240853108615885344629655020855642073430483323322073923205345379"
+  },
+  "clob_receipt": {
+   "bytes": 1982,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:00.942909Z",
+   "file": "16_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "7133bfb4a33a079870e52b20958bf56fe88ee5a8318d1ea0414aaf426a0fc425",
+   "request_key": "0x99e0d8fcbfb4c588184b61fcc81ae25b879fc726f463a530333e3f60d82eaae2",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x99e0d8fcbfb4c588184b61fcc81ae25b879fc726f463a530333e3f60d82eaae2"
+  },
+  "condition_id": "0x99e0d8fcbfb4c588184b61fcc81ae25b879fc726f463a530333e3f60d82eaae2",
+  "gamma_receipt": {
+   "bytes": 5765,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:00.807208Z",
+   "file": "16_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "dacd829a781634d3389951b0a62c8a2c07ead1a1f4a69f4bcac96bc745f2cfe0",
+   "request_key": "0x99e0d8fcbfb4c588184b61fcc81ae25b879fc726f463a530333e3f60d82eaae2",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x99e0d8fcbfb4c588184b61fcc81ae25b879fc726f463a530333e3f60d82eaae2&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0x99e0d8fcbfb4c588184b61fcc81ae25b879fc726f463a530333e3f60d82eaae2",
+  "input_token_id": "33981090806712729713306908094550209980352127788091589737870744939302285279326",
+  "seq": 16,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "83716513246302631129174692995770345889425398669581087357066002319486415190472",
+   "gamma_winner_token_id": "83716513246302631129174692995770345889425398669581087357066002319486415190472",
+   "market_token_ids": [
+    "83716513246302631129174692995770345889425398669581087357066002319486415190472",
+    "17579131423310915082470788073940856833097725095403335615157687765282890068488"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-08T10:28:27+00:00",
+   "status": "FINAL",
+   "winner_token_id": "83716513246302631129174692995770345889425398669581087357066002319486415190472"
+  },
+  "clob_receipt": {
+   "bytes": 2382,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:01.481266Z",
+   "file": "17_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "9f4ecd32cb9fd60039aad2eb9308604434f8ce2b0fae4f9d4bcac5d75ae56790",
+   "request_key": "0xa2afb9debe22188cdcf2274e428bcc7cbe34375bfe3ba4607035f20288bdac35",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0xa2afb9debe22188cdcf2274e428bcc7cbe34375bfe3ba4607035f20288bdac35"
+  },
+  "condition_id": "0xa2afb9debe22188cdcf2274e428bcc7cbe34375bfe3ba4607035f20288bdac35",
+  "gamma_receipt": {
+   "bytes": 6480,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:01.358554Z",
+   "file": "17_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "50b670f9f8aca002c0534c6e22db3d11324f05540bf52b3597d08fe89efe4b89",
+   "request_key": "0xa2afb9debe22188cdcf2274e428bcc7cbe34375bfe3ba4607035f20288bdac35",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0xa2afb9debe22188cdcf2274e428bcc7cbe34375bfe3ba4607035f20288bdac35&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0xa2afb9debe22188cdcf2274e428bcc7cbe34375bfe3ba4607035f20288bdac35",
+  "input_token_id": "17579131423310915082470788073940856833097725095403335615157687765282890068488",
+  "seq": 17,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "106108195571888810738279974373534836372172839060641769295654830897066295100936",
+   "gamma_winner_token_id": "106108195571888810738279974373534836372172839060641769295654830897066295100936",
+   "market_token_ids": [
+    "4825571458128679465120369840698381994948286739021997351502344617020884740672",
+    "106108195571888810738279974373534836372172839060641769295654830897066295100936"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-08T16:45:26+00:00",
+   "status": "FINAL",
+   "winner_token_id": "106108195571888810738279974373534836372172839060641769295654830897066295100936"
+  },
+  "clob_receipt": {
+   "bytes": 2350,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:02.050886Z",
+   "file": "18_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "6e4a11b8c5acb50b9a6aa89e32be2e48bb5fbce737ad7965f81d13dedbdc58dd",
+   "request_key": "0x5d3a11b3f245f90362aa723752da0edcaa44fe89c1574dafd6085885273dd1c5",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x5d3a11b3f245f90362aa723752da0edcaa44fe89c1574dafd6085885273dd1c5"
+  },
+  "condition_id": "0x5d3a11b3f245f90362aa723752da0edcaa44fe89c1574dafd6085885273dd1c5",
+  "gamma_receipt": {
+   "bytes": 6728,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:01.910192Z",
+   "file": "18_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "84b820697c7c50e7c5387804e37d61150662e3feeea55c5fbadb78e1ff47f67d",
+   "request_key": "0x5d3a11b3f245f90362aa723752da0edcaa44fe89c1574dafd6085885273dd1c5",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x5d3a11b3f245f90362aa723752da0edcaa44fe89c1574dafd6085885273dd1c5&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0x5d3a11b3f245f90362aa723752da0edcaa44fe89c1574dafd6085885273dd1c5",
+  "input_token_id": "106108195571888810738279974373534836372172839060641769295654830897066295100936",
+  "seq": 18,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "29705386706454527244092775317397490699111187895673012793452831957315924520726",
+   "gamma_winner_token_id": "29705386706454527244092775317397490699111187895673012793452831957315924520726",
+   "market_token_ids": [
+    "144915958617195535214962489348280025594470611002360390664156948034027537020",
+    "29705386706454527244092775317397490699111187895673012793452831957315924520726"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-08T21:34:14+00:00",
+   "status": "FINAL",
+   "winner_token_id": "29705386706454527244092775317397490699111187895673012793452831957315924520726"
+  },
+  "clob_receipt": {
+   "bytes": 2938,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:02.597218Z",
+   "file": "19_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "699854ac12f843429fd097f1a44b08644b99f18b847b23a5b5e179ce2947170d",
+   "request_key": "0xb08ba128f9797e12a8110d5450373fbbd7417c3674a4b0b7730bd09b774fbc20",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0xb08ba128f9797e12a8110d5450373fbbd7417c3674a4b0b7730bd09b774fbc20"
+  },
+  "condition_id": "0xb08ba128f9797e12a8110d5450373fbbd7417c3674a4b0b7730bd09b774fbc20",
+  "gamma_receipt": {
+   "bytes": 6552,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:02.472499Z",
+   "file": "19_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "4d94b86c44b3562ab77669c9d4f9290c14c509d3a104fe772fe1de5f864ef704",
+   "request_key": "0xb08ba128f9797e12a8110d5450373fbbd7417c3674a4b0b7730bd09b774fbc20",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0xb08ba128f9797e12a8110d5450373fbbd7417c3674a4b0b7730bd09b774fbc20&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0xb08ba128f9797e12a8110d5450373fbbd7417c3674a4b0b7730bd09b774fbc20",
+  "input_token_id": "144915958617195535214962489348280025594470611002360390664156948034027537020",
+  "seq": 19,
+  "token_membership_of_input_token": true
+ },
+ {
+  "classification": {
+   "clob_winner_token_id": "49503499314299482686253524599927100138610851079733716609267909300288930323672",
+   "gamma_winner_token_id": "49503499314299482686253524599927100138610851079733716609267909300288930323672",
+   "market_token_ids": [
+    "95731170521508281851918042750094648533310984137121130310169257287225327346032",
+    "49503499314299482686253524599927100138610851079733716609267909300288930323672"
+   ],
+   "reason": "gamma+clob closed, identical single winner, provider time present",
+   "resolution_time_source": "gamma.closedTime",
+   "resolved_at": "2026-10-09T19:05:41+00:00",
+   "status": "FINAL",
+   "winner_token_id": "49503499314299482686253524599927100138610851079733716609267909300288930323672"
+  },
+  "clob_receipt": {
+   "bytes": 2770,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:03.164331Z",
+   "file": "20_clob.raw",
+   "http_status": 200,
+   "provider": "clob",
+   "raw_digest": "eaaea789651fde91366831f963a9e568d7a50bb8a6ed98890f4215ca72bbd22e",
+   "request_key": "0x1bd8dc4dbda4b0677fa10e62aae86e417b93cf8b8376353c0c1529ba7276d68f",
+   "request_kind": "condition_id",
+   "request_url": "https://clob.polymarket.com/markets/0x1bd8dc4dbda4b0677fa10e62aae86e417b93cf8b8376353c0c1529ba7276d68f"
+  },
+  "condition_id": "0x1bd8dc4dbda4b0677fa10e62aae86e417b93cf8b8376353c0c1529ba7276d68f",
+  "gamma_receipt": {
+   "bytes": 6591,
+   "fetch_error": null,
+   "fetched_at": "2026-10-13T07:50:03.010578Z",
+   "file": "20_gamma.raw",
+   "http_status": 200,
+   "provider": "gamma",
+   "raw_digest": "46c66929ed49a591890b3652273b516bfb4c3cf24a365819bbeee8b4fc6bc6e3",
+   "request_key": "0x1bd8dc4dbda4b0677fa10e62aae86e417b93cf8b8376353c0c1529ba7276d68f",
+   "request_kind": "condition_id",
+   "request_url": "https://gamma-api.polymarket.com/markets?condition_ids=0x1bd8dc4dbda4b0677fa10e62aae86e417b93cf8b8376353c0c1529ba7276d68f&closed=true"
+  },
+  "has_paper_decision_evidence_only": false,
+  "input_condition_id": "0x1bd8dc4dbda4b0677fa10e62aae86e417b93cf8b8376353c0c1529ba7276d68f",
+  "input_token_id": "49503499314299482686253524599927100138610851079733716609267909300288930323672",
+  "seq": 20,
+  "token_membership_of_input_token": true
+ }
+]
