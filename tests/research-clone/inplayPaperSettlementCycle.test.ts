@@ -186,8 +186,10 @@ test("scheduled command: settlement runs last in BOTH branches, `;`-separated so
   const toml = readFileSync("ops/railway/research-clone-daily-sync.toml", "utf8");
   const start = toml.split("\n").find((l) => l.startsWith("startCommand"))!;
   assert.equal((start.match(/research-clone:inplay-paper-settlement-cycle/g) ?? []).length, 2);
-  assert.match(start, /research-clone:inplay-paper-decisions; D=\$\?; npm run research-clone:inplay-paper-settlement-cycle && \[ \\"\$D\\" = 0 \]; else/);
-  assert.match(start, /research-clone:sync -- --telemetry-only; npm run research-clone:inplay-paper-decisions; D=\$\?; npm run research-clone:inplay-paper-settlement-cycle && \[ \\"\$D\\" = 0 \]; fi'"$/);
+  // BOX_B_HISTORICAL_CATCHUP_LIVE_V1: the Box B collector now runs after settlement; every exit code (D/S/C) is preserved.
+  const tail = String.raw`npm run research-clone:inplay-paper-settlement-cycle; S=\$\?; npm run research-clone:market-outcome-collector; C=\$\?; \[ \\"\$D\\" = 0 \] && \[ \\"\$S\\" = 0 \] && \[ \\"\$C\\" = 0 \]`;
+  assert.match(start, new RegExp(String.raw`research-clone:inplay-paper-decisions; D=\$\?; ${tail}; else`));
+  assert.match(start, new RegExp(String.raw`research-clone:sync -- --telemetry-only; npm run research-clone:inplay-paper-decisions; D=\$\?; ${tail}; fi'"$`));
   assert.doesNotMatch(start, /(sync|decisions)\s*&&\s*npm run research-clone:inplay-paper-settlement/);
   assert.match(toml, /cronSchedule\s*=\s*"0 \* \* \* \*"/);
   const pkg = JSON.parse(readFileSync("package.json", "utf8"));
