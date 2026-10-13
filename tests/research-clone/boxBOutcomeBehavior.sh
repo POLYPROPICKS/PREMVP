@@ -29,6 +29,7 @@ grant usage on schema public to anon, authenticated, service_role, blind_model_r
 -- worst case: Supabase-style default privileges that auto-grant new objects (also to the blind reader)
 alter default privileges for role postgres in schema public grant all on tables to anon, authenticated, service_role, blind_model_reader;
 alter default privileges for role postgres in schema public grant all on functions to anon, authenticated, service_role, blind_model_reader;
+alter default privileges for role postgres in schema public grant all on sequences to anon, authenticated, service_role, blind_model_reader;
 SQL
   if [ "${2:-yes}" = yes ]; then
     P -d "$1" -v ON_ERROR_STOP=1 >/dev/null <<SQL
@@ -83,10 +84,12 @@ neg() { # name sql expected-label-regex
 neg nc_drop_appendonly "drop trigger market_outcome_revisions_row_guard_trg on public.market_outcome_revisions; drop trigger market_outcome_receipts_row_guard_trg on public.market_outcome_provider_receipts;" "FAIL T4\.[0-9]+"
 neg nc_grant_blind "grant select on public.market_outcome_revisions, public.market_outcome_current to blind_model_reader;" "FAIL T3\.1"
 neg nc_service_update "grant update, delete on public.market_outcome_revisions to service_role;" "FAIL T3\.3"
-neg nc_validator_off "create or replace function public.market_outcome_validate_receipts(p_condition_id text, p_status text, p_winner text, p_gamma_receipt bigint, p_clob_receipt bigint, p_tokens jsonb) returns void language plpgsql as 'begin return; end';" "FAIL T5\.[0-9]+"
+neg nc_validator_off "create or replace function public.market_outcome_validate_receipts(p_condition_id text, p_status text, p_winner text, p_gamma_receipt bigint, p_clob_receipt bigint, p_tokens jsonb, p_resolved_at timestamptz, p_time_source text) returns void language plpgsql as 'begin return; end';" "FAIL T5\.[0-9]+"
 neg nc_bet_column "alter table public.market_outcome_revisions add column bet_row_key text;" "FAIL T1\.1"
 neg nc_outside_fk "create table public.fake_ledger(bet_row_key text primary key); alter table public.market_outcome_revisions add column lk text; alter table public.market_outcome_revisions add constraint x foreign key (lk) references public.fake_ledger(bet_row_key);" "FAIL T1\.[12]"
 neg nc_obs_touched "update public.research_inplay_core_path_observations set payload='zzz' where id=1;" "FAIL T1\.4"
+neg nc_fn_exec "grant execute on function public.market_outcome_validate_receipts(text,text,text,bigint,bigint,jsonb,timestamptz,text) to blind_model_reader;" "FAIL T3\.10"
+neg nc_seq_grant "grant usage on sequence public.market_outcome_provider_receipts_receipt_id_seq to authenticated;" "FAIL T3\.11"
 neg nc_rls_off "alter table public.market_outcome_revisions disable row level security;" "FAIL T3\.4"
 neg nc_public_grant "grant select on public.market_outcome_provider_receipts to public;" "FAIL T3\.[12]"
 

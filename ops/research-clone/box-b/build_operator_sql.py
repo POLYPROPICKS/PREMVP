@@ -105,6 +105,12 @@ begin
      or (select count(*) from public.market_outcome_provider_receipts) <> {n_rc} then
     raise exception 'BOX_B_VERIFY: unexpected row counts';
   end if;
+  if exists (select 1 from public.market_outcome_revisions r
+              join public.market_outcome_provider_receipts g on g.receipt_id = r.gamma_receipt_id
+             where r.outcome_status in ('FINAL', 'VOID')
+               and r.resolved_at is distinct from (g.raw_body::jsonb -> 0 ->> 'closedTime')::timestamptz) then
+    raise exception 'BOX_B_VERIFY: resolved_at not backed by gamma closedTime';
+  end if;
   if exists (select 1 from public.market_outcome_revisions where revision_no <> 1 or prev_revision_digest is not null) then
     raise exception 'BOX_B_VERIFY: unexpected revision chain';
   end if;
@@ -115,9 +121,15 @@ begin
                     where grantee = 'PUBLIC' and table_schema = 'public' and table_name like 'market_outcome_%') then
           raise exception 'BOX_B_VERIFY: PUBLIC has grants';
         end if;
+        if has_function_privilege('public', 'public.market_outcome_validate_receipts(text,text,text,bigint,bigint,jsonb,timestamptz,text)', 'execute')
+           or has_sequence_privilege('public', pg_get_serial_sequence('public.market_outcome_provider_receipts', 'receipt_id'), 'usage,select,update') then
+          raise exception 'BOX_B_VERIFY: PUBLIC can execute/use Box B function or sequence';
+        end if;
       elsif has_table_privilege(bad, 'public.market_outcome_revisions', 'select,insert,update,delete,truncate,references,trigger')
          or has_table_privilege(bad, 'public.market_outcome_provider_receipts', 'select,insert,update,delete,truncate,references,trigger')
-         or has_table_privilege(bad, 'public.market_outcome_current', 'select') then
+         or has_table_privilege(bad, 'public.market_outcome_current', 'select')
+         or has_function_privilege(bad, 'public.market_outcome_validate_receipts(text,text,text,bigint,bigint,jsonb,timestamptz,text)', 'execute')
+         or has_sequence_privilege(bad, pg_get_serial_sequence('public.market_outcome_provider_receipts', 'receipt_id'), 'usage,select,update') then
         raise exception 'BOX_B_VERIFY: % has access', bad;
       end if;
     end if;

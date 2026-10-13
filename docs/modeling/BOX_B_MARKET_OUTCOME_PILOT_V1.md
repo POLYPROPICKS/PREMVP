@@ -15,9 +15,9 @@ The earlier Box B draft (`20261013100000…`, SHA `b656244f…`) was lost with a
 
 | Artifact | SHA-256 |
 |---|---|
-| `ops/research-clone/migrations/20261013130000_market_outcome_box_b_authority_v1.sql` | `b09b946955b48f93d591425b2ab00a0de7cf7ffe5366eea3b78f34e1384b716d` |
+| `ops/research-clone/migrations/20261013130000_market_outcome_box_b_authority_v1.sql` | `0643c807eae6b17475d2948af3146251838dd9b86e52955a5d8456c0c4dc4766` |
 | `ops/research-clone/box-b/pilot_insert.sql` | `c45455b18c966dde1ce04ee61004d0ab5eccc32d69dbe2850f22a67da0582f6a` |
-| `ops/research-clone/box-b/operator_dbclone_box_b_v1.sql` (the single operator script) | `f7412e0b6ed560dd69a4437cebedc107be91759c21196f8770ec06b1c208c2ef` |
+| `ops/research-clone/box-b/operator_dbclone_box_b_v1.sql` (the single operator script) | `26bc5ed895570a0c8605fcd98331e504e24521de2e8972d75e88f77ff374a58f` |
 | `ops/research-clone/box-b/market20_frozen_input.csv` (our copy of the frozen input) | `1cd9b923ee4055f5900af4f3bb9cf0a4d63071cc33018e7cfc777556a585ba81` |
 | `ops/research-clone/box-b/receipts/receipts_index.json` | `2cb76f8c37a8e3ed9fe7932e97c088993777ff19e4d43038038793508b043551` |
 
@@ -37,7 +37,8 @@ given in the mission text; its own SHA is recorded here instead. The old members
   inserts nothing; new evidence (including a flip back to older evidence) becomes the next revision.
 * The insert trigger re-validates every FINAL/VOID **inside the database** against the stored receipts (market
   identity, both providers closed, token sets equal, Gamma `outcomePrices` 1/0 and CLOB `winner` naming the same
-  token, or 0.5/0.5 and no winner for VOID). A caller cannot assert an outcome the receipts do not show.
+  token, or 0.5/0.5 and no winner for VOID, and `resolved_at` equal to the provider's own `closedTime`/`umaEndDate` under its
+  source label; missing prices/tokens are refused, never defaulted). A caller cannot assert an outcome the receipts do not show.
 * `market_outcome_current` (security_invoker view) — newest non-`LOOKUP_FAILED` claim per market, plus
   `last_checked_at`. A failed lookup is recorded as history but never hides a standing FINAL.
 * ACL: `public/anon/authenticated/blind_model_reader` hold nothing (also revoked on the validator function);
@@ -86,15 +87,25 @@ The token receipt is stored as its own receipt row.
 
 `tests/research-clone/boxBOutcomeBehavior.sh` (PostgreSQL 16 scratch cluster, Supabase-style default privileges
 that auto-grant new tables even to `blind_model_reader`): applies the operator script, reloads the pilot twice
-(still 20 revisions / 41 receipts), runs 51 probes (structure, ACL matrix, append-only for owner and `service_role`,
+(still 20 revisions / 41 receipts), runs 56 probes (structure, ACL matrix incl. validator EXECUTE and the identity sequence, append-only for owner and `service_role`,
 digest/validator rejections, revision chain, A→B→A history, LOOKUP_FAILED handling), proves the script refuses a
-second apply, a non-DBClone database and rolls back fully on mid-script failure, and runs 9 negative controls
+second apply, a non-DBClone database and rolls back fully on mid-script failure, and runs 11 negative controls
 (each injected regression — dropped trigger, granted reader, extra `bet_row_key` column, neutered validator,
-touched observation table, RLS off, PUBLIC grant … — is detected by the same suite).
+touched observation table, validator EXECUTE or sequence granted, RLS off, PUBLIC grant … — is detected by the same suite).
 Receipt: `ops/research-clone/box-b/pg_test_receipt.txt`.
 `tests/research-clone/boxBOutcomeStatic.test.ts` re-checks hashes, receipt digests and forbidden tokens in the normal repo test run.
 
 ## Known limits (stated, not hidden)
+
+* **Provenance trust root is the writer.** The database proves a stored receipt is internally consistent and that a FINAL/VOID
+  matches it, but it cannot prove the body really came from Polymarket: a malicious `service_role` could insert a fabricated body
+  that hashes correctly. Receipt rows are append-only, so any such write is permanent and attributable (`recorded_by`, `recorded_at`).
+  A later PENDING/CONFLICT revision supersedes a FINAL in `market_outcome_current` (history stays in the chain), so consumers must
+  not treat the view as immutable-final. Stored bodies are byte-exact, including the trailing LF both providers append.
+* **DBClone identity is by sentinel table.** The script's guard is the presence of `research_inplay_core_path_observations`; it cannot
+  distinguish a Production database that also has that table. The operator must confirm the SQL Editor is open on project
+  `nppznoujvnyjargjkmnv` before running. After any failed run, check `to_regclass('public.market_outcome_revisions') is null` before retrying.
+  The script is a large single paste; an editor that truncates it fails closed (no `COMMIT`).
 
 * A database superuser can disable triggers / `session_replication_role=replica`; Box B defends against application roles, not DBA bypass.
 * Nothing has been applied to DBClone. This session's Supabase connector does not list `nppznoujvnyjargjkmnv`, and the registered

@@ -83,6 +83,19 @@ select pg_temp.assert_true(
                  and has_table_privilege(r.rolname, 'public.' || t, 'select,insert,update,delete,truncate,references,trigger')),
   'T3.1 anon/authenticated/blind_model_reader hold zero privileges');
 select pg_temp.assert_true(
+  not exists (select 1 from pg_roles r
+               where r.rolname in ('anon', 'authenticated', 'blind_model_reader')
+                 and has_function_privilege(r.rolname, 'public.market_outcome_validate_receipts(text,text,text,bigint,bigint,jsonb,timestamptz,text)', 'execute'))
+  and not has_function_privilege('public', 'public.market_outcome_validate_receipts(text,text,text,bigint,bigint,jsonb,timestamptz,text)', 'execute')
+  and has_function_privilege('service_role', 'public.market_outcome_validate_receipts(text,text,text,bigint,bigint,jsonb,timestamptz,text)', 'execute'),
+  'T3.10 validator EXECUTE denied to anon/authenticated/PUBLIC/blind_model_reader, kept for service_role');
+select pg_temp.assert_true(
+  not exists (select 1 from pg_roles r
+               where r.rolname in ('anon', 'authenticated', 'blind_model_reader', 'service_role')
+                 and has_sequence_privilege(r.rolname, pg_get_serial_sequence('public.market_outcome_provider_receipts', 'receipt_id'), 'usage,select,update'))
+  and not has_sequence_privilege('public', pg_get_serial_sequence('public.market_outcome_provider_receipts', 'receipt_id'), 'usage,select,update'),
+  'T3.11 receipt identity sequence is closed to every application role');
+select pg_temp.assert_true(
   not exists (select 1 from information_schema.role_table_grants
                where grantee = 'PUBLIC' and table_schema = 'public' and table_name like 'market_outcome_%'),
   'T3.2 PUBLIC holds zero privileges');
@@ -149,21 +162,21 @@ grant select on fx to service_role;
 select pg_temp.expect_error($q$insert into public.market_outcome_revisions
   (condition_id, outcome_status, winner_token_id, gamma_winner_token_id, clob_winner_token_id, market_token_ids,
    gamma_receipt_id, clob_receipt_id, resolved_at, resolution_time_source, checked_at)
-  select condition_id, 'FINAL', loser, loser, loser, market_token_ids, g_id, c_id, resolved_at, 'x', now() from fx$q$,
+  select condition_id, 'FINAL', loser, loser, loser, market_token_ids, g_id, c_id, resolved_at, resolution_time_source, now() from fx$q$,
   'P0001', 'T5.3 FINAL naming the LOSER token is refused by receipt validation');
 select pg_temp.expect_error($q$insert into public.market_outcome_revisions
   (condition_id, outcome_status, winner_token_id, gamma_winner_token_id, clob_winner_token_id, market_token_ids,
    gamma_receipt_id, clob_receipt_id, resolved_at, resolution_time_source, checked_at)
-  select condition_id, 'FINAL', winner_token_id, winner_token_id, loser, market_token_ids, g_id, c_id, resolved_at, 'x', now() from fx$q$,
+  select condition_id, 'FINAL', winner_token_id, winner_token_id, loser, market_token_ids, g_id, c_id, resolved_at, resolution_time_source, now() from fx$q$,
   '23514', 'T5.4 FINAL with gamma/clob winner disagreement refused');
 select pg_temp.expect_error($q$insert into public.market_outcome_revisions
   (condition_id, outcome_status, winner_token_id, gamma_winner_token_id, clob_winner_token_id, market_token_ids,
    gamma_receipt_id, clob_receipt_id, checked_at)
   select condition_id, 'FINAL', winner_token_id, winner_token_id, winner_token_id, market_token_ids, g_id, c_id, now() from fx$q$,
-  '23514', 'T5.5 FINAL without resolution time/source refused');
+  'P0001,23514', 'T5.5 FINAL without resolution time/source refused');
 select pg_temp.expect_error($q$insert into public.market_outcome_revisions
   (condition_id, outcome_status, gamma_receipt_id, clob_receipt_id, resolved_at, resolution_time_source, checked_at)
-  select condition_id, 'VOID', g_id, c_id, resolved_at, 'x', now() from fx$q$,
+  select condition_id, 'VOID', g_id, c_id, resolved_at, resolution_time_source, now() from fx$q$,
   'P0001', 'T5.6 VOID on receipts that show a winner refused');
 select pg_temp.expect_error($q$insert into public.market_outcome_revisions
   (condition_id, outcome_status, winner_token_id, gamma_receipt_id, clob_receipt_id, checked_at)
@@ -185,6 +198,40 @@ select pg_temp.expect_error($q$insert into public.market_outcome_revisions
   (condition_id, outcome_status, gamma_receipt_id, clob_receipt_id, checked_at)
   select condition_id, 'PENDING', c_id, g_id, now() from fx$q$,
   'P0001', 'T5.11 swapped provider receipts refused');
+-- T5.12/13 resolved_at must equal the provider's own timestamp under a known source label
+select pg_temp.expect_error($q$insert into public.market_outcome_revisions
+  (condition_id, outcome_status, winner_token_id, gamma_winner_token_id, clob_winner_token_id, market_token_ids,
+   gamma_receipt_id, clob_receipt_id, resolved_at, resolution_time_source, checked_at)
+  select condition_id, 'FINAL', winner_token_id, winner_token_id, winner_token_id, market_token_ids, g_id, c_id,
+         resolved_at + interval '1 hour', resolution_time_source, now() from fx$q$,
+  'P0001', 'T5.12 FINAL with a resolved_at the receipt does not show refused');
+select pg_temp.expect_error($q$insert into public.market_outcome_revisions
+  (condition_id, outcome_status, winner_token_id, gamma_winner_token_id, clob_winner_token_id, market_token_ids,
+   gamma_receipt_id, clob_receipt_id, resolved_at, resolution_time_source, checked_at)
+  select condition_id, 'FINAL', winner_token_id, winner_token_id, winner_token_id, market_token_ids, g_id, c_id,
+         resolved_at, 'made.up', now() from fx$q$,
+  'P0001', 'T5.13 FINAL with an unknown resolution_time_source refused');
+-- T5.14 VOID with no price evidence (gamma outcomePrices stripped, CLOB winner flags cleared): NULL-propagation guard
+insert into public.market_outcome_provider_receipts
+  (provider, request_kind, request_key, request_url, http_status, fetched_at, raw_body, raw_digest)
+select 'gamma', 'condition_id', g.request_key, g.request_url, 200, now(), b.t, encode(sha256(convert_to(b.t, 'UTF8')), 'hex')
+  from public.market_outcome_provider_receipts g,
+       lateral (select jsonb_set(g.raw_body::jsonb, '{0}', (g.raw_body::jsonb -> 0) - 'outcomePrices')::text t) b
+ where g.receipt_id = (select g_id from fx);
+insert into public.market_outcome_provider_receipts
+  (provider, request_kind, request_key, request_url, http_status, fetched_at, raw_body, raw_digest)
+select 'clob', 'condition_id', c.request_key, c.request_url, 200, now(), b.t, encode(sha256(convert_to(b.t, 'UTF8')), 'hex')
+  from public.market_outcome_provider_receipts c,
+       lateral (select jsonb_set(c.raw_body::jsonb, '{tokens}',
+                  (select jsonb_agg(jsonb_set(t, '{winner}', 'false'::jsonb)) from jsonb_array_elements(c.raw_body::jsonb -> 'tokens') t))::text t) b
+ where c.receipt_id = (select c_id from fx);
+select pg_temp.expect_error($q$insert into public.market_outcome_revisions
+  (condition_id, outcome_status, gamma_receipt_id, clob_receipt_id, resolved_at, resolution_time_source, checked_at)
+  select f.condition_id, 'VOID',
+         (select receipt_id from public.market_outcome_provider_receipts where provider = 'gamma' and raw_body not like '%outcomePrices%'),
+         (select max(receipt_id) from public.market_outcome_provider_receipts where provider = 'clob'),
+         f.resolved_at, f.resolution_time_source, now() from fx f$q$,
+  'P0001', 'T5.14 VOID with missing outcomePrices refused');
 rollback;
 
 -- ============ T6 revision chain + idempotency (service_role writer) ============

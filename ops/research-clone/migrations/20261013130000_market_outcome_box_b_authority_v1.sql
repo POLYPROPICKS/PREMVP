@@ -91,7 +91,8 @@ $$;
 -- stored provider receipts (winner, closure, market identity), not just by caller claims.
 create or replace function public.market_outcome_validate_receipts(
   p_condition_id text, p_status text, p_winner text,
-  p_gamma_receipt bigint, p_clob_receipt bigint, p_tokens jsonb)
+  p_gamma_receipt bigint, p_clob_receipt bigint, p_tokens jsonb,
+  p_resolved_at timestamptz, p_time_source text)
 returns void language plpgsql stable as $$
 declare
   g_row public.market_outcome_provider_receipts%rowtype;
@@ -123,6 +124,23 @@ begin
   end if;
   g_tokens := (g -> 0 ->> 'clobTokenIds')::jsonb;
   g_prices := (g -> 0 ->> 'outcomePrices')::jsonb;
+  if g_tokens is null or g_prices is null
+     or jsonb_typeof(g_tokens) <> 'array' or jsonb_typeof(g_prices) <> 'array'
+     or jsonb_typeof(c -> 'tokens') is distinct from 'array' then
+    raise exception 'BOX_B_RECEIPT_PRICES_OR_TOKENS_MISSING';
+  end if;
+  -- Resolution time must be the provider's own timestamp, named by its source label.
+  if p_time_source = 'gamma.closedTime' then
+    if p_resolved_at is distinct from (g -> 0 ->> 'closedTime')::timestamptz then
+      raise exception 'BOX_B_RESOLVED_AT_NOT_BACKED_BY_RECEIPT';
+    end if;
+  elsif p_time_source = 'gamma.umaEndDate' then
+    if p_resolved_at is distinct from (g -> 0 ->> 'umaEndDate')::timestamptz then
+      raise exception 'BOX_B_RESOLVED_AT_NOT_BACKED_BY_RECEIPT';
+    end if;
+  else
+    raise exception 'BOX_B_RESOLUTION_TIME_SOURCE_UNKNOWN';
+  end if;
   if jsonb_array_length(g_tokens) <> jsonb_array_length(g_prices)
      or jsonb_array_length(g_tokens) < 2
      or p_tokens is distinct from g_tokens
@@ -152,7 +170,7 @@ begin
       raise exception 'BOX_B_FINAL_NOT_BACKED_BY_RECEIPTS';
     end if;
   else
-    if halves <> total or n_win <> 0 then
+    if halves is distinct from total or n_win <> 0 then
       raise exception 'BOX_B_VOID_NOT_BACKED_BY_RECEIPTS';
     end if;
   end if;
@@ -171,7 +189,8 @@ begin
   select raw_digest into g_digest from public.market_outcome_provider_receipts where receipt_id = new.gamma_receipt_id;
   select raw_digest into c_digest from public.market_outcome_provider_receipts where receipt_id = new.clob_receipt_id;
   perform public.market_outcome_validate_receipts(new.condition_id, new.outcome_status,
-    new.winner_token_id, new.gamma_receipt_id, new.clob_receipt_id, new.market_token_ids);
+    new.winner_token_id, new.gamma_receipt_id, new.clob_receipt_id, new.market_token_ids,
+    new.resolved_at, new.resolution_time_source);
   ev := encode(sha256(convert_to(concat_ws('|', new.condition_id, new.outcome_status,
     coalesce(new.winner_token_id, ''), coalesce(new.gamma_winner_token_id, ''),
     coalesce(new.clob_winner_token_id, ''), g_digest, c_digest,
@@ -195,7 +214,7 @@ end;
 $$;
 
 revoke all on function public.market_outcome_append_only_guard() from public, anon, authenticated;
-revoke all on function public.market_outcome_validate_receipts(text, text, text, bigint, bigint, jsonb) from public, anon, authenticated;
+revoke all on function public.market_outcome_validate_receipts(text, text, text, bigint, bigint, jsonb, timestamptz, text) from public, anon, authenticated;
 revoke all on function public.market_outcome_revision_guard() from public, anon, authenticated;
 
 drop trigger if exists market_outcome_receipts_row_guard_trg on public.market_outcome_provider_receipts;
@@ -246,20 +265,31 @@ revoke all on public.market_outcome_current from public, anon, authenticated;
 
 do $$
 begin
+  execute format('revoke all on sequence %s from public, anon, authenticated',
+                 pg_get_serial_sequence('public.market_outcome_provider_receipts', 'receipt_id'));
+end;
+$$;
+
+do $$
+begin
   if exists (select 1 from pg_roles where rolname = 'blind_model_reader') then
     execute 'revoke all on public.market_outcome_provider_receipts from blind_model_reader';
     execute 'revoke all on public.market_outcome_revisions from blind_model_reader';
     execute 'revoke all on public.market_outcome_current from blind_model_reader';
-    execute 'revoke all on function public.market_outcome_validate_receipts(text, text, text, bigint, bigint, jsonb) from blind_model_reader';
+    execute format('revoke all on sequence %s from blind_model_reader',
+                   pg_get_serial_sequence('public.market_outcome_provider_receipts', 'receipt_id'));
+    execute 'revoke all on function public.market_outcome_validate_receipts(text, text, text, bigint, bigint, jsonb, timestamptz, text) from blind_model_reader';
   end if;
   if exists (select 1 from pg_roles where rolname = 'service_role') then
     execute 'revoke all on public.market_outcome_provider_receipts from service_role';
     execute 'revoke all on public.market_outcome_revisions from service_role';
     execute 'revoke all on public.market_outcome_current from service_role';
+    execute format('revoke all on sequence %s from service_role',
+                   pg_get_serial_sequence('public.market_outcome_provider_receipts', 'receipt_id'));
     execute 'grant select, insert on public.market_outcome_provider_receipts to service_role';
     execute 'grant select, insert on public.market_outcome_revisions to service_role';
     execute 'grant select on public.market_outcome_current to service_role';
-    execute 'grant execute on function public.market_outcome_validate_receipts(text, text, text, bigint, bigint, jsonb) to service_role';
+    execute 'grant execute on function public.market_outcome_validate_receipts(text, text, text, bigint, bigint, jsonb, timestamptz, text) to service_role';
   end if;
 end;
 $$;
