@@ -181,17 +181,27 @@ function sourceRowKey(row: Readonly<Record<string, unknown>>): string | null {
   return observationId !== null && itemId !== null ? `${observationId}::${itemId}` : null;
 }
 
-/** Type-tagged canonical form so 70 / "70" / null / absent remain distinguishable where they differ. */
-function canonicalFieldValue(value: unknown): unknown {
+const CANONICAL_MAX_DEPTH = 8;
+
+/**
+ * Type-tagged canonical form so 70 / "70" / null / absent / Date / bigint remain distinguishable
+ * where they differ. JSON.stringify collapses Date -> {} and throws on bigint, which would let two
+ * different rows share a digest, so every non-JSON-safe type is tagged explicitly.
+ */
+function canonicalFieldValue(value: unknown, depth = 0): unknown {
   if (value === undefined || value === null) return null;
   if (typeof value === "string") return { s: value };
   if (typeof value === "number") return { n: Number.isFinite(value) ? value : String(value) };
   if (typeof value === "boolean") return { b: value };
-  try {
-    return { o: stable(value) };
-  } catch {
-    return { o: "UNSERIALIZABLE" };
-  }
+  if (typeof value === "bigint") return { bi: value.toString() };
+  if (value instanceof Date) return { d: Number.isNaN(value.getTime()) ? "INVALID_DATE" : value.toISOString() };
+  if (typeof value === "symbol" || typeof value === "function") return { t: typeof value };
+  if (depth >= CANONICAL_MAX_DEPTH) return { o: "DEPTH_LIMIT" };
+  if (Array.isArray(value)) return { a: value.map((item) => canonicalFieldValue(item, depth + 1)) };
+  const record = value as Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const key of Object.keys(record).sort()) fields[key] = canonicalFieldValue(record[key], depth + 1);
+  return { o: fields };
 }
 
 /**
@@ -347,11 +357,14 @@ function buildTokenPairAssertionIndex(
  */
 function canonicalTokenPairAssertions(
   pairs: readonly UnverifiedBinaryTokenPairAssertion[] | undefined,
-): Array<{ conditionId: string | null; tokenIds: string[] | null }> {
+): Array<{ conditionId: string | null; rawConditionId: unknown; tokenIds: string[] | null }> {
   const entries = (pairs ?? []).map((pair) => ({
     conditionId: nonEmptyString(pair?.conditionId),
+    // A non-string / blank token keeps its own typed form, so replacing it still changes the receipt.
+    // Raw (untrimmed) conditionId is bound too, so a malformed condition identity cannot collide.
+    rawConditionId: canonicalFieldValue(pair?.conditionId),
     tokenIds: Array.isArray(pair?.outcomeTokenIds)
-      ? pair.outcomeTokenIds.map((t) => nonEmptyString(t) ?? "").sort()
+      ? pair.outcomeTokenIds.map((t) => stable(canonicalFieldValue(t))).sort()
       : null,
   }));
   return entries.sort((a, b) => stable(a).localeCompare(stable(b)));
@@ -425,7 +438,7 @@ export interface CanonicalScoredForwardReceipt {
   /** Full rejection list: source index, source-row identity, reason. */
   rejections: CanonicalScoredRejection[];
   /** Canonical caller token-pair assertions (condition identity + sorted token pair). Unverified. */
-  unverifiedBinaryTokenPairs: Array<{ conditionId: string | null; tokenIds: string[] | null }>;
+  unverifiedBinaryTokenPairs: Array<{ conditionId: string | null; rawConditionId: unknown; tokenIds: string[] | null }>;
   selector: CandidateV3SelectorResult;
   /** sha256 over the canonical receipt body; contains no wall-clock value and no outcome value. */
   receiptSha256: string;

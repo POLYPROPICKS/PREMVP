@@ -287,6 +287,36 @@ test("B2 repro 2: replacing the second token of a binary-proof assertion changes
   assert.equal(base.receiptSha256, receiptOf(rows, [pair(1, ["tok-1-b", "tok-1-a"])]).receiptSha256);
 });
 
+test("B2: non-JSON-safe field values (Date, bigint, nested objects) and non-string tokens cannot collide in the receipt", () => {
+  const dateA = [src(1, { observed_at: new Date("2026-10-13T11:10:00Z") })];
+  const dateB = [src(1, { observed_at: new Date("2026-10-13T11:11:00Z") })];
+  assert.notEqual(receiptOf(dateA).receiptSha256, receiptOf(dateB).receiptSha256);
+  assert.notEqual(
+    canonicalSourceRowSha256(src(1, { entry_price_num: BigInt(1) })),
+    canonicalSourceRowSha256(src(1, { entry_price_num: BigInt(2) })),
+  );
+  assert.notEqual(
+    canonicalSourceRowSha256(src(1, { market_type: { a: 1 } })),
+    canonicalSourceRowSha256(src(1, { market_type: { a: 2 } })),
+  );
+  // Number vs numeric string stay distinct.
+  assert.notEqual(
+    canonicalSourceRowSha256(src(1, { signal_confidence_num: 70 })),
+    canonicalSourceRowSha256(src(1, { signal_confidence_num: "70" })),
+  );
+  // Replacing the second token with different non-string junk (previously both became "") changes the receipt.
+  const rows = [src(1)];
+  const tokensA = { conditionId: "cond-1", outcomeTokenIds: ["tok-1-a", 5] } as unknown as UnverifiedBinaryTokenPairAssertion;
+  const tokensB = { conditionId: "cond-1", outcomeTokenIds: ["tok-1-a", 6] } as unknown as UnverifiedBinaryTokenPairAssertion;
+  assert.notEqual(receiptOf(rows, [tokensA]).receiptSha256, receiptOf(rows, [tokensB]).receiptSha256);
+  // Malformed condition identities do not collapse into one another either.
+  const condA = { conditionId: 1, outcomeTokenIds: ["x", "y"] } as unknown as UnverifiedBinaryTokenPairAssertion;
+  const condB = { conditionId: 2, outcomeTokenIds: ["x", "y"] } as unknown as UnverifiedBinaryTokenPairAssertion;
+  assert.notEqual(receiptOf(rows, [condA]).receiptSha256, receiptOf(rows, [condB]).receiptSha256);
+  // Still deterministic for the same input.
+  assert.equal(receiptOf(dateA).receiptSha256, receiptOf([src(1, { observed_at: new Date("2026-10-13T11:10:00Z") })]).receiptSha256);
+});
+
 test("B2: receipt carries the full rejection list with source index, row identity and reason", () => {
   const receipt = receiptOf([src(1, { signal_confidence_num: null }), src(2)], [pair(2)]);
   assert.deepEqual(
