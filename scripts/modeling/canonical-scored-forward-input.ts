@@ -1,18 +1,20 @@
 // Canonical scored forward-input adapter (fail-closed, pure, research-only).
 //
-// Closes the edge
+// Edge under construction
 //   public.research_evidence_page_rows -> approved scored input -> Candidate V3 -> frozen B2
 // without changing the model, the V3 universe gate, the frozen producer, or any threshold.
 //
-// What it does: maps typed research_evidence_page_rows columns onto the ExportRow shape
-// that runCandidateV3Selector / produceFrozenModelV2ShadowDecisions already consume.
-// What it never does: invent a score, a market type, a BINARY label, an event identity or an
-// availability time; read outcome/settlement/PnL fields; or re-rank/re-threshold anything.
-// Every row that cannot be mapped with proof is returned with an explicit reason code.
+// STATUS: AUTHORITY_UNVERIFIED. This module is pure: no DB, no network, no env, no wall clock.
+// It therefore cannot independently know (a) the DB server clock or (b) the two outcome tokens of a
+// condition. Anything a caller hands in for those two facts is a caller assertion, and a caller
+// assertion is not authority - a string literal, a TypeScript brand or a factory over arbitrary JSON
+// can be forged by whoever builds the input. So the adapter never turns such input into an
+// ExportRow, never emits top-level BINARY, and never lets a row reach V3 / frozen B2: every row ends
+// in an explicit rejection reason and `rows` is always empty. What it does keep is the diagnostic
+// value: precise per-row reject reasons and a receipt that binds all input evidence.
 //
-// No DB, no network, no env, no wall clock: the authoritative server as-of is an input.
+// The first missing trusted-source edge is named in REQUIRED_SOURCE_INTEGRATION_CONTRACT.
 
-import type { ExportRow } from "../../lib/modeling/generatedSignalPairsExportContract";
 import { sha, stable } from "../../lib/modeling/frozenModelProducerV2Shadow";
 import {
   CANDIDATE_V3_UNIVERSE_GATE_VERSION,
@@ -20,7 +22,25 @@ import {
   type CandidateV3SelectorResult,
 } from "./candidate-v3-shadow-universe-gate";
 
-export const CANONICAL_SCORED_ADAPTER_VERSION = "CANONICAL_SCORED_FAIL_CLOSED_ADAPTER_V1" as const;
+export const CANONICAL_SCORED_ADAPTER_VERSION = "CANONICAL_SCORED_FAIL_CLOSED_ADAPTER_V2" as const;
+
+/** The only verdict this module can produce for authority: it has no trusted source. */
+export const CANONICAL_SCORED_AUTHORITY_STATUS = "AUTHORITY_UNVERIFIED" as const;
+
+export const CANONICAL_SCORED_AUTHORITY_GAPS: readonly string[] = [
+  "AS_OF_NOT_DB_SERVER_VERIFIED",
+  "BINARY_TOKEN_PAIR_NOT_MARKET_METADATA_VERIFIED",
+];
+
+/**
+ * The next source-integration contract needed before any row may be emitted (outside this file pair):
+ * a read-only DB reader that, inside ONE snapshot, itself reads (1) the rows with the explicit
+ * SELECT column list, (2) the DB server clock as as-of, and (3) the persisted market-metadata
+ * outcome-token pair per condition, and that is the only holder of a module-private capability
+ * (not caller-supplied JSON) allowed to hand verified values to the emission path.
+ */
+export const REQUIRED_SOURCE_INTEGRATION_CONTRACT =
+  "DB_SNAPSHOT_READER_OWNS_AS_OF_AND_BINARY_TOKEN_PAIR_V1" as const;
 
 /** The only metric_formula_version this adapter accepts. Not configurable by callers. */
 export const APPROVED_SCORED_FORMULA_VERSIONS: readonly string[] = ["v2-lite-growth-safe"];
@@ -30,7 +50,8 @@ const T90_OFFSET_MS = 90 * 60_000;
 /**
  * The exact column list a caller may SELECT from research_evidence_page_rows.
  * signal_result, pre_event_score_num (an alternative score), formula_version and every
- * outcome/settlement/PnL field are deliberately absent.
+ * outcome/settlement/PnL field are deliberately absent. event_title and market_question are absent
+ * too: raw free text cannot be proven to be free of result information, and no decision needs it.
  */
 export const CANONICAL_SCORED_SELECT_COLUMNS: readonly string[] = [
   "observation_id",
@@ -48,8 +69,6 @@ export const CANONICAL_SCORED_SELECT_COLUMNS: readonly string[] = [
   "market_family",
   "market_type",
   "game_start_iso",
-  "event_title",
-  "market_question",
 ];
 
 /** Key names that must never appear on an input row (presence check only; values are never read). */
@@ -74,44 +93,44 @@ export type CanonicalScoredRejectionReason =
   | "T90_VIOLATION"
   | "MARKET_TYPE_MISSING"
   | "EVENT_GROUP_UNPROVEN"
-  | "BINARY_IDENTITY_UNPROVEN";
+  | "BINARY_IDENTITY_UNPROVEN"
+  | "AUTHORITY_UNVERIFIED";
 
 export interface CanonicalScoredRejection {
   index: number;
   sourceRowKey: string | null;
+  /** sha256 over the allowed (SELECT-list) fields of the source row; identity even when keys are missing. */
+  sourceRowSha256: string;
   reason: CanonicalScoredRejectionReason;
 }
 
-/** Authoritative evaluation instant. Must come from the DB server clock, never a local clock. */
-export interface ServerAsOf {
+/** Caller assertion of the evaluation instant. NOT authority: nothing here proves a DB server clock. */
+export interface UnverifiedAsOfAssertion {
   asOfIso: string;
-  authority: "DB_SERVER_CLOCK_TIMESTAMP";
 }
 
-/**
- * Positive binary identity for one condition, supplied by an independent market-metadata
- * authority: exactly two distinct outcome tokens, one of which is the row's selected token.
- * research_evidence_page_rows itself carries no such proof.
- */
-export interface BinaryIdentityProof {
+/** Caller assertion of the two outcome tokens of a condition. NOT authority: not market metadata. */
+export interface UnverifiedBinaryTokenPairAssertion {
   conditionId: string;
   outcomeTokenIds: readonly string[];
-  authority: "CLOB_MARKET_OUTCOME_TOKENS";
 }
 
 export interface CanonicalScoredAdapterInput {
   rows: ReadonlyArray<Readonly<Record<string, unknown>>>;
-  serverAsOf: ServerAsOf;
-  binaryIdentityProofs?: readonly BinaryIdentityProof[];
+  unverifiedAsOf: UnverifiedAsOfAssertion;
+  unverifiedBinaryTokenPairs?: readonly UnverifiedBinaryTokenPairAssertion[];
 }
 
 export interface CanonicalScoredAdapterResult {
   adapterVersion: typeof CANONICAL_SCORED_ADAPTER_VERSION;
-  asOfIso: string;
+  authorityStatus: typeof CANONICAL_SCORED_AUTHORITY_STATUS;
+  authorityGaps: readonly string[];
+  requiredSourceIntegrationContract: typeof REQUIRED_SOURCE_INTEGRATION_CONTRACT;
+  /** Normalized caller-asserted as-of (unverified). */
+  unverifiedAsOfIso: string;
   inputCount: number;
-  rows: ExportRow[];
-  /** Source index of each emitted row, parallel to `rows`. */
-  sourceIndexByOutputRow: number[];
+  /** Always empty: no trusted source exists in this module, so nothing may reach V3 / B2. */
+  rows: readonly never[];
   rejections: CanonicalScoredRejection[];
   rejectionCounts: Record<string, number>;
 }
@@ -152,17 +171,43 @@ function sortedCounts(counts: Record<string, number>): Record<string, number> {
   return Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
 }
 
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
 function sourceRowKey(row: Readonly<Record<string, unknown>>): string | null {
   const observationId = nonEmptyString(row.observation_id);
   const itemId = nonEmptyString(row.item_observation_id);
   return observationId !== null && itemId !== null ? `${observationId}::${itemId}` : null;
 }
 
-export function normalizeServerAsOf(asOf: ServerAsOf): string {
-  if (asOf === null || typeof asOf !== "object" || asOf.authority !== "DB_SERVER_CLOCK_TIMESTAMP") {
-    throw new Error("CANONICAL_SCORED_AS_OF_AUTHORITY_UNPROVEN");
+/** Type-tagged canonical form so 70 / "70" / null / absent remain distinguishable where they differ. */
+function canonicalFieldValue(value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "string") return { s: value };
+  if (typeof value === "number") return { n: Number.isFinite(value) ? value : String(value) };
+  if (typeof value === "boolean") return { b: value };
+  try {
+    return { o: stable(value) };
+  } catch {
+    return { o: "UNSERIALIZABLE" };
   }
-  const ms = parseInstantMs(asOf.asOfIso);
+}
+
+/**
+ * Identity of a source row over the SELECT-list fields only (all rows, accepted or rejected).
+ * Columns outside the list - outcome, settlement, PnL, raw titles - are never read here.
+ */
+export function canonicalSourceRowSha256(row: unknown): string {
+  const fields: Record<string, unknown> = {};
+  if (isRecord(row)) {
+    for (const column of CANONICAL_SCORED_SELECT_COLUMNS) fields[column] = canonicalFieldValue(row[column]);
+  }
+  return sha(stable({ record: isRecord(row), fields }));
+}
+
+export function normalizeUnverifiedAsOf(asOf: UnverifiedAsOfAssertion): string {
+  const ms = isRecord(asOf) ? parseInstantMs(asOf.asOfIso) : null;
   if (ms === null) throw new Error("CANONICAL_SCORED_AS_OF_INVALID");
   return new Date(ms).toISOString();
 }
@@ -172,28 +217,23 @@ export function normalizeServerAsOf(asOf: ServerAsOf): string {
 interface Prepared {
   index: number;
   key: string | null;
+  sha: string;
   conditionId: string;
   tokenId: string;
-  selectedOutcome: string;
-  score: number;
-  entryPrice: number;
-  formulaVersion: string;
-  observedMs: number;
   ingestedMs: number;
   gameStartMs: number;
   marketType: string | null;
   providerEventId: string | null;
   sportFamily: string | null;
-  source: Readonly<Record<string, unknown>>;
 }
 
-function prepareRow(
-  source: Readonly<Record<string, unknown>>,
-  index: number,
-  asOfMs: number,
-): Prepared | { index: number; key: string | null; reason: CanonicalScoredRejectionReason } {
+type Rejected = { index: number; key: string | null; sha: string; reason: CanonicalScoredRejectionReason };
+
+function prepareRow(source: unknown, index: number, asOfMs: number): Prepared | Rejected {
+  const rowSha = canonicalSourceRowSha256(source);
+  if (!isRecord(source)) return { index, key: null, sha: rowSha, reason: "IDENTITY_MISSING" };
   const key = sourceRowKey(source);
-  const fail = (reason: CanonicalScoredRejectionReason) => ({ index, key, reason });
+  const fail = (reason: CanonicalScoredRejectionReason): Rejected => ({ index, key, sha: rowSha, reason });
 
   // Leak guard first: only key NAMES are inspected; no outcome value is ever read or copied.
   if (Object.keys(source).some(isOutcomeFieldName)) return fail("OUTCOME_FIELD_PRESENT");
@@ -202,15 +242,14 @@ function prepareRow(
   if (formulaVersion === null || !APPROVED_SCORED_FORMULA_VERSIONS.includes(formulaVersion)) {
     return fail("FORMULA_VERSION_NOT_APPROVED");
   }
-  const score = finiteNumber(source.signal_confidence_num);
-  if (score === null) return fail("SCORE_MISSING");
-  const entryPrice = finiteNumber(source.entry_price_num);
-  if (entryPrice === null) return fail("ENTRY_PRICE_MISSING");
+  if (finiteNumber(source.signal_confidence_num) === null) return fail("SCORE_MISSING");
+  if (finiteNumber(source.entry_price_num) === null) return fail("ENTRY_PRICE_MISSING");
 
   const conditionId = nonEmptyString(source.condition_id);
   const tokenId = nonEmptyString(source.selected_token_id);
-  const selectedOutcome = nonEmptyString(source.selected_outcome);
-  if (conditionId === null || tokenId === null || selectedOutcome === null) return fail("IDENTITY_MISSING");
+  if (conditionId === null || tokenId === null || nonEmptyString(source.selected_outcome) === null) {
+    return fail("IDENTITY_MISSING");
+  }
 
   const observedMs = parseInstantMs(source.observed_at);
   if (observedMs === null) return fail("OBSERVED_AT_INVALID");
@@ -218,6 +257,7 @@ function prepareRow(
   if (ingestedMs === null) return fail("INGESTED_AT_INVALID");
   // DBClone cannot have held a row before it was observed.
   if (ingestedMs < observedMs) return fail("INGESTION_PRECEDES_OBSERVATION");
+  // Relative to the caller-asserted as-of only; that instant is itself unverified.
   if (observedMs > asOfMs) return fail("FUTURE_OBSERVATION");
   if (ingestedMs > asOfMs) return fail("FUTURE_INGESTION");
 
@@ -227,23 +267,18 @@ function prepareRow(
   return {
     index,
     key,
+    sha: rowSha,
     conditionId,
     tokenId,
-    selectedOutcome,
-    score,
-    entryPrice,
-    formulaVersion,
-    observedMs,
     ingestedMs,
     gameStartMs,
     marketType: nonEmptyString(source.market_type),
     providerEventId: nonEmptyString(source.provider_event_id),
     sportFamily: nonEmptyString(source.provider_sport_family),
-    source,
   };
 }
 
-function isPrepared(value: ReturnType<typeof prepareRow>): value is Prepared {
+function isPrepared(value: Prepared | Rejected): value is Prepared {
   return !("reason" in value);
 }
 
@@ -284,14 +319,17 @@ function findUnprovenEventRows(prepared: readonly Prepared[]): Set<Prepared> {
   return unproven;
 }
 
-function buildBinaryProofIndex(proofs: readonly BinaryIdentityProof[] | undefined): Map<string, ReadonlySet<string> | null> {
+/** Well-formedness of caller assertions only. A well-formed assertion is still NOT authority. */
+function buildTokenPairAssertionIndex(
+  pairs: readonly UnverifiedBinaryTokenPairAssertion[] | undefined,
+): Map<string, ReadonlySet<string> | null> {
   const index = new Map<string, ReadonlySet<string> | null>();
-  for (const proof of proofs ?? []) {
-    const conditionId = nonEmptyString(proof?.conditionId);
-    if (conditionId === null || proof.authority !== "CLOB_MARKET_OUTCOME_TOKENS" || !Array.isArray(proof.outcomeTokenIds)) continue;
-    const tokens = new Set(proof.outcomeTokenIds.map(nonEmptyString).filter((t): t is string => t !== null));
-    // Exactly two distinct tokens. A conflicting second proof for the same condition voids both.
-    const valid = tokens.size === 2 && tokens.size === proof.outcomeTokenIds.length ? tokens : null;
+  for (const pair of pairs ?? []) {
+    const conditionId = nonEmptyString(pair?.conditionId);
+    if (conditionId === null || !Array.isArray(pair.outcomeTokenIds)) continue;
+    const tokens = new Set(pair.outcomeTokenIds.map(nonEmptyString).filter((t): t is string => t !== null));
+    // Exactly two distinct tokens. A conflicting second assertion for the same condition voids both.
+    const valid = tokens.size === 2 && tokens.size === pair.outcomeTokenIds.length ? tokens : null;
     if (index.has(conditionId)) {
       const previous = index.get(conditionId);
       const same = previous !== null && previous !== undefined && valid !== null && [...valid].every((t) => previous.has(t));
@@ -303,99 +341,93 @@ function buildBinaryProofIndex(proofs: readonly BinaryIdentityProof[] | undefine
   return index;
 }
 
+/**
+ * Canonical, order-independent form of every caller token-pair assertion (valid or not), so the
+ * receipt binds the exact pair and its condition identity. Tokens are ids, never outcomes.
+ */
+function canonicalTokenPairAssertions(
+  pairs: readonly UnverifiedBinaryTokenPairAssertion[] | undefined,
+): Array<{ conditionId: string | null; tokenIds: string[] | null }> {
+  const entries = (pairs ?? []).map((pair) => ({
+    conditionId: nonEmptyString(pair?.conditionId),
+    tokenIds: Array.isArray(pair?.outcomeTokenIds)
+      ? pair.outcomeTokenIds.map((t) => nonEmptyString(t) ?? "").sort()
+      : null,
+  }));
+  return entries.sort((a, b) => stable(a).localeCompare(stable(b)));
+}
+
 // ---- adapter --------------------------------------------------------------------------------
 
 export function adaptCanonicalScoredRows(input: CanonicalScoredAdapterInput): CanonicalScoredAdapterResult {
-  const asOfIso = normalizeServerAsOf(input.serverAsOf);
+  const asOfIso = normalizeUnverifiedAsOf(input.unverifiedAsOf);
   const asOfMs = Date.parse(asOfIso);
   const rejections: CanonicalScoredRejection[] = [];
+  const addRejection = (r: Rejected) =>
+    rejections.push({ index: r.index, sourceRowKey: r.key, sourceRowSha256: r.sha, reason: r.reason });
 
   const prepared: Prepared[] = [];
   input.rows.forEach((source, index) => {
     const result = prepareRow(source, index, asOfMs);
     if (isPrepared(result)) prepared.push(result);
-    else rejections.push({ index: result.index, sourceRowKey: result.key, reason: result.reason });
+    else addRejection(result);
   });
 
   const unprovenEvent = findUnprovenEventRows(prepared);
-  const binaryProofs = buildBinaryProofIndex(input.binaryIdentityProofs);
+  const tokenPairs = buildTokenPairAssertionIndex(input.unverifiedBinaryTokenPairs);
 
-  const emitted: Array<{ index: number; row: ExportRow }> = [];
   for (const p of prepared) {
-    const reject = (reason: CanonicalScoredRejectionReason) => rejections.push({ index: p.index, sourceRowKey: p.key, reason });
+    const reject = (reason: CanonicalScoredRejectionReason) =>
+      addRejection({ index: p.index, key: p.key, sha: p.sha, reason });
 
-    // T-90 is measured from confirmed DBClone availability (ingested_at), not from observed_at.
+    // T-90 is measured from asserted DBClone availability (ingested_at), not from observed_at.
     if (p.ingestedMs > p.gameStartMs - T90_OFFSET_MS) { reject("T90_VIOLATION"); continue; }
     if (p.marketType === null) { reject("MARKET_TYPE_MISSING"); continue; }
     if (unprovenEvent.has(p)) { reject("EVENT_GROUP_UNPROVEN"); continue; }
-    const proof = binaryProofs.get(p.conditionId);
-    if (proof === undefined || proof === null || !proof.has(p.tokenId)) { reject("BINARY_IDENTITY_UNPROVEN"); continue; }
-
-    const eventTitle = nonEmptyString(p.source.event_title);
-    const marketQuestion = nonEmptyString(p.source.market_question);
-    emitted.push({
-      index: p.index,
-      row: {
-        condition_id: p.conditionId,
-        selected_token_id: p.tokenId,
-        selected_outcome: p.selectedOutcome,
-        // Source score, verbatim. No alternative score field is read.
-        signal_confidence_num: p.score,
-        entry_price_num: p.entryPrice,
-        metric_formula_version: p.formulaVersion,
-        // Availability instant for the as-of and T-90 gates downstream; never observed_at.
-        created_at: new Date(p.ingestedMs).toISOString(),
-        // Positive binary identity was proven above; this is not inferred from market text.
-        market_type: "BINARY",
-        canonical_event_key: `provider_event:${p.providerEventId}`,
-        ...(eventTitle !== null ? { event_title: eventTitle } : {}),
-        ...(marketQuestion !== null ? { market_title: marketQuestion } : {}),
-        diagnostics: {
-          gameStartIso: new Date(p.gameStartMs).toISOString(),
-          // Source market type carried verbatim; classification stays with the V3 gate.
-          marketType: p.marketType,
-          ...(p.sportFamily !== null ? { providerSportFamily: p.sportFamily } : {}),
-          ...(nonEmptyString(p.source.market_family) !== null ? { marketFamily: nonEmptyString(p.source.market_family) } : {}),
-          providerEventId: p.providerEventId,
-          sourceRowKey: p.key,
-          availability: {
-            basis: "DBCLONE_INGESTED_AT",
-            observedAtIso: new Date(p.observedMs).toISOString(),
-            ingestedAtIso: new Date(p.ingestedMs).toISOString(),
-          },
-        },
-      },
-    });
+    const assertion = tokenPairs.get(p.conditionId);
+    if (assertion === undefined || assertion === null || !assertion.has(p.tokenId)) { reject("BINARY_IDENTITY_UNPROVEN"); continue; }
+    // Every structural gate passed, but the as-of and the token pair are caller assertions. There is
+    // no trusted source in this module, so the row stops here: no ExportRow, no BINARY, no V3, no B2.
+    reject("AUTHORITY_UNVERIFIED");
   }
 
-  emitted.sort((a, b) => a.index - b.index);
   rejections.sort((a, b) => a.index - b.index);
   const rejectionCounts: Record<string, number> = {};
   for (const rejection of rejections) increment(rejectionCounts, rejection.reason);
 
   return {
     adapterVersion: CANONICAL_SCORED_ADAPTER_VERSION,
-    asOfIso,
+    authorityStatus: CANONICAL_SCORED_AUTHORITY_STATUS,
+    authorityGaps: CANONICAL_SCORED_AUTHORITY_GAPS,
+    requiredSourceIntegrationContract: REQUIRED_SOURCE_INTEGRATION_CONTRACT,
+    unverifiedAsOfIso: asOfIso,
     inputCount: input.rows.length,
-    rows: emitted.map((e) => e.row),
-    sourceIndexByOutputRow: emitted.map((e) => e.index),
+    rows: [],
     rejections,
     rejectionCounts: sortedCounts(rejectionCounts),
   };
 }
 
-// ---- adapter -> V3 -> frozen B2, with deterministic receipt ---------------------------------
+// ---- adapter -> V3 -> frozen B2, with deterministic evidence-binding receipt ----------------
 
 export interface CanonicalScoredForwardReceipt {
   adapterVersion: typeof CANONICAL_SCORED_ADAPTER_VERSION;
   universeGateVersion: typeof CANDIDATE_V3_UNIVERSE_GATE_VERSION;
-  asOfIso: string;
+  authorityStatus: typeof CANONICAL_SCORED_AUTHORITY_STATUS;
+  authorityGaps: readonly string[];
+  requiredSourceIntegrationContract: typeof REQUIRED_SOURCE_INTEGRATION_CONTRACT;
+  unverifiedAsOfIso: string;
   inputCount: number;
   adapterEmittedCount: number;
   adapterRejectionCounts: Record<string, number>;
-  adapterOutputDigest: string;
+  /** sha256 over the per-row source digests in source order (accepted and rejected rows alike). */
+  inputRowsSha256: string;
+  /** Full rejection list: source index, source-row identity, reason. */
+  rejections: CanonicalScoredRejection[];
+  /** Canonical caller token-pair assertions (condition identity + sorted token pair). Unverified. */
+  unverifiedBinaryTokenPairs: Array<{ conditionId: string | null; tokenIds: string[] | null }>;
   selector: CandidateV3SelectorResult;
-  /** sha256 over the canonical receipt body; contains no wall-clock value. */
+  /** sha256 over the canonical receipt body; contains no wall-clock value and no outcome value. */
   receiptSha256: string;
 }
 
@@ -404,22 +436,21 @@ export function runCanonicalScoredForwardV3(input: CanonicalScoredAdapterInput):
   receipt: CanonicalScoredForwardReceipt;
 } {
   const adapter = adaptCanonicalScoredRows(input);
-  const selector = runCandidateV3Selector(adapter.rows, adapter.asOfIso);
-  const adapterOutputDigest = sha(
-    stable(
-      adapter.rows
-        .map((row) => `${(row.diagnostics as Record<string, unknown>).sourceRowKey}|${row.created_at}`)
-        .sort(),
-    ),
-  );
+  // The adapter emits nothing, so V3 / frozen B2 are handed an empty set and cannot accept a BET.
+  const selector = runCandidateV3Selector(adapter.rows, adapter.unverifiedAsOfIso);
   const body = {
     adapterVersion: adapter.adapterVersion,
     universeGateVersion: CANDIDATE_V3_UNIVERSE_GATE_VERSION,
-    asOfIso: adapter.asOfIso,
+    authorityStatus: adapter.authorityStatus,
+    authorityGaps: adapter.authorityGaps,
+    requiredSourceIntegrationContract: adapter.requiredSourceIntegrationContract,
+    unverifiedAsOfIso: adapter.unverifiedAsOfIso,
     inputCount: adapter.inputCount,
     adapterEmittedCount: adapter.rows.length,
     adapterRejectionCounts: adapter.rejectionCounts,
-    adapterOutputDigest,
+    inputRowsSha256: sha(stable(input.rows.map((row) => canonicalSourceRowSha256(row)))),
+    rejections: adapter.rejections,
+    unverifiedBinaryTokenPairs: canonicalTokenPairAssertions(input.unverifiedBinaryTokenPairs),
     selector,
   };
   return { adapter, receipt: { ...body, receiptSha256: sha(stable(body)) } };
