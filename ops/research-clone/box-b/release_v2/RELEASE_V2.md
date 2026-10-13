@@ -1,6 +1,6 @@
 # Box B single release payload v2 (DBClone-only, NOT applied)
 
-Status: **RELEASE_HOLD**. Gate 1 exception: **not approved**. Independent R4 on this payload: **not run** (STOP condition).
+Status: **RELEASE_HOLD — apply NOT authorized**. Gate 1: **HOLD** with a Founder-approved one-time SQL-only exception (`GATE1_EXCEPTION.md`; an exception, not a PASS). Independent R4: see `r4/`. DBClone write permission is separate and not yet granted.
 
 | Item | Value |
 |---|---|
@@ -41,8 +41,9 @@ The payload has no transaction control. It relies on being sent as one multi-sta
 ## Gate 1 and R4
 
 - `/verify` = **HOLD**: `ops/` and `tests/` are an unclassified path category in `.claude/commands/verify.md`. `/verify docs` would misclassify executable SQL; `/verify full` is a build, excluded by the mission.
-- A limited SQL-only exception has **not** been approved by the Founder, so none is recorded here. Do not read this document as Gate 1 PASS.
-- New independent R4 (`premvp.reviewer.contur_gate.v1`) on this payload is required after the exception and must be stored under `release_v2/r4/` bound to the payload SHA-256 and the reviewed commit. The old R4 claim on `809093ee` does not cover this payload.
+- The Founder approved a one-time, SQL-only, documented exception for this payload SHA-256 (`GATE1_EXCEPTION.md`). It is an exception, **not** a Gate 1 PASS, and covers nothing else.
+- Independent R4 (`premvp.reviewer.contur_gate.v1`) on this payload: receipt and packet under `r4/`. The earlier R4 claim on `809093ee` does not cover this payload.
+- Before any write is authorized the Founder additionally requires: R4 PASS, and confirmation that the official Supabase API executes the payload atomically (single batch).
 
 ## Acceptance for Architect after an authorized apply (read-only)
 
