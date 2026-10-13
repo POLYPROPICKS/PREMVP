@@ -1,0 +1,46 @@
+{
+  "schema_ref": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json#/definitions/reviewer_receipt",
+  "receipt_kind": "R4_CONTUR_EXACT_SHA_ACCEPTANCE",
+  "issued_at": "2026-10-13T10:33:48Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "risk_class": "R4_CONTUR_PRODUCTION_BOUNDARY",
+  "review_target": {
+    "candidate_sha": "e928b4633ff4c209868fb3c255b344c722f9c398",
+    "pull_request": 531,
+    "feature_branch": "claude/festive-dirac-qweyh2",
+    "scope_paths": [
+      "lib/research/marketOutcomeCollector.ts",
+      "lib/research/marketOutcomeCollectorStore.ts",
+      "scripts/research-clone-market-outcome-collector.ts",
+      "tests/research-clone/marketOutcomeCollector.test.ts",
+      "ops/railway/research-clone-daily-sync.toml"
+    ],
+    "target_project_ref": "nppznoujvnyjargjkmnv",
+    "review_scope": "DBClone-only Box B market-outcome collector; no schema change"
+  },
+  "reviewer_receipt": {
+    "agent_id": "premvp.reviewer.contur_gate.v1",
+    "implementation_identity": "claude_code_cloud adapter :: project-scoped Agent .claude/agents/contur-gate-reviewer.md (separate subagent, Read-only tool)",
+    "definition_hash": "sha256:6fd37c2d0e226548a59081686a899493643e9d35694b1e5aef8bd69704c4f31e",
+    "independence_group": "contur_gate",
+    "reviewed_sha": "e928b4633ff4c209868fb3c255b344c722f9c398",
+    "verdict": "PASS",
+    "evidence_refs": [
+      "ops/research-clone/box-b/collector_v1/r4/CONTUR_GATE_REVIEWER_OUTPUT_e928b463.txt (reviewer report, verbatim)",
+      "ops/research-clone/box-b/collector_v1/r4/CONTUR_GATE_REVIEWER_OUTPUT_7bc0148e.txt (previous exact-SHA PASS, N1/N2 applied in e928b463)",
+      "ops/research-clone/box-b/collector_v1/r4/CONTUR_GATE_REVIEWER_OUTPUT_3302e78e.txt (first exact-SHA PASS)",
+      "reviewer verdict: CURRENT_SCOPE_VERDICT PASS; NEXT_PHASE_READINESS NOT_IN_SCOPE; BLOCKING findings: none",
+      "reviewer is Read-only: it did not re-run tests or the build; parent-run evidence is in GATE1_EVIDENCE.md"
+    ]
+  },
+  "non_blocking_findings": [
+    "recheck of >=5 permanently LOOKUP_FAILED markets could report FAILED without a provider outage (monitor verdict_reasons=provider_outage)",
+    "late-synced rows older than watermark-60s are found only by the 7-day backfill resweep",
+    "job_runs.status is always success; the verdict is in diagnostics.stats.verdict and the exit code",
+    "cron exit fold covers decisions/settlement/collector only (pre-existing)"
+  ],
+  "code_identical_after_review": "commits after e928b463 change only documentation/evidence under ops/research-clone/box-b/collector_v1/",
+  "current_scope_verdict": "PASS",
+  "next_phase_readiness": "NOT_IN_SCOPE",
+  "final_verdict": "EXACT_SHA_REVIEW_PASS"
+}
