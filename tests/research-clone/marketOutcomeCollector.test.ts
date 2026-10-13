@@ -381,7 +381,7 @@ test("status model: SUCCESS / PARTIAL / FAILED and exit codes are derived in one
     assert.ok(v.reasons.length > 0);
   }
   for (const patch of [{ db_errors: 1 }, { db_rejected: 1 }, { capacity_limit_hit: true, receipts_total: 9 }, { stalled_cycles: STALL_FAIL_CYCLES },
-    { processed_new: 20, fetch_lookup_failed: 15 }] as Partial<CycleStats>[]) {
+    { fetched_total: 20, fetch_lookup_failed: 15 }] as Partial<CycleStats>[]) {
     const v = cycleVerdict({ ...base, ...patch });
     assert.deepEqual([v.status, v.exit_code], ["FAILED", 1], JSON.stringify(patch));
   }
@@ -571,4 +571,24 @@ test("cron shell, 02:00 branch all green: legacy steps unchanged and in order, c
     "research-clone:sync", "research-clone:model-ready", "research-clone:model-ready-direct", "research-clone:modeling-conveyor",
     "research-clone:modeling-dashboard-refresh", "research-clone:inplay-paper-decisions", "research-clone:inplay-paper-settlement-cycle", COLLECTOR,
   ]);
+});
+
+test("provider outage is FAILED even at low volume and even when every failing market was already LOOKUP_FAILED (unchanged skip)", async () => {
+  const { w, s } = seeded(6);
+  w.down = true;
+  const first = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 100 }));
+  assert.equal(cycleVerdict(first.stats).status, "FAILED"); // 6 new markets, all LOOKUP_FAILED (< the old 10-market floor)
+  const again = await runCollectorCycle(s, deps(w), cfg({ maxNewMarkets: 0, maxRechecks: 100, recheckScan: 100, forceRecheck: true }));
+  assert.equal(again.stats.unchanged_skipped, 6, "identical failures write no new revisions");
+  assert.equal(again.stats.fetch_lookup_failed, 6);
+  assert.equal(cycleVerdict(again.stats).status, "FAILED", "steady-state outage over existing LOOKUP_FAILED markets is still loud");
+  assert.equal(s.revisions.length, 6);
+});
+
+test("checkpoint insert carries the counters (no field swallowed by a comment)", () => {
+  const src = readFileSync("lib/research/marketOutcomeCollectorStore.ts", "utf8");
+  const line = src.split("\n").find((l) => l.includes("generated_count"))!;
+  assert.ok(!line.trimStart().startsWith("//"));
+  assert.ok(!/\/\/.*generated_count/.test(line), "generated_count must not sit inside a trailing comment");
+  assert.match(src, /rejected_count: stats\.db_rejected \+ stats\.db_errors/);
 });

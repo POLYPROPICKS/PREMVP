@@ -24,7 +24,8 @@ export function createSupabaseStore(db: SupabaseClient): CollectorStore {
       const { error } = await db.from("job_runs").insert({
         source: COLLECTOR_SOURCE, formula_version: COLLECTOR_SOURCE,
         started_at: stats.started_at, finished_at: stats.finished_at ?? new Date().toISOString(),
-        status: "success", // reader contract; the real cycle verdict is diagnostics.stats.verdict generated_count: stats.revisions_inserted, rejected_count: stats.db_rejected + stats.db_errors,
+        // status stays "success" (reader contract); the real cycle verdict is diagnostics.stats.verdict
+        status: "success", generated_count: stats.revisions_inserted, rejected_count: stats.db_rejected + stats.db_errors,
         duration_ms: Math.max(0, Date.parse(stats.finished_at ?? stats.started_at) - Date.parse(stats.started_at)),
         diagnostics: { state, stats },
       });

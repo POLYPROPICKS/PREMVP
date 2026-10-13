@@ -281,6 +281,8 @@ export interface CycleStats {
   db_rejected: number;
   db_errors: number;
   fetch_lookup_failed: number;
+  /** markets fetched from the providers this cycle (before the unchanged-substance skip), the outage denominator */
+  fetched_total: number;
   error_samples: string[];
   stalled_cycles: number;
   receipts_total: number | null;
@@ -292,7 +294,7 @@ export const emptyStats = (now: Date): CycleStats => ({
   started_at: now.toISOString(), finished_at: null, processed_new: 0, processed_recheck: 0, by_status: {},
   revisions_inserted: 0, revisions_noop: 0, unchanged_skipped: 0, already_covered_skipped: 0, malformed_ids_skipped: 0,
   triage_closed: 0, triage_failed: 0, rate_limited: false, deadline_hit: false, db_rejected: 0, db_errors: 0,
-  fetch_lookup_failed: 0, error_samples: [], stalled_cycles: 0, receipts_total: null, capacity_limit_hit: false,
+  fetch_lookup_failed: 0, fetched_total: 0, error_samples: [], stalled_cycles: 0, receipts_total: null, capacity_limit_hit: false,
   verdict: null, verdict_reasons: [],
 });
 
@@ -341,6 +343,8 @@ export interface CycleCtx {
 async function persistMarket(ctx: CycleCtx, m: MarketFetch, latest: LatestRevision | undefined): Promise<Outcome> {
   const { stats, store } = ctx;
   const c = m.classification;
+  stats.fetched_total++;
+  if (c.status === "LOOKUP_FAILED") stats.fetch_lookup_failed++; // counted before the unchanged skip: an outage over already-failed markets is still an outage
   if (latest && sameSubstance(latest, c)) { stats.unchanged_skipped++; return "DONE"; }
   try {
     const ids = await store.saveReceipts([...m.extras, m.gamma, m.clob]);
@@ -355,7 +359,6 @@ async function persistMarket(ctx: CycleCtx, m: MarketFetch, latest: LatestRevisi
     });
     if (inserted) stats.revisions_inserted++; else stats.revisions_noop++;
     stats.by_status[c.status] = (stats.by_status[c.status] ?? 0) + 1;
-    if (c.status === "LOOKUP_FAILED") stats.fetch_lookup_failed++;
     return "DONE";
   } catch (e) {
     const msg = e instanceof Error ? e.message.slice(0, 160) : "UNKNOWN";
@@ -568,11 +571,10 @@ export const STALL_FAIL_CYCLES = 3;
  * PARTIAL (exit 0, but never printed as SUCCESS): rate limit, triage failure or deadline in an otherwise progressing cycle; it resumes by itself.
  */
 export function cycleVerdict(s: CycleStats): { status: "SUCCESS" | "PARTIAL" | "FAILED"; exit_code: 0 | 1; reasons: string[] } {
-  const processed = s.processed_new + s.processed_recheck;
   const failed: string[] = [];
   if (s.db_errors > 0) failed.push(`db_errors=${s.db_errors}`);
   if (s.db_rejected > 0) failed.push(`db_rejected=${s.db_rejected}`);
-  if (processed >= 10 && s.fetch_lookup_failed / processed > 0.5) failed.push(`provider_outage lookup_failed=${s.fetch_lookup_failed}/${processed}`);
+  if (s.fetched_total >= 5 && s.fetch_lookup_failed / s.fetched_total > 0.5) failed.push(`provider_outage lookup_failed=${s.fetch_lookup_failed}/${s.fetched_total}`);
   if (s.capacity_limit_hit) failed.push(`capacity_limit receipts=${s.receipts_total}`);
   if (s.stalled_cycles >= STALL_FAIL_CYCLES) failed.push(`stalled_cycles=${s.stalled_cycles}`);
   if (failed.length) return { status: "FAILED", exit_code: 1, reasons: failed };
