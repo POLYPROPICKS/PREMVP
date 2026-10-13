@@ -26,6 +26,6 @@
 | Static gate (`boxBReleaseV2Static.test.ts`, `boxBOutcomeStatic.test.ts`) | 10/10 PASS |
 | PostgreSQL 16 semantic suite (`boxBReleaseV2Behavior.sh`) | PASS (`pg_test_receipt.txt`) |
 | `npm run control-plane:check` | PASS |
-| Independent R4 | see `r4/` once issued |
+| Independent R4 | **PASS** on `9bd9e320` (`r4/`, 0 blocking findings, next phase NOT_READY) |
 | Official-API atomicity | **UNVERIFIED** — required before any write is authorized |
 | Apply to DBClone | **NOT AUTHORIZED** |

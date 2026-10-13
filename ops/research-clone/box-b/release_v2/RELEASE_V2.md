@@ -1,6 +1,6 @@
 # Box B single release payload v2 (DBClone-only, NOT applied)
 
-Status: **RELEASE_HOLD — apply NOT authorized**. Gate 1: **HOLD** with a Founder-approved one-time SQL-only exception (`GATE1_EXCEPTION.md`; an exception, not a PASS). Independent R4: see `r4/`. DBClone write permission is separate and not yet granted.
+Status: **RELEASE_HOLD — apply NOT authorized**. Gate 1: **HOLD** with a Founder-approved one-time SQL-only exception (`GATE1_EXCEPTION.md`; an exception, not a PASS). Independent R4: **PASS** on commit `9bd9e320` (`r4/`, 0 blocking findings, next phase NOT_READY). DBClone write permission is separate and not yet granted.
 
 | Item | Value |
 |---|---|
@@ -30,8 +30,8 @@ The payload has no transaction control. It relies on being sent as one multi-sta
 | Check | Result |
 |---|---|
 | Byte-level hashes, verbatim composition, no tx control/ledger write/sentinel, 41+20 inserts | `boxBReleaseV2Static.test.ts` 5/5 (plus v1 static 5/5) |
-| PostgreSQL 16 semantic suite on the payload | 56 probes PASS (`release_v2/pg_test_receipt.txt`) |
-| Append-only, ACL (`blind_model_reader`, `anon`, `authenticated`, `PUBLIC`), service_role | inside the 56 probes + 11 negative controls PASS |
+| PostgreSQL 16 semantic suite on the payload | 55 probes PASS (`release_v2/pg_test_receipt.txt`; an earlier "56" also counted the `BOXB_SEMANTIC_ALL_PASS` sentinel line) |
+| Append-only, ACL (`blind_model_reader`, `anon`, `authenticated`, `PUBLIC`), service_role | inside the 55 probes + 11 negative controls PASS |
 | Idempotency (pilot reloaded twice → 20 revisions / 41 receipts) | PASS |
 | Replay guard, mid-batch rollback, verification rollback, ledger untouched | PASS |
 | `npm run control-plane:check` | PASS (439 control-plane tests) |
@@ -42,7 +42,7 @@ The payload has no transaction control. It relies on being sent as one multi-sta
 
 - `/verify` = **HOLD**: `ops/` and `tests/` are an unclassified path category in `.claude/commands/verify.md`. `/verify docs` would misclassify executable SQL; `/verify full` is a build, excluded by the mission.
 - The Founder approved a one-time, SQL-only, documented exception for this payload SHA-256 (`GATE1_EXCEPTION.md`). It is an exception, **not** a Gate 1 PASS, and covers nothing else.
-- Independent R4 (`premvp.reviewer.contur_gate.v1`) on this payload: receipt and packet under `r4/`. The earlier R4 claim on `809093ee` does not cover this payload.
+- Independent R4 (`premvp.reviewer.contur_gate.v1`) on this payload: **PASS**, reviewed_sha `9bd9e320bcc82a29a9605af9eaf6310cbe857c7e`; receipt, packet and verbatim reviewer report under `r4/`. Later commits touch only documentation/evidence under `release_v2/` (payload, tests and builder are unchanged; payload SHA-256 binds the executable bytes). The earlier R4 claim on `809093ee` does not cover this payload. Non-blocking follow-ups are listed in the receipt.
 - Before any write is authorized the Founder additionally requires: R4 PASS, and confirmation that the official Supabase API executes the payload atomically (single batch).
 
 ## Acceptance for Architect after an authorized apply (read-only)

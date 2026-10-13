@@ -1,0 +1,59 @@
+{
+  "schema_ref": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json#/definitions/reviewer_receipt",
+  "receipt_kind": "R4_CONTUR_EXACT_SHA_ACCEPTANCE",
+  "issued_at": "2026-10-13T00:00:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "risk_class": "R4_CONTUR_PRODUCTION_BOUNDARY",
+  "review_target": {
+    "candidate_sha": "9bd9e320bcc82a29a9605af9eaf6310cbe857c7e",
+    "pull_request": 530,
+    "feature_branch": "claude/vigilant-wozniak-sqw3fb",
+    "payload_path": "ops/research-clone/box-b/release_v2/payload.sql",
+    "payload_sha256": "3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8",
+    "frozen_source_sha": "809093ee09c46ff7ecb588cdc30266465d018c0b",
+    "target_project_ref_for_later_apply": "nppznoujvnyjargjkmnv",
+    "review_scope": "DBClone-only Box B release payload; NOT an apply authorization"
+  },
+  "reviewer_receipt": {
+    "agent_id": "premvp.reviewer.contur_gate.v1",
+    "implementation_identity": "claude_code_cloud adapter :: project-scoped Agent .claude/agents/contur-gate-reviewer.md (separate subagent, Read-only tool)",
+    "definition_hash": "sha256:6fd37c2d0e226548a59081686a899493643e9d35694b1e5aef8bd69704c4f31e",
+    "configured_model": "sonnet",
+    "reasoning_policy": "effort:high",
+    "independence_group": "contur_gate",
+    "reviewed_sha": "9bd9e320bcc82a29a9605af9eaf6310cbe857c7e",
+    "verdict": "PASS",
+    "evidence_refs": [
+      "ops/research-clone/box-b/release_v2/r4/EXACT_SHA_REVIEW_PACKET.md sha256:72fc7f78f5f1f91178a2587c737f9531bc401fb290ea5a1ad2fb637292ca3d05",
+      "ops/research-clone/box-b/release_v2/r4/CONTUR_GATE_REVIEWER_OUTPUT.txt sha256:6b9948ffe143a316c88feccc76254d092a0c3568bce5fa6ba6e3877bb6bffefd (reviewer report, verbatim)",
+      "reviewer verdict: CURRENT_SCOPE_VERDICT PASS; NEXT_PHASE_READINESS NOT_READY; weather_contract_loaded NO; child_shell_used NO; BLOCKING findings: none",
+      "reviewer read the packet and payload ranges L1-20, L300-310, L514-723 plus tests, manifest, receipt and receipts_index; it did not read raw provider bodies L319-513 line by line and could not recompute hashes or rerun tests (Read only)",
+      "parent-run evidence at the reviewed commit: static 10/10, PostgreSQL 16 suite BOXB_PG_V2_RESULT=PASS, control-plane:check PASS, git diff --check clean, deterministic rebuild byte-identical"
+    ]
+  },
+  "acceptance_criteria_result": {
+    "a_replay_guard_and_verification_abort_whole_batch": "PASS",
+    "b_no_tx_control_no_ledger_write_no_sentinel": "PASS",
+    "c_append_only_and_receipt_backed_validation": "PASS",
+    "d_acl_rls_security_invoker_blind_model_reader_denied": "PASS",
+    "e_added_v2_checks_not_vacuous": "PASS",
+    "f_verbatim_composition_and_counts_41_20": "PASS",
+    "g_test_evidence_supports_claims": "PASS_WITH_NOTE_PROBE_COUNT_55_NOT_56"
+  },
+  "non_blocking_findings": [
+    "N1 official Supabase API atomicity unverified (gate for the next phase)",
+    "N2 '56 semantic probes' overstated: 55 distinct probes + BOXB_SEMANTIC_ALL_PASS sentinel line; corrected in later documentation",
+    "N3 target identity depends entirely on the API project-ref binding; apply must record binding to nppznoujvnyjargjkmnv",
+    "N4 hardening only: EXECUTE on the two trigger functions not explicitly revoked from blind_model_reader/service_role (no practical exposure; changing it would require a new SHA and a new R4)",
+    "N5 verification gaps (column-level grants, security_invoker reloption not asserted, two redundant checks); not defects",
+    "N6 environment fidelity: PG16 superuser scratch cluster vs Supabase PG17",
+    "N7 seq 10 condition_id repair disclosed in receipts_index.json but not in revision status_reason",
+    "N8 review limits: raw provider bodies L319-513 not read line by line"
+  ],
+  "release_eligible_for_dbclone_apply": "NO",
+  "release_eligible_reason": "R4 PASS is necessary but not sufficient: Founder requires separate write authorization and confirmation of atomic execution through the official Supabase API",
+  "current_scope_verdict": "PASS",
+  "next_phase_readiness": "NOT_READY",
+  "gate1": "HOLD (Founder one-time SQL-only exception recorded in GATE1_EXCEPTION.md; not a PASS)",
+  "final_verdict": "EXACT_SHA_REVIEW_PASS"
+}
