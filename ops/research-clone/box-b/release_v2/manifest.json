@@ -1,0 +1,15 @@
+{
+ "migration_name": "market_outcome_box_b_authority_v1",
+ "target_project_ref": "nppznoujvnyjargjkmnv",
+ "source_pr": 529,
+ "source_sha": "809093ee09c46ff7ecb588cdc30266465d018c0b",
+ "payload_sha256": "3e852ebe78e6f1f2c4c2823251be2aee101d913d24186f785068474e7b76fbb8",
+ "payload_bytes": 262273,
+ "migration_sha256": "0643c807eae6b17475d2948af3146251838dd9b86e52955a5d8456c0c4dc4766",
+ "pilot_insert_sha256": "c45455b18c966dde1ce04ee61004d0ab5eccc32d69dbe2850f22a67da0582f6a",
+ "operator_sql_sha256": "26bc5ed895570a0c8605fcd98331e504e24521de2e8972d75e88f77ff374a58f",
+ "receipt_inserts": 41,
+ "revision_inserts": 20,
+ "transaction_control": false,
+ "writes_supabase_migrations": false
+}
