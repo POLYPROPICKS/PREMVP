@@ -2,8 +2,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  APPROVED_SCORED_FORMULA, bookEvidence, buildExecutableLiquidityCohort, confirmProviderIdentity, reduceSourceRows,
-  selectExecutableLiquidityCohort, type EvaluatedCandidate, type ProviderMarket, type SourceCandidate, type SourceRow,
+  APPROVED_SCORED_FORMULA, bookEvidence, buildExecutableLiquidityCohort, confirmProviderIdentity, reduceSourceRows, resolveModelDecisions,
+  selectExecutableLiquidityCohort, type EvaluatedCandidate, type ModelAuthority, type ModelEligibility, type ModelEventView, type ProviderMarket,
+  type SourceCandidate, type SourceRow,
 } from "../../lib/research/executableLiquidityCohortT90";
 import type { FetchOrderBookResult } from "../../lib/liquidity/types";
 
@@ -341,4 +342,161 @@ test("repair: source and CLOB timestamps are never presented as a DB-owned decis
   assert.ok("quoteCompletedAtMs" in b && "providerBookTimestampMs" in b);
   assert.ok(!("decisionAtMs" in b) && !("decisionAt" in c));
   assert.match(src, /NOT_PROVEN/);
+});
+
+// ── PR #535 B2: research / model / LIVE Queue authority separation ───────────────────────────────────────────────────
+// Fixture model identities are TEST-ONLY labels. No frozen predicate is evaluated here: the injected authority returns the
+// model-owned verdict, which is exactly the contract under test.
+const LIVE_CAP = 0.555;
+const MODEL_CEILING_175_200 = 4 / 7;   // the frozen (0.50, 4/7] upper bound of the LIVE_B family, passed in by the model, not derived
+
+/** One physical event with two opposing tokens; per-token price drives the single ask level of its independent book. */
+function pair(n: number, a: { price: number; usd: number }, b: { price: number; usd: number } | null, sport = "soccer", minOrder = 1) {
+  const mk = (suffix: "a" | "b", q: { price: number; usd: number }) => {
+    const c = source({ conditionId: `0xp${n}`, tokenId: `tok-p${n}-${suffix}`, providerEventId: `evp${n}`, sportFamily: sport, entryPrice: q.price, outcome: suffix === "a" ? "Home" : "Away" });
+    const base = book(c.tokenId, q.usd, ASOF + 60_000, q.price);
+    // minimumOrderSize 1 share isolates the PRICE question; the min-order interaction is pinned separately in B2.10.
+    const result = { ...base, book: { ...(base as { book: object }).book, minimumOrderSize: minOrder } } as FetchOrderBookResult;
+    return { ...c, physicalEventId: `phys-p${n}`, providerGameId: `gp${n}`, oppositeTokenId: `tok-p${n}-${suffix === "a" ? "b" : "a"}`, providerMarketType: "MONEYLINE", providerMarketFamily: "MONEYLINE",
+      providerMarketSlug: null, book: bookEvidence(c, result), bookResult: result } as EvaluatedCandidate;
+  };
+  return [mk("a", a), ...(b ? [mk("b", b)] : [])];
+}
+const bet = (tokenId: string, ceiling: number | null, id = "TEST_MODEL", version = "1"): ModelEligibility => ({ strategyId: id, strategyVersion: version, decision: "BET", tokenId, entryPriceCeiling: ceiling });
+
+test("B2.1 opposing tokens both stay in the inventory until the book is evaluated; nothing is dropped silently", () => {
+  const [a, b] = pair(1, { price: 0.565, usd: 300 }, { price: 0.44, usd: 100 });
+  assert.equal(a.book.state, "NOT_EXECUTABLE_DEPTH_AT_CAP");   // LIVE Queue fact only
+  const r = selectExecutableLiquidityCohort([a, b], ASOF);
+  assert.deepEqual(r.inventory.map((i) => [i.token_id, i.live_queue_state, i.qualified_by]), [
+    ["tok-p1-a", "NOT_EXECUTABLE_DEPTH_AT_CAP", null], ["tok-p1-b", "EXECUTABLE", "LIVE_QUEUE"],
+  ]);
+  assert.equal(r.selected.length, 1);
+  assert.equal(r.selected[0].event.tokenId, "tok-p1-b");
+  assert.equal(r.diagnostics.model_authority_injected, false);
+  assert.equal(r.diagnostics.model_rescued_candidate_n, 0);
+});
+
+test("B2.2 a model-eligible token above 0.555 is not discarded because of the LIVE cap (and the LIVE view itself is unchanged)", () => {
+  const authority: ModelAuthority = () => [bet("tok-p2-a", MODEL_CEILING_175_200)];
+  // (i) only the above-cap token exists: previously the whole event vanished.
+  const [onlyA] = pair(2, { price: 0.565, usd: 300 }, null);
+  assert.equal(selectExecutableLiquidityCohort([onlyA], ASOF).selected.length, 0);
+  const r = selectExecutableLiquidityCohort([onlyA], ASOF, authority);
+  assert.equal(r.selected.length, 1);
+  assert.equal(r.selected[0].event.tokenId, "tok-p2-a");
+  assert.deepEqual(r.selected[0].event.rank, { source: "MODEL_AUTHORITY", strategyId: "TEST_MODEL", strategyVersion: "1", depthUsd: 300, priceCap: MODEL_CEILING_175_200 });
+  const d = r.selected[0].modelDecisions[0];
+  assert.equal(d.decision, "BET");
+  assert.equal(d.execution.state, "EXECUTABLE");
+  assert.equal(d.execution.priceCap, MODEL_CEILING_175_200);
+  assert.deepEqual(d.liveQueue, { state: "NOT_EXECUTABLE_DEPTH_AT_CAP", executable: false });   // LIVE Queue verdict reported, not applied
+  assert.equal(r.selected[0].event.book.priceCap, LIVE_CAP);
+  assert.equal(r.selected[0].event.book.executable, false);
+  assert.equal(r.diagnostics.model_rescued_candidate_n, 1);
+  // (ii) the rescue never relaxes a token the model did not choose: the cheap sibling keeps its LIVE view only.
+  const [a, b] = pair(3, { price: 0.565, usd: 300 }, { price: 0.44, usd: 100 });
+  const withAuth = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p3-a", MODEL_CEILING_175_200)]);
+  assert.deepEqual(withAuth.inventory.map((i) => i.qualified_by), ["MODEL_AUTHORITY", "LIVE_QUEUE"]);
+});
+
+test("B2.3 the model owns BET/SKIP and the exact side; the cohort anchor is only a research sampling key", () => {
+  const [a, b] = pair(4, { price: 0.565, usd: 20 }, { price: 0.44, usd: 900 });   // deeper token is NOT the model's side
+  const r = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p4-a", MODEL_CEILING_175_200)]);
+  assert.equal(r.selected[0].event.tokenId, "tok-p4-b");                          // anchor = best depth
+  assert.equal(r.selected[0].modelDecisions[0].tokenId, "tok-p4-a");              // model side = its own
+  assert.equal(r.diagnostics.selected_anchor_differs_from_model_token_n, 1);
+  // SKIP / UNEVALUATED are recorded as given and never promoted to a BET or to an execution claim.
+  const [c] = pair(5, { price: 0.5, usd: 100 }, null);
+  const skip = selectExecutableLiquidityCohort([c], ASOF, () => [{ strategyId: "TEST_MODEL", strategyVersion: "1", decision: "SKIP", tokenId: null, entryPriceCeiling: null }, { strategyId: "OTHER", strategyVersion: "1", decision: "UNEVALUATED", tokenId: null, entryPriceCeiling: null }]);
+  assert.deepEqual(skip.selected[0].modelDecisions.map((d) => [d.strategyId, d.decision, d.execution.state]), [["OTHER", "UNEVALUATED", "NOT_APPLICABLE"], ["TEST_MODEL", "SKIP", "NOT_APPLICABLE"]]);
+  assert.equal(skip.selected[0].event.rank?.source, "LIVE_QUEUE");                // a SKIP changes nothing about research ranking
+});
+
+test("B2.4 exactly one cohort ranking anchor per physical event, whatever the models choose", () => {
+  const [a, b] = pair(6, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 });
+  const r = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p6-a", MODEL_CEILING_175_200, "S1"), bet("tok-p6-b", LIVE_CAP, "S2")]);
+  assert.equal(r.selected.length, 1);
+  assert.equal(new Set(r.selected.map((s) => s.event.physicalEventId)).size, 1);
+  assert.ok(r.rejected.some((x) => x.reason === "EVENT_OPPOSING_TOKEN_LOWER_LIQUIDITY"));
+});
+
+test("B2.5 different strategy versions choose different tokens on the same event, each measured at its OWN ceiling (no universal cap)", () => {
+  const [a, b] = pair(7, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 });
+  const r = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p7-b", 0.45, "FAM", "2"), bet("tok-p7-a", MODEL_CEILING_175_200, "FAM", "1")]);
+  const ds = r.selected[0].modelDecisions;
+  assert.deepEqual(ds.map((d) => [d.strategyId, d.strategyVersion, d.tokenId, d.execution.priceCap]), [["FAM", "1", "tok-p7-a", MODEL_CEILING_175_200], ["FAM", "2", "tok-p7-b", 0.45]]);
+  assert.ok(ds.every((d) => d.decision === "BET" && d.execution.executable === true));
+  assert.equal(r.selected[0].event.book.priceCap, LIVE_CAP);                      // LIVE view still 0.555 for every token
+  // a ceiling below the token's ask is NOT executable for THAT model only
+  const tight = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p7-a", 0.56, "TIGHT")]);
+  assert.equal(tight.selected[0].modelDecisions[0].execution.state, "NOT_EXECUTABLE_DEPTH_AT_CAP");
+  assert.equal(tight.selected[0].event.tokenId, "tok-p7-b");
+});
+
+test("B2.6 no future/result/book data reaches the model: the model view holds source facts only", () => {
+  const seen: ModelEventView[] = [];
+  const [a, b] = pair(8, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 });
+  const tainted = { ...a, settlement: "WIN", resolved_at: "2099-01-01", winner: true } as EvaluatedCandidate;
+  selectExecutableLiquidityCohort([tainted, b], ASOF, (v) => { seen.push(v); return []; });
+  assert.equal(seen.length, 1);
+  const keys = new Set(seen[0].tokens.flatMap((t) => Object.keys(t)));
+  assert.deepEqual([...keys].sort(), ["conditionId", "entryPrice", "eventStartIso", "ingestedAt", "observedAt", "oppositeTokenId", "outcome", "providerMarketFamily", "providerMarketType", "score", "sourceMarketType", "sportFamily", "tokenId"]);
+  assert.ok(!JSON.stringify(seen[0]).match(/settle|resolved|winner|book|ask|depth|vwap/i));
+});
+
+test("B2.7 identical input -> identical result in any input order", () => {
+  const authority: ModelAuthority = (v) => v.tokens.length > 1 ? [bet(v.tokens[0].tokenId, MODEL_CEILING_175_200, "S1"), bet(v.tokens[1].tokenId, LIVE_CAP, "S2")] : [];
+  const pool = [...pair(9, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 }), ...pair(10, { price: 0.5, usd: 120 }, { price: 0.5, usd: 80 }), ...pair(11, { price: 0.565, usd: 40 }, null)];
+  const x = selectExecutableLiquidityCohort(pool, ASOF, authority);
+  const y = selectExecutableLiquidityCohort([...pool].reverse(), ASOF, authority);
+  assert.equal(JSON.stringify(x), JSON.stringify(y));
+  assert.equal(JSON.stringify(x), JSON.stringify(selectExecutableLiquidityCohort(pool, ASOF, authority)));
+});
+
+test("B2.8 unknown execution authority stays UNKNOWN: never EXECUTABLE, never a BET, never a rescue", () => {
+  const [onlyA] = pair(12, { price: 0.565, usd: 300 }, null);
+  for (const ceiling of [null, 0, -1, 1.2, Number.NaN]) {
+    const r = selectExecutableLiquidityCohort([onlyA], ASOF, () => [bet("tok-p12-a", ceiling as number | null)]);
+    assert.equal(r.selected.length, 0, String(ceiling));
+    assert.equal(r.diagnostics.model_decision_unknown_n, 1);
+    assert.equal(r.diagnostics.model_rescued_candidate_n, 0);
+  }
+  const live = pair(13, { price: 0.5, usd: 100 }, null)[0];
+  const d = selectExecutableLiquidityCohort([live], ASOF, () => [bet("tok-p13-a", null), bet("tok-not-there", MODEL_CEILING_175_200, "GHOST")]).selected[0].modelDecisions;
+  assert.deepEqual(d.map((x) => [x.strategyId, x.decision, x.execution.state, x.execution.executable]), [
+    ["GHOST", "UNKNOWN", "MODEL_TOKEN_NOT_IN_INVENTORY", null], ["TEST_MODEL", "UNKNOWN", "UNKNOWN_EXECUTION_AUTHORITY", null],
+  ]);
+  // book missing -> UNKNOWN_BOOK_UNAVAILABLE, not executable, not rescued
+  const noBook = { ...onlyA, bookResult: null } as EvaluatedCandidate;
+  const nb = selectExecutableLiquidityCohort([noBook], ASOF, () => [bet("tok-p12-a", MODEL_CEILING_175_200)]);
+  assert.equal(nb.selected.length, 0);
+  assert.equal(nb.rejected.find((x) => x.subject === "0xp12")?.reason, "NOT_EXECUTABLE:NOT_EXECUTABLE_DEPTH_AT_CAP");
+});
+
+test("B2.9 orchestrator passes the model authority through and keeps the raw book for the model's own ceiling", async () => {
+  const rows = [row({ n: 1, selected_token_id: "tok-1-a", entry_price_num: 0.565 })];
+  const r = await buildExecutableLiquidityCohort({
+    readSource: async () => ({ asOfMs: ASOF, rows }),
+    readProviderEvent: async () => [providerMarket()],
+    fetchBooks: async (ids) => ids.map((id) => { const b = book(id, 300, ASOF + 60_000, 0.565); return { ...b, book: { ...(b as { book: object }).book, minimumOrderSize: 1 } } as FetchOrderBookResult; }),
+    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
+    modelAuthority: () => [bet("tok-1-a", MODEL_CEILING_175_200)],
+  });
+  assert.equal(r.selection.selected.length, 1);
+  assert.equal(r.selection.selected[0].event.rank?.source, "MODEL_AUTHORITY");
+  assert.equal(r.selection.selected[0].event.book.executable, false);
+});
+
+test("B2.10 documented limitation: the fixed $2.50 research stake still meets the venue min order only up to price 2.50/minOrder (unchanged LIVE stake rule)", () => {
+  // minimumOrderSize 5 shares => $2.50 buys 5 shares only at price <= 0.50. Above that the LIVE Queue raises the stake (<= $4.00);
+  // this research module deliberately does NOT (no invented stake). The model-ceiling view therefore reports it, never hides it.
+  const [onlyA] = pair(14, { price: 0.565, usd: 300 }, null, "soccer", 5);
+  const r = selectExecutableLiquidityCohort([onlyA], ASOF, () => [bet("tok-p14-a", MODEL_CEILING_175_200)]);
+  assert.equal(r.selected.length, 0);
+  assert.equal(r.diagnostics.model_decision_n, 1);
+  const [a] = pair(15, { price: 0.565, usd: 300 }, null, "soccer", 5);
+  const d = resolveModelDecisions("phys-p15", [a], () => [bet("tok-p15-a", MODEL_CEILING_175_200)])[0];
+  assert.equal(d.execution.state, "NOT_EXECUTABLE_MIN_ORDER_SIZE");
+  assert.equal(d.execution.executable, false);
 });

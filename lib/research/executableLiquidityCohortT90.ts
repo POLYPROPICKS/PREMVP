@@ -12,11 +12,20 @@
 //   "other" subdivision   OTHER_SPORT_FAMILIES, per-sport floor OTHER_DIVERSITY_FLOOR_PER_SPORT, then liquidity fill
 //                         inside the other pool only (precontractT20Research.ts, PRECONTRACT_RESEARCH_TELEMETRY_GUIDE_V1.md #6)
 //   cadence               daily cycle, 100 events/day   (guide #3, MAX_RESEARCH_EVENTS_PER_DAY)
-//   stake / price cap     QUEUE_DEFAULT_STAKE_USD 2.50 / QUEUE_MAX_ENTRY_PRICE 0.555 (executorQueueTypes.ts)
-//   executable metric     buildExecutableSiblingColumns(): full-stake taker walk, ask USD depth at/below the cap
+//   stake / LIVE cap      QUEUE_DEFAULT_STAKE_USD 2.50 / QUEUE_MAX_ENTRY_PRICE 0.555 (executorQueueTypes.ts) = the LIVE QUEUE view only
+//   executable metric     buildExecutableSiblingColumns(): full-stake taker walk, ask USD depth at/below a ceiling
 //   executable minimum    executable_full_stake_state === "EXECUTABLE" (full stake fills and satisfies min order size)
 // NOT_PROVEN (reported, never gated on an invented value): a liquidity minimum above full-stake executability and a
 // maximum quote age.
+//
+// Four separate decisions (never one):
+//   1. candidate inventory     every causal (condition, token) pair, both opposing tokens, kept until after book evaluation
+//   2. research liquidity      book.* = LIVE Queue view (cap 0.555, unchanged); `rank` = the evidence that qualified the token
+//   3. model eligibility       OWNED BY THE MODEL: an injected ModelAuthority returns BET/SKIP, the exact token and the
+//                              model's OWN entry-price ceiling. This module never evaluates a frozen predicate and never
+//                              derives a universal ceiling (e.g. max(strategy price_max, 0.555)) from several models.
+//   4. LIVE Queue eligibility  book.executable at 0.555, reported per model token, never used to discard a model-chosen token
+// The cohort ranking anchor (best-depth token of the physical event) is a research sampling key, NOT the betting side.
 import { createHash } from "node:crypto";
 import { fetchOrderBooksConcurrent, fetchTokenFeeSchedule, type TokenFeeScheduleResult } from "../liquidity/polymarketClient";
 import type { FetchOrderBookResult } from "../liquidity/types";
@@ -171,24 +180,94 @@ export type BookEvidence = {
 };
 
 /** Pure: one independent token book -> executable full-stake evidence via the existing sibling-telemetry authority. */
-export function bookEvidence(c: Pick<SourceCandidate, "conditionId" | "tokenId" | "outcome">, result: FetchOrderBookResult | null | undefined): BookEvidence {
-  const cols = buildExecutableSiblingColumns({ token: { conditionId: c.conditionId, tokenId: c.tokenId, side: c.outcome ?? "" }, result, fee: null });
+export function bookEvidence(
+  c: Pick<SourceCandidate, "conditionId" | "tokenId" | "outcome">, result: FetchOrderBookResult | null | undefined,
+  /** Omitted = the LIVE Queue cap (QUEUE_MAX_ENTRY_PRICE). A model's own ceiling is passed only by resolveModelDecisions. */
+  hardCap?: number,
+): BookEvidence {
+  const cols = buildExecutableSiblingColumns({ token: { conditionId: c.conditionId, tokenId: c.tokenId, side: c.outcome ?? "" }, result, fee: null, ...(hardCap === undefined ? {} : { hardCap }) });
   return {
     state: String(cols.executable_full_stake_state), executable: (cols.executable_full_stake as boolean | null) ?? null,
     askDepthUsd: (cols.ask_depth_relevant_usd as number | null) ?? null, vwap: (cols.full_stake_executable_vwap as number | null) ?? null,
     shares: (cols.full_stake_shares as number | null) ?? null,
     quoteCompletedAtMs: result?.ok ? result.responseCompletedAtMs ?? null : null,
     providerBookTimestampMs: result?.ok ? result.book?.providerTimestampMs ?? null : null,
-    stakeUsd: COHORT_STAKE_USD, priceCap: COHORT_PRICE_CAP,
+    stakeUsd: COHORT_STAKE_USD, priceCap: hardCap ?? COHORT_PRICE_CAP,
   };
 }
 
-export type EvaluatedCandidate = SourceCandidate & ProviderConfirmation & { book: BookEvidence };
-export type CohortSelection = { event: EvaluatedCandidate; bucket: "SOCCER" | "TENNIS" | "OTHER_DIVERSITY_FLOOR" | "OTHER_LIQUIDITY_FILL"; sportRank: number };
+/** Which evidence qualified a token for event ranking. LIVE_QUEUE = unchanged 0.555 view; MODEL_AUTHORITY = the model's own ceiling. */
+export type RankView = { source: "LIVE_QUEUE" | "MODEL_AUTHORITY"; strategyId: string | null; strategyVersion: string | null; depthUsd: number; priceCap: number };
+export type EvaluatedCandidate = SourceCandidate & ProviderConfirmation & {
+  /** LIVE Queue view (cap 0.555). A failure here is a LIVE Queue fact, not a research or model verdict. */
+  book: BookEvidence;
+  /** Raw independent book, kept so a model's own ceiling can be applied without a second fetch. */
+  bookResult?: FetchOrderBookResult | null;
+  rank?: RankView;
+};
 
-/** Executable depth DESC, then start ASC, physical id, condition, token: total order, no randomness. */
+// ── model authority (injected; frozen predicates are never re-implemented here) ───────────────────────────────────
+/** Source facts only: no book, no result, no settlement, so neither the LIVE cap nor the future can influence a model. */
+export type ModelTokenView = Pick<SourceCandidate, "conditionId" | "tokenId" | "outcome" | "sourceMarketType" | "entryPrice" | "score" | "observedAt" | "ingestedAt" | "eventStartIso" | "sportFamily">
+  & Pick<ProviderConfirmation, "oppositeTokenId" | "providerMarketType" | "providerMarketFamily">;
+export type ModelEventView = { physicalEventId: string; sportFamily: string; eventStartIso: string; tokens: readonly ModelTokenView[] };
+export type ModelEligibility = {
+  strategyId: string; strategyVersion: string;
+  decision: "BET" | "SKIP" | "UNEVALUATED";
+  /** The model's own exact side; may differ from the cohort ranking anchor and from any other strategy's side. */
+  tokenId: string | null;
+  /** The model's own frozen entry-price ceiling for that token. null = execution authority UNKNOWN. */
+  entryPriceCeiling: number | null;
+};
+export type ModelAuthority = (event: ModelEventView) => readonly ModelEligibility[];
+export type ModelDecisionRecord = {
+  strategyId: string; strategyVersion: string; physicalEventId: string;
+  /** UNKNOWN = a BET that cannot be accepted (no execution authority, or token outside the inventory). */
+  decision: "BET" | "SKIP" | "UNEVALUATED" | "UNKNOWN";
+  tokenId: string | null; entryPriceCeiling: number | null;
+  execution: { state: string; executable: boolean | null; askDepthUsd: number | null; vwap: number | null; priceCap: number | null };
+  /** The same token under the unchanged LIVE Queue policy (0.555). Reported, never used to discard the model's choice. */
+  liveQueue: { state: string | null; executable: boolean | null };
+};
+const validCeiling = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0 && v <= 1;
+
+/** Pure: apply the injected model authority to ALL tokens of one physical event, then measure execution at the model's own ceiling. */
+export function resolveModelDecisions(physicalEventId: string, tokens: readonly EvaluatedCandidate[], authority: ModelAuthority | undefined): ModelDecisionRecord[] {
+  if (!authority || tokens.length === 0) return [];
+  const ordered = [...tokens].sort((a, b) => cmp(a.conditionId, b.conditionId) || cmp(a.tokenId, b.tokenId));
+  const view: ModelEventView = {
+    physicalEventId, sportFamily: ordered[0].sportFamily, eventStartIso: ordered[0].eventStartIso,
+    tokens: ordered.map((t) => ({
+      conditionId: t.conditionId, tokenId: t.tokenId, outcome: t.outcome, sourceMarketType: t.sourceMarketType, entryPrice: t.entryPrice, score: t.score,
+      observedAt: t.observedAt, ingestedAt: t.ingestedAt, eventStartIso: t.eventStartIso, sportFamily: t.sportFamily,
+      oppositeTokenId: t.oppositeTokenId, providerMarketType: t.providerMarketType, providerMarketFamily: t.providerMarketFamily,
+    })),
+  };
+  const none = { state: "NOT_APPLICABLE", executable: null, askDepthUsd: null, vwap: null, priceCap: null };
+  const out = authority(view).map((m): ModelDecisionRecord => {
+    const base = { strategyId: m.strategyId, strategyVersion: m.strategyVersion, physicalEventId, tokenId: m.tokenId ?? null, entryPriceCeiling: m.entryPriceCeiling ?? null };
+    if (m.decision !== "BET") return { ...base, decision: m.decision, execution: none, liveQueue: { state: null, executable: null } };
+    const token = ordered.find((t) => t.tokenId === m.tokenId);
+    if (!token) return { ...base, decision: "UNKNOWN", execution: { ...none, state: "MODEL_TOKEN_NOT_IN_INVENTORY" }, liveQueue: { state: null, executable: null } };
+    const liveQueue = { state: token.book.state, executable: token.book.executable };
+    if (!validCeiling(m.entryPriceCeiling)) return { ...base, decision: "UNKNOWN", execution: { ...none, state: "UNKNOWN_EXECUTION_AUTHORITY" }, liveQueue };
+    const ev = bookEvidence(token, token.bookResult, m.entryPriceCeiling);
+    return { ...base, decision: "BET", execution: { state: ev.state, executable: ev.executable, askDepthUsd: ev.askDepthUsd, vwap: ev.vwap, priceCap: ev.priceCap }, liveQueue };
+  });
+  return out.sort((a, b) => cmp(a.strategyId, b.strategyId) || cmp(a.strategyVersion, b.strategyVersion) || cmp(a.tokenId ?? "", b.tokenId ?? ""));
+}
+
+export type CohortSelection = {
+  event: EvaluatedCandidate; bucket: "SOCCER" | "TENNIS" | "OTHER_DIVERSITY_FLOOR" | "OTHER_LIQUIDITY_FILL"; sportRank: number;
+  /** Every injected model's own decision for this physical event. The ranking anchor (`event`) is NOT any model's side. */
+  modelDecisions: ModelDecisionRecord[];
+};
+
+const rankDepth = (e: EvaluatedCandidate) => e.rank?.depthUsd ?? e.book.askDepthUsd ?? 0;
+
+/** Rank depth DESC, then start ASC, physical id, condition, token: total order, no randomness. */
 export function compareExecutableLiquidity(a: EvaluatedCandidate, b: EvaluatedCandidate): number {
-  return (b.book.askDepthUsd ?? 0) - (a.book.askDepthUsd ?? 0)
+  return rankDepth(b) - rankDepth(a)
     || Date.parse(a.eventStartIso) - Date.parse(b.eventStartIso)
     || cmp(a.physicalEventId, b.physicalEventId) || cmp(a.conditionId, b.conditionId) || cmp(a.tokenId, b.tokenId);
 }
@@ -200,14 +279,32 @@ export function compareExecutableLiquidity(a: EvaluatedCandidate, b: EvaluatedCa
  * Ranking is per sport; there is NO backfill between the soccer, tennis and other quotas (the other quota subdivides
  * only inside OTHER_SPORT_FAMILIES via the approved floor + liquidity fill).
  */
-export function selectExecutableLiquidityCohort(evaluated: readonly EvaluatedCandidate[], asOfMs: number) {
+export function selectExecutableLiquidityCohort(evaluated: readonly EvaluatedCandidate[], asOfMs: number, modelAuthority?: ModelAuthority) {
   const rejected: Rejection[] = [];
-  const quoteCausal = evaluated.filter((e) => {
-    if (e.book.executable !== true || e.book.askDepthUsd === null) { rejected.push({ reason: `NOT_EXECUTABLE:${e.book.state}`, subject: e.conditionId, tokenId: e.tokenId }); return false; }
-    if (e.book.quoteCompletedAtMs === null || e.book.quoteCompletedAtMs < asOfMs) { rejected.push({ reason: "QUOTE_TIMESTAMP_MISSING_OR_BEFORE_ASOF", subject: e.conditionId, tokenId: e.tokenId }); return false; }
-    if (e.book.quoteCompletedAtMs > Date.parse(e.eventStartIso) - T90_MINUTES * MIN_MS) { rejected.push({ reason: "QUOTE_AFTER_T90", subject: e.conditionId, tokenId: e.tokenId }); return false; }
-    return true;
-  });
+  // Model decisions are resolved on the WHOLE inventory of each physical event, before any executability gate.
+  const inventoryByPhysical = new Map<string, EvaluatedCandidate[]>();
+  for (const e of evaluated) inventoryByPhysical.set(e.physicalEventId, [...(inventoryByPhysical.get(e.physicalEventId) ?? []), e]);
+  const decisionsByPhysical = new Map<string, ModelDecisionRecord[]>();
+  for (const [pid, tokens] of [...inventoryByPhysical.entries()].sort((a, b) => cmp(a[0], b[0]))) decisionsByPhysical.set(pid, resolveModelDecisions(pid, tokens, modelAuthority));
+  const quoteCausal: EvaluatedCandidate[] = [];
+  for (const candidate of evaluated) {
+    // LIVE Queue evidence qualifies a token exactly as before; a token that fails it is rescued ONLY by a model's own BET on
+    // that exact token, measured at that model's own ceiling. Without an injected authority this branch is never taken.
+    let rank: RankView | null = null;
+    if (candidate.book.executable === true && candidate.book.askDepthUsd !== null) {
+      rank = { source: "LIVE_QUEUE", strategyId: null, strategyVersion: null, depthUsd: candidate.book.askDepthUsd, priceCap: candidate.book.priceCap };
+    } else {
+      const viable = (decisionsByPhysical.get(candidate.physicalEventId) ?? [])
+        .filter((d) => d.decision === "BET" && d.tokenId === candidate.tokenId && d.execution.executable === true && d.execution.askDepthUsd !== null && d.execution.priceCap !== null)
+        .sort((a, b) => (b.execution.askDepthUsd as number) - (a.execution.askDepthUsd as number) || cmp(a.strategyId, b.strategyId) || cmp(a.strategyVersion, b.strategyVersion))[0];
+      if (viable) rank = { source: "MODEL_AUTHORITY", strategyId: viable.strategyId, strategyVersion: viable.strategyVersion, depthUsd: viable.execution.askDepthUsd as number, priceCap: viable.execution.priceCap as number };
+    }
+    const e = rank ? { ...candidate, rank } : candidate;
+    if (!rank) { rejected.push({ reason: `NOT_EXECUTABLE:${e.book.state}`, subject: e.conditionId, tokenId: e.tokenId }); continue; }
+    if (e.book.quoteCompletedAtMs === null || e.book.quoteCompletedAtMs < asOfMs) { rejected.push({ reason: "QUOTE_TIMESTAMP_MISSING_OR_BEFORE_ASOF", subject: e.conditionId, tokenId: e.tokenId }); continue; }
+    if (e.book.quoteCompletedAtMs > Date.parse(e.eventStartIso) - T90_MINUTES * MIN_MS) { rejected.push({ reason: "QUOTE_AFTER_T90", subject: e.conditionId, tokenId: e.tokenId }); continue; }
+    quoteCausal.push(e);
+  }
   const byPhysical = new Map<string, EvaluatedCandidate[]>();
   for (const e of quoteCausal) byPhysical.set(e.physicalEventId, [...(byPhysical.get(e.physicalEventId) ?? []), e]);
   const perEvent: EvaluatedCandidate[] = [];
@@ -223,7 +320,9 @@ export function selectExecutableLiquidityCohort(evaluated: readonly EvaluatedCan
   const ranked = (family: string) => perEvent.filter((e) => e.sportFamily === family).sort(compareExecutableLiquidity);
   const selected: CohortSelection[] = [];
   const taken = new Set<string>();
-  const take = (event: EvaluatedCandidate, bucket: CohortSelection["bucket"], rank: number) => { taken.add(event.physicalEventId); selected.push({ event, bucket, sportRank: rank }); };
+  const take = (event: EvaluatedCandidate, bucket: CohortSelection["bucket"], rank: number) => {
+    taken.add(event.physicalEventId); selected.push({ event, bucket, sportRank: rank, modelDecisions: decisionsByPhysical.get(event.physicalEventId) ?? [] });
+  };
   ranked("soccer").slice(0, SOCCER_QUOTA_T90).forEach((e, i) => take(e, "SOCCER", i + 1));
   ranked("tennis").slice(0, TENNIS_QUOTA_T90).forEach((e, i) => take(e, "TENNIS", i + 1));
   const otherRanks = new Map<string, number>();
@@ -248,7 +347,7 @@ export function selectExecutableLiquidityCohort(evaluated: readonly EvaluatedCan
   const selectedBySport: Record<string, number> = {};
   for (const s of final) selectedBySport[s.event.sportFamily] = (selectedBySport[s.event.sportFamily] ?? 0) + 1;
   const cutoff = (bucketFilter: (s: CohortSelection) => boolean) => {
-    const depths = final.filter(bucketFilter).map((s) => s.event.book.askDepthUsd as number);
+    const depths = final.filter(bucketFilter).map((s) => rankDepth(s.event));
     return depths.length ? Math.min(...depths) : null;
   };
   const soccerN = count((s) => s.bucket === "SOCCER"); const tennisN = count((s) => s.bucket === "TENNIS");
@@ -261,7 +360,17 @@ export function selectExecutableLiquidityCohort(evaluated: readonly EvaluatedCan
       soccer_quota_underfill_n: SOCCER_QUOTA_T90 - soccerN, tennis_quota_underfill_n: TENNIS_QUOTA_T90 - tennisN,
       other_quota_underfill_n: OTHER_QUOTA_T90 - otherSelN, global_backfill_n: 0,
       depth_cutoff_usd: { soccer: cutoff((s) => s.bucket === "SOCCER"), tennis: cutoff((s) => s.bucket === "TENNIS"), other: cutoff((s) => s.bucket.startsWith("OTHER")) },
+      model_authority_injected: modelAuthority !== undefined,
+      model_decision_n: [...decisionsByPhysical.values()].reduce((n, d) => n + d.length, 0),
+      model_decision_unknown_n: [...decisionsByPhysical.values()].reduce((n, d) => n + d.filter((x) => x.decision === "UNKNOWN").length, 0),
+      model_rescued_candidate_n: quoteCausal.filter((e) => e.rank?.source === "MODEL_AUTHORITY").length,
+      selected_anchor_differs_from_model_token_n: final.filter((s) => s.modelDecisions.some((d) => d.decision === "BET" && d.tokenId !== s.event.tokenId)).length,
     },
+    /** Full candidate inventory: nothing is dropped silently; each token states which evidence (if any) qualified it. */
+    inventory: [...evaluated].sort((a, b) => cmp(a.physicalEventId, b.physicalEventId) || cmp(a.conditionId, b.conditionId) || cmp(a.tokenId, b.tokenId)).map((e) => ({
+      physical_event_id: e.physicalEventId, condition_id: e.conditionId, token_id: e.tokenId, live_queue_state: e.book.state,
+      qualified_by: quoteCausal.find((q) => q.conditionId === e.conditionId && q.tokenId === e.tokenId)?.rank?.source ?? null,
+    })),
   };
 }
 
@@ -281,6 +390,8 @@ export type CohortDeps = {
   readProviderEvent?: typeof defaultExactEventReader;
   fetchBooks?: typeof fetchOrderBooksConcurrent;
   fetchFee?: (tokenId: string) => Promise<TokenFeeScheduleResult>;
+  /** Optional model-owned BET/SKIP/side/ceiling authority. Absent = model eligibility UNEVALUATED; only the LIVE Queue view qualifies tokens. */
+  modelAuthority?: ModelAuthority;
   concurrency?: number;
 };
 
@@ -320,8 +431,8 @@ export async function buildExecutableLiquidityCohort(deps: CohortDeps) {
   confirmed.sort((a, b) => cmp(a.conditionId, b.conditionId) || cmp(a.tokenId, b.tokenId));
 
   const books = await fetchBooks(confirmed.map((c) => c.tokenId), limit);
-  const evaluated: EvaluatedCandidate[] = confirmed.map((c, i) => ({ ...c, book: bookEvidence(c, books[i]) }));
-  const selection = selectExecutableLiquidityCohort(evaluated, asOfMs);
+  const evaluated: EvaluatedCandidate[] = confirmed.map((c, i) => ({ ...c, book: bookEvidence(c, books[i]), bookResult: books[i] }));
+  const selection = selectExecutableLiquidityCohort(evaluated, asOfMs, deps.modelAuthority);
   rejected.push(...selection.rejected);
 
   const fees = await mapLimit(selection.selected, limit, async (s) => fetchFee(s.event.tokenId));
