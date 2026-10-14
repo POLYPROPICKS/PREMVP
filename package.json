@@ -14,6 +14,8 @@
     "research-clone:inplay-paper-settlement": "tsx scripts/research-inplay-paper-settlement.ts",
     "research-clone:inplay-paper-settlement-cycle": "tsx scripts/research-inplay-paper-settlement-cycle.ts",
     "research-clone:market-outcome-collector": "tsx scripts/research-clone-market-outcome-collector.ts",
+    "research-clone:t90-liquidity-cohort": "tsx scripts/research-t90-liquidity-cohort.ts",
+    "test:research-t90-cohort": "node --import tsx --test tests/research-clone/executableLiquidityCohortT90.test.ts",
     "research-clone:model-ready": "tsx scripts/modeling/clone-model-ready-pipeline.ts",
     "research-clone:model-ready-direct": "tsx scripts/modeling/materialize-research-model-ready.ts",
     "research-clone:modeling-conveyor": "tsx scripts/modeling/run-d1-modeling-conveyor.ts",
