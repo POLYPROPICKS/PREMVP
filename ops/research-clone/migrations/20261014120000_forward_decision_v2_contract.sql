@@ -92,10 +92,11 @@ alter table public.prospective_selection_shadow_runtime
       and source_sha ~ '^[0-9a-f]{40}$'
       and fee_state = 'NOT_EVALUATED' and net_state = 'NOT_EVALUATED'
       and scheduled_start_at is not null
-      and ((authoritative_start_at is null) = (authoritative_start_source is null))
-      and (authoritative_start_source is null or authoritative_start_source in ('OFFICIAL_SOURCE_CONFIRMED_START', 'PROVIDER_PUBLISHED_ACTUAL_START'))
+      and authoritative_start_at is null and authoritative_start_source is null
+      and event_start is not distinct from scheduled_start_at
       and observed_at is not null and source_ingested_at is not null and decision_generated_at is not null
       and evaluation_evidence is not null and jsonb_typeof(evaluation_evidence) = 'object'
+      and evaluation_evidence ?& array['cohort', 'model', 'pick', 'fill', 'fees']
       and decision_kind = 'BET'
       and condition_id is not null and selected_token_id is not null
       and source_observation_id is not null and source_item_observation_id is not null
@@ -113,6 +114,7 @@ alter table public.prospective_selection_shadow_runtime
   );
 
 -- Race-proof uniqueness (the guard also takes an advisory lock so the cross-contract existence check cannot race).
+-- APPLY PROCEDURE: this file has no BEGIN/COMMIT; it MUST run as ONE transaction (the registered runner wraps it, with local lock/statement timeouts).
 create unique index if not exists prospective_shadow_v2_bet_uidx
   on public.prospective_selection_shadow_runtime (model_id, physical_event_key)
   where row_kind = 'LEDGER' and contract_version = 'FORWARD_DECISION_V2' and decision_kind = 'BET';
@@ -155,6 +157,15 @@ begin
           new.definition_digest, new.source_sha, new.source_ingested_at, new.virtual_shares, new.fee_state,
           new.net_state, new.start_verification_state, new.evaluation_evidence) > 0 then
           raise exception 'FORWARD_FIELDS_REQUIRE_CONTRACT_VERSION';
+        end if;
+        -- A model_id never repeats a BET: a legacy-shaped insert is refused once a V2 BET holds (model_id, physical event).
+        if new.model_id is not null and new.physical_event_key is not null then
+          perform pg_advisory_xact_lock(hashtextextended('FWD|' || new.model_id || '|' || new.physical_event_key, 0));
+          if exists (select 1 from public.prospective_selection_shadow_runtime r
+            where r.row_kind = 'LEDGER' and r.contract_version = 'FORWARD_DECISION_V2' and r.model_id = new.model_id
+              and r.physical_event_key = new.physical_event_key) then
+            raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
+          end if;
         end if;
       elsif new.contract_version = 'FORWARD_BET_V1' then
         perform pg_advisory_xact_lock(hashtextextended('FWD|' || coalesce(new.model_id, '') || '|' || coalesce(new.physical_event_key, ''), 0));
@@ -233,6 +244,9 @@ begin
       elsif new.contract_version = 'FORWARD_DECISION_V2' then
         -- Serialise every claim/decision on (model_id, physical event) so the cross-contract existence check cannot race.
         perform pg_advisory_xact_lock(hashtextextended('FWD|' || coalesce(new.model_id, '') || '|' || coalesce(new.physical_event_key, ''), 0));
+        -- The authoritative instant is taken AFTER any lock wait, so a waiter never carries a stale first_persisted_at.
+        persisted := clock_timestamp();
+        new.first_persisted_at := persisted;
         -- A BET claims the event for model_id across legacy, V1 and V2 regardless of model_version.
         if exists (select 1 from public.prospective_selection_shadow_runtime r
           where r.row_kind = 'LEDGER' and r.model_id = new.model_id
@@ -370,11 +384,10 @@ create table if not exists public.forward_decision_v2_skip (
   scheduled_start_at timestamptz not null,
   authoritative_start_at timestamptz,
   authoritative_start_source text,
-  check ((authoritative_start_at is null) = (authoritative_start_source is null)),
-  check (authoritative_start_source is null or authoritative_start_source in ('OFFICIAL_SOURCE_CONFIRMED_START', 'PROVIDER_PUBLISHED_ACTUAL_START')),
+  check (authoritative_start_at is null and authoritative_start_source is null),
   fee_state text not null check (fee_state = 'NOT_EVALUATED'),
   net_state text not null check (net_state = 'NOT_EVALUATED'),
-  evaluation_evidence jsonb not null check (jsonb_typeof(evaluation_evidence) = 'object'),
+  evaluation_evidence jsonb not null check (jsonb_typeof(evaluation_evidence) = 'object' and evaluation_evidence ?& array['cohort', 'model', 'evaluation']),
   first_persisted_at timestamptz,
   t90_cutoff_at timestamptz,
   minutes_to_start numeric,

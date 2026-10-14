@@ -126,11 +126,11 @@ describe("V2 BET row builder", () => {
     assert.deepEqual(buildV2BetRow(decision(), filled({ providerQuoteAtMs: T0 + 1 }), ctx()), { ok: false, reason: "QUOTE_AFTER_DECISION_GENERATION" });
     assert.deepEqual(buildV2BetRow(decision({}, {}, T0 + 90 * 60_000), filled(), ctx()), { ok: false, reason: "DECISION_GENERATED_AT_OR_AFTER_T90" });
   });
-  test("a contradictory registered actual start earlier than the T-90 cutoff fails closed; scheduled-only is the default", () => {
-    const early = ctx({ authoritativeStart: { atIso: iso(T0 + 60 * 60_000), source: "OFFICIAL_SOURCE_CONFIRMED_START" } });
-    assert.deepEqual(buildV2BetRow(decision(), filled(), early), { ok: false, reason: "DECISION_AT_OR_AFTER_T90" });
+  test("an asserted actual start is never accepted at insert (the DB cannot verify it): the row is always PROVISIONAL scheduled-only", () => {
+    const asserted = ctx({ authoritativeStart: { atIso: iso(T0 + 60 * 60_000), source: "OFFICIAL_SOURCE_CONFIRMED_START" } });
+    assert.deepEqual(buildV2BetRow(decision(), filled(), asserted), { ok: false, reason: "AUTHORITATIVE_START_NOT_ACCEPTED_BY_V2_INSERT" });
     const r = buildV2BetRow(decision(), filled(), ctx());
-    assert.ok(r.ok && r.row.authoritative_start_at === null && r.row.authoritative_start_source === null);
+    assert.ok(r.ok && r.row.authoritative_start_at === null && r.row.authoritative_start_source === null && r.row.event_start === r.row.scheduled_start_at);
   });
   test("a duplicate source row that disagrees, or a source row not matching the cited ingest, is blocked", () => {
     const bad = decision({}, { sourceRow: { observationId: "o", itemObservationId: "i", ingestedAt: iso(T0 - 590_000), identityRowN: 2, selectorColumnsAgree: false } });
@@ -365,14 +365,16 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
       ["ingest after decision generation", { event: "e-ing", mutate: (r) => { r.source_ingested_at = iso(dbNowMs(dbNew) + 60_000); r.observed_at = iso(dbNowMs(dbNew) + 59_000); } }, /FORWARD_V2_DECISION_BEFORE_SOURCE_INGEST/],
       ["observed after ingest", { event: "e-obs", mutate: (r) => { r.observed_at = iso(dbNowMs(dbNew) - 1000); r.source_ingested_at = iso(dbNowMs(dbNew) - 5000); } }, /FORWARD_V2_OBSERVED_AFTER_INGEST/],
       ["quote from the future", { event: "e-q", mutate: (r) => { r.executable_quote_at = iso(dbNowMs(dbNew) + 600_000); } }, /FORWARD_V2_QUOTE_AFTER_PERSIST/],
-      ["registered actual start inside T-90 while the schedule is not", { event: "e-auth", mutate: (r) => { r.authoritative_start_at = iso(dbNowMs(dbNew) + 60 * 60_000); r.authoritative_start_source = "OFFICIAL_SOURCE_CONFIRMED_START"; } }, /FORWARD_V2_NOT_BEFORE_T90/],
+      ["asserted actual start is not accepted (unverifiable provenance)", { event: "e-auth", mutate: (r) => { r.authoritative_start_at = iso(dbNowMs(dbNew) + 600 * 60_000); r.authoritative_start_source = "OFFICIAL_SOURCE_CONFIRMED_START"; } }, /prospective_shadow_forward_v2_ck/],
+      ["legacy event_start contradicting the scheduled start", { event: "e-evs", mutate: (r) => { r.event_start = iso(dbNowMs(dbNew) + 5 * 60_000); } }, /prospective_shadow_forward_v2_ck/],
+      ["evidence without the required keys", { event: "e-ev", mutate: (r) => { r.evaluation_evidence = {}; } }, /prospective_shadow_forward_v2_ck/],
     ];
     for (const [name, o, pattern] of cases) {
       const r = insertJson(dbNew, T, dbBet(dbNew, o));
       assert.ok(!r.ok, `${name} must fail`);
       assert.match(r.err, pattern, name);
     }
-    assert.equal(q(dbNew, `select count(*) from ${T} where physical_event_key in ('e-t90','e-t90b','e-past','e-fut','e-stale','e-old','e-ing','e-obs','e-q','e-auth')`), "0");
+    assert.equal(q(dbNew, `select count(*) from ${T} where physical_event_key in ('e-t90','e-t90b','e-past','e-fut','e-stale','e-old','e-ing','e-obs','e-q','e-auth','e-evs','e-ev')`), "0");
   });
 
   test("economics and identity are enforced by the DB: shares must be exactly 5, cost = vwap*5, fees stay NOT_EVALUATED, digest must match", () => {
@@ -415,6 +417,12 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
 
   test("a V1 BET cannot re-claim an event a V2 BET already holds either", () => {
     fails(dbNew, v1Seed("v1-after-v2", "P50_52_SAFE", "evt-ok", "game-after"), /DUPLICATE_ECONOMIC_UNIT/);
+  });
+
+  test("a LEGACY-shaped insert after a V2 BET is refused (no repeated BET through the legacy writer); other models/events still insert", () => {
+    fails(dbNew, legacySeed("legacy-after-v2", "P50_52_SAFE", "evt-ok"), /DUPLICATE_ECONOMIC_UNIT/);
+    q(dbNew, legacySeed("legacy-other-event", "P50_52_SAFE", "evt-legacy-fresh"));
+    q(dbNew, legacySeed("legacy-other-model", "QUALITY_FILL_D_SAFE", "evt-ok"));
   });
 
   test("V2 SKIP: persisted once per (model, digest, event); another digest is distinct evidence; DB-owned timing; immutable", () => {
@@ -512,7 +520,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
   });
 
   test("ROLLBACK: refused while any V2 decision exists; with none, V2 objects are removed and re-applying the deployed V1 restores V1 exactly", () => {
-    const r = psql(dbNew, TIMEOUTS + ROLLBACK);
+    const r = psql(dbNew, TIMEOUTS + "begin;\n" + ROLLBACK + "\ncommit;");
     assert.ok(!r.ok && /FORWARD_DECISION_V2_ROLLBACK_REFUSED/.test(r.err));
     const fresh = `fdv2_rb_${process.pid}`;
     psql("postgres", `drop database if exists ${fresh}`); q("postgres", `create database ${fresh}`);
@@ -521,7 +529,9 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
       const v1Def = q(fresh, `select md5(pg_get_functiondef('public.prospective_selection_shadow_guard'::regproc))`);
       q(fresh, TIMEOUTS + V2);
       assert.notEqual(q(fresh, `select md5(pg_get_functiondef('public.prospective_selection_shadow_guard'::regproc))`), v1Def);
-      q(fresh, TIMEOUTS + ROLLBACK);
+      q(fresh, TIMEOUTS + "begin;\n" + ROLLBACK + "\ncommit;");
+      // no window: between rollback and the V1 re-apply a V2-labelled row is already refused by the restored V1 CHECK
+      assert.ok(!insertJson(fresh, T, dbBet(dbNew, { event: "evt-window" })).ok, "no V2 row can be inserted between rollback and V1 re-apply");
       q(fresh, TIMEOUTS + V1);
       assert.equal(q(fresh, `select md5(pg_get_functiondef('public.prospective_selection_shadow_guard'::regproc))`), v1Def);
       assert.equal(q(fresh, `select (to_regclass('public.forward_decision_v2_skip') is null)::text`), "true");

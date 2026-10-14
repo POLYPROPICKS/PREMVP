@@ -119,10 +119,10 @@ function identityEdge(model: Pick<ModelRef, "modelId" | "modelVersion">, ctx: Bu
 /** Client-side mirror of the DB timing rules; the DB trigger remains the authority and re-derives every timing field. */
 function preflightTiming(eventStartIso: string, ctx: BuildContext): string | null {
   if (!Number.isFinite(ctx.decisionGeneratedAtMs)) return "UNPROVEN_DECISION_GENERATION_TIME";
-  const authoritative = ctx.authoritativeStart ? Date.parse(ctx.authoritativeStart.atIso) : null;
-  if (ctx.authoritativeStart && !Number.isFinite(authoritative)) return "AUTHORITATIVE_START_INVALID";
-  const start = Math.min(Date.parse(eventStartIso), authoritative ?? Number.POSITIVE_INFINITY);
-  if (!(ctx.decisionGeneratedAtMs < t90CutoffMs(isoOf(start)))) return "DECISION_AT_OR_AFTER_T90";
+  // The DB cannot verify the provenance of an asserted actual start, so a V2 row never carries one: it is always PROVISIONAL at
+  // insert, and verification against the real kickoff is a later, separate, append-only fact.
+  if (ctx.authoritativeStart) return "AUTHORITATIVE_START_NOT_ACCEPTED_BY_V2_INSERT";
+  if (!(ctx.decisionGeneratedAtMs < t90CutoffMs(eventStartIso))) return "DECISION_AT_OR_AFTER_T90";
   return null;
 }
 

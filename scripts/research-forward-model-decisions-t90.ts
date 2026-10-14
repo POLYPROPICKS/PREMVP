@@ -688,9 +688,11 @@ async function runPersistV2(a: PersistArgs) {
   const blocked = tally(a.result.decisions.filter((d) => d.outcome === "BLOCKED").map((d) => `${d.family}:${d.reason}`));
   const verified = betBack.filter((r) => r.start_verification_state === "VERIFIED_ACTUAL_START").length;
   const proofFailures = proofs.filter((p) => !p.ok);
-  const label = betOut.persisted > 0 && proofFailures.length === 0 ? "NEW_FORWARD_BET_PERSISTED"
-    : skipOut.persisted > 0 && proofFailures.length === 0 ? "NEW_FORWARD_SKIP_ONLY" : "EXACT_FIRST_BLOCKER";
+  const readbackComplete = betBack.length === betOut.persisted && skipBack.length === skipOut.persisted;
+  const label = betOut.persisted > 0 && proofFailures.length === 0 && readbackComplete ? "NEW_FORWARD_BET_PERSISTED"
+    : skipOut.persisted > 0 && proofFailures.length === 0 && readbackComplete ? "NEW_FORWARD_SKIP_ONLY" : "EXACT_FIRST_BLOCKER";
   const firstBlocker = label !== "EXACT_FIRST_BLOCKER" ? null
+    : !readbackComplete ? `READBACK_INCOMPLETE:bet ${betBack.length}/${betOut.persisted} skip ${skipBack.length}/${skipOut.persisted}`
     : proofFailures.length ? `READBACK_PROOF_FAILED:${proofFailures[0].failed.join(",")}`
       : betReport.total > 0 && betReport.candidates.length === 0 && skipOut.persisted === 0 ? `NO_NEW_FORWARD_BET: ${JSON.stringify(tally([...betReport.historical_replay, ...betReport.not_new_verdict]))}`
         : Object.keys(betOut.db_rejected).length || Object.keys(skipOut.db_rejected).length ? `DB_REJECTED:${JSON.stringify({ ...betOut.db_rejected, ...skipOut.db_rejected })}` : "NO_QUALIFYING_FORWARD_DECISION_IN_WINDOW";
