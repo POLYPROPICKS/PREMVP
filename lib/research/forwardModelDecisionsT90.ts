@@ -1,5 +1,5 @@
 /**
- * FORWARD_MODEL_DECISIONS_T90_V2 — research-only prospective decision producer.
+ * FORWARD_MODEL_DECISIONS_T90_V3 — research-only prospective decision producer.
  *
  * Consumes the FROZEN, model-independent EXECUTABLE_LIQUIDITY_COHORT_T90_V2 and the outputs of the existing frozen model
  * selectors (injected; never re-implemented here) and produces one explicit outcome per (physical event, model):
@@ -16,19 +16,22 @@
  *  - a BET on a token with no scored source row of its own is UNPROVEN (scores/prices are never copied across tokens);
  *  - SKIP needs MODEL-SPECIFIC evaluation evidence (the candidate reached this model's own gate/predicate); general
  *    source membership is never a SKIP; missing data is BLOCKED;
- *  - a model version is only what an existing semantic-version authority says; absent authority is never invented;
+ *  - a model identity is either an existing semantic version or a PROVEN effective-definition digest (selector statements,
+ *    configuration, transitive dependencies, bound to the source commit); anything else is VERSION_AUTHORITY_UNPROVEN and a
+ *    version is never invented;
+ *  - a BET names the model's exact source row (observation + item observation); duplicate rows that disagree => BLOCKED;
  *  - EXECUTABLE needs the model's OWN registered stake + price cap, measured full-stake on its own token book with the
  *    venue minimum order and a fetched fee; no registry entry => never EXECUTABLE; LIVE Queue policy is never copied.
  */
 import {
-  cohortDigest, measureResearchLiquidity, RESEARCH_LIQUIDITY_CONTRACT, t90CutoffMs,
+  canonicalJson, cohortDigest, measureResearchLiquidity, RESEARCH_LIQUIDITY_CONTRACT, sha256, t90CutoffMs,
   type Cohort, type CohortSelection, type MeasuredToken, type ResearchLiquidity,
 } from "./executableLiquidityCohortT90";
 import { buildExecutableSiblingColumns } from "../executor/t10ExecutableSiblingTelemetry";
 import type { FetchOrderBookResult } from "../liquidity/types";
 import type { TokenFeeScheduleResult } from "../liquidity/polymarketClient";
 
-export const FORWARD_DECISIONS_VERSION = "FORWARD_MODEL_DECISIONS_T90_V2";
+export const FORWARD_DECISIONS_VERSION = "FORWARD_MODEL_DECISIONS_T90_V3";
 
 // ── deployed FORWARD_BET_V1 contract facts (migration 20261012180000_virtual_bet_forward_contract_v1) ───────────────
 /** Deployed trigger: persisted - observed_at > 7200s => timing_class LATE_OR_REPLAY / HISTORICAL_REPLAY. */
@@ -46,6 +49,18 @@ export const FORWARD_CONTRACT = Object.freeze({
   authoritativeStartSources: ["OFFICIAL_SOURCE_CONFIRMED_START", "PROVIDER_PUBLISHED_ACTUAL_START"] as const,
   firstPersistedAt: "trigger: clock_timestamp() on INSERT; immutable on UPDATE; DELETE/TRUNCATE rejected",
   t90: "NOT enforced by the deployed trigger (it only classifies timing): enforced here before any write",
+  /** Independently verified deployed-DB facts (NOT unknown schema facts). Provenance is part of the fact. */
+  verifiedFacts: Object.freeze({
+    provenance: "Architect independent catalog read of Research DBClone nppznoujvnyjargjkmnv, PR #537 issuecomment-6169812887 (2026-10-14); column presence is re-probed read-only by the runner",
+    modelVersionColumnExists: true,
+    firstPersistedAtOwner: "DB (row guard sets clock_timestamp())",
+    rowGuardTrigger: Object.freeze({ name: "prospective_selection_shadow_guard_row_trg", enabled: true }),
+    forwardCheck: Object.freeze({ name: "prospective_shadow_forward_contract_ck", contractVersion: "FORWARD_BET_V1", decisionKind: "BET", skipAdmissible: false }),
+    economicUnitUniqueIndex: Object.freeze({ name: "prospective_shadow_economic_unit_uidx", keys: ["model_id", "economic_unit_key"] as const, includesModelVersion: false }),
+    legacyCollision: "the trigger rejects a new row sharing model_id and physical_event_key/canonical_game_key with a legacy row regardless of model_version",
+    leadTimeAuthoritativeFrom: "authoritative_start_at",
+    scheduleOnlyStartCanBeVerified: false,
+  }),
 });
 
 // ── model registry views (identities come from the frozen owners; this file only names their families) ───────────
@@ -53,18 +68,161 @@ export const FORWARD_CONTRACT = Object.freeze({
 export type ModelFamily = "SAFE_PREMATCH" | "FOOTBALL_D1";
 export type VersionAuthority =
   | { state: "SEMANTIC_VERSION"; source: string }
-  | { state: "ABSENT"; reason: string };
+  /** A proven effective-definition digest (see ModelDefinitionManifest). It is content-derived, never a semantic version. */
+  | { state: "DEFINITION_DIGEST"; source: string }
+  | { state: "UNPROVEN"; reason: string };
 export type ModelRef = {
   modelId: string;
-  /** The existing semantic version, or the literal VERSION_AUTHORITY_ABSENT (never persisted, never a version). */
+  /** An existing semantic version, a proven `def-sha256:<digest>`, or the literal VERSION_AUTHORITY_UNPROVEN (never a version). */
   modelVersion: string;
   versionAuthority: VersionAuthority;
-  /** Exact git source identity of the frozen owner (commit + blob SHA); a definition fingerprint, not a version. */
+  /** Source commit the identity is bound to (HEAD at evaluation) when binding is proven; a provenance field, not a version. */
   sourceSha: string | null;
   family: ModelFamily;
   sportScope: "ALL" | "soccer" | "tennis";
+  /** The auditable manifest behind a DEFINITION_DIGEST / UNPROVEN SAFE identity (null for owner-versioned models). */
+  definition?: ModelDefinitionManifest | null;
 };
-export const VERSION_ABSENT = "VERSION_AUTHORITY_ABSENT";
+export const VERSION_UNPROVEN = "VERSION_AUTHORITY_UNPROVEN";
+
+// ── A. effective-definition manifest (pure; the analysis that feeds it lives in the runner) ──────────────────────
+
+export const DEFINITION_MANIFEST_VERSION = "SAFE_DEFINITION_MANIFEST_V1";
+export const DEFINITION_ANALYZER_VERSION = "SYMBOL_REACHABILITY_V1";
+export const DEFINITION_VERSION_PREFIX = "def-sha256:";
+
+export type DefinitionStatement = {
+  file: string; kind: string; name: string | null;
+  via: "ROOT" | "REFERENCED" | "INIT_OF_REACHED_MODULE" | "INIT_MUTATOR";
+  startLine: number; endLine: number;
+  /** sha256 of the statement's source text (CRLF normalised). Comments between statements and formatting outside never count. */
+  sha256: string;
+};
+export type DefinitionPackage = { name: string; version: string | null; integrity: string | null };
+export type DefinitionAnalysis = {
+  analyzer: string;
+  roots: ReadonlyArray<{ file: string; symbol: string }>;
+  statements: readonly DefinitionStatement[];
+  /** git blob SHA-1 (what `git hash-object` returns) of every reached file's executing content. */
+  files: ReadonlyArray<{ path: string; blobSha1: string }>;
+  packages: readonly DefinitionPackage[];
+  /** `if (import.meta.url === process.argv[1]…) main()` guards: run only when the module is the process entrypoint. */
+  excludedEntrypointGuards: readonly string[];
+  /** Why the definition cannot be proven complete and deterministic (empty = the analysis found none). */
+  unproven: readonly string[];
+};
+export type GitReader = { headCommit(): string | null; blobAtHead(path: string): string | null };
+export type CommitBinding = { state: "BOUND" | "UNBOUND"; sourceCommit: string | null; mismatchedFiles: string[]; reason: string | null };
+
+/** Pure. BOUND only when every reached file is byte-identical to its blob at the source commit. */
+export function verifyCommitBinding(files: DefinitionAnalysis["files"], git: GitReader): CommitBinding {
+  const sourceCommit = git.headCommit();
+  if (!sourceCommit) return { state: "UNBOUND", sourceCommit: null, mismatchedFiles: [], reason: "NO_GIT_HEAD" };
+  const mismatchedFiles = files.filter((f) => git.blobAtHead(f.path) !== f.blobSha1).map((f) => f.path).sort();
+  return mismatchedFiles.length === 0
+    ? { state: "BOUND", sourceCommit, mismatchedFiles, reason: null }
+    : { state: "UNBOUND", sourceCommit, mismatchedFiles, reason: "DEFINITION_FILES_DIFFER_FROM_SOURCE_COMMIT" };
+}
+
+const cmpStatement = (a: DefinitionStatement, b: DefinitionStatement) => cmp(a.file, b.file) || cmp(a.sha256, b.sha256) || cmp(a.name ?? "", b.name ?? "");
+
+/** Pure. Position-independent: only the reached statements' text, packages and the analyzer version (never line numbers or `via`). */
+export function sharedDefinitionDigest(analysis: DefinitionAnalysis): string {
+  return sha256({
+    manifest: DEFINITION_MANIFEST_VERSION, analyzer: analysis.analyzer,
+    roots: [...analysis.roots].map((r) => `${r.file}#${r.symbol}`).sort(),
+    statements: [...analysis.statements].sort(cmpStatement).map((s) => ({ file: s.file, kind: s.kind, name: s.name, sha256: s.sha256 })),
+    packages: [...analysis.packages].sort((a, b) => cmp(a.name, b.name)).map((p) => ({ name: p.name, version: p.version, integrity: p.integrity })),
+    excluded_entrypoint_guards: [...analysis.excludedEntrypointGuards].sort(),
+  });
+}
+
+/**
+ * Pure. Data values of a model's imported configuration, canonicalised. Functions carry their NAME only: their logic is
+ * bound by the reached statements' text (never by `Function#toString`, which would tie identity to the transpiler).
+ */
+export function configurationDigest(configuration: unknown): string {
+  const norm = (v: unknown): unknown => {
+    if (typeof v === "function") return { $fn: v.name || "anonymous" };
+    if (v === undefined) return null;
+    if (typeof v === "bigint") return { $bigint: v.toString() };
+    if (typeof v === "number" && !Number.isFinite(v)) return { $number: String(v) };
+    if (v instanceof Set) return { $set: [...v].map(norm).map(canonicalJson).sort() };
+    if (v instanceof Map) return { $map: [...v.entries()].map(([k, x]) => [norm(k), norm(x)]).sort((a, b) => cmp(canonicalJson(a[0]), canonicalJson(b[0]))) };
+    if (Array.isArray(v)) return v.map(norm);
+    if (v && typeof v === "object") return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, norm(x)]));
+    return v;
+  };
+  return sha256(norm(configuration));
+}
+
+export type ModelDefinitionManifest = {
+  manifestVersion: typeof DEFINITION_MANIFEST_VERSION; analyzer: string; modelId: string;
+  /** DEFINITION_DIGEST_PROVEN: complete, deterministic and bound to the source commit. Anything else: VERSION_AUTHORITY_UNPROVEN. */
+  state: "DEFINITION_DIGEST_PROVEN" | "VERSION_AUTHORITY_UNPROVEN";
+  unprovenReasons: readonly string[];
+  /** Every model of one shared selector function is re-identified by any change to it or its dependencies (never under-identified). */
+  granularity: "SHARED_SELECTOR_STATEMENTS";
+  /** The model's identity; null unless proven. */
+  definitionDigest: string | null;
+  /** What the digest would be; never an identity unless `state` is proven. */
+  observedDigest: string;
+  sharedDefinitionDigest: string; configurationDigest: string;
+  commitBinding: CommitBinding;
+  roots: DefinitionAnalysis["roots"]; reachedFileN: number; reachedStatementN: number;
+  files: DefinitionAnalysis["files"]; packages: DefinitionAnalysis["packages"]; excludedEntrypointGuards: readonly string[];
+  /** Toolchain description. NOT part of the digest. */
+  runtime: Readonly<Record<string, string | null>>;
+};
+
+/** Pure. A definition is proven only if the analysis found no unprovable edge AND every reached file is at the source commit. */
+export function buildModelDefinitionManifest(input: {
+  modelId: string; analysis: DefinitionAnalysis; configuration: unknown; git: GitReader; runtime: Readonly<Record<string, string | null>>;
+}): ModelDefinitionManifest {
+  const { analysis } = input;
+  const binding = verifyCommitBinding(analysis.files, input.git);
+  const reasons = [...analysis.unproven];
+  // A definition that reached no statement (e.g. a type-only root) identifies nothing: never "proven" by absence of evidence.
+  if (analysis.statements.length === 0) reasons.push("EMPTY_DEFINITION:NO_REACHED_STATEMENT");
+  if (binding.state !== "BOUND") reasons.push(`COMMIT_BINDING:${binding.reason}${binding.mismatchedFiles.length ? `:${binding.mismatchedFiles.join(",")}` : ""}`);
+  const shared = sharedDefinitionDigest(analysis);
+  const configuration = configurationDigest(input.configuration);
+  const observedDigest = sha256({ manifest: DEFINITION_MANIFEST_VERSION, model_id: input.modelId, shared, configuration });
+  const proven = reasons.length === 0;
+  return {
+    manifestVersion: DEFINITION_MANIFEST_VERSION, analyzer: analysis.analyzer, modelId: input.modelId,
+    state: proven ? "DEFINITION_DIGEST_PROVEN" : "VERSION_AUTHORITY_UNPROVEN", unprovenReasons: reasons,
+    granularity: "SHARED_SELECTOR_STATEMENTS", definitionDigest: proven ? observedDigest : null, observedDigest,
+    sharedDefinitionDigest: shared, configurationDigest: configuration, commitBinding: binding,
+    roots: analysis.roots, reachedFileN: analysis.files.length, reachedStatementN: analysis.statements.length,
+    files: analysis.files, packages: analysis.packages, excludedEntrypointGuards: analysis.excludedEntrypointGuards, runtime: input.runtime,
+  };
+}
+
+export const modelVersionOf = (m: ModelDefinitionManifest): string => m.definitionDigest ? `${DEFINITION_VERSION_PREFIX}${m.definitionDigest}` : VERSION_UNPROVEN;
+export const versionAuthorityOf = (m: ModelDefinitionManifest): VersionAuthority => m.definitionDigest
+  ? { state: "DEFINITION_DIGEST", source: `${m.manifestVersion}/${m.analyzer} bound to ${m.commitBinding.sourceCommit}` }
+  : { state: "UNPROVEN", reason: m.unprovenReasons.join("; ") };
+
+/** Pure. A harness (decision-procedure) identity: the same analysis over the decision functions, reported beside the models. */
+export function harnessIdentity(analysis: DefinitionAnalysis, git: GitReader) {
+  const manifest = buildModelDefinitionManifest({ modelId: "DECISION_PROCEDURE", analysis, configuration: null, git, runtime: {} });
+  return { state: manifest.state, digest: manifest.definitionDigest, observedDigest: manifest.observedDigest, unprovenReasons: manifest.unprovenReasons, commitBinding: manifest.commitBinding, reachedFileN: manifest.reachedFileN, reachedStatementN: manifest.reachedStatementN };
+}
+
+/**
+ * One frozen-selector pick's exact source row. candidateIdentity (condition::token::observed_at) can be shared by several
+ * source rows; the identity is only exact when one row exists or every duplicate agrees on the selector's own columns.
+ */
+export type ModelSourceRow = {
+  observationId: string; itemObservationId: string;
+  /** ingested_at of the cited row (the earliest of agreeing duplicates). */
+  ingestedAt: string;
+  /** Number of distinct source rows sharing the candidate identity. */
+  identityRowN: number;
+  /** All duplicate rows carry identical selector-relevant columns (trivially true for one row). */
+  selectorColumnsAgree: boolean;
+};
 
 /** One frozen-selector pick. candidateIdentity = `${condition_id}::${selected_token_id}::${observed_at}` (owner format). */
 export type ModelBet = {
@@ -74,6 +232,8 @@ export type ModelBet = {
   eventStart: string; entryPrice: number; modelPhysicalEventKey: string;
   /** DB `ingested_at` of the model's OWN source row; null = unproven. */
   sourceIngestedAt: string | null;
+  /** The model's own exact source row (never the cohort's or the anchor's); null = unproven. */
+  sourceRow: ModelSourceRow | null;
   /** First availability instant (an ingested_at watermark) whose causal prefix made the model select this pick. */
   claimInstant: string;
 };
@@ -86,6 +246,8 @@ export type ModelEvaluation =
     predicateEvaluatedTokenKeys: ReadonlySet<string>;
     /** condition|token keys that this model's own universe gate received and rejected. */
     gateRejectedTokenKeys: ReadonlySet<string>;
+    /** condition|token keys the model selected at some causal instant but whose daily cap was already spent by earlier claims. */
+    capSpentTokenKeys?: ReadonlySet<string>;
   }
   | { status: "BLOCKED"; reason: string; evidence: string };
 
@@ -116,6 +278,8 @@ export type ChronologicalClaims<P> = {
   inconsistentAvailabilityN: number;
   /** Picks a later prefix selected after the cap was already spent by earlier claims (never claimed). */
   capExhaustedN: number;
+  /** Per model: candidate identities counted in capExhaustedN (selected, but the per-model daily cap was already spent). */
+  capSpentIdentities: Map<string, Set<string>>;
 };
 
 /**
@@ -138,6 +302,7 @@ export function chronologicalClaims<R extends AvailabilityRow, P extends { candi
   const claimedIds = new Map(modelIds.map((m) => [m, new Set<string>()]));
   const predicateEvaluated = new Map(modelIds.map((m) => [m, new Set<string>()]));
   const gateRejected = new Map(modelIds.map((m) => [m, new Set<string>()]));
+  const capSpentIdentities = new Map(modelIds.map((m) => [m, new Set<string>()]));
   let capExhaustedN = 0;
   let end = 0;
   for (const t of instants) {
@@ -149,14 +314,14 @@ export function chronologicalClaims<R extends AvailabilityRow, P extends { candi
       // The selector's own order is its rank (e.g. tier then time under a daily cap): spare cap slots go rank-first.
       for (const p of sel.picks.get(m) ?? []) {
         if (claimedIds.get(m)!.has(p.candidateIdentity) || claimedEvents.get(m)!.has(p.physicalEventKey)) continue;
-        if (claims.get(m)!.length >= cap) { capExhaustedN++; continue; }
+        if (claims.get(m)!.length >= cap) { capExhaustedN++; capSpentIdentities.get(m)!.add(p.candidateIdentity); continue; }
         claimedIds.get(m)!.add(p.candidateIdentity);
         claimedEvents.get(m)!.add(p.physicalEventKey);
         claims.get(m)!.push({ ...p, claimInstant: new Date(t).toISOString() });
       }
     }
   }
-  return { claims, predicateEvaluated, gateRejected, instants: instants.length, inconsistentAvailabilityN: rows.length - valid.length, capExhaustedN };
+  return { claims, predicateEvaluated, gateRejected, instants: instants.length, inconsistentAvailabilityN: rows.length - valid.length, capExhaustedN, capSpentIdentities };
 }
 
 // ── 1. per (event, model) outcome ─────────────────────────────────────────────────────────────────────────────────
@@ -171,7 +336,7 @@ export type ModelEventDecision = {
   bet: (ModelBet & {
     outcomeLabel: string; oppositeTokenId: string; providerMarketType: string; providerEventId: string;
     /** The cohort's scored source row for the model's OWN token (never the anchor's or the opposite token's). It may be a
-     *  different observation of that token than the model's selected row: the model row is observedAt/entryPrice above. */
+     *  different observation of that token than the model's selected row: the model's exact row is `sourceRow` above. */
     cohortSource: { score: number | null; entryPrice: number | null; observedAt: string; ingestedAt: string; itemObservationId: string };
     isCohortAnchor: boolean;
     minutesToStartAtDecision: number;
@@ -184,6 +349,15 @@ const inScope = (m: ModelRef, sport: string) => m.sportScope === "ALL" || m.spor
 function deepFreeze<T>(v: T): T {
   if (v && typeof v === "object" && !Object.isFrozen(v)) { Object.freeze(v); for (const k of Object.keys(v as object)) deepFreeze((v as Record<string, unknown>)[k]); }
   return v;
+}
+
+/** Pure. The BET must cite the model's own exact source row; duplicates that disagree make the cited row ambiguous. */
+export function sourceRowEdge(bet: Pick<ModelBet, "sourceRow" | "sourceIngestedAt">): string | null {
+  const row = bet.sourceRow;
+  if (!row || !row.observationId || !row.itemObservationId) return "UNPROVEN_MODEL_SOURCE_ROW";
+  if (row.identityRowN > 1 && !row.selectorColumnsAgree) return "MODEL_SOURCE_ROW_AMBIGUOUS";
+  if (bet.sourceIngestedAt !== row.ingestedAt) return "MODEL_SOURCE_ROW_INGEST_MISMATCH";
+  return null;
 }
 
 /** Pure causal check of one pick against the decision-generation instant. Returns the first failed edge or null. */
@@ -211,7 +385,12 @@ export function decideCohortModels(
   models: readonly ModelRef[],
   evaluations: ReadonlyMap<string, ModelEvaluation>,
   decisionGeneratedAtMs: number,
-): { decisions: ModelEventDecision[]; digestBefore: string; digestAfter: string; digestByModel: Record<string, string>; outOfCohortBets: Record<string, number>; uniquenessViolations: string[] } {
+): {
+  decisions: ModelEventDecision[]; digestBefore: string; digestAfter: string;
+  /** Cohort digest read BEFORE and AFTER each model's evaluation: all must equal digestBefore. */
+  digestBeforeByModel: Record<string, string>; digestByModel: Record<string, string>;
+  outOfCohortBets: Record<string, number>; uniquenessViolations: string[];
+} {
   deepFreeze(cohort);
   const digestBefore = cohortDigest(cohort);
   const generatedIso = Number.isFinite(decisionGeneratedAtMs) ? new Date(decisionGeneratedAtMs).toISOString() : "INVALID";
@@ -221,10 +400,11 @@ export function decideCohortModels(
   const decisions: ModelEventDecision[] = [];
   const outOfCohortBets: Record<string, number> = {};
   const digestByModel: Record<string, string> = {};
+  const digestBeforeByModel: Record<string, string> = {};
   const uniquenessViolations: string[] = [];
   for (const model of models) {
     const key = modelKey(model);
-    digestByModel[key] = cohortDigest(cohort);
+    digestBeforeByModel[key] = cohortDigest(cohort);
     const evaluation = evaluations.get(key) ?? { status: "BLOCKED", reason: "MODEL_EVALUATION_MISSING", evidence: "no evaluation supplied for this model" } as const;
     // Chronological first claim per physical event, under THIS model only.
     const claims = new Map<string, ModelBet>();
@@ -249,16 +429,22 @@ export function decideCohortModels(
       const bet = claims.get(event.physicalEventId);
       if (!bet) {
         const keys = event.inventory.map((t) => tokenKey(t.conditionId, t.tokenId));
-        decisions.push(keys.some((k) => evaluation.predicateEvaluatedTokenKeys.has(k))
-          ? { ...base, outcome: "SKIP", reason: "MODEL_PREDICATE_EVALUATED_NOT_SELECTED" }
-          : keys.some((k) => evaluation.gateRejectedTokenKeys.has(k))
-            ? { ...base, outcome: "SKIP", reason: "MODEL_GATE_EVALUATED_REJECTED" }
-            : { ...base, outcome: "BLOCKED", reason: "NO_MODEL_SOURCE_CANDIDATE_FOR_EVENT" });
+        // Every SKIP is the model's OWN evaluation of one of this event's tokens: most specific evidence first.
+        decisions.push(keys.some((k) => evaluation.capSpentTokenKeys?.has(k))
+          ? { ...base, outcome: "SKIP", reason: "MODEL_SELECTED_DAILY_CAP_SPENT" }
+          : keys.some((k) => evaluation.predicateEvaluatedTokenKeys.has(k))
+            ? { ...base, outcome: "SKIP", reason: "MODEL_PREDICATE_EVALUATED_NOT_SELECTED" }
+            : keys.some((k) => evaluation.gateRejectedTokenKeys.has(k))
+              ? { ...base, outcome: "SKIP", reason: "MODEL_GATE_EVALUATED_REJECTED" }
+              : { ...base, outcome: "BLOCKED", reason: "NO_MODEL_SOURCE_CANDIDATE_FOR_EVENT" });
         continue;
       }
       const token = byToken.get(tokenKey(bet.conditionId, bet.tokenId))!.token;
       if (!token.source) { decisions.push({ ...base, outcome: "BLOCKED", reason: "UNPROVEN_MODEL_TOKEN_HAS_NO_OWN_SOURCE_ROW" }); continue; }
       if (Date.parse(bet.eventStart) !== Date.parse(event.eventStartIso)) { decisions.push({ ...base, outcome: "BLOCKED", reason: "MODEL_EVENT_START_CONTRADICTS_COHORT" }); continue; }
+      // Exactness before causality: the BET must cite the one source row the model itself selected from.
+      const rowEdge = sourceRowEdge(bet);
+      if (rowEdge) { decisions.push({ ...base, outcome: "BLOCKED", reason: rowEdge }); continue; }
       const causal = causalEdge(bet, event.eventStartIso, decisionGeneratedAtMs);
       if (causal) { decisions.push({ ...base, outcome: "BLOCKED", reason: causal }); continue; }
       decisions.push({
@@ -271,9 +457,10 @@ export function decideCohortModels(
         },
       });
     }
+    digestByModel[key] = cohortDigest(cohort);
   }
   decisions.sort((a, b) => cmp(a.physicalEventId, b.physicalEventId) || cmp(a.modelId, b.modelId) || cmp(a.modelVersion, b.modelVersion));
-  return { decisions, digestBefore, digestAfter: cohortDigest(cohort), digestByModel, outOfCohortBets, uniquenessViolations };
+  return { decisions, digestBefore, digestAfter: cohortDigest(cohort), digestBeforeByModel, digestByModel, outOfCohortBets, uniquenessViolations };
 }
 
 export const modelKey = (m: Pick<ModelRef, "modelId" | "modelVersion">) => `${m.modelId}@${m.modelVersion}`;
@@ -284,6 +471,12 @@ export type ExecutionTier = "MODEL_ELIGIBLE" | "EXECUTABLE" | "LIVE_QUEUE_ELIGIB
 /** Model-specific stake/price authority, keyed by modelKey. No entry exists today; an absent entry is never defaulted. */
 export type ModelEconomicsAuthority = ReadonlyMap<string, { stakeUsd: number; maxEntryPrice: number; source: string }>;
 export const REGISTERED_MODEL_ECONOMICS: ModelEconomicsAuthority = new Map();
+
+/** Pure. An approval needs a provenance string, a positive stake and a price cap strictly inside (0, 1). Nothing is defaulted. */
+export function economicsState(authority: ReturnType<ModelEconomicsAuthority["get"]>): "ABSENT" | "INVALID" | "REGISTERED" {
+  if (!authority) return "ABSENT";
+  return authority.source.trim() !== "" && authority.stakeUsd > 0 && authority.maxEntryPrice > 0 && authority.maxEntryPrice < 1 ? "REGISTERED" : "INVALID";
+}
 
 export type ModelFullStake = {
   stakeUsd: number; maxEntryPrice: number; authoritySource: string; state: string; executable: boolean;
@@ -329,23 +522,29 @@ export function assessExecution(
   const out = (tierReached: ExecutionTier, blockedAt: ExecutionAssessment["blockedAt"], model: ModelFullStake | null = null): ExecutionAssessment =>
     ({ tierReached, blockedAt, model, researchDiagnostic, fee: feeView, liveQueue: "NOT_EVALUATED_NO_AUTHORITY" });
   const authority = economics.get(modelKey(decision));
-  if (decision.versionAuthority !== "SEMANTIC_VERSION") return out("MODEL_ELIGIBLE", { tier: "EXECUTABLE", reason: "MODEL_VERSION_AUTHORITY_ABSENT" });
-  if (!authority) return out("MODEL_ELIGIBLE", { tier: "EXECUTABLE", reason: "MODEL_ECONOMICS_AUTHORITY_ABSENT" });
-  if (!(authority.stakeUsd > 0) || !(authority.maxEntryPrice > 0 && authority.maxEntryPrice < 1)) return out("MODEL_ELIGIBLE", { tier: "EXECUTABLE", reason: "MODEL_ECONOMICS_AUTHORITY_INVALID" });
-  const cols = buildExecutableSiblingColumns({
-    token: { conditionId: bet.conditionId, tokenId: bet.tokenId, side: bet.outcomeLabel }, result: book, fee,
-    stakeUsd: authority.stakeUsd, hardCap: authority.maxEntryPrice,
-  });
-  const n = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? v : null;
+  if (decision.versionAuthority === "UNPROVEN") return out("MODEL_ELIGIBLE", { tier: "EXECUTABLE", reason: "MODEL_DEFINITION_IDENTITY_UNPROVEN" });
+  const approval = economicsState(authority);
+  if (approval === "ABSENT") return out("MODEL_ELIGIBLE", { tier: "EXECUTABLE", reason: "MODEL_ECONOMICS_AUTHORITY_ABSENT" });
+  if (approval === "INVALID" || !authority) return out("MODEL_ELIGIBLE", { tier: "EXECUTABLE", reason: "MODEL_ECONOMICS_AUTHORITY_INVALID" });
+  // The walk is taken ONLY on the BET token's own book. A book for any other token is never measured, never reported as depth.
   const ownBook = book?.ok && book.book && book.book.tokenId === bet.tokenId ? book : null;
   const model: ModelFullStake = {
     stakeUsd: authority.stakeUsd, maxEntryPrice: authority.maxEntryPrice, authoritySource: authority.source,
-    state: String(cols.executable_full_stake_state), executable: cols.executable_full_stake === true,
-    vwap: n(cols.full_stake_executable_vwap), shares: n(cols.full_stake_shares), worstAskPrice: n(cols.full_stake_worst_ask_price),
-    venueMinOrderShares: ownBook?.book?.minimumOrderSize ?? null,
-    feeRate: n(cols.taker_fee_rate), feeUsd: n(cols.taker_fee_usd), effectiveCostPerShare: n(cols.taker_effective_cost_per_share),
+    state: "NO_OWN_TOKEN_BOOK", executable: false, vwap: null, shares: null, worstAskPrice: null, venueMinOrderShares: null,
+    feeRate: null, feeUsd: null, effectiveCostPerShare: null,
   };
   if (!ownBook) return out("MODEL_ELIGIBLE", { tier: "EXECUTABLE", reason: "MODEL_TOKEN_BOOK_MISSING" }, model);
+  const cols = buildExecutableSiblingColumns({
+    token: { conditionId: bet.conditionId, tokenId: bet.tokenId, side: bet.outcomeLabel }, result: ownBook, fee,
+    stakeUsd: authority.stakeUsd, hardCap: authority.maxEntryPrice,
+  });
+  const n = (v: unknown) => typeof v === "number" && Number.isFinite(v) ? v : null;
+  Object.assign(model, {
+    state: String(cols.executable_full_stake_state), executable: cols.executable_full_stake === true,
+    vwap: n(cols.full_stake_executable_vwap), shares: n(cols.full_stake_shares), worstAskPrice: n(cols.full_stake_worst_ask_price),
+    venueMinOrderShares: ownBook.book?.minimumOrderSize ?? null,
+    feeRate: n(cols.taker_fee_rate), feeUsd: n(cols.taker_fee_usd), effectiveCostPerShare: n(cols.taker_effective_cost_per_share),
+  });
   const completed = ownBook.responseCompletedAtMs ?? null;
   const providerTs = ownBook.book!.providerTimestampMs ?? null;
   const cutoff = t90CutoffMs(decision.eventStartIso);
@@ -364,19 +563,52 @@ export type PersistenceEnvironment = {
   deployedContractColumnsVerified: boolean;
   /** Physical event keys already holding a LEDGER row (legacy or contract) per model_id: the trigger would reject them. */
   existingEconomicUnitsByModelId: ReadonlyMap<string, ReadonlySet<string>>;
+  /** Reporting only: token already persisted by that existing claim (model_id -> physical_event_key -> selected_token_id|null). */
+  existingClaimTokensByModelId?: ReadonlyMap<string, ReadonlyMap<string, string | null>>;
   /** Approved application-owned FORWARD_BET_V1 writer reachable from this repository boundary (null = none). */
   approvedPersistenceRoute: string | null;
   /** Event start from a registered authoritative source (deployed CHECK set); a schedule never stands in. */
   authoritativeStartSource: string | null;
 };
 
-export type PersistenceReadiness = { ready: boolean; firstFailedEdge: string | null; failedEdges: string[]; observationLagAtCheckMs: number; leadToT90MsAtCheck: number };
+/** A decision generated now is a NEW forward BET only if no earlier claim exists and its input is fresh; a replay never is. */
+export type ForwardStatus =
+  | { state: "NEW_FORWARD" }
+  | { state: "HISTORICAL_REPLAY"; reasons: Array<"ALREADY_CLAIMED_FOR_MODEL_ID" | "OBSERVATION_AGED_BEYOND_GUARD" | "PAST_T90_AT_CHECK"> }
+  | { state: "NOT_A_BET" };
+export type ExistingClaim = "NONE" | "SAME_TOKEN" | "DIFFERENT_TOKEN" | "TOKEN_UNKNOWN";
+
+export type PersistenceReadiness = {
+  ready: boolean; firstFailedEdge: string | null; failedEdges: string[]; observationLagAtCheckMs: number; leadToT90MsAtCheck: number;
+  forward: ForwardStatus;
+  /** The irreversible earlier claim for this model_id and event, and whether it is on the token this producer would pick. */
+  existingClaim: ExistingClaim;
+  /** VERIFIED eligibility is separate from insertability: a schedule-only start cannot be relabelled VERIFIED. Never a VERIFIED claim. */
+  verification: { eligible: boolean; reason: string | null };
+};
 
 export const PERSISTENCE_EDGES = [
-  "CONTRACT_DECISION_KIND", "MODEL_VERSION_AUTHORITY", "EXECUTION_AUTHORITY", "AUTHORITATIVE_EVENT_START",
+  "CONTRACT_DECISION_KIND", "MODEL_DEFINITION_IDENTITY", "EXECUTION_AUTHORITY", "AUTHORITATIVE_START_SOURCE_REGISTERED",
   "OBSERVATION_FRESH_FOR_GUARD", "BEFORE_T90_AT_CHECK", "ECONOMIC_UNIT_UNCLAIMED_FOR_MODEL_ID",
   "DEPLOYED_CONTRACT_COLUMNS", "APPROVED_PERSISTENCE_ROUTE",
 ] as const;
+
+/** Pure. Classifies a BET as a new forward claim or a historical replay; replays are never counted as new forward BETs. */
+export function classifyForwardStatus(decision: ModelEventDecision, env: PersistenceEnvironment, nowMs: number): ForwardStatus {
+  if (decision.outcome !== "BET" || !decision.bet) return { state: "NOT_A_BET" };
+  const reasons: Array<"ALREADY_CLAIMED_FOR_MODEL_ID" | "OBSERVATION_AGED_BEYOND_GUARD" | "PAST_T90_AT_CHECK"> = [];
+  if (env.existingEconomicUnitsByModelId.get(decision.modelId)?.has(decision.bet.modelPhysicalEventKey)) reasons.push("ALREADY_CLAIMED_FOR_MODEL_ID");
+  const lag = nowMs - Date.parse(decision.bet.observedAt);
+  if (!(Number.isFinite(lag) && lag >= 0 && lag + PERSIST_MARGIN_MS <= GUARD_LATE_OR_REPLAY_MS)) reasons.push("OBSERVATION_AGED_BEYOND_GUARD");
+  if (!(t90CutoffMs(decision.eventStartIso) - nowMs > PERSIST_MARGIN_MS)) reasons.push("PAST_T90_AT_CHECK");
+  return reasons.length ? { state: "HISTORICAL_REPLAY", reasons } : { state: "NEW_FORWARD" };
+}
+
+function existingClaimOf(decision: ModelEventDecision, env: PersistenceEnvironment): ExistingClaim {
+  if (!decision.bet || !env.existingEconomicUnitsByModelId.get(decision.modelId)?.has(decision.bet.modelPhysicalEventKey)) return "NONE";
+  const token = env.existingClaimTokensByModelId?.get(decision.modelId)?.get(decision.bet.modelPhysicalEventKey);
+  return token === undefined || token === null ? "TOKEN_UNKNOWN" : token === decision.bet.tokenId ? "SAME_TOKEN" : "DIFFERENT_TOKEN";
+}
 
 /** Pure. Every edge is evaluated; `firstFailedEdge` follows the business provenance order of PERSISTENCE_EDGES. */
 export function persistenceReadiness(decision: ModelEventDecision, execution: ExecutionAssessment | null, env: PersistenceEnvironment, nowMs: number): PersistenceReadiness {
@@ -384,17 +616,46 @@ export function persistenceReadiness(decision: ModelEventDecision, execution: Ex
   const observedMs = decision.bet ? Date.parse(decision.bet.observedAt) : NaN;
   const lag = nowMs - observedMs;
   const lead = t90CutoffMs(decision.eventStartIso) - nowMs;
+  const registeredStart = !!env.authoritativeStartSource && (FORWARD_CONTRACT.authoritativeStartSources as readonly string[]).includes(env.authoritativeStartSource);
   if (!FORWARD_CONTRACT.decisionKinds.includes(decision.outcome as "BET")) failed.push("CONTRACT_DECISION_KIND");
-  if (decision.versionAuthority !== "SEMANTIC_VERSION") failed.push("MODEL_VERSION_AUTHORITY");
+  if (decision.versionAuthority === "UNPROVEN") failed.push("MODEL_DEFINITION_IDENTITY");
   if (!execution || (execution.tierReached !== "EXECUTABLE" && execution.tierReached !== "LIVE_QUEUE_ELIGIBLE")) failed.push("EXECUTION_AUTHORITY");
-  if (!env.authoritativeStartSource || !(FORWARD_CONTRACT.authoritativeStartSources as readonly string[]).includes(env.authoritativeStartSource)) failed.push("AUTHORITATIVE_EVENT_START");
+  // A null authoritative start is insertable but never VERIFIED (deployed guard); a NON-null unregistered source is rejected.
+  if (env.authoritativeStartSource && !registeredStart) failed.push("AUTHORITATIVE_START_SOURCE_REGISTERED");
   if (!(Number.isFinite(lag) && lag >= 0 && lag + PERSIST_MARGIN_MS <= GUARD_LATE_OR_REPLAY_MS)) failed.push("OBSERVATION_FRESH_FOR_GUARD");
   if (!(lead > PERSIST_MARGIN_MS)) failed.push("BEFORE_T90_AT_CHECK");
   if (decision.bet && env.existingEconomicUnitsByModelId.get(decision.modelId)?.has(decision.bet.modelPhysicalEventKey)) failed.push("ECONOMIC_UNIT_UNCLAIMED_FOR_MODEL_ID");
   if (!env.deployedContractColumnsVerified) failed.push("DEPLOYED_CONTRACT_COLUMNS");
   if (!env.approvedPersistenceRoute) failed.push("APPROVED_PERSISTENCE_ROUTE");
   const ordered = PERSISTENCE_EDGES.filter((e) => failed.includes(e));
-  return { ready: ordered.length === 0, firstFailedEdge: ordered[0] ?? null, failedEdges: ordered, observationLagAtCheckMs: lag, leadToT90MsAtCheck: lead };
+  return {
+    ready: ordered.length === 0, firstFailedEdge: ordered[0] ?? null, failedEdges: ordered, observationLagAtCheckMs: lag, leadToT90MsAtCheck: lead,
+    forward: classifyForwardStatus(decision, env, nowMs), existingClaim: existingClaimOf(decision, env),
+    verification: registeredStart ? { eligible: true, reason: null } : { eligible: false, reason: "AUTHORITATIVE_START_NOT_PROVEN_SCHEDULE_ONLY" },
+  };
+}
+
+// ── 3b. model-level readiness (independent of any single BET) ────────────────────────────────────────────────────
+
+export const MODEL_READINESS_EDGES = ["MODEL_INPUT", "MODEL_DEFINITION_IDENTITY", "EXECUTION_AUTHORITY", "APPROVED_PERSISTENCE_ROUTE"] as const;
+export type ModelReadiness = {
+  modelKey: string; family: ModelFamily; versionAuthority: VersionAuthority["state"];
+  /** Ordered blockers that hold for this model before any BET exists (business provenance order). */
+  blockers: string[]; firstBlocker: string | null;
+  /** The deployed FORWARD_BET_V1 CHECK admits decision_kind='BET' only: an audited immutable SKIP has no persistence path. */
+  skipPersistence: "BLOCKED_FORWARD_BET_V1_ADMITS_BET_ONLY";
+};
+
+export function modelReadiness(
+  model: ModelRef, evaluation: ModelEvaluation | undefined, economics: ModelEconomicsAuthority, env: Pick<PersistenceEnvironment, "approvedPersistenceRoute">,
+): ModelReadiness {
+  const blockers: string[] = [];
+  if (!evaluation || evaluation.status === "BLOCKED") blockers.push(`MODEL_INPUT:${evaluation ? evaluation.reason : "MODEL_EVALUATION_MISSING"}`);
+  if (model.versionAuthority.state === "UNPROVEN") blockers.push(`MODEL_DEFINITION_IDENTITY:${model.versionAuthority.reason}`);
+  const approval = economicsState(economics.get(modelKey(model)));
+  if (approval !== "REGISTERED") blockers.push(`EXECUTION_AUTHORITY:MODEL_ECONOMICS_AUTHORITY_${approval}`);
+  if (!env.approvedPersistenceRoute) blockers.push("APPROVED_PERSISTENCE_ROUTE:NONE");
+  return { modelKey: modelKey(model), family: model.family, versionAuthority: model.versionAuthority.state, blockers, firstBlocker: blockers[0] ?? null, skipPersistence: "BLOCKED_FORWARD_BET_V1_ADMITS_BET_ONLY" };
 }
 
 // ── 4. aggregate receipt (no raw identities beyond the local receipt file) ───────────────────────────────────────
