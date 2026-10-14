@@ -17,6 +17,8 @@
     "research-clone:t90-liquidity-cohort": "tsx scripts/research-t90-liquidity-cohort.ts",
     "test:research-t90-cohort": "node --import tsx --test tests/research-clone/executableLiquidityCohortT90.test.ts",
     "research-clone:forward-model-decisions-t90": "tsx scripts/research-forward-model-decisions-t90.ts",
+    "research-clone:forward-decision-v2-persist": "tsx scripts/research-forward-model-decisions-t90.ts --persist-v2",
+    "test:research-forward-decision-v2": "node --import tsx --test tests/research-clone/forwardDecisionV2Contract.test.ts",
     "test:research-forward-model-decisions-t90": "node --import tsx --test tests/research-clone/forwardModelDecisionsT90.test.ts",
     "research-clone:model-ready": "tsx scripts/modeling/clone-model-ready-pipeline.ts",
     "research-clone:model-ready-direct": "tsx scripts/modeling/materialize-research-model-ready.ts",

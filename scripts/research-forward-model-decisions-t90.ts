@@ -5,6 +5,9 @@
 // FORWARD_BET_V1 writer exists on this repository boundary. Reads: Research DBClone (GET, explicit projections),
 // Polymarket Gamma/CLOB (public). Writes ONE local receipt.
 //   npm run research-clone:forward-model-decisions-t90 -- --out <dir>
+// With `--persist-v2` (and FORWARD_DECISION_V2_WRITE=RESEARCH_DBCLONE_AUTHORIZED) the SAME pipeline persists genuine NEW forward BETs
+// (5-share virtual fill on the exact token's own asks) and evaluated SKIPs through the FORWARD_DECISION_V2 contract on the Research
+// DBClone only, then reads them back independently. Fees are never fetched in that mode.
 import { createClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -32,6 +35,10 @@ import { QUALITY_PORTFOLIOS } from "./modeling/quality-fill-portfolio-test";
 import { buildSafeUniverse, QUALITY_FILL_A_SAFE_MIX_CONFIGS, type IdentityCandidate } from "./modeling/tennis-safe-comparable-leaderboard";
 import { ACTIVE_D1_FOOTBALL_STRATEGIES } from "./modeling/active-d1-football-strategies";
 import { cloneTarget, readSource } from "./research-t90-liquidity-cohort";
+import { buildV2BetRow, buildV2SkipRow, fillVirtualShares, FORWARD_DECISION_V2, writeVerdict, type BuildContext, type VirtualFill } from "../lib/research/forwardDecisionV2";
+import { dbClockMs, ledgerCounts, persistRow, readBack, readBackProof, readPriorClaims, skipEvidenceFor, type ReadBackRow, type WriterClient } from "../lib/research/forwardDecisionV2Writer";
+import { classifyForwardStatus, PERSIST_MARGIN_MS, GUARD_LATE_OR_REPLAY_MS, type ModelEventDecision } from "../lib/research/forwardModelDecisionsT90";
+import type { FetchOrderBookResult } from "../lib/liquidity/types";
 
 // ── model identity authority ─────────────────────────────────────────────────────────────────────────────────────
 
@@ -390,6 +397,17 @@ async function readExistingEconomicUnits(client: Db, keysByModel: Map<string, Se
   return { units, tokens };
 }
 
+const V2_WRITE_ENV = "FORWARD_DECISION_V2_WRITE";
+const V2_WRITE_TOKEN = "RESEARCH_DBCLONE_AUTHORIZED";
+/** Approved research route: this runner + lib/research/forwardDecisionV2Writer.ts -> FORWARD_DECISION_V2 on the Research DBClone (insert-only). */
+export const APPROVED_V2_PERSISTENCE_ROUTE = "scripts/research-forward-model-decisions-t90.ts --persist-v2 (lib/research/forwardDecisionV2Writer.ts) -> FORWARD_DECISION_V2, Research DBClone nppznoujvnyjargjkmnv, insert-only";
+
+/** Persist-mode generation clock: the DATABASE's own clock (floor to ms), never the local one. */
+async function dbGeneratedClock(client: Db): Promise<{ generatedMs: number; localMs: number; serverDateMs: number | null }> {
+  const generatedMs = await dbClockMs(client as unknown as WriterClient);
+  return { generatedMs, localMs: Date.now(), serverDateMs: generatedMs };
+}
+
 /** Server-bounded clock: the decision is generated no earlier than the later of the local clock and the gateway Date. */
 async function serverBoundedNow(): Promise<{ generatedMs: number; localMs: number; serverDateMs: number | null }> {
   const { base, key } = cloneTarget();
@@ -547,6 +565,152 @@ export function evaluateSafeModels(rows: readonly V4Row[], models: readonly Mode
   return { evaluations, replay };
 }
 
+// ── FORWARD_DECISION_V2 persistence (Research DBClone only; insert-only; DB owns every timing field) ───────────────
+
+type PersistArgs = {
+  client: Db; models: readonly ModelRef[]; evaluations: ReadonlyMap<string, ModelEvaluation>;
+  run: Awaited<ReturnType<typeof buildExecutableLiquidityCohort>>; result: ReturnType<typeof decideCohortModels>;
+  safeRows: readonly V4Row[]; books: readonly FetchOrderBookResult[]; bets: readonly ModelEventDecision[];
+  clock: { generatedMs: number; localMs: number; serverDateMs: number | null };
+  replay: Record<string, number>; write: (receipt: Record<string, unknown>) => string; startedMs: number;
+};
+
+const tally = (xs: readonly string[]) => xs.reduce<Record<string, number>>((a, k) => ({ ...a, [k]: (a[k] ?? 0) + 1 }), {});
+
+async function runPersistV2(a: PersistArgs) {
+  const writer = a.client as unknown as WriterClient;
+  const before = await ledgerCounts(writer); // throws if the V2 migration is not deployed (skip table / columns missing)
+  const safeDecisions = a.result.decisions.filter((d) => d.family === "SAFE_PREMATCH");
+  const modelBy = new Map(a.models.map((m) => [modelKey(m), m]));
+
+  // The model's own latest evaluated source row per token (causal: ingested within the snapshot watermark).
+  const latest = new Map<string, V4Row>();
+  for (const r of a.safeRows) {
+    if (!(Date.parse(r.observed_at) <= Date.parse(r.ingested_at))) continue;
+    const k = tokenKey(r.condition_id, r.selected_token_id);
+    const cur = latest.get(k);
+    if (!cur || Date.parse(r.ingested_at) > Date.parse(cur.ingested_at) || (r.ingested_at === cur.ingested_at && r.observed_at > cur.observed_at)) latest.set(k, r);
+  }
+  const sourceOf = (c: string, t: string) => {
+    const r = latest.get(tokenKey(c, t));
+    return r ? { observedAt: r.observed_at, ingestedAt: r.ingested_at, observationId: r.observation_id, itemObservationId: r.item_observation_id, conditionId: c, tokenId: t } : null;
+  };
+  const eventById = new Map(a.run.cohort.selected.map((e) => [e.physicalEventId, e]));
+
+  // Candidate keys (for prior-claim reads): BET claims and SKIP evidence keys.
+  const skipDecisions = safeDecisions.filter((d) => d.outcome === "SKIP");
+  const skipEvidence = new Map<ModelEventDecision, ReturnType<typeof skipEvidenceFor>>();
+  for (const d of skipDecisions) {
+    const event = eventById.get(d.physicalEventId);
+    skipEvidence.set(d, event ? skipEvidenceFor(d, event.inventory, a.evaluations.get(modelKey(d)), sourceOf) : null);
+  }
+  const keysByModel = new Map<string, Set<string>>();
+  const addKey = (m: string, k: string) => (keysByModel.get(m) ?? keysByModel.set(m, new Set()).get(m)!).add(k);
+  for (const d of a.bets) if (d.family === "SAFE_PREMATCH") addKey(d.modelId, d.bet!.modelPhysicalEventKey);
+  for (const d of skipDecisions) { const e = skipEvidence.get(d); if (e) addKey(d.modelId, e.physicalEventKey); }
+  const prior = await readPriorClaims(writer, keysByModel);
+
+  // BET side: fresh and unclaimed -> 5-share fill on the exact token's own book.
+  const env: PersistenceEnvironment = {
+    deployedContractColumnsVerified: true, existingEconomicUnitsByModelId: prior.betClaims, approvedPersistenceRoute: APPROVED_V2_PERSISTENCE_ROUTE, authoritativeStartSource: null,
+  };
+  const bookByToken = new Map(a.books.map((b) => [b.tokenId, b]));
+  const betReport = { total: 0, historical_replay: [] as string[], not_new_verdict: [] as string[], fill_blocked: [] as string[], builder_blocked: [] as string[], candidates: [] as Array<{ d: ModelEventDecision; fill: VirtualFill }> };
+  const classifyAtMs = a.clock.generatedMs;
+  for (const d of a.bets.filter((x) => x.family === "SAFE_PREMATCH")) {
+    betReport.total++;
+    const forward = classifyForwardStatus(d, env, classifyAtMs);
+    if (forward.state !== "NEW_FORWARD") { betReport.historical_replay.push(...(forward.state === "HISTORICAL_REPLAY" ? forward.reasons : ["NOT_A_BET"])); continue; }
+    const verdict = writeVerdict("BET", d.modelId, d.modelVersion, d.bet!.modelPhysicalEventKey, prior);
+    if (verdict !== "WRITE") { betReport.not_new_verdict.push(verdict); continue; }
+    const fill = fillVirtualShares(d.bet!.tokenId, bookByToken.get(d.bet!.tokenId));
+    if (fill.state !== "FILLED") { betReport.fill_blocked.push(fill.reason); continue; }
+    betReport.candidates.push({ d, fill });
+  }
+
+  // Seal the decisions at the DB clock AFTER the fills were measured (quote <= decision <= first persistence).
+  const sealMs = await dbClockMs(writer);
+  const sourceShaOf = (d: ModelEventDecision) => modelBy.get(modelKey(d))?.sourceSha ?? null;
+  const ctxOf = (d: ModelEventDecision): BuildContext => ({ decisionGeneratedAtMs: sealMs, sourceSha: sourceShaOf(d), cohortDigest: a.result.digestBefore, authoritativeStart: null });
+
+  type Planned = { kind: "BET" | "SKIP"; key: string; d: ModelEventDecision; row: Record<string, unknown> };
+  const planned: Planned[] = [];
+  for (const c of betReport.candidates) {
+    const built = buildV2BetRow(c.d, c.fill, ctxOf(c.d));
+    if (!built.ok) { betReport.builder_blocked.push(built.reason); continue; }
+    planned.push({ kind: "BET", key: built.row.row_key as string, d: c.d, row: built.row });
+  }
+  const skipReport = { total: skipDecisions.length, evidence_missing: 0, already_persisted: 0, after_claim: 0, source_stale: 0, builder_blocked: [] as string[] };
+  for (const d of skipDecisions) {
+    const evidence = skipEvidence.get(d) ?? null;
+    if (!evidence) { skipReport.evidence_missing++; continue; }
+    const verdict = writeVerdict("SKIP", d.modelId, d.modelVersion, evidence.physicalEventKey, prior);
+    if (verdict === "ALREADY_PERSISTED_SKIP") { skipReport.already_persisted++; continue; }
+    if (verdict === "SKIP_AFTER_BET_CLAIM") { skipReport.after_claim++; continue; }
+    if (!(sealMs - Date.parse(evidence.source.observedAt) + PERSIST_MARGIN_MS <= GUARD_LATE_OR_REPLAY_MS)) { skipReport.source_stale++; continue; }
+    const built = buildV2SkipRow(d, evidence, ctxOf(d));
+    if (!built.ok) { skipReport.builder_blocked.push(built.reason); continue; }
+    planned.push({ kind: "SKIP", key: built.row.row_key as string, d, row: built.row });
+  }
+
+  // Insert-only. A unique violation is an idempotent no-op; trigger/CHECK rejections are reported verbatim.
+  const outcomes: Array<{ kind: "BET" | "SKIP"; key: string; status: string; code?: string | null; message?: string }> = [];
+  for (const p of planned) {
+    const r = await persistRow(writer, p.kind, p.row as never);
+    outcomes.push({ kind: p.kind, key: p.key, status: r.status, ...(r.status === "PERSISTED" ? {} : { code: r.code, message: r.message }) });
+  }
+  const persistedKeys = (kind: "BET" | "SKIP") => outcomes.filter((o) => o.kind === kind && o.status === "PERSISTED").map((o) => o.key);
+
+  // Independent read-back (separate read of the stored rows, not the insert response).
+  const betBack: ReadBackRow[] = await readBack(writer, "BET", persistedKeys("BET"));
+  const skipBack: ReadBackRow[] = await readBack(writer, "SKIP", persistedKeys("SKIP"));
+  const proofs = [...betBack, ...skipBack].map((r) => ({ row_key: r.row_key as string, ...readBackProof(r) }));
+  const after = await ledgerCounts(writer);
+  // Duplicate audit across legacy / V1 / V2 BET claims for every (model_id, event) we wrote or evaluated.
+  const claimsAfter = await readPriorClaims(writer, keysByModel);
+  const claimCount = new Map<string, number>();
+  for (const [m, keys] of keysByModel) {
+    for (let i = 0; i < [...keys].length; i += 50) {
+      const batch = [...keys].slice(i, i + 50);
+      const { data } = await (a.client as Db).from(FORWARD_DECISION_V2.ledgerTable).select("model_id,physical_event_key").eq("row_kind", "LEDGER").eq("model_id", m).in("physical_event_key", batch);
+      for (const r of (data ?? []) as Array<{ model_id: string; physical_event_key: string }>) claimCount.set(`${r.model_id}|${r.physical_event_key}`, (claimCount.get(`${r.model_id}|${r.physical_event_key}`) ?? 0) + 1);
+    }
+  }
+  const duplicateBetClaims = [...claimCount.values()].filter((n) => n > 1).length;
+
+  const countOut = (kind: "BET" | "SKIP") => ({
+    persisted: outcomes.filter((o) => o.kind === kind && o.status === "PERSISTED").length,
+    idempotent_conflict: outcomes.filter((o) => o.kind === kind && o.status === "IDEMPOTENT_CONFLICT").length,
+    db_rejected: tally(outcomes.filter((o) => o.kind === kind && o.status === "REJECTED").map((o) => (o.message ?? "").slice(0, 80))),
+  });
+  const betOut = countOut("BET");
+  const skipOut = countOut("SKIP");
+  const blocked = tally(a.result.decisions.filter((d) => d.outcome === "BLOCKED").map((d) => `${d.family}:${d.reason}`));
+  const verified = betBack.filter((r) => r.start_verification_state === "VERIFIED_ACTUAL_START").length;
+  const proofFailures = proofs.filter((p) => !p.ok);
+  const label = betOut.persisted > 0 && proofFailures.length === 0 ? "NEW_FORWARD_BET_PERSISTED"
+    : skipOut.persisted > 0 && proofFailures.length === 0 ? "NEW_FORWARD_SKIP_ONLY" : "EXACT_FIRST_BLOCKER";
+  const firstBlocker = label !== "EXACT_FIRST_BLOCKER" ? null
+    : proofFailures.length ? `READBACK_PROOF_FAILED:${proofFailures[0].failed.join(",")}`
+      : betReport.total > 0 && betReport.candidates.length === 0 && skipOut.persisted === 0 ? `NO_NEW_FORWARD_BET: ${JSON.stringify(tally([...betReport.historical_replay, ...betReport.not_new_verdict]))}`
+        : Object.keys(betOut.db_rejected).length || Object.keys(skipOut.db_rejected).length ? `DB_REJECTED:${JSON.stringify({ ...betOut.db_rejected, ...skipOut.db_rejected })}` : "NO_QUALIFYING_FORWARD_DECISION_IN_WINDOW";
+  const summaryOut = {
+    version: `${FORWARD_DECISIONS_VERSION}+${FORWARD_DECISION_V2.version}`, research_only: true, target: "nppznoujvnyjargjkmnv", result: label, first_blocker: firstBlocker,
+    clock: { generation_probe_db_clock_at: new Date(a.clock.generatedMs).toISOString(), sealed_db_clock_at: new Date(sealMs).toISOString(), run_seconds: Math.round((Date.now() - a.startedMs) / 1000) },
+    cohort: { digest: a.result.digestBefore, stable: new Set([a.result.digestBefore, a.result.digestAfter, ...Object.values(a.result.digestByModel)]).size === 1 },
+    ledger_counts: { before, after, legacy_unchanged: before.legacy_n === after.legacy_n, v1_unchanged: before.v1_n === after.v1_n },
+    bets: { model_bets_total: betReport.total, historical_replay: tally(betReport.historical_replay), already_claimed_verdict: tally(betReport.not_new_verdict), fill_blocked: tally(betReport.fill_blocked), builder_blocked: tally(betReport.builder_blocked), attempted: betReport.candidates.length - betReport.builder_blocked.length, ...betOut },
+    skips: { evaluated_skip_decisions: skipReport.total, evidence_missing: skipReport.evidence_missing, already_persisted: skipReport.already_persisted, skip_after_claim: skipReport.after_claim, source_stale: skipReport.source_stale, builder_blocked: tally(skipReport.builder_blocked), ...skipOut },
+    blocked_decisions_not_persisted: blocked,
+    football_d1: tally(a.result.decisions.filter((d) => d.family === "FOOTBALL_D1").map((d) => `${d.outcome}:${d.reason.slice(0, 40)}`)),
+    readback: { bet_rows: betBack.length, skip_rows: skipBack.length, proof_ok: proofs.length - proofFailures.length, proof_failed: proofFailures.length, start_verification: { VERIFIED_ACTUAL_START: verified, PROVISIONAL_SCHEDULED_ONLY: betBack.length + skipBack.length - verified } },
+    duplicate_bet_claims_across_contracts: duplicateBetClaims, claims_after_models: claimsAfter.betClaims.size,
+  };
+  const file = a.write({ ...summaryOut, readback_rows: { bets: betBack, skips: skipBack }, proofs, outcomes: outcomes.map((o) => ({ ...o, key: o.key.slice(0, 24) })) });
+  console.log(JSON.stringify({ file, ...summaryOut }, null, 2));
+  if (label === "EXACT_FIRST_BLOCKER") process.exitCode = 3;
+}
+
 async function main() {
   const outIdx = process.argv.indexOf("--out");
   const outDir = outIdx >= 0 ? process.argv[outIdx + 1] : null;
@@ -576,11 +740,17 @@ async function main() {
   const { evaluations, replay } = evaluateSafeModels(safeRows, models);
   const footballProbe = await probeFootballInputPath(client, run.timing.referenceMs);
   for (const m of models) if (m.family === "FOOTBALL_D1") evaluations.set(modelKey(m), footballBlock(footballProbe, m));
-  const clock = await serverBoundedNow();
+  const persistV2 = process.argv.includes("--persist-v2");
+  if (persistV2 && process.env[V2_WRITE_ENV] !== V2_WRITE_TOKEN) throw new Error(`V2_WRITE_NOT_AUTHORIZED: set ${V2_WRITE_ENV}=${V2_WRITE_TOKEN} (Research DBClone only)`);
+  const clock = persistV2 ? await dbGeneratedClock(client) : await serverBoundedNow();
   const result = decideCohortModels(run.cohort, models, evaluations, clock.generatedMs);
 
   const bets = result.decisions.filter((d) => d.outcome === "BET");
   const books = await fetchOrderBooksConcurrent(bets.map((d) => d.bet!.tokenId), 6);
+  if (persistV2) {
+    await runPersistV2({ client, models, evaluations, run, result, safeRows, books, bets, clock, replay, write, startedMs: t0 });
+    return;
+  }
   const fees = await Promise.all(bets.map((d) => fetchTokenFeeSchedule(d.bet!.tokenId, { timeoutMs: 5000 })));
   const keysByModel = new Map<string, Set<string>>();
   for (const d of bets) (keysByModel.get(d.modelId) ?? keysByModel.set(d.modelId, new Set()).get(d.modelId)!).add(d.bet!.modelPhysicalEventKey);
