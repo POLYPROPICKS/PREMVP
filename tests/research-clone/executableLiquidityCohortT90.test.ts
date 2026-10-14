@@ -62,7 +62,7 @@ const providerMarket = (over: Partial<ProviderMarket> = {}): ProviderMarket => (
 });
 const source = (over: Partial<SourceCandidate> = {}): SourceCandidate => ({
   conditionId: "0xc1", tokenId: "tok-1-a", outcome: "Home", providerEventId: "ev-1", eventStartIso: startIn(10), sportFamily: "soccer", sourceMarketType: "moneyline",
-  observationId: "o", itemObservationId: "i", observedAt: startIn(-3), ingestedAt: startIn(-2), entryPrice: 0.5, score: 70, sourceRowN: 1, ...over,
+  observationId: "o", itemObservationId: "i", observedAt: startIn(-3), ingestedAt: startIn(-2), entryPrice: 0.5, score: 70, sourceRowN: 1, sourceItemObservationIds: ["i"], ...over,
 });
 
 test("confirmProviderIdentity: provider pair, binary tokens, admitted market type, physical id from provider game", () => {
@@ -189,4 +189,156 @@ test("module is read-only and never ranks by historical volume, score or settlem
   assert.doesNotMatch(src, /selectResearchCohort|parentEventVolume|volume_usd|parent_event_volume/);
   assert.match(runner, /method: "GET"/);
   assert.doesNotMatch(runner, /method: "(POST|PATCH|PUT|DELETE)"/);
+});
+
+// ── PR #535 first-broken-edge repair: condition/token candidates survive until AFTER the executable-depth comparison ──
+
+const twoTokenRows = () => [
+  row({ n: 1, selected_token_id: "tok-1-a", selected_outcome: "Home", item_observation_id: "item-1a" }),
+  row({ n: 1, selected_token_id: "tok-1-b", selected_outcome: "Away", item_observation_id: "item-1b" }),
+];
+const pairProvider = async (eventId: string) => {
+  const n = eventId.replace("ev-", "");
+  return [providerMarket({ provider_event_id: eventId, condition_id: `0xc${n}`, clob_token_ids: [`tok-${n}-a`, `tok-${n}-b`], provider_game_id: `g${n}` })];
+};
+
+test("repair: reduceSourceRows keeps both opposing tokens of one condition (old behaviour kept only the newest row's token)", () => {
+  const rows = twoTokenRows();
+  // The shallow side is the NEWEST row: the old per-condition reduction would have kept only it.
+  rows[0].ingested_at = new Date(ASOF - 3 * H).toISOString(); rows[0].observed_at = new Date(ASOF - 4 * H).toISOString();
+  rows[1].ingested_at = new Date(ASOF - 1 * H).toISOString();
+  const { candidates, rejected } = reduceSourceRows(rows, ASOF);
+  assert.deepEqual(candidates.map((c) => [c.conditionId, c.tokenId]), [["0xc1", "tok-1-a"], ["0xc1", "tok-1-b"]]);
+  assert.deepEqual(candidates.map((c) => c.itemObservationId), ["item-1a", "item-1b"]);
+  assert.equal(rejected.length, 0);
+});
+
+test("repair: all source identities of a token are preserved; the newest row of THAT token is the winning row", () => {
+  const older = row({ n: 1, item_observation_id: "item-old", ingested_at: new Date(ASOF - 5 * H).toISOString(), observed_at: new Date(ASOF - 6 * H).toISOString() });
+  const newer = row({ n: 1, item_observation_id: "item-new" });
+  const other = row({ n: 1, selected_token_id: "tok-1-b", item_observation_id: "item-other" });
+  const { candidates } = reduceSourceRows([newer, other, older], ASOF);
+  const a = candidates.find((c) => c.tokenId === "tok-1-a")!;
+  assert.equal(a.itemObservationId, "item-new");
+  assert.deepEqual(a.sourceItemObservationIds, ["item-new", "item-old"]);
+  assert.equal(a.sourceRowN, 2);
+  assert.deepEqual(candidates.find((c) => c.tokenId === "tok-1-b")!.sourceItemObservationIds, ["item-other"]);
+});
+
+test("repair: identity collision across tokens of a condition still rejects the whole condition (fail-closed)", () => {
+  const rows = [...twoTokenRows()];
+  rows[1].provider_event_id = "ev-other";
+  const r = reduceSourceRows(rows, ASOF);
+  assert.equal(r.candidates.length, 0);
+  assert.deepEqual(r.rejected.map((x) => x.reason), ["CONDITION_PROVIDER_EVENT_CONTRADICTION"]);
+  const startClash = twoTokenRows();
+  startClash[1].game_start_iso = startIn(11);
+  const s = reduceSourceRows(startClash, ASOF);
+  assert.equal(s.candidates.length, 0);
+  assert.deepEqual(s.rejected.map((x) => x.reason), ["CONDITION_PROVIDER_EVENT_CONTRADICTION"]);
+});
+
+test("repair: two opposing tokens of one condition, different executable depth -> the DEEPER eligible token wins, in any input order", async () => {
+  const depth: Record<string, number> = { "tok-1-a": 80, "tok-1-b": 700 };   // source-selected-first / newest token is the SHALLOW one
+  const run = (rows: SourceRow[]) => buildExecutableLiquidityCohort({
+    readSource: async () => ({ asOfMs: ASOF, rows }),
+    readProviderEvent: pairProvider,
+    fetchBooks: async (ids) => ids.map((id) => book(id, depth[id] ?? 0)),
+    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
+  });
+  const rows = twoTokenRows();
+  rows[1].ingested_at = new Date(ASOF - 3 * H).toISOString(); rows[1].observed_at = new Date(ASOF - 4 * H).toISOString();
+  rows[0].ingested_at = new Date(ASOF - 1 * H).toISOString();   // shallow token 'a' is the newest source row
+  const fwd = await run(rows);
+  const rev = await run([...rows].reverse());
+  for (const r of [fwd, rev]) {
+    assert.equal(r.reducedCandidateN, 2);
+    assert.equal(r.providerConfirmedN, 2);
+    assert.deepEqual(r.selection.selected.map((s) => [s.event.conditionId, s.event.tokenId, s.event.book.askDepthUsd]), [["0xc1", "tok-1-b", 700]]);
+    assert.equal(r.selection.selected[0].event.oppositeTokenId, "tok-1-a");
+    const loser = r.rejected.find((x) => x.reason === "EVENT_OPPOSING_TOKEN_LOWER_LIQUIDITY");
+    assert.deepEqual(loser && [loser.subject, loser.tokenId], ["0xc1", "tok-1-a"]);
+  }
+  assert.deepEqual(fwd.selection.selected.map((s) => s.event.tokenId), rev.selection.selected.map((s) => s.event.tokenId));
+  assert.equal(fwd.selection.diagnostics.soccer_selected_n, 1);
+});
+
+test("repair: a less liquid token cannot suppress a more liquid one, and a non-executable deeper-looking token cannot win", async () => {
+  // token b is the deeper one; token a is shallow but executable. Flip: token b is only above the 0.555 cap -> not executable -> a is chosen.
+  const mk = (bBook: (id: string) => FetchOrderBookResult) => buildExecutableLiquidityCohort({
+    readSource: async () => ({ asOfMs: ASOF, rows: twoTokenRows() }),
+    readProviderEvent: pairProvider,
+    fetchBooks: async (ids) => ids.map((id) => id === "tok-1-b" ? bBook(id) : book(id, 60)),
+    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
+  });
+  const deeper = await mk((id) => book(id, 900));
+  assert.deepEqual(deeper.selection.selected.map((s) => s.event.tokenId), ["tok-1-b"]);
+  const capped = await mk((id) => book(id, 900, ASOF + 60_000, 0.7));
+  assert.deepEqual(capped.selection.selected.map((s) => s.event.tokenId), ["tok-1-a"]);
+  assert.ok(capped.rejected.some((x) => x.reason.startsWith("NOT_EXECUTABLE:") && x.tokenId === "tok-1-b"));
+});
+
+test("repair: provider pair validation stays fail-closed for every preserved token candidate", async () => {
+  const r = await buildExecutableLiquidityCohort({
+    readSource: async () => ({ asOfMs: ASOF, rows: [...twoTokenRows(), row({ n: 2, selected_token_id: "tok-2-a" }), row({ n: 2, selected_token_id: "typo-token", item_observation_id: "item-2x" })] }),
+    readProviderEvent: pairProvider,
+    fetchBooks: async (ids) => ids.map((id) => book(id, 500)),
+    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
+  });
+  assert.equal(r.providerConfirmedN, 3);
+  const bad = r.rejected.find((x) => x.reason === "SELECTED_TOKEN_NOT_IN_PROVIDER_PAIR");
+  assert.deepEqual(bad && [bad.subject, bad.tokenId], ["0xc2", "typo-token"]);
+  // event 1 (two tokens) and event 2 (one valid token): exactly one final candidate per physical event
+  const ids = r.selection.selected.map((s) => s.event.physicalEventId);
+  assert.equal(ids.length, 2);
+  assert.equal(new Set(ids).size, 2);
+});
+
+test("repair: quotas 50/25/25, explicit underfill and one-per-physical-event hold when every condition carries both tokens", () => {
+  seq = 0;
+  const pool: EvaluatedCandidate[] = [];
+  const both = (sport: string, depth: number) => {
+    const a = evaluated(sport, depth);
+    pool.push(a, { ...a, tokenId: `${a.tokenId}-opp`, oppositeTokenId: a.tokenId, book: bookEvidence({ ...a, tokenId: `${a.tokenId}-opp` }, book(`${a.tokenId}-opp`, depth + 7)) });
+  };
+  for (let i = 0; i < 60; i++) both("soccer", 100 + i);
+  for (let i = 0; i < 30; i++) both("tennis", 100 + i);
+  for (let i = 0; i < 4; i++) both("basketball", 100 + i);
+  const fwd = selectExecutableLiquidityCohort(pool, ASOF);
+  const rev = selectExecutableLiquidityCohort([...pool].reverse(), ASOF);
+  assert.deepEqual(fwd.selected.map((s) => [s.event.conditionId, s.event.tokenId]), rev.selected.map((s) => [s.event.conditionId, s.event.tokenId]));
+  assert.equal(fwd.diagnostics.soccer_selected_n, 50);
+  assert.equal(fwd.diagnostics.tennis_selected_n, 25);
+  assert.equal(fwd.diagnostics.other_selected_n, 4);
+  assert.equal(fwd.diagnostics.other_quota_underfill_n, 21);
+  assert.equal(fwd.diagnostics.global_backfill_n, 0);
+  assert.equal(new Set(fwd.selected.map((s) => s.event.physicalEventId)).size, fwd.selected.length);
+  assert.ok(fwd.selected.every((s) => s.event.tokenId.endsWith("-opp")), "the deeper (+7) opposing token wins every event");
+  assert.equal(fwd.rejected.filter((x) => x.reason === "EVENT_OPPOSING_TOKEN_LOWER_LIQUIDITY").length, 94);
+});
+
+test("repair: selection input is only source identity + quote evidence; no outcome, settlement or post-decision field exists", () => {
+  const src = readFileSync("lib/research/executableLiquidityCohortT90.ts", "utf8");
+  assert.deepEqual(Object.keys(row({ n: 1 })).sort(), [
+    "condition_id", "entry_price_num", "game_start_iso", "ingested_at", "item_observation_id", "market_type", "metric_formula_version", "observation_id",
+    "observed_at", "pre_event_score_num", "provider_event_id", "provider_sport_family", "selected_outcome", "selected_token_id",
+  ]);
+  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(code, /settle|resolved|winner|payout|pnl|outcome_current|final_score|result_label/i);
+  // the ranking comparator reads only depth, start, and identity keys
+  const cmpBody = src.slice(src.indexOf("export function compareExecutableLiquidity"), src.indexOf("export function selectExecutableLiquidityCohort"));
+  assert.doesNotMatch(cmpBody, /score|entryPrice|observedAt|ingestedAt|outcome/);
+});
+
+test("repair: source and CLOB timestamps are never presented as a DB-owned decision time", () => {
+  const src = readFileSync("lib/research/executableLiquidityCohortT90.ts", "utf8");
+  const runner = readFileSync("scripts/research-t90-liquidity-cohort.ts", "utf8");
+  for (const code of [src, runner]) assert.doesNotMatch(code, /decision_at|decisionAt|decision_time|decided_at|server_decision/i);
+  const c = source();
+  const b = bookEvidence(c, book("tok-1-a", 500));
+  // timestamps keep their provenance-bearing names: source observed/ingested, and the CLOB response completion
+  assert.ok("observedAt" in c && "ingestedAt" in c);
+  assert.ok("quoteCompletedAtMs" in b && "providerBookTimestampMs" in b);
+  assert.ok(!("decisionAtMs" in b) && !("decisionAt" in c));
+  assert.match(src, /NOT_PROVEN/);
 });

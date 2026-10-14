@@ -59,12 +59,14 @@ export type SourceRow = {
   pre_event_score_num: number | string | null;
 };
 
-export type Rejection = { reason: string; subject: string };
+export type Rejection = { reason: string; subject: string; /** Set for candidate-level (condition + token) rejections. */ tokenId?: string };
 export type SourceCandidate = {
   conditionId: string; tokenId: string; outcome: string | null;
   providerEventId: string; eventStartIso: string; sportFamily: string; sourceMarketType: string | null;
   observationId: string; itemObservationId: string; observedAt: string; ingestedAt: string;
   entryPrice: number | null; score: number | null; sourceRowN: number;
+  /** Every qualifying source row (item_observation_id, sorted) behind this condition/token candidate; the winning row is itemObservationId. */
+  sourceItemObservationIds: string[];
 };
 
 const str = (v: unknown): string | null => typeof v === "string" && v.trim() !== "" ? v.trim() : null;
@@ -73,12 +75,17 @@ const numOrNull = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 const iso = (ms: number) => new Date(ms).toISOString();
+const cmp = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 
 /**
  * Forward-causal source reduction. A source row is usable ONLY if the DB possessed it (`ingested_at`, never the
- * upstream `observed_at`) no later than the DB as-of AND no later than event start - 90 min. Per condition the newest
- * qualifying row wins; a condition whose qualifying rows disagree on provider event or start is an identity collision
- * and is rejected whole. Settlement/label columns are not part of SourceRow and are never read.
+ * upstream `observed_at`) no later than the DB as-of AND no later than event start - 90 min. A condition whose
+ * qualifying rows disagree on provider event or start is an identity collision and is rejected whole. Otherwise EVERY
+ * distinct (condition, token) pair is preserved as its own candidate (newest qualifying row per pair): the two opposing
+ * tokens of one condition must both reach the independent CLOB depth measurement, because the source's one-sided
+ * `selected_token_id` is not evidence of which side is the most liquid. Choosing one candidate per physical event
+ * happens only after that measurement (selectExecutableLiquidityCohort). Settlement/label columns are not part of
+ * SourceRow and are never read.
  */
 export function reduceSourceRows(rows: readonly SourceRow[], asOfMs: number): { candidates: SourceCandidate[]; rejected: Rejection[] } {
   const rejected: Rejection[] = [];
@@ -104,17 +111,21 @@ export function reduceSourceRows(rows: readonly SourceRow[], asOfMs: number): { 
   for (const [cond, list] of [...byCondition.entries()].sort((a, b) => a[0] < b[0] ? -1 : 1)) {
     const identities = new Set(list.map((r) => `${str(r.provider_event_id)}|${iso(Date.parse(str(r.game_start_iso)!))}`));
     if (identities.size > 1) { rejected.push({ reason: "CONDITION_PROVIDER_EVENT_CONTRADICTION", subject: cond }); continue; }
-    const newest = [...list].sort((a, b) => Date.parse(b.ingested_at) - Date.parse(a.ingested_at)
-      || (b.item_observation_id < a.item_observation_id ? -1 : b.item_observation_id > a.item_observation_id ? 1 : 0))[0];
-    const family = str(newest.provider_sport_family)?.toLowerCase() ?? null;
-    if (!family || !(TARGET_SPORT_FAMILIES as readonly string[]).includes(family)) { rejected.push({ reason: "SPORT_FAMILY_NOT_TARGET", subject: cond }); continue; }
-    candidates.push({
-      conditionId: cond, tokenId: str(newest.selected_token_id)!, outcome: str(newest.selected_outcome),
-      providerEventId: str(newest.provider_event_id)!, eventStartIso: iso(Date.parse(str(newest.game_start_iso)!)), sportFamily: family,
-      sourceMarketType: str(newest.market_type), observationId: newest.observation_id, itemObservationId: newest.item_observation_id,
-      observedAt: newest.observed_at, ingestedAt: newest.ingested_at,
-      entryPrice: numOrNull(newest.entry_price_num), score: numOrNull(newest.pre_event_score_num), sourceRowN: list.length,
-    });
+    const byToken = new Map<string, SourceRow[]>();
+    for (const r of list) { const t = str(r.selected_token_id)!; byToken.set(t, [...(byToken.get(t) ?? []), r]); }
+    for (const [token, tokenRows] of [...byToken.entries()].sort((a, b) => cmp(a[0], b[0]))) {
+      const newest = [...tokenRows].sort((a, b) => Date.parse(b.ingested_at) - Date.parse(a.ingested_at) || cmp(b.item_observation_id, a.item_observation_id))[0];
+      const family = str(newest.provider_sport_family)?.toLowerCase() ?? null;
+      if (!family || !(TARGET_SPORT_FAMILIES as readonly string[]).includes(family)) { rejected.push({ reason: "SPORT_FAMILY_NOT_TARGET", subject: cond, tokenId: token }); continue; }
+      candidates.push({
+        conditionId: cond, tokenId: token, outcome: str(newest.selected_outcome),
+        providerEventId: str(newest.provider_event_id)!, eventStartIso: iso(Date.parse(str(newest.game_start_iso)!)), sportFamily: family,
+        sourceMarketType: str(newest.market_type), observationId: newest.observation_id, itemObservationId: newest.item_observation_id,
+        observedAt: newest.observed_at, ingestedAt: newest.ingested_at,
+        entryPrice: numOrNull(newest.entry_price_num), score: numOrNull(newest.pre_event_score_num), sourceRowN: tokenRows.length,
+        sourceItemObservationIds: tokenRows.map((r) => r.item_observation_id).sort(cmp),
+      });
+    }
   }
   return { candidates, rejected };
 }
@@ -133,18 +144,18 @@ export type ProviderConfirmation = {
 export function confirmProviderIdentity(c: SourceCandidate, markets: readonly ProviderMarket[]): ProviderConfirmation | Rejection {
   const subject = c.conditionId;
   const own = markets.filter((m) => m.condition_id === c.conditionId);
-  if (own.length !== 1) return { reason: own.length === 0 ? "CONDITION_NOT_IN_PROVIDER_EVENT" : "CONDITION_DUPLICATED_IN_PROVIDER_EVENT", subject };
+  if (own.length !== 1) return { reason: own.length === 0 ? "CONDITION_NOT_IN_PROVIDER_EVENT" : "CONDITION_DUPLICATED_IN_PROVIDER_EVENT", subject, tokenId: c.tokenId };
   const market = own[0];
   const { tokens, missingIdentity } = inventoryTokens([market]);
-  if (missingIdentity > 0 || tokens.length !== 2 || new Set(tokens.map((t) => t.tokenId)).size !== 2) return { reason: "PROVIDER_TOKEN_PAIR_NOT_BINARY", subject };
+  if (missingIdentity > 0 || tokens.length !== 2 || new Set(tokens.map((t) => t.tokenId)).size !== 2) return { reason: "PROVIDER_TOKEN_PAIR_NOT_BINARY", subject, tokenId: c.tokenId };
   const selected = tokens.find((t) => t.tokenId === c.tokenId);
   const opposite = tokens.find((t) => t.tokenId !== c.tokenId);
-  if (!selected || !opposite) return { reason: "SELECTED_TOKEN_NOT_IN_PROVIDER_PAIR", subject };
+  if (!selected || !opposite) return { reason: "SELECTED_TOKEN_NOT_IN_PROVIDER_PAIR", subject, tokenId: c.tokenId };
   const admitted = admitResearchMarket(c.sportFamily, market.sports_market_type, market.provider_market_slug);
-  if (!admitted.admitted) return { reason: "MARKET_TYPE_NOT_ADMITTED", subject };
+  if (!admitted.admitted) return { reason: "MARKET_TYPE_NOT_ADMITTED", subject, tokenId: c.tokenId };
   if (c.sourceMarketType !== null) {
     const src = admitResearchMarket(c.sportFamily, c.sourceMarketType, market.provider_market_slug);
-    if (src.type !== admitted.type) return { reason: "SOURCE_PROVIDER_MARKET_TYPE_CONTRADICTION", subject };
+    if (src.type !== admitted.type) return { reason: "SOURCE_PROVIDER_MARKET_TYPE_CONTRADICTION", subject, tokenId: c.tokenId };
   }
   const gameId = market.provider_game_id ?? null;
   return {
@@ -175,7 +186,6 @@ export function bookEvidence(c: Pick<SourceCandidate, "conditionId" | "tokenId" 
 export type EvaluatedCandidate = SourceCandidate & ProviderConfirmation & { book: BookEvidence };
 export type CohortSelection = { event: EvaluatedCandidate; bucket: "SOCCER" | "TENNIS" | "OTHER_DIVERSITY_FLOOR" | "OTHER_LIQUIDITY_FILL"; sportRank: number };
 
-const cmp = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 /** Executable depth DESC, then start ASC, physical id, condition, token: total order, no randomness. */
 export function compareExecutableLiquidity(a: EvaluatedCandidate, b: EvaluatedCandidate): number {
   return (b.book.askDepthUsd ?? 0) - (a.book.askDepthUsd ?? 0)
@@ -185,16 +195,17 @@ export function compareExecutableLiquidity(a: EvaluatedCandidate, b: EvaluatedCa
 
 /**
  * Pure, deterministic 50/25/25 selection. Only quote-causal, full-stake EXECUTABLE candidates are eligible. Exactly one
- * candidate (best executable depth) survives per physical event, so no event can carry duplicate or opposing sides.
+ * candidate (best executable depth, compared AFTER every distinct condition/token candidate was independently measured)
+ * survives per physical event, so no event can carry duplicate or opposing sides; each loser is reported with its token.
  * Ranking is per sport; there is NO backfill between the soccer, tennis and other quotas (the other quota subdivides
  * only inside OTHER_SPORT_FAMILIES via the approved floor + liquidity fill).
  */
 export function selectExecutableLiquidityCohort(evaluated: readonly EvaluatedCandidate[], asOfMs: number) {
   const rejected: Rejection[] = [];
   const quoteCausal = evaluated.filter((e) => {
-    if (e.book.executable !== true || e.book.askDepthUsd === null) { rejected.push({ reason: `NOT_EXECUTABLE:${e.book.state}`, subject: e.conditionId }); return false; }
-    if (e.book.quoteCompletedAtMs === null || e.book.quoteCompletedAtMs < asOfMs) { rejected.push({ reason: "QUOTE_TIMESTAMP_MISSING_OR_BEFORE_ASOF", subject: e.conditionId }); return false; }
-    if (e.book.quoteCompletedAtMs > Date.parse(e.eventStartIso) - T90_MINUTES * MIN_MS) { rejected.push({ reason: "QUOTE_AFTER_T90", subject: e.conditionId }); return false; }
+    if (e.book.executable !== true || e.book.askDepthUsd === null) { rejected.push({ reason: `NOT_EXECUTABLE:${e.book.state}`, subject: e.conditionId, tokenId: e.tokenId }); return false; }
+    if (e.book.quoteCompletedAtMs === null || e.book.quoteCompletedAtMs < asOfMs) { rejected.push({ reason: "QUOTE_TIMESTAMP_MISSING_OR_BEFORE_ASOF", subject: e.conditionId, tokenId: e.tokenId }); return false; }
+    if (e.book.quoteCompletedAtMs > Date.parse(e.eventStartIso) - T90_MINUTES * MIN_MS) { rejected.push({ reason: "QUOTE_AFTER_T90", subject: e.conditionId, tokenId: e.tokenId }); return false; }
     return true;
   });
   const byPhysical = new Map<string, EvaluatedCandidate[]>();
@@ -204,7 +215,10 @@ export function selectExecutableLiquidityCohort(evaluated: readonly EvaluatedCan
     if (new Set(list.map((e) => e.sportFamily)).size > 1) { rejected.push({ reason: "PHYSICAL_EVENT_SPORT_CONTRADICTION", subject: pid }); continue; }
     const sorted = [...list].sort(compareExecutableLiquidity);
     perEvent.push(sorted[0]);
-    for (const loser of sorted.slice(1)) rejected.push({ reason: "EVENT_ALTERNATE_CANDIDATE_LOWER_LIQUIDITY", subject: loser.conditionId });
+    for (const loser of sorted.slice(1)) {
+      const opposing = loser.conditionId === sorted[0].conditionId;
+      rejected.push({ reason: opposing ? "EVENT_OPPOSING_TOKEN_LOWER_LIQUIDITY" : "EVENT_ALTERNATE_CANDIDATE_LOWER_LIQUIDITY", subject: loser.conditionId, tokenId: loser.tokenId });
+    }
   }
   const ranked = (family: string) => perEvent.filter((e) => e.sportFamily === family).sort(compareExecutableLiquidity);
   const selected: CohortSelection[] = [];
@@ -295,7 +309,7 @@ export async function buildExecutableLiquidityCohort(deps: CohortDeps) {
     try { markets = await readProviderEvent(list[0].providerEventId, list[0].eventStartIso); }
     catch (error) {
       const code = error instanceof Error ? error.message : "PROVIDER_EVENT_READ_FAILED";
-      for (const c of list) rejected.push({ reason: `PROVIDER_EVENT:${code === "RESERVED_EVENT_START_MISMATCH" ? code : "UNAVAILABLE"}`, subject: c.conditionId });
+      for (const c of list) rejected.push({ reason: `PROVIDER_EVENT:${code === "RESERVED_EVENT_START_MISMATCH" ? code : "UNAVAILABLE"}`, subject: c.conditionId, tokenId: c.tokenId });
       return;
     }
     for (const c of list) {
@@ -303,7 +317,7 @@ export async function buildExecutableLiquidityCohort(deps: CohortDeps) {
       if ("reason" in result) rejected.push(result); else confirmed.push({ ...c, ...result });
     }
   });
-  confirmed.sort((a, b) => cmp(a.conditionId, b.conditionId));
+  confirmed.sort((a, b) => cmp(a.conditionId, b.conditionId) || cmp(a.tokenId, b.tokenId));
 
   const books = await fetchBooks(confirmed.map((c) => c.tokenId), limit);
   const evaluated: EvaluatedCandidate[] = confirmed.map((c, i) => ({ ...c, book: bookEvidence(c, books[i]) }));
