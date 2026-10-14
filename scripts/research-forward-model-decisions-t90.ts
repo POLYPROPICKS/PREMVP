@@ -12,7 +12,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import "dotenv/config";
-import { buildExecutableLiquidityCohort, COHORT_HORIZON_HOURS, T90_MINUTES } from "../lib/research/executableLiquidityCohortT90";
+import { buildExecutableLiquidityCohort } from "../lib/research/executableLiquidityCohortT90";
 import {
   assessExecution, chronologicalClaims, decideCohortModels, FORWARD_CONTRACT, FORWARD_DECISIONS_VERSION, modelKey, parseCandidateIdentity,
   PERSISTENCE_EDGES, persistenceReadiness, summarizeDecisions, tokenKey, VERSION_ABSENT,
@@ -86,7 +86,9 @@ async function probeDeployedContract(client: Db) {
   };
 }
 
-/** Physical event keys already holding a LEDGER row for each model_id (legacy or contract): the trigger rejects re-claims. */
+/** Physical event keys already holding a LEDGER row for each model_id (legacy or contract): the trigger rejects re-claims.
+ *  Exact while no FORWARD_BET_V1 row exists (probe contract_rows_n); contract rows can also claim via canonical_game_key /
+ *  economic_unit_key, whose derivation lives only in protected PR #526, so with contract rows this is a lower bound. */
 async function readExistingEconomicUnits(client: Db, keysByModel: Map<string, Set<string>>) {
   const out = new Map<string, Set<string>>();
   for (const [modelId, keys] of keysByModel) {
@@ -136,15 +138,18 @@ const LOOKBACK_HOURS = 72;
 type V4Row = V4EvidenceRow & { ingested_at: string };
 const minskDate = (iso: string) => new Date(Date.parse(iso) + 3 * 3_600_000).toISOString().slice(0, 10);
 
+/**
+ * COMPLETE Minsk decision days (the owner reads whole dates) with NO event-start filter: events that already started or
+ * start beyond the cohort horizon still competed for each day's cap and rank, so dropping them would let the replay
+ * claim picks a real day would have cap-exhausted. Only the cohort join restricts to upcoming events.
+ */
 async function readSafeUniverse(client: Db, watermarkMs: number, referenceMs: number): Promise<V4Row[]> {
-  const from = new Date(referenceMs - LOOKBACK_HOURS * 3_600_000).toISOString();
-  const startMin = new Date(referenceMs + T90_MINUTES * 60_000).toISOString();
-  const startMax = new Date(referenceMs + COHORT_HORIZON_HOURS * 3_600_000 + 3_600_000).toISOString();
+  const firstDay = minskDate(new Date(referenceMs - LOOKBACK_HOURS * 3_600_000).toISOString());
+  const from = new Date(Date.parse(`${firstDay}T00:00:00.000Z`) - 3 * 3_600_000).toISOString();
   const rows: V4Row[] = [];
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await client.from("research_evidence_page_rows").select(V4_COLUMNS)
       .gte("observed_at", from).lte("ingested_at", new Date(watermarkMs).toISOString())
-      .gt("game_start_iso", startMin).lte("game_start_iso", startMax)
       .order("observed_at", { ascending: true }).order("observation_id", { ascending: true }).order("item_observation_id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error) throw new Error(`SAFE_UNIVERSE_READ:${error.code ?? "FAILED"}`);
@@ -196,8 +201,19 @@ export function safePrefixSelector(date: string, models: readonly ModelRef[]) {
 export function evaluateSafeModels(rows: readonly V4Row[], models: readonly ModelRef[]) {
   const safe = models.filter((m) => m.family === "SAFE_PREMATCH");
   const byDate = new Map<string, V4Row[]>();
-  for (const r of rows) if (r.game_start_iso) byDate.set(minskDate(r.observed_at), [...(byDate.get(minskDate(r.observed_at)) ?? []), r]);
-  const ingestedAt = new Map(rows.map((r) => [`${r.condition_id}::${r.selected_token_id}::${r.observed_at}`, r.ingested_at]));
+  for (const r of rows) {
+    if (!r.game_start_iso) continue;
+    const d = minskDate(r.observed_at);
+    (byDate.get(d) ?? byDate.set(d, []).get(d)!).push(r);
+  }
+  // Duplicate identities (same condition::token::observed_at, different observation rows) take the LATEST ingest: a pick
+  // is never treated as available before every row that could have produced it existed in the DB.
+  const ingestedAt = new Map<string, string>();
+  for (const r of rows) {
+    const k = `${r.condition_id}::${r.selected_token_id}::${r.observed_at}`;
+    const prev = ingestedAt.get(k);
+    if (prev === undefined || Date.parse(r.ingested_at) > Date.parse(prev)) ingestedAt.set(k, r.ingested_at);
+  }
   const bets = new Map<string, ModelBet[]>(safe.map((m) => [m.modelId, []]));
   const predicate = new Map(safe.map((m) => [m.modelId, new Set<string>()]));
   const gate = new Map(safe.map((m) => [m.modelId, new Set<string>()]));

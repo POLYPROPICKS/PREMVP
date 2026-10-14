@@ -133,6 +133,8 @@ test("CAUSALITY: observed_at <= ingested_at <= decision generation < T-90; never
   assert.equal(ok.decisionGeneratedAt, iso(GEN));
   assert.equal(ok.bet!.minutesToStartAtDecision, 600);
   assert.equal(causalEdge({ observedAt: iso(REF), sourceIngestedAt: null, claimInstant: iso(REF) }, startIn(10), GEN), "UNPROVEN_MODEL_SOURCE_INGEST_TIME");
+  // A claim instant later than the generation instant cannot have produced this decision.
+  assert.equal(causalEdge({ observedAt: iso(REF - H), sourceIngestedAt: iso(REF - H), claimInstant: iso(REF + 60_000) }, startIn(10), GEN), "CLAIM_AFTER_DECISION_GENERATION");
 });
 
 test("CHRONOLOGY: later-in-the-day observations cannot change, add to or reorder an earlier decision", () => {
@@ -156,6 +158,11 @@ test("CHRONOLOGY: later-in-the-day observations cannot change, add to or reorder
   assert.equal(r.inconsistentAvailabilityN, 1);
   assert.equal(r.instants, 3);
   assert.ok(!r.predicateEvaluated.get("M")!.has("impossible"));
+  // Partially spent cap: the selector's rank order wins, not identity order.
+  const ranked = chronologicalClaims([{ observed_at: iso(REF - H), ingested_at: iso(REF - H) }], ["M"], 1, () => ({
+    picks: new Map([["M", [{ candidateIdentity: "z-best", physicalEventKey: "E9" }, { candidateIdentity: "a-worse", physicalEventKey: "E8" }]]]), predicateEvaluated: new Map(), gateRejected: new Map(),
+  }));
+  assert.deepEqual(ranked.claims.get("M")!.map((c) => c.candidateIdentity), ["z-best"]);
 });
 
 const FEE: TokenFeeScheduleResult = { ok: true, takerRate: 0.01, formulaVersion: "f1" } as unknown as TokenFeeScheduleResult;

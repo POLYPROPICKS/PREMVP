@@ -146,8 +146,8 @@ export function chronologicalClaims<R extends AvailabilityRow, P extends { candi
     for (const m of modelIds) {
       for (const k of sel.predicateEvaluated.get(m) ?? []) predicateEvaluated.get(m)!.add(k);
       for (const k of sel.gateRejected.get(m) ?? []) gateRejected.get(m)!.add(k);
-      const picks = [...(sel.picks.get(m) ?? [])].sort((a, b) => a.candidateIdentity < b.candidateIdentity ? -1 : a.candidateIdentity > b.candidateIdentity ? 1 : 0);
-      for (const p of picks) {
+      // The selector's own order is its rank (e.g. tier then time under a daily cap): spare cap slots go rank-first.
+      for (const p of sel.picks.get(m) ?? []) {
         if (claimedIds.get(m)!.has(p.candidateIdentity) || claimedEvents.get(m)!.has(p.physicalEventKey)) continue;
         if (claims.get(m)!.length >= cap) { capExhaustedN++; continue; }
         claimedIds.get(m)!.add(p.candidateIdentity);
@@ -170,8 +170,9 @@ export type ModelEventDecision = {
   outcome: DecisionOutcome; reason: string;
   bet: (ModelBet & {
     outcomeLabel: string; oppositeTokenId: string; providerMarketType: string; providerEventId: string;
-    /** The model token's OWN scored source row (never the anchor's or the opposite token's). */
-    source: { score: number | null; entryPrice: number | null; observedAt: string; ingestedAt: string; itemObservationId: string };
+    /** The cohort's scored source row for the model's OWN token (never the anchor's or the opposite token's). It may be a
+     *  different observation of that token than the model's selected row: the model row is observedAt/entryPrice above. */
+    cohortSource: { score: number | null; entryPrice: number | null; observedAt: string; ingestedAt: string; itemObservationId: string };
     isCohortAnchor: boolean;
     minutesToStartAtDecision: number;
   }) | null;
@@ -196,6 +197,7 @@ export function causalEdge(bet: Pick<ModelBet, "observedAt" | "sourceIngestedAt"
   if (Date.parse(bet.claimInstant) < ingested) return "CLAIM_BEFORE_SOURCE_INGEST";
   if (!Number.isFinite(decisionGeneratedAtMs)) return "UNPROVEN_DECISION_GENERATION_TIME";
   if (ingested > decisionGeneratedAtMs) return "DECISION_BEFORE_SOURCE_INGEST";
+  if (Date.parse(bet.claimInstant) > decisionGeneratedAtMs) return "CLAIM_AFTER_DECISION_GENERATION";
   if (decisionGeneratedAtMs >= cutoff) return "DECISION_GENERATED_AT_OR_AFTER_T90";
   return null;
 }
@@ -263,7 +265,7 @@ export function decideCohortModels(
         ...base, outcome: "BET", reason: "MODEL_ELIGIBLE",
         bet: {
           ...bet, outcomeLabel: token.outcome, oppositeTokenId: token.oppositeTokenId, providerMarketType: token.providerMarketType, providerEventId: token.providerEventId,
-          source: { score: token.source.score, entryPrice: token.source.entryPrice, observedAt: token.source.observedAt, ingestedAt: token.source.ingestedAt, itemObservationId: token.source.itemObservationId },
+          cohortSource: { score: token.source.score, entryPrice: token.source.entryPrice, observedAt: token.source.observedAt, ingestedAt: token.source.ingestedAt, itemObservationId: token.source.itemObservationId },
           isCohortAnchor: event.anchor.conditionId === bet.conditionId && event.anchor.tokenId === bet.tokenId,
           minutesToStartAtDecision: Math.round((Date.parse(event.eventStartIso) - decisionGeneratedAtMs) / 600) / 100,
         },
