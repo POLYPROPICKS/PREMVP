@@ -2,61 +2,70 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  APPROVED_SCORED_FORMULA, bookEvidence, buildExecutableLiquidityCohort, confirmProviderIdentity, reduceSourceRows, resolveModelDecisions,
-  selectExecutableLiquidityCohort, type EvaluatedCandidate, type ModelAuthority, type ModelEligibility, type ModelEventView, type ProviderMarket,
-  type SourceCandidate, type SourceRow,
+  APPROVED_SCORED_FORMULA, attachModelDecisions, buildCohortReceipt, buildExecutableLiquidityCohort, cohortDigest, confirmProviderCondition,
+  liveQueueView, measureResearchLiquidity, reduceSourceRows, RESEARCH_LIQUIDITY_CONTRACT, selectPhysicalEventCohort,
+  type InventoryToken, type MeasuredToken, type ModelAuthority, type ProviderMarket, type SourceCandidate, type SourceRow,
 } from "../../lib/research/executableLiquidityCohortT90";
+import { QUEUE_MAX_ENTRY_PRICE } from "../../lib/executor/executorQueueTypes";
+import { buildExecutableSiblingColumns } from "../../lib/executor/t10ExecutableSiblingTelemetry";
 import type { FetchOrderBookResult } from "../../lib/liquidity/types";
 
-// Fixtures below prove selection LOGIC only. They are not evidence of any real cohort or BET.
-const ASOF = Date.parse("2026-10-14T10:00:00.000Z");
+// Fixtures prove selection LOGIC only. They are not evidence of any real cohort, BET or liquidity.
+const REF = Date.parse("2026-10-14T10:00:00.000Z");
 const H = 3_600_000;
-const startIn = (hours: number) => new Date(ASOF + hours * H).toISOString();
+const TIMING = { dbIngestWatermarkMs: REF - 60_000, referenceMs: REF };
+const startIn = (hours: number) => new Date(REF + hours * H).toISOString();
 
 function row(over: Partial<SourceRow> & { n: number }): SourceRow {
   const { n, ...rest } = over;
   return {
-    observation_id: `obs-${n}`, item_observation_id: `item-${n}`, observed_at: new Date(ASOF - 3 * H).toISOString(), ingested_at: new Date(ASOF - 2 * H).toISOString(),
+    observation_id: `obs-${n}`, item_observation_id: `item-${n}`, observed_at: new Date(REF - 3 * H).toISOString(), ingested_at: new Date(REF - 2 * H).toISOString(),
     condition_id: `0xc${n}`, selected_token_id: `tok-${n}-a`, selected_outcome: "Yes", metric_formula_version: APPROVED_SCORED_FORMULA,
     provider_event_id: `ev-${n}`, provider_sport_family: "soccer", market_type: "moneyline", game_start_iso: startIn(10),
     entry_price_num: 0.5, pre_event_score_num: 70, ...rest,
   };
 }
 
-test("reduceSourceRows: availability is ingested_at and must precede both as-of and T-90", () => {
+// ── source causality ──────────────────────────────────────────────────────────────────────────────────────────────
+test("reduceSourceRows: availability is DB ingested_at inside the snapshot watermark and before T-90", () => {
   const { candidates, rejected } = reduceSourceRows([
     row({ n: 1 }),
-    row({ n: 2, ingested_at: new Date(ASOF + H).toISOString() }),                       // after DB as-of
-    row({ n: 3, game_start_iso: startIn(1.4), ingested_at: new Date(ASOF - H).toISOString() }), // start inside T-90 at as-of
-    row({ n: 4, game_start_iso: startIn(2), ingested_at: new Date(ASOF + 0.6 * H).toISOString() }), // ingested after start-90
+    row({ n: 2, ingested_at: new Date(REF).toISOString() }),                                  // after DB watermark
+    row({ n: 3, game_start_iso: startIn(1.4), ingested_at: new Date(REF - H).toISOString() }), // inside T-90 at reference
+    row({ n: 4, game_start_iso: startIn(3), observed_at: startIn(-0.1), ingested_at: new Date(REF - 30_000 - H * 0).toISOString() }),
     row({ n: 5, metric_formula_version: "shadow-firemodel1_1_research_v0" }),
-    row({ n: 6, game_start_iso: startIn(30) }),                                         // outside the daily horizon
+    row({ n: 6, game_start_iso: startIn(30) }),
     row({ n: 7, provider_sport_family: "esports" }),
-    row({ n: 8, observed_at: new Date(ASOF - H).toISOString(), ingested_at: new Date(ASOF - 2 * H).toISOString() }), // observed after ingested
-  ], ASOF);
+    row({ n: 8, observed_at: new Date(REF - H).toISOString(), ingested_at: new Date(REF - 2 * H).toISOString() }),
+  ], TIMING);
   assert.deepEqual(candidates.map((c) => c.conditionId), ["0xc1"]);
   const reasons = Object.fromEntries(rejected.map((r) => [r.subject, r.reason]));
-  assert.equal(reasons["0xc2"], "SOURCE_INGESTED_AFTER_ASOF");
-  assert.equal(reasons["0xc3"], "EVENT_NOT_AFTER_T90_AT_ASOF");
-  assert.equal(reasons["0xc4"], "SOURCE_INGESTED_AFTER_ASOF");
+  assert.equal(reasons["0xc2"], "SOURCE_INGESTED_AFTER_SNAPSHOT_WATERMARK");
+  assert.equal(reasons["0xc3"], "EVENT_NOT_AFTER_T90_AT_REFERENCE");
+  assert.equal(reasons["0xc4"], "SOURCE_INGESTED_AFTER_SNAPSHOT_WATERMARK");
   assert.equal(reasons["0xc5"], "FORMULA_NOT_APPROVED");
   assert.equal(reasons["0xc6"], "EVENT_BEYOND_CYCLE_HORIZON");
   assert.equal(reasons["0xc7"], "SPORT_FAMILY_NOT_TARGET");
   assert.equal(reasons["0xc8"], "SOURCE_OBSERVED_AFTER_INGESTED");
 });
 
-test("reduceSourceRows: a later row becoming available after T-90 never replaces the causal one; contradictions reject the condition", () => {
-  const early = row({ n: 1, game_start_iso: startIn(4) });
-  const late = row({ n: 1, item_observation_id: "item-1b", game_start_iso: startIn(4), ingested_at: new Date(ASOF - 0.1 * H).toISOString() });
-  // start in 4h => T-90 is at +2.5h; both rows are before it, newest causal row wins.
-  assert.equal(reduceSourceRows([early, late], ASOF).candidates[0].itemObservationId, "item-1b");
-  const lateOnly = row({ n: 2, game_start_iso: startIn(1.6), ingested_at: new Date(ASOF + 0.2 * H).toISOString() });
-  assert.equal(reduceSourceRows([lateOnly], ASOF).candidates.length, 0);
-  const clash = reduceSourceRows([row({ n: 3 }), row({ n: 3, item_observation_id: "i2", provider_event_id: "ev-other" })], ASOF);
-  assert.equal(clash.candidates.length, 0);
-  assert.equal(clash.rejected[0].reason, "CONDITION_PROVIDER_EVENT_CONTRADICTION");
+test("reduceSourceRows: a row available after T-90 never counts; condition identity contradictions reject the condition", () => {
+  const ok = row({ n: 1, game_start_iso: startIn(4) });
+  const lateForT90 = row({ n: 1, item_observation_id: "item-1b", game_start_iso: startIn(4), ingested_at: new Date(REF - 60_000).toISOString() });
+  // start +4h => cutoff +2.5h; both rows qualify, newest wins
+  assert.equal(reduceSourceRows([ok, lateForT90], TIMING).candidates[0].itemObservationId, "item-1b");
+  const evClash = reduceSourceRows([row({ n: 3 }), row({ n: 3, item_observation_id: "i2", provider_event_id: "ev-other" })], TIMING);
+  assert.equal(evClash.candidates.length, 0);
+  assert.equal(evClash.rejected[0].reason, "CONDITION_PROVIDER_EVENT_CONTRADICTION");
+  const sportClash = reduceSourceRows([row({ n: 4 }), row({ n: 4, item_observation_id: "i3", provider_sport_family: "tennis" })], TIMING);
+  assert.equal(sportClash.rejected[0].reason, "CONDITION_SPORT_FAMILY_CONTRADICTION");
+  // DB watermark ahead of the local reference (clock skew): DB possession after the cutoff still never counts
+  const skew = { dbIngestWatermarkMs: REF + H, referenceMs: REF };
+  const late = reduceSourceRows([row({ n: 5, game_start_iso: startIn(2), ingested_at: new Date(REF + 0.6 * H).toISOString(), observed_at: new Date(REF).toISOString() })], skew);
+  assert.equal(late.rejected[0].reason, "SOURCE_AVAILABLE_AFTER_T90");
 });
 
+// ── provider identity ────────────────────────────────────────────────────────────────────────────────────────────
 const providerMarket = (over: Partial<ProviderMarket> = {}): ProviderMarket => ({
   provider_event_id: "ev-1", event_start_iso: startIn(10), condition_id: "0xc1", clob_token_ids: ["tok-1-a", "tok-1-b"], outcomes: ["Home", "Away"],
   sports_market_type: "moneyline", provider_market_slug: "m-1", sibling_market_count: 3, last_observed_at: startIn(0), provider_game_id: "g1", ...over,
@@ -66,437 +75,292 @@ const source = (over: Partial<SourceCandidate> = {}): SourceCandidate => ({
   observationId: "o", itemObservationId: "i", observedAt: startIn(-3), ingestedAt: startIn(-2), entryPrice: 0.5, score: 70, sourceRowN: 1, sourceItemObservationIds: ["i"], ...over,
 });
 
-test("confirmProviderIdentity: provider pair, binary tokens, admitted market type, physical id from provider game", () => {
-  const ok = confirmProviderIdentity(source(), [providerMarket(), providerMarket({ condition_id: "0xother" })]);
-  assert.ok(!("reason" in ok));
-  if (!("reason" in ok)) {
-    assert.equal(ok.oppositeTokenId, "tok-1-b");
-    assert.match(ok.physicalEventId, /^provider:polymarket:game:g1:/);
-  }
+test("confirmProviderCondition: BOTH provider tokens enter the inventory as distinct identities; any conflict rejects the whole condition", () => {
+  const ok = confirmProviderCondition([source()], [providerMarket(), providerMarket({ condition_id: "0xother" })]);
+  assert.ok(Array.isArray(ok));
+  const [a, b] = ok as InventoryToken[];
+  assert.deepEqual([a.tokenId, b.tokenId], ["tok-1-a", "tok-1-b"]);
+  assert.equal(a.sourceSelected, true); assert.equal(b.sourceSelected, false); assert.equal(b.source, null);
+  assert.equal(a.oppositeTokenId, "tok-1-b"); assert.equal(b.oppositeTokenId, "tok-1-a");
+  assert.match(a.physicalEventId, /^provider:polymarket:game:g1:/);
   const reason = (r: unknown) => (r as { reason: string }).reason;
-  assert.equal(reason(confirmProviderIdentity(source(), [])), "CONDITION_NOT_IN_PROVIDER_EVENT");
-  assert.equal(reason(confirmProviderIdentity(source({ tokenId: "typo" }), [providerMarket()])), "SELECTED_TOKEN_NOT_IN_PROVIDER_PAIR");
-  assert.equal(reason(confirmProviderIdentity(source(), [providerMarket({ clob_token_ids: ["tok-1-a", "tok-1-b", "tok-1-c"], outcomes: ["a", "b", "c"] })])), "PROVIDER_TOKEN_PAIR_NOT_BINARY");
-  assert.equal(reason(confirmProviderIdentity(source(), [providerMarket({ sports_market_type: "soccer_first_half_total_corners" })])), "MARKET_TYPE_NOT_ADMITTED");
-  assert.equal(reason(confirmProviderIdentity(source({ sourceMarketType: "spreads" }), [providerMarket()])), "SOURCE_PROVIDER_MARKET_TYPE_CONTRADICTION");
-  assert.equal(reason(confirmProviderIdentity(source({ sportFamily: "tennis" }), [providerMarket({ sports_market_type: "spreads" })])), "MARKET_TYPE_NOT_ADMITTED");
+  assert.equal(reason(confirmProviderCondition([source()], [])), "CONDITION_NOT_IN_PROVIDER_EVENT");
+  assert.equal(reason(confirmProviderCondition([source(), source({ tokenId: "typo" })], [providerMarket()])), "SOURCE_TOKEN_NOT_IN_PROVIDER_PAIR");
+  assert.equal(reason(confirmProviderCondition([source()], [providerMarket({ clob_token_ids: ["tok-1-a", "tok-1-b", "c"], outcomes: ["a", "b", "c"] })])), "PROVIDER_TOKEN_PAIR_NOT_BINARY");
+  assert.equal(reason(confirmProviderCondition([source()], [providerMarket({ sports_market_type: "soccer_first_half_total_corners" })])), "MARKET_TYPE_NOT_ADMITTED");
+  assert.equal(reason(confirmProviderCondition([source({ sourceMarketType: "spreads" })], [providerMarket()])), "SOURCE_PROVIDER_MARKET_TYPE_CONTRADICTION");
+  assert.equal(reason(confirmProviderCondition([source()], [providerMarket(), providerMarket()])), "CONDITION_DUPLICATED_IN_PROVIDER_EVENT");
 });
 
-const book = (tokenId: string, askUsd: number, completedAt = ASOF + 60_000, price = 0.5): FetchOrderBookResult => ({
-  ok: true, tokenId, latencyMs: 10, requestStartedAtMs: completedAt - 10, responseCompletedAtMs: completedAt,
-  book: { tokenId, bids: [{ price: price - 0.02, size: 1000 }], asks: [{ price, size: askUsd / price }], tickSize: 0.01, minimumOrderSize: 5, providerTimestampMs: completedAt },
-});
-
-let seq = 0;
-function evaluated(sport: string, depthUsd: number, over: Partial<EvaluatedCandidate> = {}): EvaluatedCandidate {
-  const n = ++seq;
-  const c = source({ conditionId: `0xe${n}`, tokenId: `tok-${n}-a`, providerEventId: `ev${n}`, sportFamily: sport });
+// ── research liquidity measurement ──────────────────────────────────────────────────────────────────────────────
+const SNAP = REF;
+const book = (tokenId: string, asks: Array<[number, number]>, opts: { completedAt?: number; providerTs?: number | null; minOrder?: number | null } = {}): FetchOrderBookResult => {
+  const completedAt = opts.completedAt ?? REF + 60_000;
   return {
-    ...c, physicalEventId: `phys-${n}`, providerGameId: `g${n}`, oppositeTokenId: `tok-${n}-b`, providerMarketType: "MONEYLINE", providerMarketFamily: "MONEYLINE",
-    providerMarketSlug: null, book: bookEvidence(c, book(`tok-${n}-a`, depthUsd)), ...over,
-  };
-}
-
-test("bookEvidence: independent full-stake executable evidence; thin or capped books are not executable", () => {
-  const c = source();
-  assert.equal(bookEvidence(c, book("tok-1-a", 500)).executable, true);
-  assert.equal(bookEvidence(c, book("tok-1-a", 500)).askDepthUsd, 500);
-  assert.equal(bookEvidence(c, book("tok-1-a", 1)).executable, false);               // < $2.50 full stake
-  assert.equal(bookEvidence(c, book("tok-1-a", 500, ASOF, 0.7)).executable, false); // only above the approved 0.555 cap
-  assert.equal(bookEvidence(c, null).state, "UNKNOWN_BOOK_UNAVAILABLE");
-});
-
-test("selection: 50/25/25 per-sport executable-liquidity ranking, no cross-quota backfill, deterministic", () => {
-  seq = 0;
-  const pool: EvaluatedCandidate[] = [];
-  for (let i = 0; i < 70; i++) pool.push(evaluated("soccer", 100 + i));
-  for (let i = 0; i < 40; i++) pool.push(evaluated("tennis", 1000 + i));            // deeper than soccer: must NOT be globally outranked
-  for (const f of ["basketball", "baseball", "hockey", "cricket", "american-football"]) for (let i = 0; i < 8; i++) pool.push(evaluated(f, 50 + i));
-  const a = selectExecutableLiquidityCohort(pool, ASOF);
-  const b = selectExecutableLiquidityCohort([...pool].reverse(), ASOF);
-  assert.deepEqual(a.selected.map((s) => s.event.conditionId), b.selected.map((s) => s.event.conditionId));
-  assert.equal(a.diagnostics.soccer_selected_n, 50);
-  assert.equal(a.diagnostics.tennis_selected_n, 25);
-  assert.equal(a.diagnostics.other_selected_n, 25);
-  assert.equal(a.selected.length, 100);
-  assert.equal(a.diagnostics.global_backfill_n, 0);
-  const soccer = a.selected.filter((s) => s.bucket === "SOCCER");
-  assert.deepEqual(soccer.map((s) => s.event.book.askDepthUsd), Array.from({ length: 50 }, (_, i) => 169 - i));
-  assert.equal(a.diagnostics.depth_cutoff_usd.soccer, 120);
-  const others = a.selected.filter((s) => s.bucket.startsWith("OTHER"));
-  for (const f of ["basketball", "baseball", "hockey", "cricket", "american-football"]) {
-    assert.ok(others.filter((s) => s.event.sportFamily === f && s.bucket === "OTHER_DIVERSITY_FLOOR").length === 4, f);
-  }
-  assert.equal(new Set(a.selected.map((s) => s.event.physicalEventId)).size, 100);
-});
-
-test("selection: shortfall is an explicit underfill, never filled from another sport", () => {
-  seq = 0;
-  const pool = [...Array.from({ length: 10 }, (_, i) => evaluated("soccer", 100 + i)), ...Array.from({ length: 60 }, (_, i) => evaluated("tennis", 100 + i))];
-  const r = selectExecutableLiquidityCohort(pool, ASOF);
-  assert.equal(r.diagnostics.soccer_selected_n, 10);
-  assert.equal(r.diagnostics.soccer_quota_underfill_n, 40);
-  assert.equal(r.diagnostics.tennis_selected_n, 25);
-  assert.equal(r.diagnostics.other_quota_underfill_n, 25);
-  assert.equal(r.selected.length, 35);
-});
-
-test("selection: one candidate per physical event (no duplicate/opposing sides); non-executable and non-causal quotes rejected", () => {
-  seq = 0;
-  const a = evaluated("soccer", 300, { physicalEventId: "phys-same", conditionId: "0xA" });
-  const opposing = evaluated("soccer", 900, { physicalEventId: "phys-same", conditionId: "0xB", tokenId: "tok-other-side" });
-  const thin = evaluated("soccer", 1);
-  const lateQuote = evaluated("soccer", 500, { eventStartIso: startIn(1.4) });
-  lateQuote.book = bookEvidence(lateQuote, book(lateQuote.tokenId, 500, ASOF + 0.2 * H));
-  const staleQuote = evaluated("soccer", 500);
-  staleQuote.book = bookEvidence(staleQuote, book(staleQuote.tokenId, 500, ASOF - 1000));
-  const r = selectExecutableLiquidityCohort([a, opposing, thin, lateQuote, staleQuote], ASOF);
-  assert.deepEqual(r.selected.map((s) => s.event.conditionId), ["0xB"]);
-  const reasons = r.rejected.map((x) => x.reason);
-  assert.ok(reasons.includes("EVENT_ALTERNATE_CANDIDATE_LOWER_LIQUIDITY"));
-  assert.ok(reasons.some((x) => x.startsWith("NOT_EXECUTABLE:")));
-  assert.ok(reasons.includes("QUOTE_AFTER_T90"));
-  assert.ok(reasons.includes("QUOTE_TIMESTAMP_MISSING_OR_BEFORE_ASOF"));
-  const clash = selectExecutableLiquidityCohort([evaluated("soccer", 100, { physicalEventId: "p" }), evaluated("tennis", 100, { physicalEventId: "p" })], ASOF);
-  assert.equal(clash.selected.length, 0);
-  assert.ok(clash.rejected.some((x) => x.reason === "PHYSICAL_EVENT_SPORT_CONTRADICTION"));
-});
-
-test("orchestrator: injected providers only; Gamma identity + CLOB book decide the cohort and ranking is by depth, not source order", async () => {
-  const rows = [row({ n: 1 }), row({ n: 2 }), row({ n: 3 }), row({ n: 4, selected_token_id: "typo-token" })];
-  const depth: Record<string, number> = { "tok-1-a": 100, "tok-2-a": 900, "tok-3-a": 400, "typo-token": 800 };
-  const result = await buildExecutableLiquidityCohort({
-    readSource: async () => ({ asOfMs: ASOF, rows }),
-    readProviderEvent: async (eventId) => {
-      const n = eventId.replace("ev-", "");
-      return [providerMarket({ provider_event_id: eventId, condition_id: `0xc${n}`, clob_token_ids: [`tok-${n}-a`, `tok-${n}-b`], provider_game_id: `g${n}` })];
+    ok: true, tokenId, latencyMs: 10, requestStartedAtMs: completedAt - 10, responseCompletedAtMs: completedAt,
+    book: {
+      tokenId, bids: [], asks: asks.map(([price, size]) => ({ price, size })), tickSize: 0.01,
+      minimumOrderSize: opts.minOrder === undefined ? 5 : opts.minOrder, providerTimestampMs: opts.providerTs === undefined ? completedAt - 5 : opts.providerTs,
     },
-    fetchBooks: async (ids) => ids.map((id) => book(id, depth[id] ?? 0)),
-    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
-  });
-  assert.deepEqual(result.selection.selected.map((s) => s.event.conditionId), ["0xc2", "0xc3", "0xc1"]);
-  assert.deepEqual(result.selection.selected.map((s) => s.sportRank), [1, 2, 3]);
-  assert.ok(result.rejected.some((r) => r.reason === "SELECTED_TOKEN_NOT_IN_PROVIDER_PAIR" && r.subject === "0xc4"));
-  assert.equal(result.selection.diagnostics.soccer_quota_underfill_n, 47);
-});
-
-test("module is read-only and never ranks by historical volume, score or settlement", () => {
-  const src = readFileSync("lib/research/executableLiquidityCohortT90.ts", "utf8");
-  const runner = readFileSync("scripts/research-t90-liquidity-cohort.ts", "utf8");
-  for (const code of [src, runner]) {
-    assert.doesNotMatch(code, /\.from\(["`]|\.(insert|upsert|rpc)\(|createClient/);
-    assert.doesNotMatch(code, /signal_result|market_outcome_current|labelAsOf/);
-  }
-  assert.doesNotMatch(src, /selectResearchCohort|parentEventVolume|volume_usd|parent_event_volume/);
-  assert.match(runner, /method: "GET"/);
-  assert.doesNotMatch(runner, /method: "(POST|PATCH|PUT|DELETE)"/);
-});
-
-// ── PR #535 first-broken-edge repair: condition/token candidates survive until AFTER the executable-depth comparison ──
-
-const twoTokenRows = () => [
-  row({ n: 1, selected_token_id: "tok-1-a", selected_outcome: "Home", item_observation_id: "item-1a" }),
-  row({ n: 1, selected_token_id: "tok-1-b", selected_outcome: "Away", item_observation_id: "item-1b" }),
-];
-const pairProvider = async (eventId: string) => {
-  const n = eventId.replace("ev-", "");
-  return [providerMarket({ provider_event_id: eventId, condition_id: `0xc${n}`, clob_token_ids: [`tok-${n}-a`, `tok-${n}-b`], provider_game_id: `g${n}` })];
+  };
 };
+const tok = (tokenId = "tok-1-a", eventStartIso = startIn(10)) => ({ conditionId: "0xc1", tokenId, outcome: "Home", eventStartIso });
 
-test("repair: reduceSourceRows keeps both opposing tokens of one condition (old behaviour kept only the newest row's token)", () => {
-  const rows = twoTokenRows();
-  // The shallow side is the NEWEST row: the old per-condition reduction would have kept only it.
-  rows[0].ingested_at = new Date(ASOF - 3 * H).toISOString(); rows[0].observed_at = new Date(ASOF - 4 * H).toISOString();
-  rows[1].ingested_at = new Date(ASOF - 1 * H).toISOString();
-  const { candidates, rejected } = reduceSourceRows(rows, ASOF);
-  assert.deepEqual(candidates.map((c) => [c.conditionId, c.tokenId]), [["0xc1", "tok-1-a"], ["0xc1", "tok-1-b"]]);
-  assert.deepEqual(candidates.map((c) => c.itemObservationId), ["item-1a", "item-1b"]);
-  assert.equal(rejected.length, 0);
+test("venue 5-share minimum: $2.50 executes at 0.50, is min-order blocked just above, and 0.565 is outside the benchmark limit", () => {
+  const at050 = measureResearchLiquidity(tok(), book("tok-1-a", [[0.5, 1000]]), SNAP);
+  assert.equal(at050.state, "EXECUTABLE"); assert.equal(at050.shares, 5); assert.equal(at050.rankingDepthUsd, 500);
+  assert.equal(measureResearchLiquidity(tok(), book("tok-1-a", [[0.52, 1000]]), SNAP).state, "BLOCKED_VENUE_MIN_ORDER");    // 4.81 shares
+  assert.equal(measureResearchLiquidity(tok(), book("tok-1-a", [[0.555, 1000]]), SNAP).state, "BLOCKED_VENUE_MIN_ORDER");   // 4.50 shares
+  const at0565 = measureResearchLiquidity(tok(), book("tok-1-a", [[0.565, 1000]]), SNAP);
+  assert.equal(at0565.state, "BLOCKED_DEPTH_AT_LIMIT"); assert.equal(at0565.executable, false); assert.equal(at0565.rankingDepthUsd, null);
+  // Raising a ceiling alone would NOT cure 0.565: the same canonical walk at 0.60 is still min-order blocked (4.42 shares).
+  const hypothetical = buildExecutableSiblingColumns({ token: { conditionId: "0xc1", tokenId: "tok-1-a", side: "Home" }, result: book("tok-1-a", [[0.565, 1000]]), fee: null, hardCap: 0.6 });
+  assert.equal(hypothetical.executable_full_stake_state, "NOT_EXECUTABLE_MIN_ORDER_SIZE");
+  assert.equal(measureResearchLiquidity(tok(), book("tok-1-a", [[0.5, 1000]], { minOrder: null }), SNAP).state, "UNKNOWN_MIN_ORDER_SIZE");
+  assert.equal(measureResearchLiquidity(tok(), book("tok-1-a", [[0.5, 3]]), SNAP).state, "BLOCKED_DEPTH_AT_LIMIT");          // $1.50 depth
 });
 
-test("repair: all source identities of a token are preserved; the newest row of THAT token is the winning row", () => {
-  const older = row({ n: 1, item_observation_id: "item-old", ingested_at: new Date(ASOF - 5 * H).toISOString(), observed_at: new Date(ASOF - 6 * H).toISOString() });
-  const newer = row({ n: 1, item_observation_id: "item-new" });
-  const other = row({ n: 1, selected_token_id: "tok-1-b", item_observation_id: "item-other" });
-  const { candidates } = reduceSourceRows([newer, other, older], ASOF);
-  const a = candidates.find((c) => c.tokenId === "tok-1-a")!;
-  assert.equal(a.itemObservationId, "item-new");
-  assert.deepEqual(a.sourceItemObservationIds, ["item-new", "item-old"]);
-  assert.equal(a.sourceRowN, 2);
-  assert.deepEqual(candidates.find((c) => c.tokenId === "tok-1-b")!.sourceItemObservationIds, ["item-other"]);
-});
-
-test("repair: identity collision across tokens of a condition still rejects the whole condition (fail-closed)", () => {
-  const rows = [...twoTokenRows()];
-  rows[1].provider_event_id = "ev-other";
-  const r = reduceSourceRows(rows, ASOF);
-  assert.equal(r.candidates.length, 0);
-  assert.deepEqual(r.rejected.map((x) => x.reason), ["CONDITION_PROVIDER_EVENT_CONTRADICTION"]);
-  const startClash = twoTokenRows();
-  startClash[1].game_start_iso = startIn(11);
-  const s = reduceSourceRows(startClash, ASOF);
-  assert.equal(s.candidates.length, 0);
-  assert.deepEqual(s.rejected.map((x) => x.reason), ["CONDITION_PROVIDER_EVENT_CONTRADICTION"]);
-});
-
-test("repair: two opposing tokens of one condition, different executable depth -> the DEEPER eligible token wins, in any input order", async () => {
-  const depth: Record<string, number> = { "tok-1-a": 80, "tok-1-b": 700 };   // source-selected-first / newest token is the SHALLOW one
-  const run = (rows: SourceRow[]) => buildExecutableLiquidityCohort({
-    readSource: async () => ({ asOfMs: ASOF, rows }),
-    readProviderEvent: pairProvider,
-    fetchBooks: async (ids) => ids.map((id) => book(id, depth[id] ?? 0)),
-    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
-  });
-  const rows = twoTokenRows();
-  rows[1].ingested_at = new Date(ASOF - 3 * H).toISOString(); rows[1].observed_at = new Date(ASOF - 4 * H).toISOString();
-  rows[0].ingested_at = new Date(ASOF - 1 * H).toISOString();   // shallow token 'a' is the newest source row
-  const fwd = await run(rows);
-  const rev = await run([...rows].reverse());
-  for (const r of [fwd, rev]) {
-    assert.equal(r.reducedCandidateN, 2);
-    assert.equal(r.providerConfirmedN, 2);
-    assert.deepEqual(r.selection.selected.map((s) => [s.event.conditionId, s.event.tokenId, s.event.book.askDepthUsd]), [["0xc1", "tok-1-b", 700]]);
-    assert.equal(r.selection.selected[0].event.oppositeTokenId, "tok-1-a");
-    const loser = r.rejected.find((x) => x.reason === "EVENT_OPPOSING_TOKEN_LOWER_LIQUIDITY");
-    assert.deepEqual(loser && [loser.subject, loser.tokenId], ["0xc1", "tok-1-a"]);
+test("unapproved stake adjustment or ceiling is UNAUTHORIZED_CONTRACT, never executable", () => {
+  const b = book("tok-1-a", [[0.55, 1000]]);
+  for (const contract of [
+    { ...RESEARCH_LIQUIDITY_CONTRACT, stakeUsd: 2.75 }, { ...RESEARCH_LIQUIDITY_CONTRACT, stakeUsd: 4.0 }, { ...RESEARCH_LIQUIDITY_CONTRACT, priceLimit: 0.6 },
+  ]) {
+    const m = measureResearchLiquidity(tok(), b, SNAP, contract);
+    assert.equal(m.state, "UNAUTHORIZED_CONTRACT"); assert.equal(m.executable, false); assert.equal(m.rankingDepthUsd, null);
   }
-  assert.deepEqual(fwd.selection.selected.map((s) => s.event.tokenId), rev.selection.selected.map((s) => s.event.tokenId));
-  assert.equal(fwd.selection.diagnostics.soccer_selected_n, 1);
+  assert.equal(RESEARCH_LIQUIDITY_CONTRACT.stakeUsd, 2.5);
+  assert.equal(RESEARCH_LIQUIDITY_CONTRACT.adaptiveHeadroom, "NOT_USED");
 });
 
-test("repair: a less liquid token cannot suppress a more liquid one, and a non-executable deeper-looking token cannot win", async () => {
-  // token b is the deeper one; token a is shallow but executable. Flip: token b is only above the 0.555 cap -> not executable -> a is chosen.
-  const mk = (bBook: (id: string) => FetchOrderBookResult) => buildExecutableLiquidityCohort({
-    readSource: async () => ({ asOfMs: ASOF, rows: twoTokenRows() }),
-    readProviderEvent: pairProvider,
-    fetchBooks: async (ids) => ids.map((id) => id === "tok-1-b" ? bBook(id) : book(id, 60)),
-    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
-  });
-  const deeper = await mk((id) => book(id, 900));
-  assert.deepEqual(deeper.selection.selected.map((s) => s.event.tokenId), ["tok-1-b"]);
-  const capped = await mk((id) => book(id, 900, ASOF + 60_000, 0.7));
-  assert.deepEqual(capped.selection.selected.map((s) => s.event.tokenId), ["tok-1-a"]);
-  assert.ok(capped.rejected.some((x) => x.reason.startsWith("NOT_EXECUTABLE:") && x.tokenId === "tok-1-b"));
+test("missing / stale / non-causal quotes never become executable", () => {
+  assert.equal(measureResearchLiquidity(tok(), null, SNAP).state, "UNKNOWN_BOOK_MISSING");
+  assert.equal(measureResearchLiquidity(tok(), { ok: false, tokenId: "tok-1-a", latencyMs: 1, errorCode: "TIMEOUT" }, SNAP).state, "UNKNOWN_BOOK_MISSING");
+  assert.equal(measureResearchLiquidity(tok(), book("other", [[0.5, 1000]]), SNAP).state, "UNKNOWN_BOOK_MISSING");             // wrong token book
+  assert.equal(measureResearchLiquidity(tok(), book("tok-1-a", [[0.5, 1000]], { providerTs: null }), SNAP).state, "UNKNOWN_QUOTE_TIMESTAMP");
+  const noCompletion = book("tok-1-a", [[0.5, 1000]]); delete noCompletion.responseCompletedAtMs;
+  assert.equal(measureResearchLiquidity(tok(), noCompletion, SNAP).state, "UNKNOWN_QUOTE_TIMESTAMP");
+  // A book from before the source snapshot (e.g. reused/cached) is not causal evidence for this snapshot.
+  assert.equal(measureResearchLiquidity(tok(), book("tok-1-a", [[0.5, 1000]], { completedAt: SNAP - 1 }), SNAP).state, "QUOTE_BEFORE_SOURCE_SNAPSHOT");
+  // A present-day book cannot reconstruct an earlier decision: completion or provider timestamp after the cutoff.
+  const nearStart = tok("tok-1-a", startIn(1.6)); // cutoff = REF + 0.1h
+  assert.equal(measureResearchLiquidity(nearStart, book("tok-1-a", [[0.5, 1000]], { completedAt: REF + 0.2 * H }), SNAP).state, "QUOTE_AFTER_T90");
+  assert.equal(measureResearchLiquidity(nearStart, book("tok-1-a", [[0.5, 1000]], { completedAt: REF + 60_000, providerTs: REF + 0.2 * H }), SNAP).state, "QUOTE_AFTER_T90");
 });
 
-test("repair: provider pair validation stays fail-closed for every preserved token candidate", async () => {
-  const r = await buildExecutableLiquidityCohort({
-    readSource: async () => ({ asOfMs: ASOF, rows: [...twoTokenRows(), row({ n: 2, selected_token_id: "tok-2-a" }), row({ n: 2, selected_token_id: "typo-token", item_observation_id: "item-2x" })] }),
-    readProviderEvent: pairProvider,
-    fetchBooks: async (ids) => ids.map((id) => book(id, 500)),
-    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
-  });
-  assert.equal(r.providerConfirmedN, 3);
-  const bad = r.rejected.find((x) => x.reason === "SELECTED_TOKEN_NOT_IN_PROVIDER_PAIR");
-  assert.deepEqual(bad && [bad.subject, bad.tokenId], ["0xc2", "typo-token"]);
-  // event 1 (two tokens) and event 2 (one valid token): exactly one final candidate per physical event
-  const ids = r.selection.selected.map((s) => s.event.physicalEventId);
-  assert.equal(ids.length, 2);
-  assert.equal(new Set(ids).size, 2);
+test("LIVE Queue view is computed from the Queue's own constants and is not the research verdict", () => {
+  const b = book("tok-1-a", [[0.5, 1000]]);
+  const lq = liveQueueView(tok(), b);
+  assert.equal(QUEUE_MAX_ENTRY_PRICE, 0.555);
+  assert.equal(lq.state, "EXECUTABLE"); assert.equal(lq.adaptiveHeadroom, "NOT_EVALUATED");
 });
 
-test("repair: quotas 50/25/25, explicit underfill and one-per-physical-event hold when every condition carries both tokens", () => {
-  seq = 0;
-  const pool: EvaluatedCandidate[] = [];
-  const both = (sport: string, depth: number) => {
-    const a = evaluated(sport, depth);
-    pool.push(a, { ...a, tokenId: `${a.tokenId}-opp`, oppositeTokenId: a.tokenId, book: bookEvidence({ ...a, tokenId: `${a.tokenId}-opp` }, book(`${a.tokenId}-opp`, depth + 7)) });
+// ── selection fixtures ──────────────────────────────────────────────────────────────────────────────────────────
+let seq = 0;
+/** One physical event with one binary condition: token a has `depthA` executable depth at 0.50, token b at `priceB`. */
+function event(sport: string, depthA: number, over: { priceB?: number; depthB?: number; minOrderB?: number; start?: string; pid?: string } = {}): MeasuredToken[] {
+  const n = ++seq;
+  const start = over.start ?? startIn(10);
+  const pid = over.pid ?? `phys-${String(n).padStart(4, "0")}`;
+  const mk = (side: "a" | "b", asks: Array<[number, number]>, minOrder = 5): MeasuredToken => {
+    const t: InventoryToken = {
+      conditionId: `0xe${n}`, tokenId: `tok-${n}-${side}`, outcome: side === "a" ? "Home" : "Away", oppositeTokenId: `tok-${n}-${side === "a" ? "b" : "a"}`,
+      physicalEventId: pid, providerEventId: `ev${n}`, providerGameId: `g${n}`, eventStartIso: start, sportFamily: sport,
+      providerMarketType: "MONEYLINE", providerMarketFamily: "MONEYLINE", providerMarketSlug: null,
+      sourceSelected: side === "a", source: side === "a" ? source({ conditionId: `0xe${n}`, tokenId: `tok-${n}-a`, sportFamily: sport }) : null,
+    };
+    const b = book(t.tokenId, asks, { minOrder });
+    return { ...t, research: measureResearchLiquidity(t, b, SNAP), liveQueue: liveQueueView(t, b) };
   };
-  for (let i = 0; i < 60; i++) both("soccer", 100 + i);
-  for (let i = 0; i < 30; i++) both("tennis", 100 + i);
-  for (let i = 0; i < 4; i++) both("basketball", 100 + i);
-  const fwd = selectExecutableLiquidityCohort(pool, ASOF);
-  const rev = selectExecutableLiquidityCohort([...pool].reverse(), ASOF);
-  assert.deepEqual(fwd.selected.map((s) => [s.event.conditionId, s.event.tokenId]), rev.selected.map((s) => [s.event.conditionId, s.event.tokenId]));
-  assert.equal(fwd.diagnostics.soccer_selected_n, 50);
-  assert.equal(fwd.diagnostics.tennis_selected_n, 25);
-  assert.equal(fwd.diagnostics.other_selected_n, 4);
-  assert.equal(fwd.diagnostics.other_quota_underfill_n, 21);
-  assert.equal(fwd.diagnostics.global_backfill_n, 0);
-  assert.equal(new Set(fwd.selected.map((s) => s.event.physicalEventId)).size, fwd.selected.length);
-  assert.ok(fwd.selected.every((s) => s.event.tokenId.endsWith("-opp")), "the deeper (+7) opposing token wins every event");
-  assert.equal(fwd.rejected.filter((x) => x.reason === "EVENT_OPPOSING_TOKEN_LOWER_LIQUIDITY").length, 94);
-});
-
-test("repair: selection input is only source identity + quote evidence; no outcome, settlement or post-decision field exists", () => {
-  const src = readFileSync("lib/research/executableLiquidityCohortT90.ts", "utf8");
-  assert.deepEqual(Object.keys(row({ n: 1 })).sort(), [
-    "condition_id", "entry_price_num", "game_start_iso", "ingested_at", "item_observation_id", "market_type", "metric_formula_version", "observation_id",
-    "observed_at", "pre_event_score_num", "provider_event_id", "provider_sport_family", "selected_outcome", "selected_token_id",
-  ]);
-  const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-  assert.doesNotMatch(code, /settle|resolved|winner|payout|pnl|outcome_current|final_score|result_label/i);
-  // the ranking comparator reads only depth, start, and identity keys
-  const cmpBody = src.slice(src.indexOf("export function compareExecutableLiquidity"), src.indexOf("export function selectExecutableLiquidityCohort"));
-  assert.doesNotMatch(cmpBody, /score|entryPrice|observedAt|ingestedAt|outcome/);
-});
-
-test("repair: source and CLOB timestamps are never presented as a DB-owned decision time", () => {
-  const src = readFileSync("lib/research/executableLiquidityCohortT90.ts", "utf8");
-  const runner = readFileSync("scripts/research-t90-liquidity-cohort.ts", "utf8");
-  for (const code of [src, runner]) assert.doesNotMatch(code, /decision_at|decisionAt|decision_time|decided_at|server_decision/i);
-  const c = source();
-  const b = bookEvidence(c, book("tok-1-a", 500));
-  // timestamps keep their provenance-bearing names: source observed/ingested, and the CLOB response completion
-  assert.ok("observedAt" in c && "ingestedAt" in c);
-  assert.ok("quoteCompletedAtMs" in b && "providerBookTimestampMs" in b);
-  assert.ok(!("decisionAtMs" in b) && !("decisionAt" in c));
-  assert.match(src, /NOT_PROVEN/);
-});
-
-// ── PR #535 B2: research / model / LIVE Queue authority separation ───────────────────────────────────────────────────
-// Fixture model identities are TEST-ONLY labels. No frozen predicate is evaluated here: the injected authority returns the
-// model-owned verdict, which is exactly the contract under test.
-const LIVE_CAP = 0.555;
-const MODEL_CEILING_175_200 = 4 / 7;   // the frozen (0.50, 4/7] upper bound of the LIVE_B family, passed in by the model, not derived
-
-/** One physical event with two opposing tokens; per-token price drives the single ask level of its independent book. */
-function pair(n: number, a: { price: number; usd: number }, b: { price: number; usd: number } | null, sport = "soccer", minOrder = 1) {
-  const mk = (suffix: "a" | "b", q: { price: number; usd: number }) => {
-    const c = source({ conditionId: `0xp${n}`, tokenId: `tok-p${n}-${suffix}`, providerEventId: `evp${n}`, sportFamily: sport, entryPrice: q.price, outcome: suffix === "a" ? "Home" : "Away" });
-    const base = book(c.tokenId, q.usd, ASOF + 60_000, q.price);
-    // minimumOrderSize 1 share isolates the PRICE question; the min-order interaction is pinned separately in B2.10.
-    const result = { ...base, book: { ...(base as { book: object }).book, minimumOrderSize: minOrder } } as FetchOrderBookResult;
-    return { ...c, physicalEventId: `phys-p${n}`, providerGameId: `gp${n}`, oppositeTokenId: `tok-p${n}-${suffix === "a" ? "b" : "a"}`, providerMarketType: "MONEYLINE", providerMarketFamily: "MONEYLINE",
-      providerMarketSlug: null, book: bookEvidence(c, result), bookResult: result } as EvaluatedCandidate;
-  };
-  return [mk("a", a), ...(b ? [mk("b", b)] : [])];
+  return [mk("a", [[0.5, depthA / 0.5]]), mk("b", [[over.priceB ?? 0.52, (over.depthB ?? 100) / (over.priceB ?? 0.52)]], over.minOrderB)];
 }
-const bet = (tokenId: string, ceiling: number | null, id = "TEST_MODEL", version = "1"): ModelEligibility => ({ strategyId: id, strategyVersion: version, decision: "BET", tokenId, entryPriceCeiling: ceiling });
 
-test("B2.1 opposing tokens both stay in the inventory until the book is evaluated; nothing is dropped silently", () => {
-  const [a, b] = pair(1, { price: 0.565, usd: 300 }, { price: 0.44, usd: 100 });
-  assert.equal(a.book.state, "NOT_EXECUTABLE_DEPTH_AT_CAP");   // LIVE Queue fact only
-  const r = selectExecutableLiquidityCohort([a, b], ASOF);
-  assert.deepEqual(r.inventory.map((i) => [i.token_id, i.live_queue_state, i.qualified_by]), [
-    ["tok-p1-a", "NOT_EXECUTABLE_DEPTH_AT_CAP", null], ["tok-p1-b", "EXECUTABLE", "LIVE_QUEUE"],
-  ]);
-  assert.equal(r.selected.length, 1);
-  assert.equal(r.selected[0].event.tokenId, "tok-p1-b");
-  assert.equal(r.diagnostics.model_authority_injected, false);
-  assert.equal(r.diagnostics.model_rescued_candidate_n, 0);
+function fullPool(): MeasuredToken[] {
+  seq = 0;
+  const pool: MeasuredToken[] = [];
+  for (let i = 0; i < 70; i++) pool.push(...event("soccer", 100 + i));
+  for (let i = 0; i < 40; i++) pool.push(...event("tennis", 1000 + i));     // deeper than soccer: must NOT be globally outranked
+  for (const f of ["basketball", "baseball", "hockey", "cricket", "american-football"]) for (let i = 0; i < 8; i++) pool.push(...event(f, 50 + i * (f === "basketball" ? 10 : 1)));
+  return pool;
+}
+
+test("selection: 50/25/25, per-sport rank, other floor then in-pool fill, deterministic under reordering", () => {
+  const pool = fullPool();
+  const a = selectPhysicalEventCohort(pool);
+  const b = selectPhysicalEventCohort([...pool].reverse());
+  assert.equal(cohortDigest(a), cohortDigest(b));
+  assert.deepEqual(a.selected.map((s) => [s.physicalEventId, s.sportRank, s.bucket]), b.selected.map((s) => [s.physicalEventId, s.sportRank, s.bucket]));
+  const d = a.diagnostics as Record<string, number>;
+  assert.equal(d.soccer_selected_n, 50); assert.equal(d.tennis_selected_n, 25); assert.equal(d.other_selected_n, 25);
+  assert.equal(a.selected.length, 100);
+  assert.equal(new Set(a.selected.map((s) => s.physicalEventId)).size, 100);
+  // one anchor per event, the deepest executable token (token b is min-order blocked at 0.52)
+  for (const s of a.selected) { assert.ok(s.anchor.tokenId.endsWith("-a")); assert.equal(s.inventory.length, 2); }
+  // per-sport ranking: top soccer is the deepest soccer event
+  assert.equal(a.selected.filter((s) => s.bucket === "SOCCER")[0].anchor.rankingDepthUsd, 169);
+  const other = a.selected.filter((s) => s.bucket.startsWith("OTHER"));
+  // floor 4 per family (20), then the 5 fill slots go to the deepest remaining "other" events by depth:
+  // basketball 80/70/60, then two tie-broken 57s (start, physical id) — never a soccer/tennis backfill
+  assert.equal(other.filter((s) => s.sportFamily === "basketball").length, 7);
+  assert.equal(other.filter((s) => s.bucket === "OTHER_LIQUIDITY_FILL").length, 5);
+  assert.deepEqual(["baseball", "hockey", "cricket", "american-football"].map((f) => other.filter((s) => s.sportFamily === f).length).sort(), [4, 4, 5, 5]);
+  assert.equal(a.excludedByQuota.filter((e) => e.sportFamily === "soccer").length, 20);
 });
 
-test("B2.2 a model-eligible token above 0.555 is not discarded because of the LIVE cap (and the LIVE view itself is unchanged)", () => {
-  const authority: ModelAuthority = () => [bet("tok-p2-a", MODEL_CEILING_175_200)];
-  // (i) only the above-cap token exists: previously the whole event vanished.
-  const [onlyA] = pair(2, { price: 0.565, usd: 300 }, null);
-  assert.equal(selectExecutableLiquidityCohort([onlyA], ASOF).selected.length, 0);
-  const r = selectExecutableLiquidityCohort([onlyA], ASOF, authority);
-  assert.equal(r.selected.length, 1);
-  assert.equal(r.selected[0].event.tokenId, "tok-p2-a");
-  assert.deepEqual(r.selected[0].event.rank, { source: "MODEL_AUTHORITY", strategyId: "TEST_MODEL", strategyVersion: "1", depthUsd: 300, priceCap: MODEL_CEILING_175_200 });
-  const d = r.selected[0].modelDecisions[0];
-  assert.equal(d.decision, "BET");
-  assert.equal(d.execution.state, "EXECUTABLE");
-  assert.equal(d.execution.priceCap, MODEL_CEILING_175_200);
-  assert.deepEqual(d.liveQueue, { state: "NOT_EXECUTABLE_DEPTH_AT_CAP", executable: false });   // LIVE Queue verdict reported, not applied
-  assert.equal(r.selected[0].event.book.priceCap, LIVE_CAP);
-  assert.equal(r.selected[0].event.book.executable, false);
-  assert.equal(r.diagnostics.model_rescued_candidate_n, 1);
-  // (ii) the rescue never relaxes a token the model did not choose: the cheap sibling keeps its LIVE view only.
-  const [a, b] = pair(3, { price: 0.565, usd: 300 }, { price: 0.44, usd: 100 });
-  const withAuth = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p3-a", MODEL_CEILING_175_200)]);
-  assert.deepEqual(withAuth.inventory.map((i) => i.qualified_by), ["MODEL_AUTHORITY", "LIVE_QUEUE"]);
+test("no cross-sport global backfill: tennis shortage stays an underfill", () => {
+  seq = 0;
+  const pool: MeasuredToken[] = [];
+  for (let i = 0; i < 80; i++) pool.push(...event("soccer", 100 + i));
+  for (let i = 0; i < 3; i++) pool.push(...event("tennis", 10 + i));
+  const c = selectPhysicalEventCohort(pool);
+  const d = c.diagnostics as Record<string, number>;
+  assert.equal(d.soccer_selected_n, 50); assert.equal(d.tennis_selected_n, 3); assert.equal(d.tennis_quota_underfill_n, 22);
+  assert.equal(d.other_quota_underfill_n, 25); assert.equal(d.global_backfill_n, 0);
+  assert.equal(c.selected.length, 53);
 });
 
-test("B2.3 the model owns BET/SKIP and the exact side; the cohort anchor is only a research sampling key", () => {
-  const [a, b] = pair(4, { price: 0.565, usd: 20 }, { price: 0.44, usd: 900 });   // deeper token is NOT the model's side
-  const r = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p4-a", MODEL_CEILING_175_200)]);
-  assert.equal(r.selected[0].event.tokenId, "tok-p4-b");                          // anchor = best depth
-  assert.equal(r.selected[0].modelDecisions[0].tokenId, "tok-p4-a");              // model side = its own
-  assert.equal(r.diagnostics.selected_anchor_differs_from_model_token_n, 1);
-  // SKIP / UNEVALUATED are recorded as given and never promoted to a BET or to an execution claim.
-  const [c] = pair(5, { price: 0.5, usd: 100 }, null);
-  const skip = selectExecutableLiquidityCohort([c], ASOF, () => [{ strategyId: "TEST_MODEL", strategyVersion: "1", decision: "SKIP", tokenId: null, entryPriceCeiling: null }, { strategyId: "OTHER", strategyVersion: "1", decision: "UNEVALUATED", tokenId: null, entryPriceCeiling: null }]);
-  assert.deepEqual(skip.selected[0].modelDecisions.map((d) => [d.strategyId, d.decision, d.execution.state]), [["OTHER", "UNEVALUATED", "NOT_APPLICABLE"], ["TEST_MODEL", "SKIP", "NOT_APPLICABLE"]]);
-  assert.equal(skip.selected[0].event.rank?.source, "LIVE_QUEUE");                // a SKIP changes nothing about research ranking
+test("unknown / blocked inventory makes an event ineligible; anchor uses only the common research measurement", () => {
+  seq = 0;
+  const blocked = event("soccer", 1, { depthB: 1 });                 // both sides < $2.50 depth
+  const c = selectPhysicalEventCohort(blocked);
+  assert.equal(c.selected.length, 0);
+  assert.match(c.rejected[0].reason, /^NO_RESEARCH_EXECUTABLE_TOKEN:/);
+  // opposite token deeper and executable (price 0.45) becomes the anchor; both tokens stay distinct in the inventory
+  seq = 0;
+  const flip = event("soccer", 20, { priceB: 0.45, depthB: 900 });
+  const s = selectPhysicalEventCohort(flip).selected[0];
+  assert.equal(s.anchor.tokenId, "tok-1-b"); assert.equal(s.anchor.rankingDepthUsd, 900);
+  assert.deepEqual(s.inventory.map((t) => [t.tokenId, t.research.state]), [["tok-1-a", "EXECUTABLE"], ["tok-1-b", "EXECUTABLE"]]);
+  assert.notEqual(s.inventory[0].tokenId, s.inventory[0].oppositeTokenId);
 });
 
-test("B2.4 exactly one cohort ranking anchor per physical event, whatever the models choose", () => {
-  const [a, b] = pair(6, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 });
-  const r = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p6-a", MODEL_CEILING_175_200, "S1"), bet("tok-p6-b", LIVE_CAP, "S2")]);
-  assert.equal(r.selected.length, 1);
-  assert.equal(new Set(r.selected.map((s) => s.event.physicalEventId)).size, 1);
-  assert.ok(r.rejected.some((x) => x.reason === "EVENT_OPPOSING_TOKEN_LOWER_LIQUIDITY"));
+test("physical identity conflicts reject the event, never merge it", () => {
+  seq = 0;
+  const x = event("soccer", 300, { pid: "phys-same" });
+  const y = event("tennis", 400, { pid: "phys-same" });
+  const c = selectPhysicalEventCohort([...x, ...y]);
+  assert.equal(c.selected.length, 0);
+  assert.equal(c.rejected[0].reason, "PHYSICAL_EVENT_SPORT_CONTRADICTION");
+  seq = 0;
+  const z = selectPhysicalEventCohort([...event("soccer", 300, { pid: "p" }), ...event("soccer", 300, { pid: "p", start: startIn(11) })]);
+  assert.equal(z.rejected[0].reason, "PHYSICAL_EVENT_START_CONTRADICTION");
 });
 
-test("B2.5 different strategy versions choose different tokens on the same event, each measured at its OWN ceiling (no universal cap)", () => {
-  const [a, b] = pair(7, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 });
-  const r = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p7-b", 0.45, "FAM", "2"), bet("tok-p7-a", MODEL_CEILING_175_200, "FAM", "1")]);
-  const ds = r.selected[0].modelDecisions;
-  assert.deepEqual(ds.map((d) => [d.strategyId, d.strategyVersion, d.tokenId, d.execution.priceCap]), [["FAM", "1", "tok-p7-a", MODEL_CEILING_175_200], ["FAM", "2", "tok-p7-b", 0.45]]);
-  assert.ok(ds.every((d) => d.decision === "BET" && d.execution.executable === true));
-  assert.equal(r.selected[0].event.book.priceCap, LIVE_CAP);                      // LIVE view still 0.555 for every token
-  // a ceiling below the token's ask is NOT executable for THAT model only
-  const tight = selectExecutableLiquidityCohort([a, b], ASOF, () => [bet("tok-p7-a", 0.56, "TIGHT")]);
-  assert.equal(tight.selected[0].modelDecisions[0].execution.state, "NOT_EXECUTABLE_DEPTH_AT_CAP");
-  assert.equal(tight.selected[0].event.tokenId, "tok-p7-b");
-});
+// ── model independence ──────────────────────────────────────────────────────────────────────────────────────────
+const NO_MODELS: ModelAuthority | undefined = undefined;
+const ALL_SKIP: ModelAuthority = () => [{ strategyId: "P50_52_SAFE", strategyVersion: "v1", decision: "SKIP", tokenId: null }];
+const ONE_BET: ModelAuthority = (e) => [{ strategyId: "QUALITY_FILL_D_SAFE", strategyVersion: "v1", decision: "BET", tokenId: e.tokens[e.tokens.length - 1].tokenId }];
+const CONFLICTING: ModelAuthority = (e) => [
+  { strategyId: "P50_52_SAFE", strategyVersion: "v1", decision: "BET", tokenId: e.tokens[0].tokenId },
+  { strategyId: "TENNIS_P50_52_SAFE", strategyVersion: "v1", decision: "BET", tokenId: e.tokens[1].tokenId },
+  { strategyId: "PORTFOLIO_BROAD_SAFE", strategyVersion: "v1", decision: "BET", tokenId: "token-outside-inventory" },
+];
 
-test("B2.6 no future/result/book data reaches the model: the model view holds source facts only", () => {
-  const seen: ModelEventView[] = [];
-  const [a, b] = pair(8, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 });
-  const tainted = { ...a, settlement: "WIN", resolved_at: "2099-01-01", winner: true } as EvaluatedCandidate;
-  selectExecutableLiquidityCohort([tainted, b], ASOF, (v) => { seen.push(v); return []; });
-  assert.equal(seen.length, 1);
-  const keys = new Set(seen[0].tokens.flatMap((t) => Object.keys(t)));
-  assert.deepEqual([...keys].sort(), ["conditionId", "entryPrice", "eventStartIso", "ingestedAt", "observedAt", "oppositeTokenId", "outcome", "providerMarketFamily", "providerMarketType", "score", "sourceMarketType", "sportFamily", "tokenId"]);
-  assert.ok(!JSON.stringify(seen[0]).match(/settle|resolved|winner|book|ask|depth|vwap/i));
-});
+/**
+ * Scenario that broke V1: a soccer event whose ONLY executable book is at 0.58 (outside the common limit) would have been
+ * rescued into the ranking by a model BET carrying its own 0.60 ceiling (book executable there: 1-share venue minimum),
+ * displacing the two shallowest soccer events. Reproduced against V1 head 1f2e4c9 (OLD FAIL) in the PR evidence.
+ */
+function modelRescueScenario(): MeasuredToken[] {
+  seq = 0;
+  const pool: MeasuredToken[] = [];
+  for (let i = 0; i < 50; i++) pool.push(...event("soccer", 100 + i));
+  for (let i = 0; i < 2; i++) pool.push(...event("soccer", 1, { priceB: 0.58, depthB: 5000, minOrderB: 1 }));
+  return pool;
+}
 
-test("B2.7 identical input -> identical result in any input order", () => {
-  const authority: ModelAuthority = (v) => v.tokens.length > 1 ? [bet(v.tokens[0].tokenId, MODEL_CEILING_175_200, "S1"), bet(v.tokens[1].tokenId, LIVE_CAP, "S2")] : [];
-  const pool = [...pair(9, { price: 0.565, usd: 300 }, { price: 0.43, usd: 250 }), ...pair(10, { price: 0.5, usd: 120 }, { price: 0.5, usd: 80 }), ...pair(11, { price: 0.565, usd: 40 }, null)];
-  const x = selectExecutableLiquidityCohort(pool, ASOF, authority);
-  const y = selectExecutableLiquidityCohort([...pool].reverse(), ASOF, authority);
-  assert.equal(JSON.stringify(x), JSON.stringify(y));
-  assert.equal(JSON.stringify(x), JSON.stringify(selectExecutableLiquidityCohort(pool, ASOF, authority)));
-});
-
-test("B2.8 unknown execution authority stays UNKNOWN: never EXECUTABLE, never a BET, never a rescue", () => {
-  const [onlyA] = pair(12, { price: 0.565, usd: 300 }, null);
-  for (const ceiling of [null, 0, -1, 1.2, Number.NaN]) {
-    const r = selectExecutableLiquidityCohort([onlyA], ASOF, () => [bet("tok-p12-a", ceiling as number | null)]);
-    assert.equal(r.selected.length, 0, String(ceiling));
-    assert.equal(r.diagnostics.model_decision_unknown_n, 1);
-    assert.equal(r.diagnostics.model_rescued_candidate_n, 0);
-  }
-  const live = pair(13, { price: 0.5, usd: 100 }, null)[0];
-  const d = selectExecutableLiquidityCohort([live], ASOF, () => [bet("tok-p13-a", null), bet("tok-not-there", MODEL_CEILING_175_200, "GHOST")]).selected[0].modelDecisions;
-  assert.deepEqual(d.map((x) => [x.strategyId, x.decision, x.execution.state, x.execution.executable]), [
-    ["GHOST", "UNKNOWN", "MODEL_TOKEN_NOT_IN_INVENTORY", null], ["TEST_MODEL", "UNKNOWN", "UNKNOWN_EXECUTION_AUTHORITY", null],
-  ]);
-  // book missing -> UNKNOWN_BOOK_UNAVAILABLE, not executable, not rescued
-  const noBook = { ...onlyA, bookResult: null } as EvaluatedCandidate;
-  const nb = selectExecutableLiquidityCohort([noBook], ASOF, () => [bet("tok-p12-a", MODEL_CEILING_175_200)]);
-  assert.equal(nb.selected.length, 0);
-  assert.equal(nb.rejected.find((x) => x.subject === "0xp12")?.reason, "NOT_EXECUTABLE:NOT_EXECUTABLE_DEPTH_AT_CAP");
-});
-
-test("B2.9 orchestrator passes the model authority through and keeps the raw book for the model's own ceiling", async () => {
-  const rows = [row({ n: 1, selected_token_id: "tok-1-a", entry_price_num: 0.565 })];
-  const r = await buildExecutableLiquidityCohort({
-    readSource: async () => ({ asOfMs: ASOF, rows }),
-    readProviderEvent: async () => [providerMarket()],
-    fetchBooks: async (ids) => ids.map((id) => { const b = book(id, 300, ASOF + 60_000, 0.565); return { ...b, book: { ...(b as { book: object }).book, minimumOrderSize: 1 } } as FetchOrderBookResult; }),
-    fetchFee: async (tokenId) => ({ ok: false, tokenId, errorCode: "TEST_NO_FEE", latencyMs: 0 }),
-    modelAuthority: () => [bet("tok-1-a", MODEL_CEILING_175_200)],
+test("OLD FAIL / NEW PASS: the physical cohort is identical under no models, all SKIP, one BET and conflicting BETs", () => {
+  const pool = modelRescueScenario();
+  const digests = [NO_MODELS, ALL_SKIP, ONE_BET, CONFLICTING].map((authority) => {
+    const cohort = selectPhysicalEventCohort(pool);          // the selector has no model input at all
+    const before = cohortDigest(cohort);
+    const decisions = attachModelDecisions(cohort, authority);
+    assert.equal(cohortDigest(cohort), before, "attaching model decisions must not change the cohort");
+    if (authority === CONFLICTING) {
+      assert.ok(decisions.some((d) => d.status === "MODEL_TOKEN_NOT_IN_INVENTORY"));
+      // different frozen models may choose different tokens of the SAME selected event; the anchor is not locked for them
+      const perEvent = decisions.filter((d) => d.physicalEventId === cohort.selected[0].physicalEventId && d.status === "RECORDED");
+      assert.equal(new Set(perEvent.map((d) => d.tokenId)).size, 2);
+    }
+    return { digest: before, ids: cohort.selected.map((s) => [s.physicalEventId, s.sportRank, s.bucket]) };
   });
-  assert.equal(r.selection.selected.length, 1);
-  assert.equal(r.selection.selected[0].event.rank?.source, "MODEL_AUTHORITY");
-  assert.equal(r.selection.selected[0].event.book.executable, false);
+  for (const d of digests) assert.deepEqual(d, digests[0]);
+  // the 0.58-only events are not rescued and the 50 executable soccer events fill the quota
+  const cohort = selectPhysicalEventCohort(pool);
+  assert.equal(cohort.selected.length, 50);
+  assert.ok(cohort.selected.every((s) => s.inventory.some((t) => t.research.executable)));
+  const deep058 = pool.filter((t) => t.tokenId.endsWith("-b") && t.research.bestAsk === 0.58);
+  assert.deepEqual(deep058.map((t) => t.research.state), ["BLOCKED_DEPTH_AT_LIMIT", "BLOCKED_DEPTH_AT_LIMIT"]);
+  assert.ok(deep058.every((t) => !cohort.selected.some((s) => s.physicalEventId === t.physicalEventId)));
 });
 
-test("B2.10 documented limitation: the fixed $2.50 research stake still meets the venue min order only up to price 2.50/minOrder (unchanged LIVE stake rule)", () => {
-  // minimumOrderSize 5 shares => $2.50 buys 5 shares only at price <= 0.50. Above that the LIVE Queue raises the stake (<= $4.00);
-  // this research module deliberately does NOT (no invented stake). The model-ceiling view therefore reports it, never hides it.
-  const [onlyA] = pair(14, { price: 0.565, usd: 300 }, null, "soccer", 5);
-  const r = selectExecutableLiquidityCohort([onlyA], ASOF, () => [bet("tok-p14-a", MODEL_CEILING_175_200)]);
-  assert.equal(r.selected.length, 0);
-  assert.equal(r.diagnostics.model_decision_n, 1);
-  const [a] = pair(15, { price: 0.565, usd: 300 }, null, "soccer", 5);
-  const d = resolveModelDecisions("phys-p15", [a], () => [bet("tok-p15-a", MODEL_CEILING_175_200)])[0];
-  assert.equal(d.execution.state, "NOT_EXECUTABLE_MIN_ORDER_SIZE");
-  assert.equal(d.execution.executable, false);
+test("a model authority cannot mutate the frozen cohort", () => {
+  const cohort = selectPhysicalEventCohort(modelRescueScenario());
+  const before = cohortDigest(cohort);
+  const evil: ModelAuthority = (e) => { (e.tokens as unknown as unknown[]).length = 0; return []; };
+  assert.throws(() => attachModelDecisions(cohort, evil));
+  assert.throws(() => { (cohort.selected as unknown[]).pop(); });
+  assert.equal(cohortDigest(cohort), before);
+});
+
+test("the selector source has no model, strategy or Queue-headroom dependency", () => {
+  const src = readFileSync(new URL("../../lib/research/executableLiquidityCohortT90.ts", import.meta.url), "utf8");
+  const selector = src.slice(src.indexOf("export function selectPhysicalEventCohort"), src.indexOf("// ── canonical digest"));
+  assert.doesNotMatch(selector, /ModelAuthority|authority|strategy|QUEUE_|liveQueue\.|hardCap/);
+  const measure = src.slice(src.indexOf("export function measureResearchLiquidity"), src.indexOf("export function liveQueueView"));
+  assert.doesNotMatch(measure, /hardCap/);
+  assert.match(measure, /buildExecutableSiblingColumns\(\{ token: \{[^}]*\}, result, fee: null \}\)/);
+  assert.doesNotMatch(src.replace(/\/\/.*$/gm, ""), /QUEUE_ADAPTIVE|parentEventVolume24hr|4\.00?\b/);
+});
+
+// ── orchestration + receipt ─────────────────────────────────────────────────────────────────────────────────────
+function deps(rows: SourceRow[], markets: Record<string, ProviderMarket[]>, books: (ids: string[]) => FetchOrderBookResult[]) {
+  return {
+    readSource: async () => ({ rows, timing: { ...TIMING, httpDateProxyMs: REF + 1_000, snapshotReadCompletedLocalMs: SNAP } }),
+    readProviderEvent: async (eventId: string) => markets[eventId] ?? [],
+    fetchBooks: async (ids: string[]) => books(ids),
+    fetchFee: async () => ({ ok: true as const, takerRate: 0.01, formulaVersion: "f" }) as never,
+  };
+}
+
+test("runner path: inventory expansion, real selector, receipt faithfully represents selector output without raw payloads", async () => {
+  const rows = [row({ n: 1 }), row({ n: 2, provider_sport_family: "tennis", market_type: "moneyline" }), row({ n: 3, selected_token_id: "tok-3-typo" })];
+  const markets: Record<string, ProviderMarket[]> = {
+    "ev-1": [providerMarket()],
+    "ev-2": [providerMarket({ provider_event_id: "ev-2", condition_id: "0xc2", clob_token_ids: ["tok-2-a", "tok-2-b"], provider_game_id: "g2" })],
+    "ev-3": [providerMarket({ provider_event_id: "ev-3", condition_id: "0xc3", clob_token_ids: ["tok-3-a", "tok-3-x"], provider_game_id: "g3" })],
+  };
+  // tok-1-b (not source-selected) is the deepest side of event 1; event 3 source token is outside the provider pair
+  const depth: Record<string, Array<[number, number]>> = { "tok-1-a": [[0.5, 100]], "tok-1-b": [[0.45, 2000]], "tok-2-a": [[0.5, 400]], "tok-2-b": [[0.6, 400]] };
+  const run = await buildExecutableLiquidityCohort(deps(rows, markets, (ids) => ids.map((id) => ({ ...book(id, depth[id] ?? []), book: { ...book(id, depth[id] ?? []).book!, raw: { secret: "RAW" } } }))));
+  assert.equal(run.funnel.inventory_tokens, 4);
+  assert.equal(run.funnel.inventory_tokens_not_source_selected, 2);
+  assert.equal(run.rejected.find((r) => r.subject === "0xc3")?.reason, "SOURCE_TOKEN_NOT_IN_PROVIDER_PAIR");
+  const receipt = buildCohortReceipt(run, REF + 120_000);
+  assert.equal(receipt.cohort_digest, cohortDigest(run.cohort));
+  assert.deepEqual(receipt.selected.map((s) => [s.physical_event_id, s.sport_rank, s.anchor.token_id]), run.cohort.selected.map((s) => [s.physicalEventId, s.sportRank, s.anchor.tokenId]));
+  const soccer = receipt.selected.find((s) => s.sport === "soccer")!;
+  assert.equal(soccer.anchor.token_id, "tok-1-b"); assert.equal(soccer.anchor.is_betting_side, false);
+  assert.deepEqual(soccer.inventory.map((t) => [t.token_id, t.source.selected_by_source, t.research.state]), [["tok-1-a", true, "EXECUTABLE"], ["tok-1-b", false, "EXECUTABLE"]]);
+  const tennis = receipt.selected.find((s) => s.sport === "tennis")!;
+  assert.equal(tennis.inventory.find((t) => t.token_id === "tok-2-b")!.research.state, "BLOCKED_DEPTH_AT_LIMIT");
+  const text = JSON.stringify(receipt);
+  assert.doesNotMatch(text, /RAW|apikey|Bearer|service_role/i);
+  // timing labels: no proxy or local time is presented as DB decision_at
+  assert.equal(receipt.timing.db_decision_at, null);
+  assert.match(receipt.timing.http_date_proxy_kind, /PROXY_NOT_DECISION_AT/);
+  assert.match(receipt.timing.db_source_ingest_watermark_kind, /NOT_DECISION_AT/);
+  assert.match(receipt.timing.first_broken_timing_edge, /^DB_OWNED_DECISION_AT/);
+  assert.match(receipt.status, /^PARTIAL_NOT_PROVEN_AUTHORITY/);
+  assert.equal(receipt.unresolved_authority.research_price_limit_independent_of_live_queue, "NOT_PROVEN");
+  assert.equal(receipt.is_db_persistence, false);
+});
+
+test("runner wiring: the script uses the real selector and receipt builder, fail-closed clone identity, GET only", () => {
+  const src = readFileSync(new URL("../../scripts/research-t90-liquidity-cohort.ts", import.meta.url), "utf8");
+  assert.match(src, /buildExecutableLiquidityCohort\(\{ readSource \}\)/);
+  assert.match(src, /buildCohortReceipt\(run,/);
+  assert.match(src, /REFUSING_NON_CLONE_TARGET/);
+  assert.match(src, /CLONE_REF = "nppznoujvnyjargjkmnv"/);
+  assert.match(src, /ingested_at=lte\./);
+  assert.doesNotMatch(src, /method:\s*"(POST|PATCH|PUT|DELETE)"|modelAuthority|SELECT \*|select=\*/);
 });
