@@ -12,6 +12,7 @@ import { createHash } from "node:crypto";
 import type { FetchOrderBookResult } from "../liquidity/types";
 import { t90CutoffMs } from "./executableLiquidityCohortT90";
 import { causalEdge, sourceRowEdge, type ModelEventDecision, type ModelRef } from "./forwardModelDecisionsT90";
+import { frozenExecutionPriceProof, type V4EvidenceRow } from "../../scripts/modeling/prospective-selection-shadow";
 
 export const FORWARD_DECISION_V2 = Object.freeze({
   version: "FORWARD_DECISION_V2",
@@ -108,6 +109,8 @@ export type BuildContext = {
   cohortDigest: string;
   /** Registered independent actual-start evidence; null = scheduled-only (PROVISIONAL). Never inferred. */
   authoritativeStart: { atIso: string; source: "OFFICIAL_SOURCE_CONFIRMED_START" | "PROVIDER_PUBLISHED_ACTUAL_START" } | null;
+  /** The exact model-selected source row, for re-evaluating its picked frozen tier at worst ask. */
+  priceSource?: V4EvidenceRow | null;
 };
 
 function identityEdge(model: Pick<ModelRef, "modelId" | "modelVersion">, ctx: BuildContext): string | null {
@@ -141,8 +144,17 @@ export function buildV2BetRow(decision: ModelEventDecision, fill: VirtualFill, c
   if (fill.providerQuoteAtMs > ctx.decisionGeneratedAtMs) return { ok: false, reason: "QUOTE_AFTER_DECISION_GENERATION" };
   if (fill.providerQuoteAtMs > t90CutoffMs(decision.eventStartIso)) return { ok: false, reason: "QUOTE_AFTER_T90" };
   if (!(bet.entryPrice > 0 && bet.entryPrice < 1)) return { ok: false, reason: "MODEL_ENTRY_PRICE_INVALID" };
+  if (!bet.providerGameId?.trim()) return { ok: false, reason: "PROVIDER_ROOT_GAME_ID_UNPROVEN" };
+  const source = ctx.priceSource;
+  if (!source || source.condition_id !== bet.conditionId || source.selected_token_id !== bet.tokenId || source.observed_at !== bet.observedAt
+    || Number(source.entry_price_num) !== bet.entryPrice || source.observation_id !== bet.sourceRow!.observationId
+    || source.item_observation_id !== bet.sourceRow!.itemObservationId || source.provider_event_id !== bet.providerEventId
+    || source.game_start_iso !== decision.eventStartIso) return { ok: false, reason: "QUOTE_EXECUTION_PRICE_AUTHORITY_UNPROVEN" };
+  const price = frozenExecutionPriceProof(decision.modelId, source, fill.worstAsk);
+  if (!price) return { ok: false, reason: "QUOTE_EXECUTION_PRICE_AUTHORITY_UNPROVEN" };
+  if (!price.accepted) return { ok: false, reason: "QUOTE_OUTSIDE_SELECTED_FROZEN_TIER" };
   const digest = definitionDigestOf(decision.modelVersion)!;
-  const key = bet.modelPhysicalEventKey;
+  const key = `${decision.sportFamily}:root:${bet.providerGameId}`;
   const row: V2BetRow = {
     row_key: betRowKey(decision.modelId, key), row_kind: "LEDGER", contract_version: FORWARD_DECISION_V2.version, decision_kind: "BET",
     model_id: decision.modelId, model_version: decision.modelVersion, definition_digest: digest, source_sha: ctx.sourceSha!,
@@ -150,7 +162,8 @@ export function buildV2BetRow(decision: ModelEventDecision, fill: VirtualFill, c
     decision_timestamp: bet.observedAt, event_start: decision.eventStartIso, scheduled_start_at: decision.eventStartIso,
     authoritative_start_at: ctx.authoritativeStart?.atIso ?? null, authoritative_start_source: ctx.authoritativeStart?.source ?? null,
     entry_price: bet.entryPrice, sport_family: decision.sportFamily, condition_id: bet.conditionId, selected_token_id: bet.tokenId,
-    selected_outcome: bet.outcomeLabel, pre_event_score: bet.cohortSource.score, provider_event_id: bet.modelPhysicalEventKey,
+    selected_outcome: bet.outcomeLabel, pre_event_score: bet.cohortSource.score, provider_event_id: bet.providerEventId,
+    canonical_game_key: key, game_identity_basis: "PROVIDER_ROOT_CONFIRMED", provider_root_game_id: bet.providerGameId, provider_root_game_source: "POLYMARKET_GAMMA_GAME_ID",
     market_type: bet.providerMarketType || null,
     settlement_state: "UNQUERIED", observed_at: bet.observedAt, source_ingested_at: bet.sourceIngestedAt!,
     source_observation_id: bet.sourceRow!.observationId, source_item_observation_id: bet.sourceRow!.itemObservationId,
@@ -162,7 +175,7 @@ export function buildV2BetRow(decision: ModelEventDecision, fill: VirtualFill, c
       cohort: { digest: ctx.cohortDigest, physical_event_id: decision.physicalEventId, t90_cutoff_at: decision.t90CutoffIso },
       model: { id: decision.modelId, version: decision.modelVersion, version_authority: decision.versionAuthority, source_sha: ctx.sourceSha },
       pick: { candidate_identity: bet.candidateIdentity, token_id: bet.tokenId, opposite_token_id: bet.oppositeTokenId, claim_instant: bet.claimInstant, model_entry_price: bet.entryPrice },
-      fill: { shares: fill.shares, gross_cost_usd: fill.grossCostUsd, vwap: fill.vwap, best_ask: fill.bestAsk, worst_ask: fill.worstAsk, levels_used: fill.levelsUsed, price_drift_vs_model_entry: round9(fill.vwap - bet.entryPrice), size_basis: "RESEARCH_VIRTUAL_5_SHARES", price_authority: "MODEL_OWN_FROZEN_RULE_AT_SELECTION" },
+      fill: { shares: fill.shares, gross_cost_usd: fill.grossCostUsd, vwap: fill.vwap, best_ask: fill.bestAsk, worst_ask: fill.worstAsk, levels_used: fill.levelsUsed, price_drift_vs_model_entry: round9(fill.vwap - bet.entryPrice), size_basis: "RESEARCH_VIRTUAL_5_SHARES", price_authority: price },
       fees: { state: FORWARD_DECISION_V2.fee, note: "not fetched, not assumed zero" },
     },
   };

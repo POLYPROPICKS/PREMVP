@@ -173,6 +173,33 @@ function capModel(model: (typeof MODEL_IDS)[number], bets: SelectedCandidate[], 
   return applyDailyCap(bets, CAP).filter((candidate) => candidate.day === date);
 }
 
+/** Founder P538 V2 authorization: execution must satisfy the SAME selected frozen tier, without slippage.
+ * The frozen selectors remain unchanged. Re-evaluate their actual tier function, changing only price.
+ */
+export function frozenExecutionPriceProof(modelId: string, source: V4EvidenceRow, worstAsk: number) {
+  if (!(MODEL_IDS as readonly string[]).includes(modelId)) return null;
+  const candidates = toSettlementFreeDecisionTimeCandidates([toScorecardRow(source)]);
+  const { safeUniverse } = buildSafeUniverse(candidates, identityLookupFor([source]));
+  if (safeUniverse.length !== 1 || !Number.isFinite(worstAsk)) return null;
+  const candidate = safeUniverse[0];
+  const date = new Date(Date.parse(source.observed_at) + 3 * 3_600_000).toISOString().slice(0, 10);
+  const tiers = modelId === "PORTFOLIO_BROAD_SAFE" ? PORTFOLIOS.find((p) => p.id === "PORTFOLIO_BROAD")?.tiers
+    : modelId === "QUALITY_FILL_A_SAFE" ? QUALITY_PORTFOLIOS.QUALITY_FILL_A
+    : modelId === "QUALITY_FILL_D_SAFE" ? QUALITY_PORTFOLIOS.QUALITY_FILL_D : null;
+  const picked = tiers ? tiers.findIndex((predicate) => predicate(candidate as unknown as Parameters<NonNullable<typeof tiers>[number]>[0])) + 1
+    : selectedByModel([source], date).capped.get(modelId as (typeof MODEL_IDS)[number])?.length ? 1 : 0;
+  if (picked === 0) return null;
+  // These bounds describe the existing predicates and are independently checked against them below.
+  const [lower, upper] = modelId === "PORTFOLIO_BROAD_SAFE" && picked === 3 ? [0.52, 0.54]
+    : (modelId === "QUALITY_FILL_A_SAFE" || modelId === "QUALITY_FILL_D_SAFE") && picked === 2 ? [0.50, 0.54]
+    : modelId === "QUALITY_FILL_D_SAFE" && picked === 4 ? [0.54, 0.60] : [0.50, 0.52];
+  const quoted = { ...candidate, entryPrice: worstAsk };
+  const accepted = tiers ? tiers[picked - 1](quoted as unknown as Parameters<NonNullable<typeof tiers>[number]>[0])
+    : (selectedByModel([{ ...source, entry_price_num: worstAsk }], date).capped.get(modelId as (typeof MODEL_IDS)[number])?.length ?? 0) === 1;
+  if (accepted !== (worstAsk >= lower && worstAsk < upper)) return null;
+  return { rule: "FOUNDER_P538_SAME_SELECTED_TIER_WORST_ASK", model_id: modelId, picked_tier: picked, lower, upper, worst_ask: worstAsk, accepted };
+}
+
 function applyLiveMixAllocationForDate(bets: SelectedCandidate[], date: string): SelectedCandidate[] {
   return applyLiveMixAllocation(bets, [date], QUALITY_FILL_A_SAFE_MIX_CONFIGS[CAP]);
 }

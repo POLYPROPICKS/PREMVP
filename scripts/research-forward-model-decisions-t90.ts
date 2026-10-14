@@ -636,7 +636,9 @@ async function runPersistV2(a: PersistArgs) {
   type Planned = { kind: "BET" | "SKIP"; key: string; d: ModelEventDecision; row: Record<string, unknown> };
   const planned: Planned[] = [];
   for (const c of betReport.candidates) {
-    const built = buildV2BetRow(c.d, c.fill, ctxOf(c.d));
+    const cited = c.d.bet!.sourceRow!;
+    const priceSource = a.safeRows.find((r) => r.observation_id === cited.observationId && r.item_observation_id === cited.itemObservationId) ?? null;
+    const built = buildV2BetRow(c.d, c.fill, { ...ctxOf(c.d), priceSource });
     if (!built.ok) { betReport.builder_blocked.push(built.reason); continue; }
     planned.push({ kind: "BET", key: built.row.row_key as string, d: c.d, row: built.row });
   }

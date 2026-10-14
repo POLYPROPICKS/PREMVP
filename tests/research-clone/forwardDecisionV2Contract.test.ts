@@ -36,15 +36,18 @@ function decision(over: Partial<ModelEventDecision> = {}, betOver: Record<string
       candidateIdentity: `cond-1::tok-1::${iso(T0 - 600_000)}`, conditionId: "cond-1", tokenId: "tok-1", observedAt: iso(T0 - 600_000), eventStart: iso(eventStartMs),
       entryPrice: 0.51, modelPhysicalEventKey: "prov-evt-1", sourceIngestedAt: iso(T0 - 590_000),
       sourceRow: { observationId: "obs-1", itemObservationId: "item-1", ingestedAt: iso(T0 - 590_000), identityRowN: 1, selectorColumnsAgree: true },
-      claimInstant: iso(T0 - 590_000), outcomeLabel: "Player A", oppositeTokenId: "tok-2", providerMarketType: "moneyline", providerEventId: "prov-evt-1",
+      claimInstant: iso(T0 - 590_000), outcomeLabel: "Player A", oppositeTokenId: "tok-2", providerMarketType: "moneyline", providerEventId: "prov-evt-1", providerGameId: "game-1",
       cohortSource: { score: 0.7, entryPrice: 0.51, observedAt: iso(T0 - 600_000), ingestedAt: iso(T0 - 590_000), itemObservationId: "item-1" },
       isCohortAnchor: true, minutesToStartAtDecision: 240, ...betOver,
     },
     ...over,
   } as ModelEventDecision;
 }
-const ctx = (over: Partial<BuildContext> = {}): BuildContext => ({ decisionGeneratedAtMs: T0, sourceSha: SHA, cohortDigest: "cd", authoritativeStart: null, ...over });
-const filled = (over: Partial<Extract<VirtualFill, { state: "FILLED" }>> = {}) => ({ ...(fillVirtualShares("tok-1", book()) as Extract<VirtualFill, { state: "FILLED" }>), ...over });
+const priceSource = (d: ModelEventDecision = decision()) => ({ observation_id: d.bet!.sourceRow!.observationId, item_observation_id: d.bet!.sourceRow!.itemObservationId,
+  observed_at: d.bet!.observedAt, condition_id: d.bet!.conditionId, selected_token_id: d.bet!.tokenId, entry_price_num: d.bet!.entryPrice,
+  pre_event_score_num: 90, provider_event_id: d.bet!.providerEventId, provider_sport_family: d.sportFamily, market_type: "moneyline", event_title: "Player A vs Player B", market_question: "Player A vs Player B", game_start_iso: d.eventStartIso, data_coverage: 1 });
+const ctx = (over: Partial<BuildContext> = {}): BuildContext => ({ decisionGeneratedAtMs: T0, sourceSha: SHA, cohortDigest: "cd", authoritativeStart: null, priceSource: priceSource(), ...over });
+const filled = (over: Partial<Extract<VirtualFill, { state: "FILLED" }>> = {}) => ({ ...(fillVirtualShares("tok-1", book()) as Extract<VirtualFill, { state: "FILLED" }>), worstAsk: 0.519, vwap: 0.5136, grossCostUsd: 2.568, ...over });
 
 describe("5-share virtual fill on the exact token's own asks", () => {
   test("fills exactly 5 shares across levels at real asks and reports the gross cost; no fee is computed", () => {
@@ -58,7 +61,7 @@ describe("5-share virtual fill on the exact token's own asks", () => {
     assert.equal(f.worstAsk, 0.52);
     assert.ok(!("feeUsd" in f));
   });
-  test("fills at the model's own price with NO global cap: a 0.60 ask is filled, not rejected by a 0.555 cap", () => {
+  test("measures a 0.60 ask independently; depth measurement alone never grants model-price authority", () => {
     const f = fillVirtualShares("tok-1", book({ asks: [{ price: 0.6, size: 50 }] }));
     assert.equal(f.state, "FILLED");
     if (f.state === "FILLED") assert.equal(f.grossCostUsd, 3);
@@ -85,6 +88,37 @@ describe("5-share virtual fill on the exact token's own asks", () => {
 });
 
 describe("V2 BET row builder", () => {
+  test("NEW PASS: provider aliases keep one root identity across model definitions; missing roots refuse admission", () => {
+    const first = buildV2BetRow(decision(), filled(), ctx());
+    const alias = decision({ modelVersion: `def-sha256:${DIGEST_B}` }, { providerEventId: "alias-b", modelPhysicalEventKey: "alias-b" });
+    const second = buildV2BetRow(alias, filled(), ctx({ priceSource: priceSource(alias) }));
+    assert.ok(first.ok && second.ok);
+    if (first.ok && second.ok) { assert.equal(first.row.row_key, second.row.row_key); assert.equal(second.row.provider_event_id, "alias-b"); }
+    assert.deepEqual(buildV2BetRow(decision({}, { providerGameId: null }), filled(), ctx()), { ok: false, reason: "PROVIDER_ROOT_GAME_ID_UNPROVEN" });
+  });
+  test("NEW PASS: source 0.51 never licenses five-share worst ask 0.60; upper bound is exclusive and VWAP cannot hide a bad tail", () => {
+    for (const modelId of ["P50_52_SAFE", "TENNIS_P50_52_SAFE", "PORTFOLIO_BROAD_SAFE", "QUALITY_FILL_A_SAFE", "QUALITY_FILL_D_SAFE"]) {
+      const d = decision({ modelId });
+      assert.ok(buildV2BetRow(d, filled({ worstAsk: 0.519 }), ctx()).ok);
+      for (const worstAsk of [0.52, 0.60]) assert.deepEqual(buildV2BetRow(d, filled({ worstAsk, vwap: 0.51 }), ctx()), { ok: false, reason: "QUOTE_OUTSIDE_SELECTED_FROZEN_TIER" });
+    }
+    assert.deepEqual(buildV2BetRow(decision(), filled(), ctx({ priceSource: null })), { ok: false, reason: "QUOTE_EXECUTION_PRICE_AUTHORITY_UNPROVEN" });
+  });
+
+
+  test("portfolio execution keeps its picked tier, including football fill tiers and exclusive ceilings", () => {
+    for (const [modelId, sportFamily, entryPrice, good, bad] of [
+      ["PORTFOLIO_BROAD_SAFE", "tennis", 0.53, 0.539, 0.54],
+      ["QUALITY_FILL_A_SAFE", "soccer", 0.51, 0.539, 0.54],
+      ["QUALITY_FILL_D_SAFE", "soccer", 0.55, 0.599, 0.60],
+    ] as const) {
+      const d = decision({ modelId, sportFamily }, { entryPrice });
+      const c = ctx({ priceSource: priceSource(d) });
+      assert.ok(buildV2BetRow(d, filled({ worstAsk: good, vwap: good, grossCostUsd: good * 5 }), c).ok);
+      assert.deepEqual(buildV2BetRow(d, filled({ worstAsk: bad, vwap: good, grossCostUsd: good * 5 }), c), { ok: false, reason: "QUOTE_OUTSIDE_SELECTED_FROZEN_TIER" });
+    }
+  });
+
   test("carries model_id, definition digest, source SHA, exact token/source-row evidence, 5 shares and NOT_EVALUATED fees", () => {
     const r = buildV2BetRow(decision(), filled(), ctx());
     assert.ok(r.ok);
@@ -102,7 +136,7 @@ describe("V2 BET row builder", () => {
     assert.equal(row.fee_state, "NOT_EVALUATED");
     assert.equal(row.net_state, "NOT_EVALUATED");
     assert.equal(row.executable_price_authority, "CLOB_DEPTH_VWAP");
-    assert.equal(row.economic_unit_key, "PE:prov-evt-1");
+    assert.equal(row.economic_unit_key, "PE:tennis:root:game-1");
     assert.equal(row.entry_price, 0.51, "the model's own frozen price is preserved, never replaced by a global cap");
     assert.equal("first_persisted_at" in row, false, "the client never supplies first_persisted_at");
     assert.equal("minutes_to_start" in row, false);
@@ -235,7 +269,7 @@ before(() => {
     if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if; end $$;`);
   for (const db of [dbNew, dbOld]) {
     q(db, BASE); q(db, TIMEOUTS + FIRST); q(db, TIMEOUTS + V1);
-    q(db, legacySeed("legacy-1", "P50_52_SAFE", "evt-legacy") + legacySeed("legacy-2", "TENNIS_P50_52_SAFE", "evt-legacy-2")
+    q(db, legacySeed("legacy-1", "P50_52_SAFE", "evt-legacy") + legacySeed("legacy-2", "HIST_TENNIS_SAFE", "evt-legacy-2")
       + v1Seed("v1-1", "QUALITY_FILL_A_SAFE", "evt-v1", "game-v1"));
   }
   startMs = Number(q(dbNew, "select (extract(epoch from now())*1000)::bigint"));
@@ -256,13 +290,13 @@ function dbBet(db: string, o: { model?: string; digest?: string; event?: string;
   const now = dbNowMs(db);
   const start = now + (o.startOffsetMin ?? 240) * 60_000;
   const observed = now - (o.observedAgoMin ?? 10) * 60_000;
-  const d = decision({ modelId: o.model ?? "P50_52_SAFE", modelVersion: `def-sha256:${o.digest ?? DIGEST_A}` }, {
-    observedAt: iso(observed), sourceIngestedAt: iso(observed + 1000), claimInstant: iso(observed + 1000), eventStart: iso(start), modelPhysicalEventKey: o.event ?? "evt-fresh",
+  const d = decision({ physicalEventId: `root:${o.event ?? "evt-fresh"}`, modelId: o.model ?? "PORTFOLIO_BROAD_SAFE", modelVersion: `def-sha256:${o.digest ?? DIGEST_A}` }, {
+    observedAt: iso(observed), sourceIngestedAt: iso(observed + 1000), claimInstant: iso(observed + 1000), eventStart: iso(start), modelPhysicalEventKey: o.event ?? "evt-fresh", providerGameId: o.event ?? "evt-fresh",
     candidateIdentity: `cond-1::tok-1::${iso(observed)}`,
     sourceRow: { observationId: "obs-1", itemObservationId: "item-1", ingestedAt: iso(observed + 1000), identityRowN: 1, selectorColumnsAgree: true },
   }, start);
   const f = filled({ providerQuoteAtMs: now - 5000 });
-  const r = buildV2BetRow(d, f, ctx({ decisionGeneratedAtMs: now }));
+  const r = buildV2BetRow(d, f, ctx({ decisionGeneratedAtMs: now, priceSource: priceSource(d) }));
   assert.ok(r.ok, JSON.stringify(r));
   const row = { ...(r.ok ? r.row : {}) } as Record<string, unknown>;
   o.mutate?.(row);
@@ -272,7 +306,7 @@ function dbSkip(db: string, o: { model?: string; digest?: string; event?: string
   const now = dbNowMs(db);
   const start = now + (o.startOffsetMin ?? 240) * 60_000;
   const observed = now - 600_000;
-  const d = decision({ outcome: "SKIP", reason: "MODEL_PREDICATE_EVALUATED_NOT_SELECTED", bet: null, modelId: o.model ?? "P50_52_SAFE", modelVersion: `def-sha256:${o.digest ?? DIGEST_A}` }, {}, start);
+  const d = decision({ physicalEventId: `root:${o.event ?? "evt-skip"}`, outcome: "SKIP", reason: "MODEL_PREDICATE_EVALUATED_NOT_SELECTED", bet: null, modelId: o.model ?? "PORTFOLIO_BROAD_SAFE", modelVersion: `def-sha256:${o.digest ?? DIGEST_A}` }, {}, start);
   const ev: SkipEvidence = {
     reason: "MODEL_PREDICATE_EVALUATED_NOT_SELECTED", physicalEventKey: o.event ?? "evt-skip",
     source: { observedAt: iso(observed), ingestedAt: iso(observed + 1000), observationId: "obs-s", itemObservationId: "item-s", conditionId: "cond-s", tokenId: "tok-s" }, evaluatedTokenKeys: ["cond-s|tok-s"],
@@ -315,6 +349,20 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     assert.equal(q(dbNew, `select count(*) from ${T} where contract_version = 'FORWARD_DECISION_V2'`), "0");
   });
 
+
+  test("OLD FAIL / NEW PASS: exact base migration accepts unresolved historical alias and 0.60 quote; repaired trigger refuses both", () => {
+    const old = spawnSync("git", ["show", "cae51d3eb42dfb419803b47ce8654b4b61dd76b1:ops/research-clone/migrations/20261014120000_forward_decision_v2_contract.sql"], { encoding: "utf8" });
+    assert.equal(old.status, 0, old.stderr);
+    q(dbOld, TIMEOUTS + old.stdout);
+    const alias = dbBet(dbOld, { model: "QUALITY_FILL_A_SAFE", event: "unresolved-alias" });
+    assert.ok(insertJson(dbOld, T, alias).ok, "OLD FAIL: unresolved alias admitted alongside historical V1 claim");
+    const reject = insertJson(dbNew, T, dbBet(dbNew, { model: "QUALITY_FILL_A_SAFE", event: "unresolved-alias" }));
+    assert.ok(!reject.ok); assert.match(reject.err, /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/);
+    const expensive = dbBet(dbOld, { event: "price-unsafe", mutate: (r) => { r.virtual_fill_vwap = 0.60; r.executable_buy_price = 0.60; r.virtual_gross_cost_usd = 3; (r.evaluation_evidence as {fill: {worst_ask:number}}).fill.worst_ask = 0.60; } });
+    assert.ok(insertJson(dbOld, T, expensive).ok, "OLD FAIL: source 0.51 followed by ask 0.60 persisted");
+    const newQuote = insertJson(dbNew, T, expensive); assert.ok(!newQuote.ok); assert.match(newQuote.err, /QUOTE_OUTSIDE_SELECTED_FROZEN_TIER/);
+  });
+
   test("the migration is idempotent and re-applying it changes nothing", () => {
     q(dbNew, TIMEOUTS + V2);
     assert.equal(rowHash(dbNew, existingColumns), before_hash);
@@ -343,7 +391,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
   });
 
   test("a persisted V2 BET is immutable: no edit of any decision field, no delete, no truncate, no backdating of first_persisted_at", () => {
-    const k = betRowKey("P50_52_SAFE", "prov-evt-1");
+    const k = betRowKey("PORTFOLIO_BROAD_SAFE", "prov-evt-1");
     const row = dbBet(dbNew, { event: "evt-imm" });
     assert.ok(insertJson(dbNew, T, row).ok);
     for (const set of ["virtual_gross_cost_usd = 0.1", "virtual_shares = 6", "fee_state = 'ZERO'", "first_persisted_at = now() - interval '1 day'", "selected_token_id = 'other'", "model_version = 'x'", "evaluation_evidence = '{}'::jsonb", "source_sha = repeat('d',40)", "minutes_to_start = 1", "t90_cutoff_at = now()"]) {
@@ -367,7 +415,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
       ["quote from the future", { event: "e-q", mutate: (r) => { r.executable_quote_at = iso(dbNowMs(dbNew) + 600_000); } }, /FORWARD_V2_QUOTE_AFTER_PERSIST/],
       ["asserted actual start is not accepted (unverifiable provenance)", { event: "e-auth", mutate: (r) => { r.authoritative_start_at = iso(dbNowMs(dbNew) + 600 * 60_000); r.authoritative_start_source = "OFFICIAL_SOURCE_CONFIRMED_START"; } }, /prospective_shadow_forward_v2_ck/],
       ["legacy event_start contradicting the scheduled start", { event: "e-evs", mutate: (r) => { r.event_start = iso(dbNowMs(dbNew) + 5 * 60_000); } }, /prospective_shadow_forward_v2_ck/],
-      ["evidence without the required keys", { event: "e-ev", mutate: (r) => { r.evaluation_evidence = {}; } }, /prospective_shadow_forward_v2_ck/],
+      ["evidence without the required keys", { event: "e-ev", mutate: (r) => { r.evaluation_evidence = {}; } }, /QUOTE_EXECUTION_PRICE_AUTHORITY_UNPROVEN/],
     ];
     for (const [name, o, pattern] of cases) {
       const r = insertJson(dbNew, T, dbBet(dbNew, o));
@@ -404,9 +452,9 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
   test("NO repeated BET for a model_id: legacy, V1 and V2 claims all block another BET, whatever the definition", () => {
     fails(dbNew, `select 1`.replace("select 1", "select 1/0"), /division by zero/); // harness sanity
     let r = insertJson(dbNew, T, dbBet(dbNew, { model: "P50_52_SAFE", event: "evt-legacy" }));
-    assert.ok(!r.ok && /DUPLICATE_ECONOMIC_UNIT/.test(r.err), "legacy claim must block a V2 BET");
+    assert.ok(!r.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(r.err), "unresolved legacy claim must block a V2 BET");
     r = insertJson(dbNew, T, dbBet(dbNew, { model: "QUALITY_FILL_A_SAFE", event: "evt-v1" }));
-    assert.ok(!r.ok && /DUPLICATE_ECONOMIC_UNIT/.test(r.err), "V1 claim must block a V2 BET");
+    assert.ok(!r.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(r.err), "V1 claim must block a V2 BET");
     r = insertJson(dbNew, T, dbBet(dbNew, { event: "evt-ok", digest: DIGEST_B }));
     assert.ok(!r.ok && /DUPLICATE_ECONOMIC_UNIT|duplicate key/.test(r.err), "a new definition of the same model_id cannot re-claim a V2-claimed event");
     r = insertJson(dbNew, T, dbBet(dbNew, { event: "evt-ok" }));
@@ -416,23 +464,23 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
   });
 
   test("a V1 BET cannot re-claim an event a V2 BET already holds either", () => {
-    fails(dbNew, v1Seed("v1-after-v2", "P50_52_SAFE", "evt-ok", "game-after"), /DUPLICATE_ECONOMIC_UNIT/);
+    fails(dbNew, v1Seed("v1-after-v2", "PORTFOLIO_BROAD_SAFE", "evt-ok", "game-after"), /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/);
   });
 
-  test("a LEGACY-shaped insert after a V2 BET is dropped row-wise (no repeated BET, the legacy batch survives); other models/events still insert", () => {
+  test("a LEGACY-shaped insert after a V2 BET is dropped row-wise (no repeated BET, the legacy batch survives); unresolved same-model aliases are dropped; another model still inserts", () => {
     const count = (key: string) => q(dbNew, `select count(*) from ${T} where row_key='${key}'`);
-    q(dbNew, legacySeed("legacy-after-v2", "P50_52_SAFE", "evt-ok"));
+    q(dbNew, legacySeed("legacy-after-v2", "PORTFOLIO_BROAD_SAFE", "evt-ok"));
     assert.equal(count("legacy-after-v2"), "0", "the repeated BET is not stored");
-    // one statement carrying a claimed row and a free row: only the claimed one is dropped, the batch does not abort
+    // A batch of unresolved aliases is dropped row-wise and does not abort; another model below remains admissible.
     q(dbNew, `insert into ${T} (row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state)
-      values ('batch-a','LEDGER','P50_52_SAFE','2026-10-01','ca','evt-ok','2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.5,'tennis','c1','t1','UNQUERIED'),
-             ('batch-b','LEDGER','P50_52_SAFE','2026-10-01','cb','evt-batch-free','2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.5,'tennis','c2','t2','UNQUERIED')
+      values ('batch-a','LEDGER','PORTFOLIO_BROAD_SAFE','2026-10-01','ca','evt-ok','2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.5,'tennis','c1','t1','UNQUERIED'),
+             ('batch-b','LEDGER','PORTFOLIO_BROAD_SAFE','2026-10-01','cb','evt-batch-free','2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.5,'tennis','c2','t2','UNQUERIED')
       on conflict (row_key) do nothing`);
     assert.equal(count("batch-a"), "0");
-    assert.equal(count("batch-b"), "1");
-    q(dbNew, legacySeed("legacy-other-event", "P50_52_SAFE", "evt-legacy-fresh"));
-    q(dbNew, legacySeed("legacy-other-model", "QUALITY_FILL_D_SAFE", "evt-ok"));
-    assert.equal(count("legacy-other-event"), "1");
+    assert.equal(count("batch-b"), "0", "unproven legacy alias is dropped without aborting the batch");
+    q(dbNew, legacySeed("legacy-other-event", "PORTFOLIO_BROAD_SAFE", "evt-legacy-fresh"));
+    q(dbNew, legacySeed("legacy-other-model", "HIST_OTHER_SAFE", "evt-ok"));
+    assert.equal(count("legacy-other-event"), "0");
     assert.equal(count("legacy-other-model"), "1");
   });
 
@@ -471,7 +519,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     const v2 = dbBet(dbNew, { model: "TENNIS_P50_52_SAFE", event: "evt-race" });
     const names = cols(v2).join(",");
     const v2Sql = `begin; insert into ${T} (${names}) select ${names} from jsonb_populate_record(null::${T}, $json$${JSON.stringify(v2)}$json$::jsonb); select pg_sleep(1.5); commit;`;
-    const v1Sql = `begin; ${v1Seed("v1-race", "TENNIS_P50_52_SAFE", "evt-race", "game-race")} select pg_sleep(1.5); commit;`;
+    const v1Sql = `begin; ${v1Seed("v1-race", "TENNIS_P50_52_SAFE", "provider-alias-a", "tennis:root:evt-race").replace("\'PROVIDER_EVENT_ONLY\'", "\'PROVIDER_ROOT_CONFIRMED\'").replace("provider_event_id,market_family", "provider_root_game_id,provider_root_game_source,provider_event_id,market_family").replace("\'pe\',\'MONEYLINE\'", "\'evt-race\',\'POLYMARKET_GAMMA_GAME_ID\',\'pe\',\'MONEYLINE\'")} select pg_sleep(1.5); commit;`;
     const run = (sql: string) => new Promise<{ ok: boolean; err: string }>((resolve) => {
       const p = spawn("psql", ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-d", dbNew]);
       let err = "";
@@ -481,7 +529,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     });
     const [a, b] = await Promise.all([run(v2Sql), run(v1Sql)]);
     assert.equal([a, b].filter((x) => x.ok).length, 1, `exactly one wins: ${a.err}${b.err}`);
-    assert.equal(q(dbNew, `select count(*) from ${T} where model_id='TENNIS_P50_52_SAFE' and physical_event_key='evt-race' and row_kind='LEDGER'`), "1");
+    assert.equal(q(dbNew, `select count(*) from ${T} where model_id='TENNIS_P50_52_SAFE' and provider_root_game_id='evt-race' and row_kind='LEDGER'`), "1");
   });
 
   test("race: two concurrent V2 BETs of different definitions commit exactly one row; two identical SKIPs commit exactly one row", async () => {
@@ -493,6 +541,17 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     const skips = await Promise.all([run(mkSkip()), run(mkSkip())]);
     assert.equal(skips.filter(Boolean).length, 1);
     assert.equal(q(dbNew, `select count(*) from ${SKIP_T} where physical_event_key='evt-race3'`), "1");
+  });
+
+
+  test("race: concurrent legacy alias and V2 root cannot both claim; legacy dropping preserves its transaction", async () => {
+    const row = dbBet(dbNew, { model: "QUALITY_FILL_D_SAFE", event: "evt-legacy-race" });
+    const names = cols(row).join(",");
+    const bet = `begin; insert into ${T} (${names}) select ${names} from jsonb_populate_record(null::${T}, $json$${JSON.stringify(row)}$json$::jsonb); select pg_sleep(0.5); commit;`;
+    const legacy = `begin; ${legacySeed("legacy-race-alias", "QUALITY_FILL_D_SAFE", "provider-alias-legacy")} select pg_sleep(0.5); commit;`;
+    const run = (sql: string) => new Promise<boolean>((resolve) => { const p = spawn("psql", ["-X", "-q", "-v", "ON_ERROR_STOP=1", "-d", dbNew]); p.on("close", (c) => resolve(c === 0)); p.stdin.end(sql); });
+    assert.deepEqual(await Promise.all([run(bet), run(legacy)]), [true, true], "both transactions survive; ambiguous legacy row alone is dropped");
+    assert.equal(q(dbNew, `select count(*) from ${T} where row_key='legacy-race-alias' or provider_root_game_id='evt-legacy-race'`), "1");
   });
 
   test("legacy and V1 rows are still byte-identical after all V2 activity", () => {

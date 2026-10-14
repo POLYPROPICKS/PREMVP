@@ -102,6 +102,11 @@ alter table public.prospective_selection_shadow_runtime
       and source_observation_id is not null and source_item_observation_id is not null
       and economic_unit_key = 'PE:' || physical_event_key
       and entry_price > 0 and entry_price < 1
+      and game_identity_basis = 'PROVIDER_ROOT_CONFIRMED'
+      and provider_root_game_source = 'POLYMARKET_GAMMA_GAME_ID'
+      and nullif(btrim(provider_root_game_id), '') is not null
+      and canonical_game_key = sport_family || ':root:' || provider_root_game_id
+      and physical_event_key = canonical_game_key
       and virtual_shares = 5
       and virtual_fill_vwap > 0 and virtual_fill_vwap < 1
       and virtual_gross_cost_usd > 0
@@ -146,6 +151,8 @@ begin
   end if;
   if tg_op = 'INSERT' then
     if new.row_kind = 'LEDGER' then
+      -- A model-wide lock serializes every alias, definition and contract version.
+      perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || coalesce(new.model_id, ''), 0));
       persisted := clock_timestamp();
       new.first_persisted_at := persisted;
       if new.contract_version is null then
@@ -158,24 +165,36 @@ begin
           new.net_state, new.start_verification_state, new.evaluation_evidence) > 0 then
           raise exception 'FORWARD_FIELDS_REQUIRE_CONTRACT_VERSION';
         end if;
-        -- A model_id never repeats a BET: a legacy-shaped insert is DROPPED (row skipped, same effect as ON CONFLICT DO NOTHING) once a
-        -- V2 BET holds (model_id, physical event). Dropping, not raising, keeps the legacy writer's 500-row batch upserts intact.
-        if new.model_id is not null and new.physical_event_key is not null then
-          perform pg_advisory_xact_lock(hashtextextended('FWD|' || new.model_id || '|' || new.physical_event_key, 0));
+        -- A legacy writer supplies no root witness. After any claim for this model, its different aliases cannot be proven
+        -- distinct: drop each ambiguous row, preserving the legacy writer's 500-row batch and every historical row.
+        if new.model_id is not null then
+          perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || new.model_id, 0));
           if exists (select 1 from public.prospective_selection_shadow_runtime r
-            where r.row_kind = 'LEDGER' and r.contract_version = 'FORWARD_DECISION_V2' and r.model_id = new.model_id
-              and r.physical_event_key = new.physical_event_key) then
+            where r.row_kind = 'LEDGER' and r.model_id = new.model_id) then
             return null;
           end if;
         end if;
       elsif new.contract_version = 'FORWARD_BET_V1' then
-        perform pg_advisory_xact_lock(hashtextextended('FWD|' || coalesce(new.model_id, '') || '|' || coalesce(new.physical_event_key, ''), 0));
         if exists (select 1 from public.prospective_selection_shadow_runtime r
           where r.row_kind = 'LEDGER' and r.model_id = new.model_id
-            and r.row_key <> new.row_key
             and (r.physical_event_key = new.physical_event_key
-              or (new.canonical_game_key is not null and r.canonical_game_key = new.canonical_game_key))) then
+              or (new.canonical_game_key is not null and r.canonical_game_key = new.canonical_game_key)
+              or (new.provider_root_game_id is not null and r.provider_root_game_id = new.provider_root_game_id))) then
           raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
+        end if;
+        -- All definitions and contracts must prove the competing claims distinct before a new alias may BET.
+        if exists (select 1 from public.prospective_selection_shadow_runtime r
+          where r.row_kind = 'LEDGER' and r.model_id = new.model_id) then
+          if new.game_identity_basis is distinct from 'PROVIDER_ROOT_CONFIRMED'
+            or new.provider_root_game_source is distinct from 'POLYMARKET_GAMMA_GAME_ID'
+            or nullif(btrim(new.provider_root_game_id), '') is null
+            or exists (select 1 from public.prospective_selection_shadow_runtime r
+              where r.row_kind = 'LEDGER' and r.model_id = new.model_id
+                and (r.game_identity_basis is distinct from 'PROVIDER_ROOT_CONFIRMED'
+                  or r.provider_root_game_source is distinct from 'POLYMARKET_GAMMA_GAME_ID'
+                  or nullif(btrim(r.provider_root_game_id), '') is null)) then
+            raise exception 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN';
+          end if;
         end if;
         if new.decision_generated_at is null or new.observed_at is null then
           raise exception 'FORWARD_DECISION_TIMES_REQUIRED';
@@ -243,8 +262,15 @@ begin
         new.verification_status := case when array_length(unproven, 1) is null then 'VERIFIED'
           else 'UNVERIFIED:' || array_to_string(unproven, ',') end;
       elsif new.contract_version = 'FORWARD_DECISION_V2' then
+        if nullif(btrim(new.provider_root_game_id), '') is null
+          or new.game_identity_basis is distinct from 'PROVIDER_ROOT_CONFIRMED'
+          or new.provider_root_game_source is distinct from 'POLYMARKET_GAMMA_GAME_ID'
+          or new.canonical_game_key is distinct from new.sport_family || ':root:' || new.provider_root_game_id
+          or new.physical_event_key is distinct from new.canonical_game_key then
+          raise exception 'PROVIDER_ROOT_GAME_ID_UNPROVEN';
+        end if;
         -- Serialise every claim/decision on (model_id, physical event) so the cross-contract existence check cannot race.
-        perform pg_advisory_xact_lock(hashtextextended('FWD|' || coalesce(new.model_id, '') || '|' || coalesce(new.physical_event_key, ''), 0));
+        perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || coalesce(new.model_id, ''), 0));
         -- The authoritative instant is taken AFTER any lock wait, so a waiter never carries a stale first_persisted_at.
         persisted := clock_timestamp();
         new.first_persisted_at := persisted;
@@ -256,6 +282,47 @@ begin
               or (new.canonical_game_key is not null and r.canonical_game_key = new.canonical_game_key))) then
           raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
         end if;
+        -- No historical backfill: any unresolved competing claim makes cross-alias equivalence unproven.
+        if exists (select 1 from public.prospective_selection_shadow_runtime r
+          where r.row_kind = 'LEDGER' and r.model_id = new.model_id
+            and (r.game_identity_basis is distinct from 'PROVIDER_ROOT_CONFIRMED'
+              or r.provider_root_game_source is distinct from 'POLYMARKET_GAMMA_GAME_ID'
+              or nullif(btrim(r.provider_root_game_id), '') is null)) then
+          raise exception 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN';
+        end if;
+        if exists (select 1 from public.prospective_selection_shadow_runtime r
+          where r.row_kind = 'LEDGER' and r.model_id = new.model_id
+            and r.provider_root_game_id = new.provider_root_game_id) then
+          raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
+        end if;
+        -- Price authority is the picked frozen tier, never source entryPrice alone or VWAP alone.
+        if coalesce(new.evaluation_evidence #>> '{fill,price_authority,rule}', '') <> 'FOUNDER_P538_SAME_SELECTED_TIER_WORST_ASK'
+          or coalesce(new.evaluation_evidence #>> '{fill,price_authority,model_id}', '') <> new.model_id then
+          raise exception 'QUOTE_EXECUTION_PRICE_AUTHORITY_UNPROVEN';
+        end if;
+        declare
+          tier integer := (new.evaluation_evidence #>> '{fill,price_authority,picked_tier}')::integer;
+          worst numeric := (new.evaluation_evidence #>> '{fill,worst_ask}')::numeric;
+          lower_price numeric;
+          upper_price numeric;
+        begin
+          if new.model_id in ('P50_52_SAFE', 'TENNIS_P50_52_SAFE') and tier = 1
+            or new.model_id = 'PORTFOLIO_BROAD_SAFE' and tier in (1,2)
+            or new.model_id in ('QUALITY_FILL_A_SAFE','QUALITY_FILL_D_SAFE') and tier in (1,3) then
+            lower_price := 0.50; upper_price := 0.52;
+          elsif new.model_id = 'PORTFOLIO_BROAD_SAFE' and tier = 3 then
+            lower_price := 0.52; upper_price := 0.54;
+          elsif new.model_id in ('QUALITY_FILL_A_SAFE','QUALITY_FILL_D_SAFE') and tier = 2 then
+            lower_price := 0.50; upper_price := 0.54;
+          elsif new.model_id = 'QUALITY_FILL_D_SAFE' and tier = 4 then
+            lower_price := 0.54; upper_price := 0.60;
+          else raise exception 'QUOTE_EXECUTION_PRICE_AUTHORITY_UNPROVEN'; end if;
+          if worst is null or not (worst >= lower_price and worst < upper_price)
+            or worst < new.virtual_fill_vwap
+            or new.entry_price < lower_price or new.entry_price >= upper_price then
+            raise exception 'QUOTE_OUTSIDE_SELECTED_FROZEN_TIER';
+          end if;
+        end;
         -- DB-owned timing. Nothing client-supplied can backdate first_persisted_at or the lead.
         if new.observed_at > new.source_ingested_at then
           raise exception 'FORWARD_V2_OBSERVED_AFTER_INGEST';
@@ -411,9 +478,12 @@ begin
   end if;
   persisted := clock_timestamp();
   new.first_persisted_at := persisted;
-  perform pg_advisory_xact_lock(hashtextextended('FWD|' || new.model_id || '|' || new.physical_event_key, 0));
+  perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || new.model_id, 0));
+  persisted := clock_timestamp();
+  new.first_persisted_at := persisted;
   if exists (select 1 from public.prospective_selection_shadow_runtime r
-    where r.row_kind = 'LEDGER' and r.model_id = new.model_id and r.physical_event_key = new.physical_event_key) then
+    where r.row_kind = 'LEDGER' and r.model_id = new.model_id and (r.physical_event_key = new.physical_event_key
+      or r.evaluation_evidence #>> '{cohort,physical_event_id}' = new.cohort_physical_event_id)) then
     raise exception using errcode = '23505', message = 'SKIP_AFTER_BET_CLAIM';
   end if;
   if new.observed_at > new.source_ingested_at then
