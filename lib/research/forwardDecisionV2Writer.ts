@@ -7,11 +7,48 @@
 import { FORWARD_DECISION_V2, isIdempotentConflict, type PriorClaims, type V2BetRow, type V2SkipRow, type SkipEvidence } from "./forwardDecisionV2";
 import type { ModelEvaluation, ModelEventDecision } from "./forwardModelDecisionsT90";
 import { tokenKey } from "./forwardModelDecisionsT90";
+import { createHash } from "node:crypto";
+import { fetchPolymarketEventStartsByIds, GAMMA_EVENTS_BATCH_LIMIT } from "../feed/polymarketClient";
+
+/** Exact-ID receipts only. Missing, duplicate, foreign and rootless events remain unresolved. */
+export async function acquireIdentityWitnesses(ids: readonly string[]) {
+  const requested = [...new Set(ids)].sort();
+  if (!requested.every((id) => /^\d+$/.test(id))) throw new Error("IDENTITY_EVENT_ID_INVALID");
+  const witnesses: Array<Record<string, unknown>> = [];
+  const batches: Array<Record<string, unknown>> = [];
+  const unresolved: string[] = [];
+  const contradictions: string[] = [];
+  for (let offset = 0; offset < requested.length; offset += GAMMA_EVENTS_BATCH_LIMIT) {
+    const batch = requested.slice(offset, offset + GAMMA_EVENTS_BATCH_LIMIT);
+    const result = await fetchPolymarketEventStartsByIds(batch);
+    if (!result) { unresolved.push(...batch); continue; }
+    const digest = createHash("sha256").update(JSON.stringify({ batch, result })).digest("hex");
+    batches.push({ batch, result, digest });
+    if (result.events.some((e) => !batch.includes(e.id))) { contradictions.push(...batch); continue; }
+    for (const id of batch) {
+      const rows = result.events.filter((e) => e.id === id);
+      if (rows.length > 1) { contradictions.push(id); continue; }
+      const row = rows[0];
+      if (!row?.gameId || !/^\d+$/.test(row.gameId)) { unresolved.push(id); continue; }
+      witnesses.push({ provider_event_id: id, provider_root_game_id: row.gameId, identity_source: "POLYMARKET_GAMMA_EXACT_ID",
+        acquired_at: new Date(result.acquiredAtMs).toISOString(), receipt_digest: digest, evidence: row });
+    }
+  }
+  return { identity_source: "POLYMARKET_GAMMA_EXACT_ID", requested_n: requested.length, witnessed_n: witnesses.length,
+    unresolved, contradictions, witnesses, batches, digest: createHash("sha256").update(JSON.stringify(witnesses)).digest("hex") };
+}
+
+export async function persistIdentityWitnesses(client: WriterClient, witnesses: readonly Record<string, unknown>[]) {
+  for (const witness of witnesses) {
+    const { error } = await client.from("forward_decision_v2_identity_witness").insert(witness);
+    if (error && error.code !== "23505") throw new Error(`IDENTITY_WITNESS_INSERT:${error.code ?? "FAILED"}`);
+  }
+}
 
 /** The subset of the Supabase client used here (kept structural so tests can inject a recording double). */
 export type WriterClient = {
   from(table: string): any; // eslint-disable-line @typescript-eslint/no-explicit-any
-  rpc(fn: string): PromiseLike<{ data: unknown; error: { code?: string | null; message?: string | null } | null }>;
+  rpc(fn: string, args?: Record<string, string>): PromiseLike<{ data: unknown; error: { code?: string | null; message?: string | null } | null }>;
 };
 
 /** Floor of the DB clock in epoch ms (never rounds up past the instant the trigger will later observe). */
@@ -30,12 +67,12 @@ export async function ledgerCounts(client: WriterClient): Promise<LedgerCounts> 
   const head = (q: any) => q.then((r: { count: number | null }) => r.count ?? null); // eslint-disable-line @typescript-eslint/no-explicit-any
   const t = FORWARD_DECISION_V2.ledgerTable;
   const base = () => client.from(t).select("row_key", { count: "exact", head: true }).eq("row_kind", "LEDGER");
-  return {
-    legacy_n: await head(base().is("contract_version", null)),
-    v1_n: await head(base().eq("contract_version", "FORWARD_BET_V1")),
-    v2_bet_n: await head(base().eq("contract_version", FORWARD_DECISION_V2.version)),
-    skip_n: await head(client.from(FORWARD_DECISION_V2.skipTable).select("row_key", { count: "exact", head: true })),
-  };
+  const [legacy_n, v1_n, v2_bet_n, skip_n] = await Promise.all([
+    head(base().is("contract_version", null)), head(base().eq("contract_version", "FORWARD_BET_V1")),
+    head(base().eq("contract_version", FORWARD_DECISION_V2.version)),
+    head(client.from(FORWARD_DECISION_V2.skipTable).select("row_key", { count: "exact", head: true })),
+  ]);
+  return { legacy_n, v1_n, v2_bet_n, skip_n };
 }
 
 /** BET claims held by ANY legacy / V1 / V2 ledger row, and the V2 SKIPs already persisted, for the given (model, event) keys. */
@@ -65,6 +102,11 @@ export type PersistResult =
 
 /** Insert-only. A unique violation means "already decided" (never overwritten); any trigger/CHECK rejection is reported verbatim. */
 export async function persistRow(client: WriterClient, kind: "BET" | "SKIP", row: V2BetRow | V2SkipRow): Promise<PersistResult> {
+  if (kind === "BET") {
+    const { data, error } = await client.rpc("forward_decision_v2_admission", { p_model: String(row.model_id), p_root: String(row.provider_root_game_id) });
+    if (error || data !== "ADMISSIBLE") return { status: data === "DUPLICATE_ECONOMIC_UNIT" ? "IDEMPOTENT_CONFLICT" : "REJECTED",
+      code: error?.code ?? null, message: typeof data === "string" ? data : "ADMISSION_PREFLIGHT_UNAVAILABLE" };
+  }
   const table = kind === "BET" ? FORWARD_DECISION_V2.ledgerTable : FORWARD_DECISION_V2.skipTable;
   const { error } = await client.from(table).insert(row);
   if (!error) return { status: "PERSISTED" };

@@ -36,7 +36,7 @@ import { buildSafeUniverse, QUALITY_FILL_A_SAFE_MIX_CONFIGS, type IdentityCandid
 import { ACTIVE_D1_FOOTBALL_STRATEGIES } from "./modeling/active-d1-football-strategies";
 import { cloneTarget, readSource } from "./research-t90-liquidity-cohort";
 import { buildV2BetRow, buildV2SkipRow, fillVirtualShares, FORWARD_DECISION_V2, writeVerdict, type BuildContext, type VirtualFill } from "../lib/research/forwardDecisionV2";
-import { dbClockMs, ledgerCounts, persistRow, readBack, readBackProof, readPriorClaims, skipEvidenceFor, type ReadBackRow, type WriterClient } from "../lib/research/forwardDecisionV2Writer";
+import { acquireIdentityWitnesses, persistIdentityWitnesses, dbClockMs, ledgerCounts, persistRow, readBack, readBackProof, readPriorClaims, skipEvidenceFor, type ReadBackRow, type WriterClient } from "../lib/research/forwardDecisionV2Writer";
 import { classifyForwardStatus, PERSIST_MARGIN_MS, GUARD_LATE_OR_REPLAY_MS, type ModelEventDecision } from "../lib/research/forwardModelDecisionsT90";
 import type { FetchOrderBookResult } from "../lib/liquidity/types";
 
@@ -579,6 +579,16 @@ const tally = (xs: readonly string[]) => xs.reduce<Record<string, number>>((a, k
 
 async function runPersistV2(a: PersistArgs) {
   const writer = a.client as unknown as WriterClient;
+  const { data: cutover, error: cutoverError } = await writer.from("forward_decision_v2_cutover").select("model_id,writer_mode");
+  if (cutoverError || !cutover || cutover.length !== 5 || cutover.some((r: { writer_mode: string }) => r.writer_mode !== "V2")) {
+    throw new Error("FORWARD_V2_CUTOVER_NOT_ACTIVE");
+  }
+  const identityIndex = process.argv.indexOf("--identity-events");
+  const historicalIds = identityIndex >= 0 ? process.argv[identityIndex + 1].split(",") : [];
+  const identityReceipt = await acquireIdentityWitnesses([...historicalIds, ...a.bets.filter((d) => d.family === "SAFE_PREMATCH").map((d) => d.bet!.providerEventId)]);
+  a.write({ kind: "IDENTITY_WITNESS_RECEIPT", ...identityReceipt });
+  if (identityReceipt.contradictions.length) throw new Error("IDENTITY_WITNESS_CONTRADICTION");
+  await persistIdentityWitnesses(writer, identityReceipt.witnesses);
   const before = await ledgerCounts(writer); // throws if the V2 migration is not deployed (skip table / columns missing)
   const safeDecisions = a.result.decisions.filter((d) => d.family === "SAFE_PREMATCH");
   const modelBy = new Map(a.models.map((m) => [modelKey(m), m]));
@@ -725,6 +735,14 @@ async function main() {
     writeFileSync(file, JSON.stringify(receipt, null, 2));
     return file;
   };
+  const identityIndex = process.argv.indexOf("--identity-events");
+  if (identityIndex >= 0 && !process.argv.includes("--persist-v2")) {
+    const receipt = await acquireIdentityWitnesses(process.argv[identityIndex + 1].split(","));
+    const file = write({ kind: "IDENTITY_WITNESS_RECEIPT", ...receipt });
+    console.log(JSON.stringify({ file, requested_n: receipt.requested_n, witnessed_n: receipt.witnessed_n,
+      unresolved_n: receipt.unresolved.length, contradictions_n: receipt.contradictions.length, digest: receipt.digest }));
+    return;
+  }
   const safeContext = loadSafeDefinitionContext();
   const models = buildModels(safeContext);
   const excluded = {

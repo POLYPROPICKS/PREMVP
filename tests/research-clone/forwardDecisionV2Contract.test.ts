@@ -347,6 +347,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     q(dbNew, TIMEOUTS + V2);
     assert.equal(rowHash(dbNew, existingColumns), before_hash);
     assert.equal(q(dbNew, `select count(*) from ${T} where contract_version = 'FORWARD_DECISION_V2'`), "0");
+    q(dbNew, `update public.forward_decision_v2_cutover set writer_mode='V2'`);
   });
 
 
@@ -372,7 +373,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     assert.ok(!psql(dbNew, `insert into ${T} (row_key,row_kind,model_id,decision_date,candidate_identity,decision_timestamp,entry_price,settlement_state,contract_version,decision_kind)
       values ('x','LEDGER','m','2026-10-14','c',now(),0.5,'UNQUERIED','FORWARD_BET_V1','SKIP')`).ok);
     q(dbNew, `update ${T} set settlement_state='WIN', result='WIN', settled_at=now() where row_key='legacy-1'`);
-    fails(dbNew, v1Seed("v1-dup", "QUALITY_FILL_A_SAFE", "evt-v1", "game-other"), /DUPLICATE_ECONOMIC_UNIT/);
+    fails(dbNew, v1Seed("v1-dup", "QUALITY_FILL_A_SAFE", "evt-v1", "game-other"), /FORWARD_V2_LEGACY_CONTRACT_PAUSED/);
     fails(dbNew, `update ${T} set entry_price=0.9 where row_key='legacy-1'`, /IMMUTABLE_SHADOW_CHOICE/);
     fails(dbNew, `delete from ${T} where row_key='legacy-1'`, /IMMUTABLE_SHADOW_CHOICE/);
     fails(dbNew, `truncate ${T} cascade`, /IMMUTABLE_SHADOW_LEDGER_TRUNCATE/);
@@ -464,7 +465,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
   });
 
   test("a V1 BET cannot re-claim an event a V2 BET already holds either", () => {
-    fails(dbNew, v1Seed("v1-after-v2", "PORTFOLIO_BROAD_SAFE", "evt-ok", "game-after"), /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/);
+    fails(dbNew, v1Seed("v1-after-v2", "PORTFOLIO_BROAD_SAFE", "evt-ok", "game-after"), /FORWARD_V2_LEGACY_CONTRACT_PAUSED/);
   });
 
   test("a LEGACY-shaped insert after a V2 BET is dropped row-wise (no repeated BET, the legacy batch survives); unresolved same-model aliases are dropped; another model still inserts", () => {
@@ -606,6 +607,54 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
       assert.equal(q(fresh, `select md5(pg_get_functiondef('public.prospective_selection_shadow_guard'::regproc))`), v1Def);
       assert.equal(q(fresh, `select (to_regclass('public.forward_decision_v2_skip') is null)::text`), "true");
       assert.ok(!insertJson(fresh, T, dbBet(dbNew, { event: "evt-rb" })).ok, "V2 rows are refused again after rollback");
+    } finally { psql("postgres", `drop database if exists ${fresh}`); }
+  });
+
+  test("OLD FAIL / NEW PASS: all five models have rootless history; legacy 500-row batches survive before cutover; proven distinct roots admit prospectively", () => {
+    const fresh = `fdv2_shape_${process.pid}`;
+    q("postgres", `create database ${fresh}`);
+    const models = ["P50_52_SAFE", "TENNIS_P50_52_SAFE", "PORTFOLIO_BROAD_SAFE", "QUALITY_FILL_A_SAFE", "QUALITY_FILL_D_SAFE"];
+    try {
+      q(fresh, BASE); q(fresh, TIMEOUTS + FIRST); q(fresh, TIMEOUTS + V1);
+      models.forEach((model, i) => q(fresh, legacySeed(`shape-${i}`, model, String(1000 + i))));
+      const old = spawnSync("git", ["show", "e04bb49cb7bb3ab001fedc8a5b5d6faaac50cc22:ops/research-clone/migrations/20261014120000_forward_decision_v2_contract.sql"], { encoding: "utf8" });
+      assert.equal(old.status, 0);
+      q(fresh, TIMEOUTS + old.stdout);
+      q(fresh, legacySeed("old-dropped", "PORTFOLIO_BROAD_SAFE", "2000"));
+      assert.equal(q(fresh, `select count(*) from ${T} where row_key='old-dropped'`), "0", "OLD FAIL: unrelated valid legacy insert disappears");
+      const blocked = insertJson(fresh, T, dbBet(fresh, { event: "9000" }));
+      assert.ok(!blocked.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(blocked.err), "OLD FAIL: unrelated rootless history globally rejects V2");
+      const hash = q(fresh, `select md5(string_agg(to_jsonb(r)::text,'|' order by row_key)) from ${T} r`);
+      q(fresh, TIMEOUTS + V2);
+      assert.equal(q(fresh, `select md5(string_agg(to_jsonb(r)::text,'|' order by row_key)) from ${T} r`), hash);
+      const beforeCutover = insertJson(fresh, T, dbBet(fresh, { event: "9000" }));
+      assert.ok(!beforeCutover.ok && /FORWARD_V2_CUTOVER_NOT_ACTIVE/.test(beforeCutover.err));
+      q(fresh, `insert into ${T} (row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state)
+        select 'batch-'||i,'LEDGER','PORTFOLIO_BROAD_SAFE','2026-10-01','cid-'||i,(2000+i)::text,'2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.51,'tennis','c-'||i,'t-'||i,'UNQUERIED' from generate_series(1,500) i`);
+      assert.equal(q(fresh, `select count(*) from ${T} where row_key like 'batch-%'`), "500");
+      // Exact provider receipts are test fixtures, never claimed as runtime witnesses.
+      q(fresh, `insert into public.forward_decision_v2_identity_witness
+        (provider_event_id,provider_root_game_id,identity_source,acquired_at,receipt_digest,evidence)
+        select physical_event_key, '7'||physical_event_key,'POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('a',64),
+          jsonb_build_object('id',physical_event_key,'gameId','7'||physical_event_key)
+        from ${T} where model_id='PORTFOLIO_BROAD_SAFE'`);
+      q(fresh, `update public.forward_decision_v2_cutover set writer_mode='V2'`);
+      const independent = dbBet(fresh, { event: "9000" });
+      const admitted = insertJson(fresh, T, independent);
+      assert.ok(admitted.ok, admitted.err);
+      const alias = dbBet(fresh, { event: "9000", digest: DIGEST_B, mutate: r => { r.row_key='alias-second'; r.provider_event_id='3000'; } });
+      const repeated = insertJson(fresh, T, alias);
+      assert.ok(!repeated.ok && /DUPLICATE_ECONOMIC_UNIT/.test(repeated.err));
+      const unresolved = insertJson(fresh, T, dbBet(fresh, { model:"P50_52_SAFE", event:"9001" }));
+      assert.ok(!unresolved.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(unresolved.err));
+      const historicalAlias = insertJson(fresh, T, dbBet(fresh, { event:"71002" }));
+      assert.ok(!historicalAlias.ok && /DUPLICATE_ECONOMIC_UNIT/.test(historicalAlias.err));
+      q(fresh, legacySeed("paused-legacy", "PORTFOLIO_BROAD_SAFE", "3001"));
+      assert.equal(q(fresh, `select count(*) from ${T} where row_key='paused-legacy'`), "0");
+      fails(fresh, `update public.forward_decision_v2_identity_witness set provider_root_game_id='1'`, /IMMUTABLE_FORWARD_IDENTITY_WITNESS/);
+      q(fresh, `insert into public.forward_decision_v2_identity_witness values ('1002','8000','POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('b',64),'{"id":"1002","gameId":"8000"}')`);
+      const contradictory = insertJson(fresh, T, dbBet(fresh, { event:"9002" }));
+      assert.ok(!contradictory.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(contradictory.err));
     } finally { psql("postgres", `drop database if exists ${fresh}`); }
   });
 });

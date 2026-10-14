@@ -130,6 +130,94 @@ returns timestamptz language sql volatile as $$ select clock_timestamp() $$;
 revoke all on function public.forward_decision_v2_clock() from public, anon, authenticated;
 grant execute on function public.forward_decision_v2_clock() to service_role;
 
+-- Evidence is additive: historical ledger rows are never backfilled. Multiple different roots
+-- for one exact event are retained as a contradiction, not overwritten by the latest reader.
+create table if not exists public.forward_decision_v2_identity_witness (
+  provider_event_id text not null check (provider_event_id ~ '^[0-9]+$'),
+  provider_root_game_id text not null check (provider_root_game_id ~ '^[0-9]+$'),
+  identity_source text not null check (identity_source = 'POLYMARKET_GAMMA_EXACT_ID'),
+  acquired_at timestamptz not null,
+  receipt_digest text not null check (receipt_digest ~ '^[0-9a-f]{64}$'),
+  evidence jsonb not null check (coalesce(evidence ->> 'id' = provider_event_id and evidence ->> 'gameId' = provider_root_game_id, false)),
+  primary key (provider_event_id, provider_root_game_id, receipt_digest)
+);
+alter table public.forward_decision_v2_identity_witness enable row level security;
+revoke all on public.forward_decision_v2_identity_witness from public, anon, authenticated;
+grant select, insert on public.forward_decision_v2_identity_witness to service_role;
+
+create table if not exists public.forward_decision_v2_cutover (
+  model_id text primary key check (model_id in ('P50_52_SAFE','TENNIS_P50_52_SAFE','PORTFOLIO_BROAD_SAFE','QUALITY_FILL_A_SAFE','QUALITY_FILL_D_SAFE')),
+  writer_mode text not null check (writer_mode in ('LEGACY','V2'))
+);
+insert into public.forward_decision_v2_cutover (model_id, writer_mode)
+values ('P50_52_SAFE','LEGACY'),('TENNIS_P50_52_SAFE','LEGACY'),('PORTFOLIO_BROAD_SAFE','LEGACY'),('QUALITY_FILL_A_SAFE','LEGACY'),('QUALITY_FILL_D_SAFE','LEGACY')
+on conflict (model_id) do nothing;
+alter table public.forward_decision_v2_cutover enable row level security;
+revoke all on public.forward_decision_v2_cutover from public, anon, authenticated, service_role;
+grant select on public.forward_decision_v2_cutover to service_role;
+
+-- Only the authorized migration owner can change mode; it takes the same lock as every
+-- ledger insertion. Consequently an in-flight legacy batch finishes before V2 can begin.
+create or replace function public.forward_decision_v2_cutover_guard()
+returns trigger language plpgsql as $$
+begin
+  if tg_op <> 'UPDATE' or new.model_id is distinct from old.model_id then
+    raise exception 'FORWARD_V2_CUTOVER_IDENTITY_IMMUTABLE';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || old.model_id, 0));
+  if old.writer_mode = 'V2' and new.writer_mode <> 'V2' then
+    raise exception 'FORWARD_V2_CUTOVER_NO_REVERSE';
+  end if;
+  return new;
+end; $$;
+revoke all on function public.forward_decision_v2_cutover_guard() from public, anon, authenticated;
+drop trigger if exists forward_decision_v2_cutover_guard_trg on public.forward_decision_v2_cutover;
+create trigger forward_decision_v2_cutover_guard_trg before update or delete on public.forward_decision_v2_cutover
+for each row execute function public.forward_decision_v2_cutover_guard();
+
+create or replace function public.forward_decision_v2_witness_guard()
+returns trigger language plpgsql as $$
+begin
+  if tg_op <> 'INSERT' then raise exception 'IMMUTABLE_FORWARD_IDENTITY_WITNESS'; end if;
+  -- Identity receipts cannot change while a model's collision decision is being made.
+  perform pg_advisory_xact_lock(hashtextextended('FWD_IDENTITY_WITNESSES', 0));
+  if new.acquired_at > clock_timestamp() then raise exception 'IDENTITY_WITNESS_IN_FUTURE'; end if;
+  return new;
+end; $$;
+revoke all on function public.forward_decision_v2_witness_guard() from public, anon, authenticated;
+drop trigger if exists forward_decision_v2_witness_guard_trg on public.forward_decision_v2_identity_witness;
+create trigger forward_decision_v2_witness_guard_trg before insert or update or delete on public.forward_decision_v2_identity_witness
+for each row execute function public.forward_decision_v2_witness_guard();
+drop trigger if exists forward_decision_v2_witness_truncate_trg on public.forward_decision_v2_identity_witness;
+create trigger forward_decision_v2_witness_truncate_trg before truncate on public.forward_decision_v2_identity_witness
+for each statement execute function public.forward_decision_v2_witness_guard();
+
+-- Advisory preflight for the reviewed writer. The trigger repeats the decision after
+-- acquiring locks: this RPC alone is never the concurrency authority.
+create or replace function public.forward_decision_v2_admission(p_model text, p_root text)
+returns text language sql volatile as $$
+  select case
+    when not exists (select 1 from public.forward_decision_v2_cutover c where c.model_id=p_model and c.writer_mode='V2')
+      then 'FORWARD_V2_CUTOVER_NOT_ACTIVE'
+    when exists (select 1 from public.prospective_selection_shadow_runtime r
+      where r.row_kind='LEDGER' and r.model_id=p_model and (
+        r.provider_root_game_id=p_root or exists (select 1 from public.forward_decision_v2_identity_witness w
+          where w.provider_event_id=coalesce(r.provider_event_id,r.physical_event_key) and w.provider_root_game_id=p_root)))
+      then 'DUPLICATE_ECONOMIC_UNIT'
+    when exists (select 1 from public.prospective_selection_shadow_runtime r
+      where r.row_kind='LEDGER' and r.model_id=p_model and (
+        (nullif(btrim(r.provider_root_game_id),'') is null and
+          (select count(distinct w.provider_root_game_id) from public.forward_decision_v2_identity_witness w
+            where w.provider_event_id=coalesce(r.provider_event_id,r.physical_event_key)) <> 1)
+        or exists (select 1 from public.forward_decision_v2_identity_witness w
+          where w.provider_event_id=coalesce(r.provider_event_id,r.physical_event_key)
+            and r.provider_root_game_id is not null and w.provider_root_game_id<>r.provider_root_game_id)))
+      then 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN'
+    else 'ADMISSIBLE' end
+$$;
+revoke all on function public.forward_decision_v2_admission(text,text) from public,anon,authenticated;
+grant execute on function public.forward_decision_v2_admission(text,text) to service_role;
+
 create or replace function public.prospective_selection_shadow_guard()
 returns trigger language plpgsql as $$
 declare
@@ -165,16 +253,18 @@ begin
           new.net_state, new.start_verification_state, new.evaluation_evidence) > 0 then
           raise exception 'FORWARD_FIELDS_REQUIRE_CONTRACT_VERSION';
         end if;
-        -- A legacy writer supplies no root witness. After any claim for this model, its different aliases cannot be proven
-        -- distinct: drop each ambiguous row, preserving the legacy writer's 500-row batch and every historical row.
-        if new.model_id is not null then
-          perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || new.model_id, 0));
-          if exists (select 1 from public.prospective_selection_shadow_runtime r
-            where r.row_kind = 'LEDGER' and r.model_id = new.model_id) then
-            return null;
-          end if;
-        end if;
+        -- Preserve deployed legacy behavior until the five-model handover. No V2 SAFE
+        -- claim can exist before that handover. Pause only these legacy inserts after it.
+        if exists (select 1 from public.forward_decision_v2_cutover c
+          where c.model_id = new.model_id and c.writer_mode = 'V2') then return null; end if;
+        if exists (select 1 from public.prospective_selection_shadow_runtime r
+          where r.row_kind = 'LEDGER' and r.model_id = new.model_id
+            and r.physical_event_key = new.physical_event_key) then return null; end if;
       elsif new.contract_version = 'FORWARD_BET_V1' then
+        if exists (select 1 from public.forward_decision_v2_cutover c
+          where c.model_id = new.model_id and c.writer_mode = 'V2') then
+          raise exception 'FORWARD_V2_LEGACY_CONTRACT_PAUSED';
+        end if;
         if exists (select 1 from public.prospective_selection_shadow_runtime r
           where r.row_kind = 'LEDGER' and r.model_id = new.model_id
             and (r.physical_event_key = new.physical_event_key
@@ -262,6 +352,15 @@ begin
         new.verification_status := case when array_length(unproven, 1) is null then 'VERIFIED'
           else 'UNVERIFIED:' || array_to_string(unproven, ',') end;
       elsif new.contract_version = 'FORWARD_DECISION_V2' then
+        if not exists (select 1 from public.forward_decision_v2_cutover c
+          where c.model_id = new.model_id and c.writer_mode = 'V2') then
+          raise exception 'FORWARD_V2_CUTOVER_NOT_ACTIVE';
+        end if;
+        perform pg_advisory_xact_lock(hashtextextended('FWD_IDENTITY_WITNESSES', 0));
+        if exists (select 1 from public.forward_decision_v2_identity_witness w
+          where w.provider_event_id = new.provider_event_id and w.provider_root_game_id <> new.provider_root_game_id) then
+          raise exception 'IDENTITY_WITNESS_CONTRADICTION';
+        end if;
         if nullif(btrim(new.provider_root_game_id), '') is null
           or new.game_identity_basis is distinct from 'PROVIDER_ROOT_CONFIRMED'
           or new.provider_root_game_source is distinct from 'POLYMARKET_GAMMA_GAME_ID'
@@ -282,18 +381,25 @@ begin
               or (new.canonical_game_key is not null and r.canonical_game_key = new.canonical_game_key))) then
           raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
         end if;
-        -- No historical backfill: any unresolved competing claim makes cross-alias equivalence unproven.
+        -- Resolve each exact historical event via immutable external evidence, without
+        -- modifying its ledger row. Unknown or conflicting evidence remains blocked.
         if exists (select 1 from public.prospective_selection_shadow_runtime r
           where r.row_kind = 'LEDGER' and r.model_id = new.model_id
-            and (r.game_identity_basis is distinct from 'PROVIDER_ROOT_CONFIRMED'
-              or r.provider_root_game_source is distinct from 'POLYMARKET_GAMMA_GAME_ID'
-              or nullif(btrim(r.provider_root_game_id), '') is null)) then
+            and nullif(btrim(r.provider_root_game_id), '') is null
+            and (select count(distinct w.provider_root_game_id) from public.forward_decision_v2_identity_witness w
+              where w.provider_event_id = coalesce(r.provider_event_id, r.physical_event_key)) <> 1) then
           raise exception 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN';
         end if;
         if exists (select 1 from public.prospective_selection_shadow_runtime r
           where r.row_kind = 'LEDGER' and r.model_id = new.model_id
-            and r.provider_root_game_id = new.provider_root_game_id) then
+            and (r.provider_root_game_id = new.provider_root_game_id or exists (
+              select 1 from public.forward_decision_v2_identity_witness w
+              where w.provider_event_id = coalesce(r.provider_event_id, r.physical_event_key)
+                and w.provider_root_game_id = new.provider_root_game_id))) then
           raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
+        end if;
+        if public.forward_decision_v2_admission(new.model_id,new.provider_root_game_id) <> 'ADMISSIBLE' then
+          raise exception 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN';
         end if;
         -- Price authority is the picked frozen tier, never source entryPrice alone or VWAP alone.
         if coalesce(new.evaluation_evidence #>> '{fill,price_authority,rule}', '') <> 'FOUNDER_P538_SAME_SELECTED_TIER_WORST_ASK'
@@ -479,6 +585,10 @@ begin
   persisted := clock_timestamp();
   new.first_persisted_at := persisted;
   perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || new.model_id, 0));
+  if not exists (select 1 from public.forward_decision_v2_cutover c
+    where c.model_id = new.model_id and c.writer_mode = 'V2') then
+    raise exception 'FORWARD_V2_CUTOVER_NOT_ACTIVE';
+  end if;
   persisted := clock_timestamp();
   new.first_persisted_at := persisted;
   if exists (select 1 from public.prospective_selection_shadow_runtime r
