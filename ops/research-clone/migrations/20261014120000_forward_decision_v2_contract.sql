@@ -158,13 +158,14 @@ begin
           new.net_state, new.start_verification_state, new.evaluation_evidence) > 0 then
           raise exception 'FORWARD_FIELDS_REQUIRE_CONTRACT_VERSION';
         end if;
-        -- A model_id never repeats a BET: a legacy-shaped insert is refused once a V2 BET holds (model_id, physical event).
+        -- A model_id never repeats a BET: a legacy-shaped insert is DROPPED (row skipped, same effect as ON CONFLICT DO NOTHING) once a
+        -- V2 BET holds (model_id, physical event). Dropping, not raising, keeps the legacy writer's 500-row batch upserts intact.
         if new.model_id is not null and new.physical_event_key is not null then
           perform pg_advisory_xact_lock(hashtextextended('FWD|' || new.model_id || '|' || new.physical_event_key, 0));
           if exists (select 1 from public.prospective_selection_shadow_runtime r
             where r.row_kind = 'LEDGER' and r.contract_version = 'FORWARD_DECISION_V2' and r.model_id = new.model_id
               and r.physical_event_key = new.physical_event_key) then
-            raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
+            return null;
           end if;
         end if;
       elsif new.contract_version = 'FORWARD_BET_V1' then

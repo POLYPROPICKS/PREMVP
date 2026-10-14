@@ -419,10 +419,21 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     fails(dbNew, v1Seed("v1-after-v2", "P50_52_SAFE", "evt-ok", "game-after"), /DUPLICATE_ECONOMIC_UNIT/);
   });
 
-  test("a LEGACY-shaped insert after a V2 BET is refused (no repeated BET through the legacy writer); other models/events still insert", () => {
-    fails(dbNew, legacySeed("legacy-after-v2", "P50_52_SAFE", "evt-ok"), /DUPLICATE_ECONOMIC_UNIT/);
+  test("a LEGACY-shaped insert after a V2 BET is dropped row-wise (no repeated BET, the legacy batch survives); other models/events still insert", () => {
+    const count = (key: string) => q(dbNew, `select count(*) from ${T} where row_key='${key}'`);
+    q(dbNew, legacySeed("legacy-after-v2", "P50_52_SAFE", "evt-ok"));
+    assert.equal(count("legacy-after-v2"), "0", "the repeated BET is not stored");
+    // one statement carrying a claimed row and a free row: only the claimed one is dropped, the batch does not abort
+    q(dbNew, `insert into ${T} (row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state)
+      values ('batch-a','LEDGER','P50_52_SAFE','2026-10-01','ca','evt-ok','2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.5,'tennis','c1','t1','UNQUERIED'),
+             ('batch-b','LEDGER','P50_52_SAFE','2026-10-01','cb','evt-batch-free','2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.5,'tennis','c2','t2','UNQUERIED')
+      on conflict (row_key) do nothing`);
+    assert.equal(count("batch-a"), "0");
+    assert.equal(count("batch-b"), "1");
     q(dbNew, legacySeed("legacy-other-event", "P50_52_SAFE", "evt-legacy-fresh"));
     q(dbNew, legacySeed("legacy-other-model", "QUALITY_FILL_D_SAFE", "evt-ok"));
+    assert.equal(count("legacy-other-event"), "1");
+    assert.equal(count("legacy-other-model"), "1");
   });
 
   test("V2 SKIP: persisted once per (model, digest, event); another digest is distinct evidence; DB-owned timing; immutable", () => {
