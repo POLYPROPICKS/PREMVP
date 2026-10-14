@@ -5,6 +5,7 @@
 //   npm run research-clone:t90-liquidity-cohort -- --out <dir>
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import "dotenv/config";
 import {
   APPROVED_SCORED_FORMULA, buildCohortReceipt, buildExecutableLiquidityCohort, COHORT_HORIZON_HOURS, T90_MINUTES,
@@ -21,7 +22,7 @@ const LOOKBACK_HOURS = 72;
 /** Runner guard only (not a freshness or economic rule): local clock vs the gateway HTTP Date proxy. */
 const MAX_CLOCK_SKEW_MS = 5_000;
 
-function cloneTarget() {
+export function cloneTarget() {
   const url = process.env.SUPABASE_CLONE_URL; const key = process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("MISSING_CLONE_CREDENTIALS");
   const ref = new URL(url).hostname.split(".")[0];
@@ -39,7 +40,7 @@ async function get<T>(target: { base: string; key: string }, query: string, offs
   return { rows: (await res.json()) as T[], httpDateMs: date ? Date.parse(date) : NaN, localMs: Date.now() };
 }
 
-async function readSource(): Promise<SourceSnapshot> {
+export async function readSource(): Promise<SourceSnapshot> {
   const target = cloneTarget();
   const startLocal = Date.now();
   const from = new Date(startLocal - LOOKBACK_HOURS * 3_600_000).toISOString();
@@ -84,4 +85,6 @@ async function main() {
   }, null, 2));
 }
 
-main().catch((error) => { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); });
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => { console.error(error instanceof Error ? error.message : String(error)); process.exit(1); });
+}
