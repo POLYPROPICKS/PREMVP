@@ -14,6 +14,7 @@ import {
 } from "../../lib/research/forwardDecisionV2";
 import type { ModelEventDecision } from "../../lib/research/forwardModelDecisionsT90";
 import type { FetchOrderBookResult } from "../../lib/liquidity/types";
+import { prepareCandidateIdentity, type WriterClient } from "../../lib/research/forwardDecisionV2Writer";
 
 const DIGEST_A = "a".repeat(64);
 const DIGEST_B = "b".repeat(64);
@@ -225,13 +226,68 @@ describe("writer-level idempotency", () => {
 // ── the migration, proven on a throwaway local PostgreSQL ─────────────────────────────────────────────────────────────
 
 const ROOT = process.cwd();
+test("V5 writer obtains exact candidate-owned unresolved IDs automatically, not a manual historical list", async()=>{
+  const requested:string[][]=[]; const inserted:unknown[]=[]; let reads=0;
+  const client={from:()=>({insert:async(row:unknown)=>{inserted.push(row);return {error:null};}}),
+    rpc:async(_fn:string,args?:Record<string,string>)=>{
+      assert.deepEqual(args,{p_model:"P50_52_SAFE",p_event:"100",p_root:"500"});
+      reads++;return {error:null,data:{claims_n:2,same_n:0,different_root_n:reads===1?0:2,different_completed_n:0,
+        unknown_n:reads===1?2:0,contradiction_n:0,unresolved_events:reads===1?["200","201"]:[]}};
+    }} as unknown as WriterClient;
+  const acquire=async(ids:readonly string[])=>{
+    requested.push([...ids]);return {identity_source:"POLYMARKET_GAMMA_EXACT_ID",requested_n:ids.length,witnessed_n:ids.length,
+      unresolved:[] as string[],contradictions:[] as string[],batches:[] as Record<string,unknown>[],digest:DIGEST_A,
+      witnesses:ids.map(id=>({provider_event_id:id,provider_root_game_id:id==="100"?"500":"700"}) as Record<string,unknown>)};
+  };
+  const result=await prepareCandidateIdentity(client,"P50_52_SAFE","100","500",acquire);
+  assert.equal(result.state,"ADMISSIBLE");assert.deepEqual(requested,[["100"],["200","201"]]);assert.equal(inserted.length,3);
+});
+
+test("V5 writer stops at the exact missing physical authority; no unbounded historical crawl",async()=>{
+  const requested:string[][]=[];
+  const client={from:()=>({insert:async()=>({error:null})}),rpc:async()=>({error:null,data:{claims_n:690,same_n:0,different_root_n:0,
+    different_completed_n:0,unknown_n:690,contradiction_n:0,unresolved_events:["200"]}})} as unknown as WriterClient;
+  const acquire=async(ids:readonly string[])=>{
+    requested.push([...ids]);const current=ids[0]==="100";
+    return {identity_source:"POLYMARKET_GAMMA_EXACT_ID",requested_n:ids.length,witnessed_n:current?1:0,
+      unresolved:current?[]:["200"],contradictions:[] as string[],batches:[] as Record<string,unknown>[],digest:DIGEST_A,
+      witnesses:current?[{provider_event_id:"100",provider_root_game_id:"500"} as Record<string,unknown>]:[]};
+  };
+  const result=await prepareCandidateIdentity(client,"P50_52_SAFE","100","500",acquire);
+  assert.equal(result.state,"BLOCKED");assert.match(result.reason,/INDEPENDENT_PHYSICAL_IDENTITY_AND_COMPLETION_REQUIRED/);
+  assert.equal(result.proof?.unknown_n,690);assert.deepEqual(requested,[["100"],["200"]]);
+});
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
+test("V5 a contradictory fresh receipt stays blocked even if concurrent proof could become admissible",async()=>{
+  let reads=0;
+  const client={from:()=>({insert:async()=>({error:null})}),rpc:async()=>{
+    reads++; return {error:null,data:{claims_n:1,same_n:0,different_root_n:0,different_completed_n:reads>1?1:0,
+      unknown_n:reads>1?0:1,contradiction_n:0,unresolved_events:["200"]}};
+  }} as unknown as WriterClient;
+  const acquire=async(ids:readonly string[])=>({identity_source:"POLYMARKET_GAMMA_EXACT_ID",requested_n:ids.length,
+    witnessed_n:ids[0]==="100"?1:0,unresolved:[] as string[],contradictions:ids[0]==="100"?[]:["200"],
+    batches:[] as Record<string,unknown>[],digest:DIGEST_A,
+    witnesses:ids[0]==="100"?[{provider_event_id:"100",provider_root_game_id:"500"} as Record<string,unknown>]:[]});
+  const result=await prepareCandidateIdentity(client,"P50_52_SAFE","100","500",acquire);
+  assert.equal(result.state,"BLOCKED");assert.equal(result.reason,"IDENTITY_WITNESS_CONTRADICTION");assert.equal(reads,1);
+});
+
+test("V5 zero historical claims cannot override the candidate's own lifecycle blocker",async()=>{
+  const reason="CANDIDATE_PHYSICAL_MATCH_ALREADY_STARTED_OR_COMPLETED";
+  const client={from:()=>({insert:async()=>({error:null})}),rpc:async()=>({error:null,data:{candidate_blocker:reason,
+    claims_n:0,same_n:0,different_root_n:0,different_completed_n:0,unknown_n:0,contradiction_n:0,unresolved_events:[]}})} as unknown as WriterClient;
+  const acquire=async(ids:readonly string[])=>({identity_source:"POLYMARKET_GAMMA_EXACT_ID",requested_n:ids.length,witnessed_n:1,
+    unresolved:[] as string[],contradictions:[] as string[],batches:[] as Record<string,unknown>[],digest:DIGEST_A,
+    witnesses:[{provider_event_id:"100",provider_root_game_id:"500"} as Record<string,unknown>]});
+  const result=await prepareCandidateIdentity(client,"P50_52_SAFE","100","500",acquire);
+  assert.equal(result.state,"BLOCKED");assert.equal(result.reason,reason);
+});
 const BASE = read("ops/research-clone/prospective-selection-shadow-runtime-schema.sql");
 const FIRST = read("ops/research-clone/migrations/20261012150000_prospective_shadow_first_persistence.sql");
 const V1 = read("tests/research-clone/fixtures/deployed_v1_forward_bet_contract.sql");
 const V2 = read("ops/research-clone/migrations/20261014120000_forward_decision_v2_contract.sql");
 const ROLLBACK = read("ops/research-clone/migrations/rollback_20261014120000_forward_decision_v2_contract.sql");
-const TIMEOUTS = "set lock_timeout='5s'; set statement_timeout='45s';\n";
+const TIMEOUTS = "set lock_timeout='5s'; set statement_timeout='45s'; set app.forward_v2_cutover_approved='P538_FIVE_SAFE_ATOMIC_HANDOVER';\n";
 const T = "public.prospective_selection_shadow_runtime";
 
 const psql = (db: string, sql: string) => {
@@ -240,7 +296,7 @@ const psql = (db: string, sql: string) => {
 };
 const available = psql("postgres", "select 1").ok;
 const skipReason = available ? undefined : "no local PostgreSQL reachable via PG* env (migration proof not run here)";
-const q = (db: string, sql: string) => { const r = psql(db, sql); assert.ok(r.ok, `${r.err}\n${sql.slice(0, 200)}`); return r.out; };
+const q = (db: string, sql: string) => { const r = psql(db, sql === TIMEOUTS + V2 ? `begin;\n${sql}\ncommit;` : sql); assert.ok(r.ok, `${r.err}\n${sql.slice(0, 200)}`); return r.out; };
 const fails = (db: string, sql: string, pattern: RegExp) => { const r = psql(db, sql); assert.ok(!r.ok, `expected failure: ${sql.slice(0, 160)}`); assert.match(r.err, pattern); };
 
 const dbNew = `fdv2_new_${process.pid}`;
@@ -280,18 +336,27 @@ after(() => {
 });
 
 const dbNowMs = (db: string) => Number(q(db, "select floor(extract(epoch from clock_timestamp())*1000)::bigint"));
+function physicalFixtureSql(event:string,match:string,completed:boolean,at:number,startedOnly=false) {
+  const started=iso(at-15*3600000),ended=iso(at-14*3600000),state=completed?'COMPLETED':'IDENTITY_CONFIRMED';
+  const evidence=JSON.stringify({provider_event_id:event,authority_namespace:'OFFICIAL:PG_FIXTURE',physical_match_id:match,lifecycle_state:state,
+    actual_started_at:completed||startedOnly?started:null,actual_completed_at:completed?ended:null});
+  return "with body as (select $receipt$"+evidence+"$receipt$::text b) insert into public.forward_decision_v2_physical_match_witness "
+    +"(provider_event_id,authority_namespace,physical_match_id,lifecycle_state,actual_started_at,actual_completed_at,acquired_at,source_uri,receipt_digest,evidence_text,evidence) "
+    +"select '"+event+"','OFFICIAL:PG_FIXTURE','"+match+"','"+state+"',"+(completed||startedOnly?"'"+started+"'::timestamptz":"null")+","+(completed?"'"+ended+"'::timestamptz":"null")
+    +",now()-interval '1 minute','https://fixtures.invalid/match/"+event+"',encode(sha256(convert_to(b,'UTF8')),'hex'),b,b::jsonb from body;";
+}
 const cols = (obj: Record<string, unknown>) => Object.keys(obj);
 function insertJson(db: string, table: string, row: Record<string, unknown>, extraSql = "") {
   const names = cols(row).join(",");
   return psql(db, `insert into ${table} (${names}) select ${names} from jsonb_populate_record(null::${table}, $json$${JSON.stringify(row)}$json$::jsonb);${extraSql}`);
 }
 /** A BET built by the production builder against the DB's own clock. */
-function dbBet(db: string, o: { model?: string; digest?: string; event?: string; startOffsetMin?: number; observedAgoMin?: number; mutate?: (row: Record<string, unknown>) => void } = {}) {
+function dbBet(db: string, o: { model?: string; digest?: string; event?: string; providerEvent?: string; startOffsetMin?: number; observedAgoMin?: number; mutate?: (row: Record<string, unknown>) => void } = {}) {
   const now = dbNowMs(db);
   const start = now + (o.startOffsetMin ?? 240) * 60_000;
   const observed = now - (o.observedAgoMin ?? 10) * 60_000;
   const d = decision({ physicalEventId: `root:${o.event ?? "evt-fresh"}`, modelId: o.model ?? "PORTFOLIO_BROAD_SAFE", modelVersion: `def-sha256:${o.digest ?? DIGEST_A}` }, {
-    observedAt: iso(observed), sourceIngestedAt: iso(observed + 1000), claimInstant: iso(observed + 1000), eventStart: iso(start), modelPhysicalEventKey: o.event ?? "evt-fresh", providerGameId: o.event ?? "evt-fresh",
+    observedAt: iso(observed), sourceIngestedAt: iso(observed + 1000), claimInstant: iso(observed + 1000), eventStart: iso(start), modelPhysicalEventKey: o.event ?? "evt-fresh", providerGameId: o.event ?? "evt-fresh", providerEventId: o.providerEvent ?? "9000",
     candidateIdentity: `cond-1::tok-1::${iso(observed)}`,
     sourceRow: { observationId: "obs-1", itemObservationId: "item-1", ingestedAt: iso(observed + 1000), identityRowN: 1, selectorColumnsAgree: true },
   }, start);
@@ -590,7 +655,7 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
     } finally { psql("postgres", `drop database if exists ${fresh}`); }
   });
 
-  test("ROLLBACK: refused while any V2 decision exists; with none, V2 objects are removed and re-applying the deployed V1 restores V1 exactly", () => {
+  test("ROLLBACK: refuses an active atomic handover even before its first V2 decision", () => {
     const r = psql(dbNew, TIMEOUTS + "begin;\n" + ROLLBACK + "\ncommit;");
     assert.ok(!r.ok && /FORWARD_DECISION_V2_ROLLBACK_REFUSED/.test(r.err));
     const fresh = `fdv2_rb_${process.pid}`;
@@ -600,61 +665,96 @@ describe("migration 20261014120000_forward_decision_v2_contract (local PostgreSQ
       const v1Def = q(fresh, `select md5(pg_get_functiondef('public.prospective_selection_shadow_guard'::regproc))`);
       q(fresh, TIMEOUTS + V2);
       assert.notEqual(q(fresh, `select md5(pg_get_functiondef('public.prospective_selection_shadow_guard'::regproc))`), v1Def);
-      q(fresh, TIMEOUTS + "begin;\n" + ROLLBACK + "\ncommit;");
-      // no window: between rollback and the V1 re-apply a V2-labelled row is already refused by the restored V1 CHECK
-      assert.ok(!insertJson(fresh, T, dbBet(dbNew, { event: "evt-window" })).ok, "no V2 row can be inserted between rollback and V1 re-apply");
-      q(fresh, TIMEOUTS + V1);
-      assert.equal(q(fresh, `select md5(pg_get_functiondef('public.prospective_selection_shadow_guard'::regproc))`), v1Def);
-      assert.equal(q(fresh, `select (to_regclass('public.forward_decision_v2_skip') is null)::text`), "true");
-      assert.ok(!insertJson(fresh, T, dbBet(dbNew, { event: "evt-rb" })).ok, "V2 rows are refused again after rollback");
+      fails(fresh,TIMEOUTS + "begin;\n" + ROLLBACK + "\ncommit;",/ROLLBACK_REFUSED_ATOMIC_HANDOVER_ACTIVE/);
+      assert.equal(q(fresh,`select count(*) from public.forward_decision_v2_cutover where writer_mode='V2'`),"5");
+      assert.equal(q(fresh,`select count(*) from ${T} where contract_version='FORWARD_DECISION_V2'`),"0");
     } finally { psql("postgres", `drop database if exists ${fresh}`); }
   });
 
-  test("OLD FAIL / NEW PASS: all five models have rootless history; legacy 500-row batches survive before cutover; proven distinct roots admit prospectively", () => {
-    const fresh = `fdv2_shape_${process.pid}`;
-    q("postgres", `create database ${fresh}`);
-    const models = ["P50_52_SAFE", "TENNIS_P50_52_SAFE", "PORTFOLIO_BROAD_SAFE", "QUALITY_FILL_A_SAFE", "QUALITY_FILL_D_SAFE"];
+  test("V5 candidate lifecycle blocks BET and SKIP with zero history, including completion aliases and contradictions",()=>{
+    const fresh='fdv5_candidate_'+process.pid;
+    q('postgres','create database '+fresh);
     try {
-      q(fresh, BASE); q(fresh, TIMEOUTS + FIRST); q(fresh, TIMEOUTS + V1);
-      models.forEach((model, i) => q(fresh, legacySeed(`shape-${i}`, model, String(1000 + i))));
-      const old = spawnSync("git", ["show", "e04bb49cb7bb3ab001fedc8a5b5d6faaac50cc22:ops/research-clone/migrations/20261014120000_forward_decision_v2_contract.sql"], { encoding: "utf8" });
-      assert.equal(old.status, 0);
-      q(fresh, TIMEOUTS + old.stdout);
-      q(fresh, legacySeed("old-dropped", "PORTFOLIO_BROAD_SAFE", "2000"));
-      assert.equal(q(fresh, `select count(*) from ${T} where row_key='old-dropped'`), "0", "OLD FAIL: unrelated valid legacy insert disappears");
-      const blocked = insertJson(fresh, T, dbBet(fresh, { event: "9000" }));
-      assert.ok(!blocked.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(blocked.err), "OLD FAIL: unrelated rootless history globally rejects V2");
-      const hash = q(fresh, `select md5(string_agg(to_jsonb(r)::text,'|' order by row_key)) from ${T} r`);
-      q(fresh, TIMEOUTS + V2);
-      assert.equal(q(fresh, `select md5(string_agg(to_jsonb(r)::text,'|' order by row_key)) from ${T} r`), hash);
-      const beforeCutover = insertJson(fresh, T, dbBet(fresh, { event: "9000" }));
-      assert.ok(!beforeCutover.ok && /FORWARD_V2_CUTOVER_NOT_ACTIVE/.test(beforeCutover.err));
-      q(fresh, `insert into ${T} (row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state)
-        select 'batch-'||i,'LEDGER','PORTFOLIO_BROAD_SAFE','2026-10-01','cid-'||i,(2000+i)::text,'2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.51,'tennis','c-'||i,'t-'||i,'UNQUERIED' from generate_series(1,500) i`);
-      assert.equal(q(fresh, `select count(*) from ${T} where row_key like 'batch-%'`), "500");
-      // Exact provider receipts are test fixtures, never claimed as runtime witnesses.
-      q(fresh, `insert into public.forward_decision_v2_identity_witness
-        (provider_event_id,provider_root_game_id,identity_source,acquired_at,receipt_digest,evidence)
-        select physical_event_key, '7'||physical_event_key,'POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('a',64),
-          jsonb_build_object('id',physical_event_key,'gameId','7'||physical_event_key)
-        from ${T} where model_id='PORTFOLIO_BROAD_SAFE'`);
-      q(fresh, `update public.forward_decision_v2_cutover set writer_mode='V2'`);
-      const independent = dbBet(fresh, { event: "9000" });
-      const admitted = insertJson(fresh, T, independent);
-      assert.ok(admitted.ok, admitted.err);
-      const alias = dbBet(fresh, { event: "9000", digest: DIGEST_B, mutate: r => { r.row_key='alias-second'; r.provider_event_id='3000'; } });
-      const repeated = insertJson(fresh, T, alias);
-      assert.ok(!repeated.ok && /DUPLICATE_ECONOMIC_UNIT/.test(repeated.err));
-      const unresolved = insertJson(fresh, T, dbBet(fresh, { model:"P50_52_SAFE", event:"9001" }));
-      assert.ok(!unresolved.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(unresolved.err));
-      const historicalAlias = insertJson(fresh, T, dbBet(fresh, { event:"71002" }));
-      assert.ok(!historicalAlias.ok && /DUPLICATE_ECONOMIC_UNIT/.test(historicalAlias.err));
-      q(fresh, legacySeed("paused-legacy", "PORTFOLIO_BROAD_SAFE", "3001"));
-      assert.equal(q(fresh, `select count(*) from ${T} where row_key='paused-legacy'`), "0");
-      fails(fresh, `update public.forward_decision_v2_identity_witness set provider_root_game_id='1'`, /IMMUTABLE_FORWARD_IDENTITY_WITNESS/);
-      q(fresh, `insert into public.forward_decision_v2_identity_witness values ('1002','8000','POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('b',64),'{"id":"1002","gameId":"8000"}')`);
-      const contradictory = insertJson(fresh, T, dbBet(fresh, { event:"9002" }));
-      assert.ok(!contradictory.ok && /HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(contradictory.err));
-    } finally { psql("postgres", `drop database if exists ${fresh}`); }
+      q(fresh,BASE);q(fresh,TIMEOUTS+FIRST);q(fresh,TIMEOUTS+V1);q(fresh,TIMEOUTS+V2);
+      q(fresh,"insert into public.forward_v2_physical_authority values ('OFFICIAL:PG_FIXTURE','https://fixtures.invalid','ONE_STABLE_ID_PER_REAL_PHYSICAL_MATCH',repeat('a',64),now()-interval '1 minute')");
+      const at=dbNowMs(fresh);
+      q(fresh,physicalFixtureSql('9000','DONE',true,at)+physicalFixtureSql('9001','STARTED',false,at,true)
+        +physicalFixtureSql('9002','ALIAS_DONE',false,at)+physicalFixtureSql('9902','ALIAS_DONE',true,at)
+        +physicalFixtureSql('9003','CONFLICT_A',false,at)+physicalFixtureSql('9003','CONFLICT_B',false,at));
+      for(const event of ['9000','9001','9002','9003']) {
+        const reason=event==='9003'?'IDENTITY_WITNESS_CONTRADICTION':'CANDIDATE_PHYSICAL_MATCH_ALREADY_STARTED_OR_COMPLETED';
+        assert.equal(q(fresh,"select public.forward_decision_v2_candidate_proof('PORTFOLIO_BROAD_SAFE','"+event+"','"+event+"')->>'claims_n'"),'0');
+        assert.equal(q(fresh,"select public.forward_decision_v2_admission('PORTFOLIO_BROAD_SAFE','"+event+"','"+event+"')"),reason);
+        const bet=insertJson(fresh,T,dbBet(fresh,{event,providerEvent:event}));
+        assert.ok(!bet.ok&&bet.err.includes(reason),bet.err);
+        const skip=insertJson(fresh,SKIP_T,dbSkip(fresh,{event}));
+        assert.ok(!skip.ok&&skip.err.includes(reason),skip.err);
+      }
+      q(fresh,"insert into public.forward_decision_v2_identity_witness values ('9004','5004','POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('a',64),'{\"id\":\"9004\",\"gameId\":\"5004\"}'),('9904','5004','POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('b',64),'{\"id\":\"9904\",\"gameId\":\"5004\"}')");
+      q(fresh,physicalFixtureSql('9904','ROOT_ALIAS_DONE',true,at));
+      assert.equal(q(fresh,"select public.forward_v2_candidate_blocker('9004','5004')"),'CANDIDATE_PHYSICAL_MATCH_ALREADY_STARTED_OR_COMPLETED');
+      assert.equal(q(fresh,"select count(*) from "+T),'0');assert.equal(q(fresh,"select count(*) from "+SKIP_T),'0');
+    } finally {psql('postgres','drop database if exists '+fresh);}
   });
+
+  test("V5 OLD FAIL / NEW PASS: 3267 rootless claims across five SAFE models; independent completed matches admit without Gamma root recovery; atomic handover audits legacy", () => {
+    const fresh = 'fdv5_shape_'+process.pid;
+    q('postgres','create database '+fresh);
+    const models=['P50_52_SAFE','PORTFOLIO_BROAD_SAFE','QUALITY_FILL_A_SAFE','QUALITY_FILL_D_SAFE','TENNIS_P50_52_SAFE'];
+    const fixtureAt=Date.now();
+    const addPhysical=(event:string,match:string,completed:boolean)=>q(fresh,physicalFixtureSql(event,match,completed,fixtureAt));
+    try {
+      q(fresh,BASE);q(fresh,TIMEOUTS+FIRST);q(fresh,TIMEOUTS+V1);
+      models.forEach((model,index)=>{
+        const n=index===0?817:index===4?380:690, offset=index===2?380:index===3?773:0;
+        q(fresh,"insert into "+T+" (row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state) "
+          +"select 'shape-"+index+"-'||i,'LEDGER','"+model+"','2026-10-01','cid-"+index+"-'||i,(100000+"+offset+"+i)::text,'2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.51,'tennis','c-"+index+"-'||i,'t-"+index+"-'||i,'UNQUERIED' from generate_series(1,"+n+") i");
+      });
+      assert.equal(q(fresh,"select count(*)||':'||count(distinct physical_event_key)||':'||count(provider_root_game_id) from "+T), '3267:1463:0');
+      const baseline=spawnSync('git',['show','3fe7d1ec3a1223578edfb51e87c4b56ed60ba7c6:ops/research-clone/migrations/20261014120000_forward_decision_v2_contract.sql'],{encoding:'utf8'});
+      assert.equal(baseline.status,0);q(fresh,'begin;'+TIMEOUTS+baseline.stdout+'commit;');
+      q(fresh,"insert into public.forward_decision_v2_identity_witness values ('888001','55555','POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('a',64),'{\"id\":\"888001\",\"gameId\":\"55555\"}'),('888002','55555','POLYMARKET_GAMMA_EXACT_ID',now()-interval '1 minute',repeat('b',64),'{\"id\":\"888002\",\"gameId\":\"55555\"}')");
+      q(fresh,legacySeed('old-alias-a','P50_52_SAFE','888001')+legacySeed('old-alias-b','P50_52_SAFE','888002'));
+      assert.equal(q(fresh,"select count(*) from "+T+" where row_key in ('old-alias-a','old-alias-b')"),'2','OLD FAIL: witnessed legacy aliases both claim');
+      q(fresh,"update public.forward_decision_v2_cutover set writer_mode='V2' where model_id='QUALITY_FILL_A_SAFE'");
+      const oldBet=insertJson(fresh,T,dbBet(fresh,{model:'QUALITY_FILL_A_SAFE',event:'9000'}));
+      assert.ok(!oldBet.ok&&/HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(oldBet.err));
+      // Legitimate 500-row legacy batch remains operational BEFORE approved handover.
+      q(fresh,"insert into "+T+" (row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state) "
+        +"select 'before-batch-'||i,'LEDGER','PORTFOLIO_BROAD_SAFE','2026-10-01','cb-'||i,(200000+i)::text,'2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.51,'tennis','cb-'||i,'tb-'||i,'UNQUERIED' from generate_series(1,500) i");
+      assert.equal(q(fresh,"select count(*) from "+T+" where row_key like 'before-batch-%'"),'500');
+      const hash=q(fresh,"select md5(string_agg(to_jsonb(r)::text,'|' order by row_key)) from "+T+" r");
+      q(fresh,TIMEOUTS+V2);
+      assert.equal(q(fresh,"select md5(string_agg(to_jsonb(r)::text,'|' order by row_key)) from "+T+" r"),hash,'historical bytes preserved');
+      assert.equal(q(fresh,"select count(*) from public.forward_decision_v2_cutover where writer_mode='V2'"),'5');
+      q(fresh,"insert into public.forward_v2_physical_authority values ('OFFICIAL:PG_FIXTURE','https://fixtures.invalid','ONE_STABLE_ID_PER_REAL_PHYSICAL_MATCH',repeat('a',64),now()-interval '1 minute')");
+      addPhysical('9000','NEW_PHYSICAL_MATCH',false);
+      // Only the selected model's independent lifecycle proof is needed. Other models
+      // retain unknown claims; ALL 3267 historical Gamma roots remain absent.
+      q(fresh,Array.from({length:690},(_,i)=>physicalFixtureSql(String(100381+i),'OLD_MATCH_'+(100381+i),true,fixtureAt)).join('\n'));
+      const admitted=insertJson(fresh,T,dbBet(fresh,{model:'QUALITY_FILL_A_SAFE',event:'9000'}));
+      assert.ok(admitted.ok,admitted.err);
+      assert.equal(q(fresh,"select count(provider_root_game_id) from "+T+" where row_key like 'shape-%'"),'0');
+      assert.equal(q(fresh,"select (public.forward_decision_v2_candidate_proof('QUALITY_FILL_A_SAFE','9000','9000')->>'different_completed_n')"),'690');
+      const unresolved=insertJson(fresh,T,dbBet(fresh,{model:'P50_52_SAFE',event:'9000'}));
+      assert.ok(!unresolved.ok&&/HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN/.test(unresolved.err));
+      const alias=insertJson(fresh,T,dbBet(fresh,{model:'QUALITY_FILL_A_SAFE',event:'9000',digest:DIGEST_B,providerEvent:'9001',mutate:r=>{r.row_key='new-alias';}}));
+      assert.ok(!alias.ok&&/DUPLICATE_ECONOMIC_UNIT/.test(alias.err));
+      fails(fresh,"set role service_role; insert into public.forward_v2_physical_authority values ('OFFICIAL:FAKE','https://evil.invalid','ONE_STABLE_ID_PER_REAL_PHYSICAL_MATCH',repeat('b',64),now())",/permission denied|row-level security/);
+      q('postgres','alter role service_role bypassrls');
+      q(fresh,"set role service_role; insert into "+T+" (row_key,row_kind,model_id,decision_date,candidate_identity,physical_event_key,decision_timestamp,event_start,entry_price,sport_family,condition_id,selected_token_id,settlement_state) "
+        +"select 'paused-batch-'||i,'LEDGER','P50_52_SAFE','2026-10-01','cp-'||i,(300000+i)::text,'2026-10-01T10:00:00Z','2026-10-01T18:00:00Z',0.51,'tennis','cp-'||i,'tp-'||i,'UNQUERIED' from generate_series(1,500) i");
+      assert.equal(q(fresh,"select count(*) from "+T+" where row_key like 'paused-batch-%'"),'0');
+      assert.equal(q(fresh,"select count(*) from public.forward_decision_v2_legacy_rejection where row_key like 'paused-batch-%' and reason='LEGACY_SAFE_WRITER_PAUSED_AT_APPROVED_HANDOVER'"),'500');
+      fails(fresh,"update public.forward_decision_v2_legacy_rejection set reason='fake'",/IMMUTABLE_LEGACY_REJECTION/);
+      // Root DIFFERENT cannot short-circuit contradictory physical identity.
+      addPhysical('100381','OTHER_CONTRADICTORY_MATCH',true);
+      assert.equal(q(fresh,"select public.forward_v2_classify_claim('100381','7000','9000','9000')"),'IDENTITY_CONTRADICTION');
+      assert.equal(q(fresh,"select public.forward_v2_classify_claim('999001',null,'9000','9000')"),'IDENTITY_MISSING');
+      addPhysical('999002','NOT_COMPLETED_OTHER_MATCH',false);
+      assert.equal(q(fresh,"select public.forward_v2_classify_claim('999002',null,'9000','9000')"),'IDENTITY_MISSING');
+      fails(fresh,"update public.forward_decision_v2_physical_match_witness set actual_completed_at=now()",/IMMUTABLE_FORWARD_IDENTITY_WITNESS/);
+    } finally {psql('postgres','drop database if exists '+fresh);}
+  });
+
 });

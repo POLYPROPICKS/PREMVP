@@ -5,6 +5,11 @@
 lock table public.prospective_selection_shadow_runtime in access exclusive mode;
 do $$
 begin
+  if to_regclass('public.forward_decision_v2_cutover') is not null then
+    if exists (select 1 from public.forward_decision_v2_cutover where writer_mode='V2') then
+      raise exception 'FORWARD_DECISION_V2_ROLLBACK_REFUSED_ATOMIC_HANDOVER_ACTIVE';
+    end if;
+  end if;
   if exists (select 1 from public.prospective_selection_shadow_runtime where contract_version = 'FORWARD_DECISION_V2') then
     raise exception 'FORWARD_DECISION_V2_ROLLBACK_REFUSED_BET_ROWS_EXIST';
   end if;

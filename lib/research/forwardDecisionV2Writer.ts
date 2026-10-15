@@ -45,6 +45,54 @@ export async function persistIdentityWitnesses(client: WriterClient, witnesses: 
   }
 }
 
+export type CandidateProof = {
+  candidate_blocker?: string | null;
+  claims_n: number; same_n: number; different_root_n: number; different_completed_n: number;
+  unknown_n: number; contradiction_n: number; unresolved_events: string[];
+};
+
+/** Automatic candidate-owned inventory. Stop at the first batch whose missing roots
+ * require independent physical completion; never turn a missing Gamma ID into DIFFERENT.
+ * The SQL classifier is reused by the final locked insert, not replaced by this preflight. */
+export async function prepareCandidateIdentity(client: WriterClient, modelId: string, eventId: string, rootId: string,
+  acquire: typeof acquireIdentityWitnesses = acquireIdentityWitnesses) {
+  const receipts: Awaited<ReturnType<typeof acquireIdentityWitnesses>>[] = [];
+  const current = await acquire([eventId]);
+  receipts.push(current);
+  if (current.contradictions.length || current.witnesses.length !== 1
+    || current.witnesses[0].provider_root_game_id !== rootId) {
+    return { state: "BLOCKED", reason: "CANDIDATE_PROVIDER_ROOT_UNPROVEN_OR_CONTRADICTORY", receipts, proof: null };
+  }
+  await persistIdentityWitnesses(client,current.witnesses);
+  const seen = new Set<string>();
+  for (;;) {
+    const { data,error } = await client.rpc("forward_decision_v2_candidate_proof", { p_model:modelId,p_event:eventId,p_root:rootId });
+    if (error || !data || typeof data !== "object") throw new Error(`CANDIDATE_PROOF_UNAVAILABLE:${error?.code ?? "NO_DATA"}`);
+    const proof = data as CandidateProof;
+    if (proof.candidate_blocker) return {state:"BLOCKED",reason:proof.candidate_blocker,receipts,proof};
+    if (proof.contradiction_n>0) return { state:"BLOCKED",reason:"IDENTITY_WITNESS_CONTRADICTION",receipts,proof };
+    if (proof.same_n>0) return { state:"DUPLICATE",reason:"DUPLICATE_ECONOMIC_UNIT",receipts,proof };
+    if (proof.unknown_n===0) return { state:"ADMISSIBLE",reason:"EVERY_COMPETING_CLAIM_INDEPENDENTLY_CLASSIFIED",receipts,proof };
+    const ids = proof.unresolved_events.filter(id => !seen.has(id));
+    if (!ids.length || !ids.every(id=>/^\d+$/.test(id))) return {state:"BLOCKED",reason:"EXACT_HISTORICAL_PROVIDER_ID_UNPROVEN",receipts,proof};
+    ids.forEach(id=>seen.add(id));
+    const receipt = await acquire(ids);
+    receipts.push(receipt);
+    if (receipt.contradictions.length) return {state:"BLOCKED",reason:"IDENTITY_WITNESS_CONTRADICTION",receipts,proof};
+    await persistIdentityWitnesses(client,receipt.witnesses);
+    if (receipt.unresolved.length) {
+      // Re-read the candidate classification: an already approved independent physical
+      // proof may cover missing Gamma roots. Missing roots alone never imply distinctness.
+      const next = await client.rpc("forward_decision_v2_candidate_proof", {p_model:modelId,p_event:eventId,p_root:rootId});
+      if (next.error || !next.data || typeof next.data!=="object") throw new Error("CANDIDATE_PROOF_READBACK_UNAVAILABLE");
+      const after = next.data as CandidateProof;
+      if (after.candidate_blocker) return {state:"BLOCKED",reason:after.candidate_blocker,receipts,proof:after};
+      const state = after.contradiction_n>0 ? "BLOCKED" : after.same_n>0 ? "DUPLICATE" : after.unknown_n===0 ? "ADMISSIBLE" : "BLOCKED";
+      return {state,reason:after.contradiction_n>0 ? "IDENTITY_WITNESS_CONTRADICTION" : after.same_n>0 ? "DUPLICATE_ECONOMIC_UNIT" : after.unknown_n===0 ? "EVERY_COMPETING_CLAIM_INDEPENDENTLY_CLASSIFIED" : "EXACT_FIRST_BLOCKER:INDEPENDENT_PHYSICAL_IDENTITY_AND_COMPLETION_REQUIRED",receipts,proof:after};
+    }
+  }
+}
+
 /** The subset of the Supabase client used here (kept structural so tests can inject a recording double). */
 export type WriterClient = {
   from(table: string): any; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -103,7 +151,7 @@ export type PersistResult =
 /** Insert-only. A unique violation means "already decided" (never overwritten); any trigger/CHECK rejection is reported verbatim. */
 export async function persistRow(client: WriterClient, kind: "BET" | "SKIP", row: V2BetRow | V2SkipRow): Promise<PersistResult> {
   if (kind === "BET") {
-    const { data, error } = await client.rpc("forward_decision_v2_admission", { p_model: String(row.model_id), p_root: String(row.provider_root_game_id) });
+    const { data, error } = await client.rpc("forward_decision_v2_admission", { p_model: String(row.model_id), p_root: String(row.provider_root_game_id),p_event:String(row.provider_event_id) });
     if (error || data !== "ADMISSIBLE") return { status: data === "DUPLICATE_ECONOMIC_UNIT" ? "IDEMPOTENT_CONFLICT" : "REJECTED",
       code: error?.code ?? null, message: typeof data === "string" ? data : "ADMISSION_PREFLIGHT_UNAVAILABLE" };
   }

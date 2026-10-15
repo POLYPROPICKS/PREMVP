@@ -36,7 +36,7 @@ import { buildSafeUniverse, QUALITY_FILL_A_SAFE_MIX_CONFIGS, type IdentityCandid
 import { ACTIVE_D1_FOOTBALL_STRATEGIES } from "./modeling/active-d1-football-strategies";
 import { cloneTarget, readSource } from "./research-t90-liquidity-cohort";
 import { buildV2BetRow, buildV2SkipRow, fillVirtualShares, FORWARD_DECISION_V2, writeVerdict, type BuildContext, type VirtualFill } from "../lib/research/forwardDecisionV2";
-import { acquireIdentityWitnesses, persistIdentityWitnesses, dbClockMs, ledgerCounts, persistRow, readBack, readBackProof, readPriorClaims, skipEvidenceFor, type ReadBackRow, type WriterClient } from "../lib/research/forwardDecisionV2Writer";
+import { acquireIdentityWitnesses, prepareCandidateIdentity, dbClockMs, ledgerCounts, persistRow, readBack, readBackProof, readPriorClaims, skipEvidenceFor, type ReadBackRow, type WriterClient } from "../lib/research/forwardDecisionV2Writer";
 import { classifyForwardStatus, PERSIST_MARGIN_MS, GUARD_LATE_OR_REPLAY_MS, type ModelEventDecision } from "../lib/research/forwardModelDecisionsT90";
 import type { FetchOrderBookResult } from "../lib/liquidity/types";
 
@@ -583,12 +583,6 @@ async function runPersistV2(a: PersistArgs) {
   if (cutoverError || !cutover || cutover.length !== 5 || cutover.some((r: { writer_mode: string }) => r.writer_mode !== "V2")) {
     throw new Error("FORWARD_V2_CUTOVER_NOT_ACTIVE");
   }
-  const identityIndex = process.argv.indexOf("--identity-events");
-  const historicalIds = identityIndex >= 0 ? process.argv[identityIndex + 1].split(",") : [];
-  const identityReceipt = await acquireIdentityWitnesses([...historicalIds, ...a.bets.filter((d) => d.family === "SAFE_PREMATCH").map((d) => d.bet!.providerEventId)]);
-  a.write({ kind: "IDENTITY_WITNESS_RECEIPT", ...identityReceipt });
-  if (identityReceipt.contradictions.length) throw new Error("IDENTITY_WITNESS_CONTRADICTION");
-  await persistIdentityWitnesses(writer, identityReceipt.witnesses);
   const before = await ledgerCounts(writer); // throws if the V2 migration is not deployed (skip table / columns missing)
   const safeDecisions = a.result.decisions.filter((d) => d.family === "SAFE_PREMATCH");
   const modelBy = new Map(a.models.map((m) => [modelKey(m), m]));
@@ -638,7 +632,18 @@ async function runPersistV2(a: PersistArgs) {
     betReport.candidates.push({ d, fill });
   }
 
-  // Seal the decisions at the DB clock AFTER the fills were measured (quote <= decision <= first persistence).
+  // Resolve precisely the claims needed by each new candidate, without a manual ID list.
+  const admitted: typeof betReport.candidates = [];
+  const identityBlocked: string[] = [];
+  for (const candidate of betReport.candidates) {
+    const d = candidate.d;
+    const identity = await prepareCandidateIdentity(writer,d.modelId,d.bet!.providerEventId,d.bet!.providerGameId!);
+    a.write({kind:"CANDIDATE_COLLISION_PROOF",model_id:d.modelId,provider_event_id:d.bet!.providerEventId,...identity});
+    if (identity.state==="ADMISSIBLE") admitted.push(candidate);
+    else identityBlocked.push(identity.reason);
+  }
+  betReport.candidates = admitted;
+  // Seal the decisions at the DB clock AFTER fills and identity acquisition.
   const sealMs = await dbClockMs(writer);
   const sourceShaOf = (d: ModelEventDecision) => modelBy.get(modelKey(d))?.sourceSha ?? null;
   const ctxOf = (d: ModelEventDecision): BuildContext => ({ decisionGeneratedAtMs: sealMs, sourceSha: sourceShaOf(d), cohortDigest: a.result.digestBefore, authoritativeStart: null });
@@ -706,6 +711,8 @@ async function runPersistV2(a: PersistArgs) {
   const firstBlocker = label !== "EXACT_FIRST_BLOCKER" ? null
     : !readbackComplete ? `READBACK_INCOMPLETE:bet ${betBack.length}/${betOut.persisted} skip ${skipBack.length}/${skipOut.persisted}`
     : proofFailures.length ? `READBACK_PROOF_FAILED:${proofFailures[0].failed.join(",")}`
+      : identityBlocked.length ? identityBlocked[0]
+      : betReport.builder_blocked.length ? betReport.builder_blocked[0]
       : betReport.total > 0 && betReport.candidates.length === 0 && skipOut.persisted === 0 ? `NO_NEW_FORWARD_BET: ${JSON.stringify(tally([...betReport.historical_replay, ...betReport.not_new_verdict]))}`
         : Object.keys(betOut.db_rejected).length || Object.keys(skipOut.db_rejected).length ? `DB_REJECTED:${JSON.stringify({ ...betOut.db_rejected, ...skipOut.db_rejected })}` : "NO_QUALIFYING_FORWARD_DECISION_IN_WINDOW";
   const summaryOut = {
@@ -713,7 +720,7 @@ async function runPersistV2(a: PersistArgs) {
     clock: { generation_probe_db_clock_at: new Date(a.clock.generatedMs).toISOString(), sealed_db_clock_at: new Date(sealMs).toISOString(), run_seconds: Math.round((Date.now() - a.startedMs) / 1000) },
     cohort: { digest: a.result.digestBefore, stable: new Set([a.result.digestBefore, a.result.digestAfter, ...Object.values(a.result.digestByModel)]).size === 1 },
     ledger_counts: { before, after, legacy_unchanged: before.legacy_n === after.legacy_n, v1_unchanged: before.v1_n === after.v1_n },
-    bets: { model_bets_total: betReport.total, historical_replay: tally(betReport.historical_replay), already_claimed_verdict: tally(betReport.not_new_verdict), fill_blocked: tally(betReport.fill_blocked), builder_blocked: tally(betReport.builder_blocked), attempted: betReport.candidates.length - betReport.builder_blocked.length, ...betOut },
+    bets: { model_bets_total: betReport.total, historical_replay: tally(betReport.historical_replay), already_claimed_verdict: tally(betReport.not_new_verdict), fill_blocked: tally(betReport.fill_blocked), identity_blocked: tally(identityBlocked), builder_blocked: tally(betReport.builder_blocked), attempted: outcomes.filter(o=>o.kind==="BET").length, ...betOut },
     skips: { evaluated_skip_decisions: skipReport.total, evidence_missing: skipReport.evidence_missing, already_persisted: skipReport.already_persisted, skip_after_claim: skipReport.after_claim, source_stale: skipReport.source_stale, builder_blocked: tally(skipReport.builder_blocked), ...skipOut },
     blocked_decisions_not_persisted: blocked,
     football_d1: tally(a.result.decisions.filter((d) => d.family === "FOOTBALL_D1").map((d) => `${d.outcome}:${d.reason.slice(0, 40)}`)),
@@ -769,6 +776,35 @@ async function main() {
 
   const bets = result.decisions.filter((d) => d.outcome === "BET");
   const books = await fetchOrderBooksConcurrent(bets.map((d) => d.bet!.tokenId), 6);
+  if (process.argv.includes("--admission-preview")) {
+    const samples = [];
+    const coverage=new Map<string,{count:number|null;sampled:number;receipt:Awaited<ReturnType<typeof acquireIdentityWitnesses>>}>();
+    for (const d of bets.filter(d=>d.family==="SAFE_PREMATCH").slice(0,8)) {
+      const prior = await client.from(FORWARD_DECISION_V2.ledgerTable).select("row_key",{count:"exact",head:true})
+        .eq("row_kind","LEDGER").eq("model_id",d.modelId).eq("selected_token_id",d.bet!.tokenId);
+      if (prior.error) throw new Error("ADMISSION_PREVIEW_READ_FAILED");
+      let modelCoverage=coverage.get(d.modelId);
+      if (!modelCoverage) {
+        const history = await client.from(FORWARD_DECISION_V2.ledgerTable).select("physical_event_key",{count:"exact"})
+          .eq("row_kind","LEDGER").eq("model_id",d.modelId).is("provider_root_game_id",null).order("event_start",{ascending:false}).limit(20);
+        if (history.error) throw new Error("ADMISSION_PREVIEW_READ_FAILED");
+        const ids=[...new Set(((history.data??[]) as Array<{physical_event_key:string}>).map(r=>r.physical_event_key))];
+        modelCoverage={count:history.count,sampled:(history.data??[]).length,receipt:await acquireIdentityWitnesses(ids)};
+        coverage.set(d.modelId,modelCoverage);
+      }
+      const {receipt}=modelCoverage;
+      samples.push({model_id:d.modelId,provider_event_id:d.bet!.providerEventId,provider_root:d.bet!.providerGameId,
+        already_claimed_n:prior.count,rootless_claims_n:modelCoverage.count,sampled_claims_n:modelCoverage.sampled,
+        classification:prior.count ? "DUPLICATE_EXISTING_MODEL_TOKEN_CLAIM" : receipt.unresolved.length ? "EXACT_FIRST_BLOCKER:INDEPENDENT_PHYSICAL_MATCH_COMPLETION_AUTHORITY_MISSING" : "REMAINING_CLAIMS_NOT_YET_PROVEN",
+        receipt});
+    }
+    const file=write({kind:"READ_ONLY_ADMISSION_PREVIEW",business_pass:false,db_writes:0,model_bets_n:bets.filter(d=>d.family==="SAFE_PREMATCH").length,
+      candidates_assessed_n:samples.length,diagnostic_raw_rows_n:[...coverage.values()].reduce((n,c)=>n+c.sampled,0),
+      real_candidate_admission_proven_n:0,first_missing_authority:"No registered whole-match lifecycle authority found; Box B market FINAL is insufficient",samples});
+    console.log(JSON.stringify({file,db_writes:0,real_candidate_admission_proven_n:0,model_bets_n:bets.filter(d=>d.family==="SAFE_PREMATCH").length,
+      samples:samples.map(s=>({model:s.model_id,already_claimed_n:s.already_claimed_n,rootless_claims_n:s.rootless_claims_n,lookup_n:s.receipt.requested_n,rooted_n:s.receipt.witnessed_n,unresolved_n:s.receipt.unresolved.length,classification:s.classification}))}));
+    return;
+  }
   if (persistV2) {
     await runPersistV2({ client, models, evaluations, run, result, safeRows, books, bets, clock, replay, write, startedMs: t0 });
     return;

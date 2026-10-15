@@ -30,6 +30,16 @@ begin
 end;
 $$;
 
+-- Apply only at the independently approved handover, in ONE explicit transaction.
+-- This lock waits for old batches, then prevents new legacy inserts while the guard
+-- is replaced. The five modes become V2 before this transaction commits.
+do $$ begin
+  if current_setting('app.forward_v2_cutover_approved', true) is distinct from 'P538_FIVE_SAFE_ATOMIC_HANDOVER' then
+    raise exception 'FORWARD_V2_ATOMIC_HANDOVER_AUTHORITY_REQUIRED';
+  end if;
+end $$;
+lock table public.prospective_selection_shadow_runtime in share row exclusive mode;
+
 alter table public.prospective_selection_shadow_runtime
   add column if not exists definition_digest text,
   add column if not exists source_sha text,
@@ -192,31 +202,217 @@ drop trigger if exists forward_decision_v2_witness_truncate_trg on public.forwar
 create trigger forward_decision_v2_witness_truncate_trg before truncate on public.forward_decision_v2_identity_witness
 for each statement execute function public.forward_decision_v2_witness_guard();
 
+-- Independent physical identity/lifecycle authority. Application writers may READ,
+-- never attest or fabricate these facts. An independently reviewed authority owner
+-- must supply exact provider-event bindings and physical (not market) completion.
+create table if not exists public.forward_v2_physical_authority (
+  authority_namespace text primary key,
+  source_origin text not null check (source_origin ~ '^https://[A-Za-z0-9.-]+$'),
+  identity_semantics text not null check (identity_semantics='ONE_STABLE_ID_PER_REAL_PHYSICAL_MATCH'),
+  reviewed_definition_digest text not null check (reviewed_definition_digest ~ '^[0-9a-f]{64}$'),
+  approved_at timestamptz not null check (approved_at <= clock_timestamp())
+);
+alter table public.forward_v2_physical_authority enable row level security;
+revoke all on public.forward_v2_physical_authority from public,anon,authenticated,service_role;
+grant select on public.forward_v2_physical_authority to service_role;
+create or replace function public.forward_v2_authority_guard() returns trigger language plpgsql as $$
+begin
+  if tg_op <> 'INSERT' then raise exception 'IMMUTABLE_PHYSICAL_AUTHORITY'; end if;
+  return new;
+end $$;
+revoke all on function public.forward_v2_authority_guard() from public,anon,authenticated;
+drop trigger if exists forward_v2_authority_guard_trg on public.forward_v2_physical_authority;
+create trigger forward_v2_authority_guard_trg before update or delete on public.forward_v2_physical_authority
+for each row execute function public.forward_v2_authority_guard();
+drop trigger if exists forward_v2_authority_truncate_trg on public.forward_v2_physical_authority;
+create trigger forward_v2_authority_truncate_trg before truncate on public.forward_v2_physical_authority
+for each statement execute function public.forward_v2_authority_guard();
+
+create table if not exists public.forward_decision_v2_physical_match_witness (
+  provider_event_id text not null check (provider_event_id ~ '^[0-9]+$'),
+  authority_namespace text not null references public.forward_v2_physical_authority(authority_namespace)
+    check (authority_namespace ~ '^(OFFICIAL|PROVIDER):[A-Za-z0-9_.:-]+$'),
+  physical_match_id text not null check (length(btrim(physical_match_id)) > 0),
+  lifecycle_state text not null check (lifecycle_state in ('IDENTITY_CONFIRMED','COMPLETED')),
+  actual_started_at timestamptz,
+  actual_completed_at timestamptz,
+  acquired_at timestamptz not null,
+  source_uri text not null check (source_uri ~ '^https://'),
+  receipt_digest text not null check (receipt_digest ~ '^[0-9a-f]{64}$'),
+  evidence_text text not null,
+  evidence jsonb not null,
+  check (evidence_text::jsonb=evidence and receipt_digest=encode(sha256(convert_to(evidence_text,'UTF8')),'hex')),
+  check (coalesce(evidence ->> 'provider_event_id' = provider_event_id
+    and evidence ->> 'authority_namespace' = authority_namespace
+    and evidence ->> 'physical_match_id' = physical_match_id
+    and evidence ->> 'lifecycle_state' = lifecycle_state, false)),
+  check (lifecycle_state <> 'COMPLETED' or (actual_started_at is not null
+    and actual_completed_at is not null and actual_started_at < actual_completed_at
+    and actual_completed_at <= acquired_at
+    and coalesce((evidence->>'actual_started_at')::timestamptz=actual_started_at,false)
+    and coalesce((evidence->>'actual_completed_at')::timestamptz=actual_completed_at,false))),
+  primary key (provider_event_id,authority_namespace,physical_match_id,receipt_digest)
+);
+alter table public.forward_decision_v2_physical_match_witness enable row level security;
+revoke all on public.forward_decision_v2_physical_match_witness from public,anon,authenticated,service_role;
+grant select on public.forward_decision_v2_physical_match_witness to service_role;
+create or replace function public.forward_v2_physical_source_guard() returns trigger language plpgsql as $$
+begin
+  if not exists (select 1 from public.forward_v2_physical_authority a
+    where a.authority_namespace=new.authority_namespace and new.source_uri like a.source_origin||'/%') then
+    raise exception 'PHYSICAL_AUTHORITY_ORIGIN_UNPROVEN';
+  end if;
+  return new;
+end $$;
+revoke all on function public.forward_v2_physical_source_guard() from public,anon,authenticated;
+drop trigger if exists forward_v2_physical_source_guard_trg on public.forward_decision_v2_physical_match_witness;
+create trigger forward_v2_physical_source_guard_trg before insert on public.forward_decision_v2_physical_match_witness
+for each row execute function public.forward_v2_physical_source_guard();
+drop trigger if exists forward_v2_physical_witness_guard_trg on public.forward_decision_v2_physical_match_witness;
+create trigger forward_v2_physical_witness_guard_trg before insert or update or delete on public.forward_decision_v2_physical_match_witness
+for each row execute function public.forward_decision_v2_witness_guard();
+drop trigger if exists forward_v2_physical_witness_truncate_trg on public.forward_decision_v2_physical_match_witness;
+create trigger forward_v2_physical_witness_truncate_trg before truncate on public.forward_decision_v2_physical_match_witness
+for each statement execute function public.forward_decision_v2_witness_guard();
+
+create table if not exists public.forward_decision_v2_legacy_rejection (
+  rejection_id bigint generated always as identity primary key,
+  row_key text not null, model_id text not null, provider_event_id text,
+  reason text not null check (reason = 'LEGACY_SAFE_WRITER_PAUSED_AT_APPROVED_HANDOVER'),
+  rejected_at timestamptz not null default clock_timestamp()
+);
+alter table public.forward_decision_v2_legacy_rejection enable row level security;
+revoke all on public.forward_decision_v2_legacy_rejection from public,anon,authenticated,service_role;
+grant select,insert on public.forward_decision_v2_legacy_rejection to service_role;
+grant usage on sequence public.forward_decision_v2_legacy_rejection_rejection_id_seq to service_role;
+create or replace function public.forward_v2_rejection_guard() returns trigger language plpgsql as $$
+begin
+  if tg_op <> 'INSERT' then raise exception 'IMMUTABLE_LEGACY_REJECTION'; end if;
+  new.rejected_at := clock_timestamp(); return new;
+end $$;
+revoke all on function public.forward_v2_rejection_guard() from public,anon,authenticated;
+drop trigger if exists forward_v2_rejection_guard_trg on public.forward_decision_v2_legacy_rejection;
+create trigger forward_v2_rejection_guard_trg before insert or update or delete on public.forward_decision_v2_legacy_rejection
+for each row execute function public.forward_v2_rejection_guard();
+drop trigger if exists forward_v2_rejection_truncate_trg on public.forward_decision_v2_legacy_rejection;
+create trigger forward_v2_rejection_truncate_trg before truncate on public.forward_decision_v2_legacy_rejection
+for each statement execute function public.forward_v2_rejection_guard();
+
+-- One OLD claim against one candidate. Contradictions are checked before any
+-- DIFFERENT shortcut; rootless history is not automatically UNKNOWN or DIFFERENT.
+create or replace function public.forward_v2_classify_claim(old_event text, old_root text, candidate_event text, candidate_root text)
+returns text language plpgsql volatile as $$
+declare roots text[]; candidate_roots text[]; same_match boolean; different_completed boolean;
+begin
+  select array_agg(distinct v) into roots from (
+    select nullif(btrim(old_root),'') as v union all
+    select provider_root_game_id from public.forward_decision_v2_identity_witness where provider_event_id=old_event
+  ) q where v is not null;
+  select array_agg(distinct v) into candidate_roots from (
+    select nullif(btrim(candidate_root),'') as v union all
+    select provider_root_game_id from public.forward_decision_v2_identity_witness where provider_event_id=candidate_event
+  ) q where v is not null;
+  if coalesce(cardinality(roots),0)>1 or coalesce(cardinality(candidate_roots),0)<>1 then return 'IDENTITY_CONTRADICTION'; end if;
+  if exists (select 1 from public.forward_decision_v2_physical_match_witness
+    where provider_event_id in (old_event,candidate_event)
+    group by provider_event_id,authority_namespace having count(distinct physical_match_id)>1
+      or count(distinct actual_completed_at) filter (where lifecycle_state='COMPLETED')>1) then return 'IDENTITY_CONTRADICTION'; end if;
+  select coalesce(bool_or(o.physical_match_id=n.physical_match_id),false),
+    coalesce(bool_or(o.physical_match_id<>n.physical_match_id and o.lifecycle_state='COMPLETED'),false)
+    into same_match,different_completed
+    from public.forward_decision_v2_physical_match_witness o
+    join public.forward_decision_v2_physical_match_witness n on n.authority_namespace=o.authority_namespace
+    where o.provider_event_id=old_event and n.provider_event_id=candidate_event;
+  if same_match and different_completed then return 'IDENTITY_CONTRADICTION'; end if;
+  if cardinality(roots)=1 then
+    if roots[1]=candidate_roots[1] then
+      if different_completed then return 'IDENTITY_CONTRADICTION'; end if;
+      return 'SAME_ROOT';
+    end if;
+    if same_match then return 'IDENTITY_CONTRADICTION'; end if;
+    return 'DIFFERENT_ROOT';
+  end if;
+  if same_match then return 'SAME_PHYSICAL_MATCH'; end if;
+  if different_completed then return 'DIFFERENT_COMPLETED_PHYSICAL_MATCH'; end if;
+  return 'IDENTITY_MISSING';
+end $$;
+revoke all on function public.forward_v2_classify_claim(text,text,text,text) from public,anon,authenticated;
+grant execute on function public.forward_v2_classify_claim(text,text,text,text) to service_role;
+
+-- Candidate lifecycle is independent of the number of historical claims. Include
+-- provider aliases sharing a verified root and lifecycle aliases in the same authority.
+create or replace function public.forward_v2_candidate_blocker(p_event text,p_root text)
+returns text language plpgsql volatile as $$
+declare candidate_roots text[]; aliases text[]; contradictory boolean; started boolean;
+begin
+  select array_agg(distinct v) into candidate_roots from (
+    select nullif(btrim(p_root),'') v union all
+    select provider_root_game_id from public.forward_decision_v2_identity_witness where provider_event_id=p_event
+  ) q where v is not null;
+  if coalesce(cardinality(candidate_roots),0)>1 then return 'IDENTITY_WITNESS_CONTRADICTION'; end if;
+  select array_agg(distinct v) into aliases from (
+    select p_event v union all select provider_event_id from public.forward_decision_v2_identity_witness
+    where provider_root_game_id=any(candidate_roots)
+  ) q where v is not null;
+  if exists (select 1 from public.forward_decision_v2_identity_witness where provider_event_id=any(aliases)
+    group by provider_event_id having count(distinct provider_root_game_id)>1) then return 'IDENTITY_WITNESS_CONTRADICTION'; end if;
+  with bindings as (
+    select w.* from public.forward_decision_v2_physical_match_witness w
+    where w.provider_event_id=any(aliases) or exists (
+      select 1 from public.forward_decision_v2_physical_match_witness c where c.provider_event_id=any(aliases)
+        and c.authority_namespace=w.authority_namespace and c.physical_match_id=w.physical_match_id)
+  )
+  select exists (select 1 from bindings where provider_event_id=any(aliases)
+      group by authority_namespace having count(distinct physical_match_id)>1)
+    or exists (select 1 from bindings group by provider_event_id,authority_namespace having count(distinct physical_match_id)>1)
+    or exists (select 1 from bindings group by authority_namespace,physical_match_id
+      having count(distinct actual_started_at)>1 or count(distinct actual_completed_at)>1),
+    exists (select 1 from bindings where lifecycle_state='COMPLETED' or actual_completed_at is not null
+      or actual_started_at<=clock_timestamp()) into contradictory,started;
+  if contradictory then return 'IDENTITY_WITNESS_CONTRADICTION'; end if;
+  if started then return 'CANDIDATE_PHYSICAL_MATCH_ALREADY_STARTED_OR_COMPLETED'; end if;
+  return null;
+end $$;
+revoke all on function public.forward_v2_candidate_blocker(text,text) from public,anon,authenticated;
+grant execute on function public.forward_v2_candidate_blocker(text,text) to service_role;
+
+create or replace function public.forward_decision_v2_candidate_proof(p_model text,p_event text,p_root text)
+returns jsonb language sql volatile as $$
+  with classified as (
+    select coalesce(r.provider_event_id,r.physical_event_key) as old_event,r.row_key,
+      public.forward_v2_classify_claim(coalesce(r.provider_event_id,r.physical_event_key),r.provider_root_game_id,p_event,p_root) as classification
+    from public.prospective_selection_shadow_runtime r where r.row_kind='LEDGER' and r.model_id=p_model
+  )
+  select jsonb_build_object('candidate_blocker',public.forward_v2_candidate_blocker(p_event,p_root),'claims_n',count(*),
+    'same_n',count(*) filter (where classification in ('SAME_ROOT','SAME_PHYSICAL_MATCH')),
+    'different_root_n',count(*) filter (where classification='DIFFERENT_ROOT'),
+    'different_completed_n',count(*) filter (where classification='DIFFERENT_COMPLETED_PHYSICAL_MATCH'),
+    'unknown_n',count(*) filter (where classification='IDENTITY_MISSING'),
+    'contradiction_n',count(*) filter (where classification='IDENTITY_CONTRADICTION'),
+    'unresolved_events',coalesce((select jsonb_agg(old_event order by old_event) from
+      (select distinct old_event from classified where classification='IDENTITY_MISSING' order by old_event limit 20) q),'[]'::jsonb))
+  from classified
+$$;
+revoke all on function public.forward_decision_v2_candidate_proof(text,text,text) from public,anon,authenticated;
+grant execute on function public.forward_decision_v2_candidate_proof(text,text,text) to service_role;
+
 -- Advisory preflight for the reviewed writer. The trigger repeats the decision after
 -- acquiring locks: this RPC alone is never the concurrency authority.
-create or replace function public.forward_decision_v2_admission(p_model text, p_root text)
-returns text language sql volatile as $$
-  select case
-    when not exists (select 1 from public.forward_decision_v2_cutover c where c.model_id=p_model and c.writer_mode='V2')
-      then 'FORWARD_V2_CUTOVER_NOT_ACTIVE'
-    when exists (select 1 from public.prospective_selection_shadow_runtime r
-      where r.row_kind='LEDGER' and r.model_id=p_model and (
-        r.provider_root_game_id=p_root or exists (select 1 from public.forward_decision_v2_identity_witness w
-          where w.provider_event_id=coalesce(r.provider_event_id,r.physical_event_key) and w.provider_root_game_id=p_root)))
-      then 'DUPLICATE_ECONOMIC_UNIT'
-    when exists (select 1 from public.prospective_selection_shadow_runtime r
-      where r.row_kind='LEDGER' and r.model_id=p_model and (
-        (nullif(btrim(r.provider_root_game_id),'') is null and
-          (select count(distinct w.provider_root_game_id) from public.forward_decision_v2_identity_witness w
-            where w.provider_event_id=coalesce(r.provider_event_id,r.physical_event_key)) <> 1)
-        or exists (select 1 from public.forward_decision_v2_identity_witness w
-          where w.provider_event_id=coalesce(r.provider_event_id,r.physical_event_key)
-            and r.provider_root_game_id is not null and w.provider_root_game_id<>r.provider_root_game_id)))
-      then 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN'
-    else 'ADMISSIBLE' end
-$$;
-revoke all on function public.forward_decision_v2_admission(text,text) from public,anon,authenticated;
-grant execute on function public.forward_decision_v2_admission(text,text) to service_role;
+drop function if exists public.forward_decision_v2_admission(text,text);
+create or replace function public.forward_decision_v2_admission(p_model text,p_root text,p_event text default null)
+returns text language plpgsql volatile as $$
+declare proof jsonb;
+begin
+  if not exists (select 1 from public.forward_decision_v2_cutover where model_id=p_model and writer_mode='V2') then return 'FORWARD_V2_CUTOVER_NOT_ACTIVE'; end if;
+  proof := public.forward_decision_v2_candidate_proof(p_model,p_event,p_root);
+  if proof->>'candidate_blocker' is not null then return proof->>'candidate_blocker'; end if;
+  if (proof->>'contradiction_n')::bigint>0 then return 'IDENTITY_WITNESS_CONTRADICTION'; end if;
+  if (proof->>'same_n')::bigint>0 then return 'DUPLICATE_ECONOMIC_UNIT'; end if;
+  if (proof->>'unknown_n')::bigint>0 then return 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN'; end if;
+  return 'ADMISSIBLE';
+end $$;
+revoke all on function public.forward_decision_v2_admission(text,text,text) from public,anon,authenticated;
+grant execute on function public.forward_decision_v2_admission(text,text,text) to service_role;
 
 create or replace function public.prospective_selection_shadow_guard()
 returns trigger language plpgsql as $$
@@ -256,10 +452,11 @@ begin
         -- Preserve deployed legacy behavior until the five-model handover. No V2 SAFE
         -- claim can exist before that handover. Pause only these legacy inserts after it.
         if exists (select 1 from public.forward_decision_v2_cutover c
-          where c.model_id = new.model_id and c.writer_mode = 'V2') then return null; end if;
-        if exists (select 1 from public.prospective_selection_shadow_runtime r
-          where r.row_kind = 'LEDGER' and r.model_id = new.model_id
-            and r.physical_event_key = new.physical_event_key) then return null; end if;
+          where c.model_id = new.model_id and c.writer_mode = 'V2') then
+          insert into public.forward_decision_v2_legacy_rejection(row_key,model_id,provider_event_id,reason)
+          values (new.row_key,new.model_id,new.physical_event_key,'LEGACY_SAFE_WRITER_PAUSED_AT_APPROVED_HANDOVER');
+          return null;
+        end if;
       elsif new.contract_version = 'FORWARD_BET_V1' then
         if exists (select 1 from public.forward_decision_v2_cutover c
           where c.model_id = new.model_id and c.writer_mode = 'V2') then
@@ -381,26 +578,11 @@ begin
               or (new.canonical_game_key is not null and r.canonical_game_key = new.canonical_game_key))) then
           raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
         end if;
-        -- Resolve each exact historical event via immutable external evidence, without
-        -- modifying its ledger row. Unknown or conflicting evidence remains blocked.
-        if exists (select 1 from public.prospective_selection_shadow_runtime r
-          where r.row_kind = 'LEDGER' and r.model_id = new.model_id
-            and nullif(btrim(r.provider_root_game_id), '') is null
-            and (select count(distinct w.provider_root_game_id) from public.forward_decision_v2_identity_witness w
-              where w.provider_event_id = coalesce(r.provider_event_id, r.physical_event_key)) <> 1) then
-          raise exception 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN';
-        end if;
-        if exists (select 1 from public.prospective_selection_shadow_runtime r
-          where r.row_kind = 'LEDGER' and r.model_id = new.model_id
-            and (r.provider_root_game_id = new.provider_root_game_id or exists (
-              select 1 from public.forward_decision_v2_identity_witness w
-              where w.provider_event_id = coalesce(r.provider_event_id, r.physical_event_key)
-                and w.provider_root_game_id = new.provider_root_game_id))) then
-          raise exception using errcode = '23505', message = 'DUPLICATE_ECONOMIC_UNIT';
-        end if;
-        if public.forward_decision_v2_admission(new.model_id,new.provider_root_game_id) <> 'ADMISSIBLE' then
-          raise exception 'HISTORICAL_ALIAS_EQUIVALENCE_UNPROVEN';
-        end if;
+        declare admission text := public.forward_decision_v2_admission(new.model_id,new.provider_root_game_id,new.provider_event_id);
+        begin
+          if admission='DUPLICATE_ECONOMIC_UNIT' then raise exception using errcode='23505',message=admission; end if;
+          if admission<>'ADMISSIBLE' then raise exception '%',admission; end if;
+        end;
         -- Price authority is the picked frozen tier, never source entryPrice alone or VWAP alone.
         if coalesce(new.evaluation_evidence #>> '{fill,price_authority,rule}', '') <> 'FOUNDER_P538_SAME_SELECTED_TIER_WORST_ASK'
           or coalesce(new.evaluation_evidence #>> '{fill,price_authority,model_id}', '') <> new.model_id then
@@ -578,6 +760,7 @@ declare
   persisted timestamptz;
   earliest_start timestamptz;
   cutoff timestamptz;
+  candidate_blocker text;
 begin
   if tg_op <> 'INSERT' then
     raise exception 'IMMUTABLE_FORWARD_SKIP';
@@ -585,12 +768,15 @@ begin
   persisted := clock_timestamp();
   new.first_persisted_at := persisted;
   perform pg_advisory_xact_lock(hashtextextended('FWD_MODEL|' || new.model_id, 0));
+  perform pg_advisory_xact_lock(hashtextextended('FWD_IDENTITY_WITNESSES', 0));
   if not exists (select 1 from public.forward_decision_v2_cutover c
     where c.model_id = new.model_id and c.writer_mode = 'V2') then
     raise exception 'FORWARD_V2_CUTOVER_NOT_ACTIVE';
   end if;
   persisted := clock_timestamp();
   new.first_persisted_at := persisted;
+  candidate_blocker := public.forward_v2_candidate_blocker(new.physical_event_key,null);
+  if candidate_blocker is not null then raise exception '%',candidate_blocker; end if;
   if exists (select 1 from public.prospective_selection_shadow_runtime r
     where r.row_kind = 'LEDGER' and r.model_id = new.model_id and (r.physical_event_key = new.physical_event_key
       or r.evaluation_evidence #>> '{cohort,physical_event_id}' = new.cohort_physical_event_id)) then
@@ -640,3 +826,8 @@ alter table public.forward_decision_v2_skip enable row level security;
 revoke all on public.forward_decision_v2_skip from public, anon, authenticated;
 grant select, insert on public.forward_decision_v2_skip to service_role;
 grant usage on sequence public.forward_decision_v2_skip_skip_id_seq to service_role;
+
+-- No exposed new-contract LEGACY interval: installation and the authorized five-model
+-- handover commit together. Reapplication preserves V2 and never reverses the handover.
+update public.forward_decision_v2_cutover set writer_mode='V2'
+where model_id in ('P50_52_SAFE','TENNIS_P50_52_SAFE','PORTFOLIO_BROAD_SAFE','QUALITY_FILL_A_SAFE','QUALITY_FILL_D_SAFE');
