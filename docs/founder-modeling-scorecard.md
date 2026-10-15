@@ -8,6 +8,8 @@ The page, asset route and `/api/founder/modeling/research/scorecard` require the
 
 The existing research settlement cycle adds `summary.paper_scorecard` to its existing daily report JSON. It uses canonical settlement positions, preserves Box B/Gamma precedence, and does not create a table, migration, job, service or alternate outcome population. The existing bounded target selection revisits a report missing this summary, including a previously completed day. Its run limits and cadence are unchanged.
 
+That automatic refresh is limited to existing reports within the 14-day lookback; absent reports are reconciled only within the recent three completed days. It is not a historical backfill guarantee. The hourly producer checks today plus at most three completed days per run. An isolated missing-summary backlog covering today and the preceding five days drains in two successful hourly runs when provider and runtime budgets permit, including reports already marked FULLY_RESOLVED. Failures, settled-count regression refusals or runtime deferrals can extend completion; failed attempts preserve the prior successful daily economics. A future historical gap requires a separate bounded repair through the existing producer infrastructure.
+
 The website reads bounded durable sufficient statistics using the existing server-side research credentials. It never downloads raw private decisions for calculation. Exact HEAD counts reconcile the report cohort against current total, BET and WAITING decisions at one request cutoff. Missing summaries or counts that have advanced fail closed with a specific refresh message. Failed/stale attempts are visible. No old snapshot is presented as current.
 
 Deploying the website alone is insufficient: the updated existing research producer must run before its summaries are available. This change does not run that producer or modify database rows during verification. Research REST aggregates need not be enabled.
@@ -26,7 +28,7 @@ Deploying the website alone is insufficient: the updated existing research produ
 
 Focused tests cover sentinel-only authorization, signature/expiry failures, protected route responses, weighted Scorecard V2 economics, missing evidence, same-day outcome eligibility, four-view reconciliation, physical-match deduplication, date bounds and unchanged scheduler limits. Synthetic test inputs contain no database snapshot.
 
-Run the four focused files under `tests/research-clone`: `founderModelingAuth`, `paperScorecardSnapshot`, `inplayPerformanceScorecard`, and `inplayPaperSettlementCycle`, using `node --import tsx --test`. Then run `npm run build`.
+Run the five focused files under `tests/research-clone`: `founderModelingAuth`, `founderPaperReader`, `paperScorecardSnapshot`, `inplayPerformanceScorecard`, and `inplayPaperSettlementCycle`, using `node --import tsx --test`. Queue convergence and the historical lookback limit use synthetic fixtures. Reader tests exercise missing summaries/days, count mismatches, stale attempts and the incomplete current UTC day. Then run `npm run build`.
 
 ## Independent challenge
 

@@ -38,3 +38,31 @@ test("existing scheduler revisits summaries missing scorecard data without incre
   assert.ok(selectTargetDays({nowMs:Date.parse(read),existing:[row]}).includes(row.utc_day));
   assert.ok(selectTargetDays({nowMs:Date.parse(read),existing:[row]}).length<=4);
 });
+
+test("six-day missing-summary queue drains in two successful hourly runs, including resolved reports",()=>{
+  const now=Date.parse("2026-10-15T19:00:00.000Z");
+  const existing:ExistingReport[]=Array.from({length:6},(_,i)=>{
+    const day=`2026-10-${10+i}`,at=`2026-10-${Math.min(15,11+i)}T01:00:00.000Z`;
+    return {utc_day:day,status:i===0||i===5?"PARTIALLY_SETTLED":"FULLY_RESOLVED",
+      settled_n:1,attempts_n:1,generated_at:at,first_generated_at:at,last_attempt_at:at,scorecard:null};
+  });
+  const batches:string[][]=[];
+  for(let hour=0;hour<2;hour++) {
+    const at=now+hour*3_600_000,targets=selectTargetDays({nowMs:at,existing});
+    assert.ok(targets.length<=4); // existing cap: today plus three completed days
+    batches.push(targets);
+    for(const day of targets) {
+      const row=existing.find(r=>r.utc_day===day);
+      if(row) Object.assign(row,{scorecard:"PAPER_SCORECARD_V1",generated_at:new Date(at).toISOString(),last_attempt_at:new Date(at).toISOString()});
+    }
+  }
+  assert.deepEqual(batches,[["2026-10-15","2026-10-14","2026-10-10","2026-10-11"],["2026-10-15","2026-10-12","2026-10-13"]]);
+  assert.ok(existing.every(r=>r.scorecard==="PAPER_SCORECARD_V1"));
+  assert.ok(existing.filter(r=>r.status==="FULLY_RESOLVED").every(r=>!selectTargetDays({nowMs:now+2*3_600_000,existing}).includes(r.utc_day)));
+});
+
+test("missing summary outside fourteen days is not promised an automatic refresh",()=>{
+  const row:ExistingReport={utc_day:"2026-09-01",status:"FULLY_RESOLVED",settled_n:1,attempts_n:1,
+    generated_at:to,first_generated_at:to,last_attempt_at:to,scorecard:null};
+  assert.ok(!selectTargetDays({nowMs:Date.parse(read),existing:[row]}).includes(row.utc_day));
+});
