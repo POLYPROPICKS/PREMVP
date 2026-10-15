@@ -5,6 +5,7 @@
 // the caller (separate `;` step after sync + decision cycle) and is always reported loudly, never as silent success.
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GammaMarket } from "../feed/resolveSignalOutcome";
+import { buildPaperSnapshot } from "./paperScorecardSnapshot";
 import {
   buildDailyReport, collectInputs, readDecisionRows, utcDayWindow, type DecisionRow, type SellPathResult, SELL_MULTIPLES,
 } from "./inplayPaperSettlement";
@@ -27,7 +28,7 @@ export const MAX_HIT_ROWS = 100;
 const DAY_MS = 86_400_000;
 
 export type ReportStatus = "INCOMPLETE" | "PARTIALLY_SETTLED" | "FULLY_RESOLVED" | "FAILED";
-export type ExistingReport = { utc_day: string; status: ReportStatus; settled_n: number; attempts_n: number; generated_at: string | null; first_generated_at: string | null; last_attempt_at: string | null };
+export type ExistingReport = { utc_day: string; status: ReportStatus; settled_n: number; attempts_n: number; generated_at: string | null; first_generated_at: string | null; last_attempt_at: string | null; scorecard?: unknown };
 
 export const utcDayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 const addDays = (day: string, n: number) => utcDayOf(Date.parse(`${day}T00:00:00Z`) + n * DAY_MS);
@@ -57,6 +58,7 @@ export function selectTargetDays(input: { nowMs: number; existing: readonly Exis
     const r = byDay.get(d);
     if (!r) return true;
     const generated = r.generated_at ? Date.parse(r.generated_at) : NaN;
+    if (r.scorecard === null) return true; // Enrich existing JSON on the same bounded cadence; no new job/backfill.
     if (r.status === "FULLY_RESOLVED" && Number.isFinite(generated) && generated >= Date.parse(`${addDays(d, 1)}T00:00:00Z`)) return false;
     if (r.status === "FAILED") return true; // retried on every scheduled run
     const last = r.last_attempt_at ? Date.parse(r.last_attempt_at) : NaN;
@@ -119,6 +121,7 @@ export function buildReportRow(day: string, d: { decisions: readonly DecisionRow
     settled_gross_pnl_u: s.gross_pnl_u, settled_roi: s.settled_roi, net_pnl_status: s.net_pnl_status,
     executable_x2_n: r.executable_exits.executable_x2_n, executable_x3_n: r.executable_exits.executable_x3_n, executable_x5_n: r.executable_exits.executable_x5_n,
     summary: {
+      paper_scorecard: buildPaperSnapshot(d.decisions, r.positions, w.from, w.to, nowIso),
       report: r.report, strategies: r.strategies, settlement: s, settlement_by_strategy: r.settlement_by_strategy, settlement_by_provenance: r.settlement_by_provenance,
       independence: r.independence, executable_exits: r.executable_exits, executable_hits: executableHits(r.sell_paths),
       missing_outcome_reasons: r.missing_outcome_reasons, provider: d.provider, disclaimer: r.disclaimer,
@@ -130,7 +133,7 @@ export function buildReportRow(day: string, d: { decisions: readonly DecisionRow
   };
 }
 
-const EXISTING_COLUMNS = "utc_day,status,settled_n,attempts_n,generated_at,first_generated_at,last_attempt_at";
+const EXISTING_COLUMNS = "utc_day,status,settled_n,attempts_n,generated_at,first_generated_at,last_attempt_at,scorecard:summary->paper_scorecard->version";
 const isMissingTable = (e: { code?: string; message?: string } | null) => !!e && (e.code === "42P01" || e.code === "PGRST205" || /could not find the table|does not exist/i.test(e.message ?? ""));
 
 export async function readExistingReports(db: SupabaseClient, fromDay: string): Promise<ExistingReport[]> {

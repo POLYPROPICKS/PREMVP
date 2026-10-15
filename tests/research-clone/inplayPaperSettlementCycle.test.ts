@@ -194,7 +194,7 @@ test("missing report table fails loudly with the exact schema action; nothing el
 
 test("scheduled command: settlement runs last in BOTH branches, `;`-separated so it cannot suppress sync/decisions, exit code preserved", () => {
   const toml = readFileSync("ops/railway/research-clone-daily-sync.toml", "utf8");
-  const start = toml.split("\n").find((l) => l.startsWith("startCommand"))!;
+  const start = toml.split("\n").find((l) => l.startsWith("startCommand"))!.trimEnd();
   assert.equal((start.match(/research-clone:inplay-paper-settlement-cycle/g) ?? []).length, 2);
   // BOX_B_HISTORICAL_CATCHUP_LIVE_V1: the Box B collector now runs after settlement; every exit code (D/S/C) is preserved.
   const tail = String.raw`npm run research-clone:inplay-paper-settlement-cycle; S=\$\?; npm run research-clone:market-outcome-collector; C=\$\?; \[ \\"\$D\\" = 0 \] && \[ \\"\$S\\" = 0 \] && \[ \\"\$C\\" = 0 \]`;
