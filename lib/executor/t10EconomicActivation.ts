@@ -71,7 +71,7 @@ import {
 } from "./executorQueueTypes";
 import { latestEntryIso } from "./nightWindow";
 import { bStrategySupportRegion, isBSupportFamilyEligible, type FinalT3MarketObservation } from "./reservationMarketBaseline";
-import { FOUNDER_TOTALS_OVER_LIVE_OFF, isFounderLiveOffTotalsOver, isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
+import { FOUNDER_MONEYLINE_ONLY_LIVE, isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
 import {
   decideEventAction,
   evaluateMakerPlacement,
@@ -300,12 +300,8 @@ export async function decideT10EconomicEvent(input: {
     const reference = evaluateExactMarketReference(identity, evidence);
     // Family/type admission is price-agnostic: a candidate whose CURRENT ASK sits outside the band may still
     // be a safe MAKER (the band is proven per action, on the price actually transacted).
-    // LIVE_MONEY_FAMILY_AUTHORITY_V1: a non-live family (SPREADS) stays in the evaluated universe for telemetry
-    // but fails NOT_SUPPORT_ELIGIBLE, so it can never compete for or obtain live economic authority.
-    // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: TOTALS Over is removed from the live competition BEFORE the winner is
-    // chosen (siblings such as Under / MONEYLINE / TOTAL_CORNERS win through the normal selector); it stays evaluated
-    // with an explicit reason for telemetry.
-    const liveOffReason = isFounderLiveOffTotalsOver(row.canonical_market_family, row.side) ? FOUNDER_TOTALS_OVER_LIVE_OFF : null;
+    // MONEYLINE-only admission precedes economic ranking; every original row remains evaluated for research.
+    const liveOffReason = isLiveMoneyFamilyEligible(row.canonical_market_family) ? null : FOUNDER_MONEYLINE_ONLY_LIVE;
     const supportFamilyEligible = isBSupportFamilyEligible(row) && isLiveMoneyFamilyEligible(row.canonical_market_family) && !liveOffReason;
     const competes = supportFamilyEligible && beforeLatestEntry && !input.exposureExists;
     return { row, identity, t30Evidence, reference, supportFamilyEligible, liveOffReason, competes };

@@ -1,6 +1,6 @@
 // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10 -- no NEW real-money bet on TOTALS Over (any line).
 //   node --import tsx --test tests/contur3/founderTotalsOverLiveOff.test.ts
-// Live OFF: TOTALS + Over. Unchanged: TOTALS Under, MONEYLINE, TOTAL_CORNERS; SPREADS stays OFF. Research/telemetry stay free.
+// Superseded by MONEYLINE-only LIVE on 2026-10-15; historical predicate remains tested.
 import test from "node:test";
 import assert from "node:assert/strict";
 import type { TokenFeeScheduleResult } from "../../lib/liquidity/polymarketClient";
@@ -15,15 +15,16 @@ import { admitExecutableQueueRow, runEventRebalance, type RebalanceRepoPort } fr
 import { decideT10EconomicEvent } from "../../lib/executor/t10EconomicActivation";
 import { selectLiveMoneyBDecision, selectReservationT3AbDecisions, type FinalT3MarketObservation } from "../../lib/executor/reservationMarketBaseline";
 import {
+  FOUNDER_MONEYLINE_ONLY_LIVE,
   FOUNDER_TOTALS_OVER_LIVE_OFF,
   FounderTotalsOverLiveOffError,
   isFounderLiveOffTotalsOver,
   LiveMoneyFamilyNotAuthorizedError,
 } from "../../lib/executor/liveMoneyFamilyAuthority";
-import { selectExecutorMakerFallbackCommands, type MakerFallbackCommand } from "../../lib/executor/makerFallbackAuthorization";
+import { evaluateMakerEligibility, selectExecutorMakerFallbackCommands, type MakerFallbackCommand } from "../../lib/executor/makerFallbackAuthorization";
 import { getActiveContour } from "../../lib/constructor/registry";
 
-const REASON = "FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10";
+const REASON = FOUNDER_MONEYLINE_ONLY_LIVE;
 const KICKOFF = "2026-07-19T19:00:00.000Z";
 const NOW = Date.parse("2026-07-19T18:46:30.000Z");
 const T10_AT = "2026-07-19T18:46:00.000Z";
@@ -113,90 +114,6 @@ test("1: predicate — TOTALS + Over (any line / casing) is OFF; Under, MONEYLIN
   }
 });
 
-test("2: TOTALS Over 0.5 / 1.5 / 2.5 / 3.5 / 4.5 alone -> no live action, explicit founder reason, evaluation retained for telemetry", async () => {
-  for (const line of ["0pt5", "1pt5", "2pt5", "3pt5", "4pt5"]) {
-    const over = totals(`soccer-total-${line}`, "Over");
-    const e = await decide([over]);
-    assert.equal(e.decision.action, "SKIP", line);
-    assert.equal(e.decision.selected, null, line);
-    assert.equal(e.decision.evaluations.length, 1, "research evaluation retained");
-    assert.equal(e.decision.evaluations[0].taker.rejectReason, REASON);
-    assert.equal(e.decision.evaluations[0].maker.rejectReason, REASON);
-  }
-});
-
-test("3: Over ranked first (best economics) -> selector takes the next ADMISSIBLE candidate normally; Over is never mechanically swapped", async () => {
-  const e = await decide([OVER, UNDER, ML]);
-  assert.equal(e.decision.action, "TAKER_FIRST");
-  const picked = e.decision.selected!.candidateIdentity;
-  assert.notEqual(picked.side, "Over");
-  assert.ok(["Under", "Home"].includes(picked.side), picked.side);
-  const overEval = e.decision.evaluations.find((x) => x.candidateIdentity.side === "Over")!;
-  assert.equal(overEval.taker.rejectReason, REASON);
-  // Over alone does not turn into Under: with only Over + a sibling that is not admissible nothing is selected.
-  const none = await decide([OVER, SPREAD]);
-  assert.equal(none.decision.action, "SKIP");
-});
-
-test("4: unchanged families — TOTALS Under, MONEYLINE, TOTAL_CORNERS stay LIVE; SPREADS stays OFF", async () => {
-  for (const [row, fam] of [[UNDER, "TOTALS"], [ML, "MONEYLINE"], [CORNERS, "TOTAL_CORNERS"]] as const) {
-    const e = await decide([row]);
-    assert.notEqual(e.decision.reason, REASON, fam);
-    assert.equal(e.decision.evaluations[0].taker.rejectReason === REASON, false, fam);
-  }
-  assert.equal((await decide([UNDER])).decision.action, "TAKER_FIRST");
-  assert.equal((await decide([ML])).decision.action, "TAKER_FIRST");
-  const sp = await decide([SPREAD]);
-  assert.equal(sp.decision.action, "SKIP");
-  assert.equal(sp.decision.evaluations[0].taker.rejectReason, "NOT_SUPPORT_ELIGIBLE", "SPREADS keeps its existing OFF policy, not the founder code");
-});
-
-test("5: T40/T20 live rebalance path — Over-first event queues exactly ONE allowed row (one physical match, one exposure); Over-only queues none", async () => {
-  const mixed = await rebalance([OVER, UNDER, ML], true);
-  assert.equal(mixed.queueRows.length, 1);
-  assert.notEqual(mixed.queueRows[0].side, "Over");
-  assert.equal(mixed.queueRows[0].selection_reason, "T10_ECONOMIC_ACTION_TAKER_FIRST_V1");
-  assert.equal(mixed.res.status, "QUEUED");
-  const only = await rebalance([OVER], true);
-  assert.equal(only.queueRows.length, 0);
-  assert.equal(only.result.queued_count, 0);
-  const under = await rebalance([UNDER], true);
-  assert.equal(under.queueRows.length, 1);
-  assert.equal(under.queueRows[0].side, "Under");
-  assert.equal(under.queueRows[0].market_family, "TOTALS");
-});
-
-test("6: research / telemetry decision (A/B arm) still sees TOTALS Over; the released-path LIVE choice excludes it BEFORE choosing", () => {
-  const universe = [OVER, UNDER].map(obs);
-  const tel = selectReservationT3AbDecisions({ ...reservation(), diagnostics: { planning_final_identity_evidence: { condition_id: OVER.cond, token_id: OVER.token, side: "Over" } } } as NightEventReservationRow, universe);
-  // Telemetry arm B is unchanged: it ranks exact identity order over ALL B-universe rows (Over is observable).
-  assert.ok(tel.b.selectedIdentity, "telemetry B still selects among observed rows including Over");
-  assert.equal(tel.a.selectedIdentity?.side, "Over", "planning arm A still observes the Over identity");
-  const live = selectLiveMoneyBDecision(universe, tel.b);
-  assert.equal(live.selectedIdentity?.side, "Under", "live arm skips Over and selects the Under sibling");
-  const overOnly = selectLiveMoneyBDecision([obs(OVER)], tel.b);
-  assert.equal(overOnly.selectedIdentity, null);
-});
-
-test("7: released (activation OFF) live path never queues TOTALS Over; allowed sibling still queues", async () => {
-  const r = await rebalance([OVER, UNDER], false);
-  assert.ok(r.queueRows.every((q) => q.side !== "Over"));
-});
-
-test("8: Queue money boundary — admitExecutableQueueRow refuses TOTALS Over for every writer, admits Under/MONEYLINE/CORNERS, SPREADS still refused", async () => {
-  let inserted = 0;
-  const probe = { async insertQueueRow() { inserted++; } };
-  const mk = (market_family: string, side: string) => ({ market_family, side, reservation_id: "r" }) as unknown as EventExecutionQueueRow;
-  await assert.rejects(() => admitExecutableQueueRow(getActiveContour(), probe, mk("TOTALS", "Over"), { realMoneyEnabled: true }),
-    (e: unknown) => e instanceof FounderTotalsOverLiveOffError && e.code === FOUNDER_TOTALS_OVER_LIVE_OFF && e.message.includes(REASON));
-  assert.equal(inserted, 0);
-  await assert.rejects(() => admitExecutableQueueRow(getActiveContour(), probe, mk("SPREADS", "Home"), { realMoneyEnabled: true }), LiveMoneyFamilyNotAuthorizedError);
-  for (const [f, s] of [["TOTALS", "Under"], ["MONEYLINE", "Home"], ["TOTAL_CORNERS", "Over"]] as const) {
-    await admitExecutableQueueRow(getActiveContour(), probe, mk(f, s), { realMoneyEnabled: true });
-  }
-  assert.equal(inserted, 3);
-});
-
 function queueRow(overrides: Partial<EventExecutionQueueRow>): EventExecutionQueueRow {
   return {
     id: "q1", reservation_id: "res-1", plan_run_id: "p", rebalance_run_id: "r", match_family_key: "a-vs-b", event_title: "A vs B",
@@ -207,19 +124,47 @@ function queueRow(overrides: Partial<EventExecutionQueueRow>): EventExecutionQue
   } as EventExecutionQueueRow;
 }
 
-test("9: already-formed, not-yet-executed READY Over rows are withheld from the Ireland wire (row untouched); other rows pass", () => {
-  const now = Date.parse("2026-07-07T15:00:00.000Z");
-  const row = queueRow({ side: "Over", market_family: "TOTALS" });
-  const snapshot = JSON.stringify(row);
-  assert.throws(() => mapQueueRowToIrelandCandidate(row, now), (e: unknown) => e instanceof QueueWireContractError && e.reason === REASON && e.queueId === "q1");
-  assert.equal(JSON.stringify(row), snapshot, "row is not mutated, deleted or cancelled");
-  assert.equal(mapQueueRowToIrelandCandidate(queueRow({}), now).side, "Under");
-  assert.equal(mapQueueRowToIrelandCandidate(queueRow({ market_family: "MONEYLINE", side: "Home" }), now).side, "Home");
-  assert.equal(mapQueueRowToIrelandCandidate(queueRow({ market_family: "TOTAL_CORNERS", side: "Over" }), now).side, "Over");
-  assert.throws(() => mapQueueRowToIrelandCandidate(queueRow({ market_family: "SPREADS", side: "Home" }), now), /LIVE_MONEY_FAMILY_NOT_AUTHORIZED/);
-});
 
-test("10: authorized MAKER_FALLBACK_1 for a TOTALS Over parent is not surfaced to the executor; Under still is", () => {
+test("MONEYLINE Yes/No stay LIVE; prohibited families retain rejection evaluations", async () => {
+ for(const side of ['Yes','No']) { const e=await decide([{...ML,side}]); assert.equal(e.decision.action,'TAKER_FIRST'); assert.equal(e.decision.selected!.candidateIdentity.side,side); }
+ for(const row of [UNDER,OVER,CORNERS,SPREAD,{...ML,family:'UNKNOWN'},{...ML,family:''}, ...['0.5','1.5','2.5','3.5','4.5','8.5'].flatMap(line=>[totals('u'+line,'Under '+line),totals('o'+line,'Over '+line)])]) {
+  const e=await decide([row]); assert.equal(e.decision.action,'SKIP'); assert.equal(e.decision.selected,null); assert.equal(e.decision.evaluations.length,1); assert.equal(e.decision.evaluations[0].taker.rejectReason,REASON); assert.equal(e.decision.evaluations[0].maker.rejectReason,REASON);
+ }
+});
+test("Under first cannot starve MONEYLINE in T10; Under-only skips",async()=>{
+ const under={...UNDER,t10:[0.44,0.46] as [number,number]}; const e=await decide([under,ML]);
+ assert.equal(e.decision.selected!.candidateIdentity.tokenId,ML.token);
+ assert.equal(e.decision.evaluations.find(x=>x.candidateIdentity.tokenId===under.token)!.taker.rejectReason,REASON);
+ assert.equal((await decide([under])).decision.action,'SKIP');
+});
+test("released B filters before ranking; A/B research retains Under selection",()=>{
+ const under={...UNDER,t10:[0.44,0.46] as [number,number]}; const universe=[under,ML].map(obs);
+ const tel=selectReservationT3AbDecisions({...reservation(),diagnostics:{planning_final_identity_evidence:{condition_id:under.cond,token_id:under.token,side:under.side}}} as NightEventReservationRow,universe);
+ assert.equal(tel.a.selectedIdentity?.tokenId,under.token); assert.equal(tel.b.selectedIdentity?.tokenId,ML.token);
+ const underOnly=selectReservationT3AbDecisions(reservation(),[obs(UNDER)]); assert.equal(underOnly.b.selectedIdentity?.tokenId,UNDER.token);
+ assert.equal(selectLiveMoneyBDecision(universe,tel.b).selectedIdentity?.tokenId,ML.token);
+ assert.equal(selectLiveMoneyBDecision([obs(under)],tel.b).selectedIdentity,null);
+});
+test("activation ON/OFF both queue MONEYLINE and skip Under-only, with research recorder active",async()=>{
+ for(const active of [true,false]) {
+  const mixed=await rebalance([UNDER,OVER,ML,CORNERS,SPREAD],active); assert.equal(mixed.queueRows.length,1,String(active)); assert.equal(mixed.queueRows[0].market_family,'MONEYLINE'); assert.equal(mixed.queueRows[0].token_id,ML.token);
+  const only=await rebalance([UNDER],active); assert.equal(only.queueRows.length,0); assert.equal(only.result.queued_count,0); assert.ok(mixed.decisions.length>0);
+ }
+});
+test("Queue admission and persisted READY handoff fail closed without mutation",async()=>{
+ let inserted=0; const repo={async insertQueueRow(){inserted++;}}; const now=Date.parse('2026-07-07T15:00:00.000Z');
+ for(const family of ['TOTALS','SPREADS','TOTAL_CORNERS','UNKNOWN','',null,undefined]) {
+  for(const side of ['Under','Over']) {
+   const row=queueRow({market_family:family,side} as Partial<EventExecutionQueueRow>); const before=JSON.stringify(row);
+   await assert.rejects(()=>admitExecutableQueueRow(getActiveContour(),repo,row,{realMoneyEnabled:true}),(e:unknown)=>e instanceof LiveMoneyFamilyNotAuthorizedError&&e.code===REASON);
+   assert.throws(()=>mapQueueRowToIrelandCandidate(row,now),(e:unknown)=>e instanceof QueueWireContractError&&e.reason===REASON); assert.equal(JSON.stringify(row),before);
+  }
+ }
+ assert.equal(inserted,0);
+ for(const side of ['Yes','No']) { const row=queueRow({market_family:'MONEYLINE',side}); await admitExecutableQueueRow(getActiveContour(),repo,row,{realMoneyEnabled:true}); assert.equal(mapQueueRowToIrelandCandidate(row,now).side,side); }
+ assert.equal(inserted,2);
+});
+test("10: authorized MAKER_FALLBACK_1 for a TOTALS Over parent is not surfaced to the executor; only MONEYLINE is", () => {
   const now = Date.parse("2026-07-07T15:00:00.000Z");
   const cmd = (market_family: string, side: string): MakerFallbackCommand => ({
     attempt_id: "MAKER_FALLBACK_1", execution_mode: "MAKER", execution_side: "BUY", status: "AUTHORIZED", parent_attempt_id: "TAKER_ATTEMPT_1",
@@ -229,5 +174,13 @@ test("10: authorized MAKER_FALLBACK_1 for a TOTALS Over parent is not surfaced t
   }) as unknown as MakerFallbackCommand;
   const rowOf = (c: MakerFallbackCommand) => ({ diagnostics: { execution_attempts_v1: { maker_fallback_1: { command: c } } }, game_start_iso: "2026-07-07T16:00:00.000Z" });
   const out = selectExecutorMakerFallbackCommands([rowOf(cmd("TOTALS", "Over")), rowOf(cmd("TOTALS", "Under")), rowOf(cmd("MONEYLINE", "Home"))], now);
-  assert.deepEqual(out.map((c) => c.side), ["Under", "Home"]);
+  assert.deepEqual(out.map((c) => c.side), ["Home"]);
+});
+
+test("fallback authorization rejects every non-MONEYLINE family even after a prior parent attempt",()=>{
+ for(const family of ['TOTALS','SPREADS','TOTAL_CORNERS','UNKNOWN','',null,undefined]) {
+  const queue=queueRow({market_family:family} as Partial<EventExecutionQueueRow>);
+  const e=evaluateMakerEligibility({queue,result:null,nowMs:Date.parse('2026-07-07T15:00:00.000Z')});
+  assert.equal(e.eligible,false); assert.ok(e.reasons.includes(REASON));
+ }
 });

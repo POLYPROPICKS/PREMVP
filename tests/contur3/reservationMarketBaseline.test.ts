@@ -342,8 +342,8 @@ test("T-phase rows carry canonical family/type for the supported live universe w
   assert.equal(byRaw.has("btts"), false, "OTHER_STRUCTURED is not captured at milestones");
   assert.equal(byRaw.has("Free text title?"), false, "UNKNOWN is never guessed or captured");
   for (const row of rows) {
-    assert.equal(row.live_policy_eligibility, null);
-    assert.equal(row.live_policy_rejection_reason, null);
+    assert.equal(row.live_policy_eligibility, row.canonical_market_family === "MONEYLINE" ? null : false);
+    assert.equal(row.live_policy_rejection_reason, row.canonical_market_family === "MONEYLINE" ? null : "FOUNDER_MONEYLINE_ONLY_LIVE_2026_10_15");
     assert.equal(row.best_bid, 0.4);
     assert.equal(row.best_ask, 0.5);
     assert.equal(row.source_version, "RESERVATION_MARKET_BASELINE_V1");

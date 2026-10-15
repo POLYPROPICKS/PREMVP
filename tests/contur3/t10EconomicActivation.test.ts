@@ -71,8 +71,8 @@ const universes = (rows: Row[]) => ({
 // A: MONEYLINE (generic live candidate; SPREADS is observation-only and has dedicated negative tests below): current bid 0.50 / ask 0.52. With deep ask depth (LIVE) it is a safe TAKER;
 // with only $0.52 of ask depth at <= the taker limit (LIVE_A_MAKER) the full stake cannot be taken -> MAKER_FIRST at the bid.
 const A: Row = { cond: "a-money", token: "a-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.50, 0.52], t30: [0.50, 0.52] };
-// B: TOTALS (B family priority #4, below MONEYLINE): current ask 0.50 with $5 depth -> safe taker (T30 irrelevant).
-const B: Row = { cond: "b-total", token: "b-token", family: "TOTALS", type: "TOTAL", t10: [0.52, 0.53], t30: [0.53, 0.54] };
+// B: a second MONEYLINE sibling: current ask 0.50 with $5 depth -> safe taker (T30 irrelevant).
+const B: Row = { cond: "b-money", token: "b-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.52, 0.53], t30: [0.53, 0.54] };
 
 type Lv = [number, number];
 const bookOf = (tokenId: string, bids: Lv[], asks: Lv[], tick: number | null = 0.01, min: number | null = 5): FetchOrderBookResult => ({
@@ -300,7 +300,7 @@ test("15: exact token never changes after selection (foreign book rejected, only
 test("16: family priority cannot override the economic winner", async () => {
   const { event } = await decide([A, B]);
   assert.equal(event.decision.action, "TAKER_FIRST");
-  assert.equal(event.decision.selected!.candidateIdentity.tokenId, "b-token", "TOTALS beats MONEYLINE on economics");
+  assert.equal(event.decision.selected!.candidateIdentity.tokenId, "b-token", "cheaper MONEYLINE sibling wins on economics");
 });
 
 test("17-18: event exposure and latest entry (event start + 3m) block every sibling", async () => {
@@ -324,7 +324,7 @@ test("17-18: event exposure and latest entry (event start + 3m) block every sibl
 });
 
 test("22: real rank-4 evidence: the bid-less Under (0.02/0.51) is never a MAKER; capture-grade UNRESOLVED no longer vetoes, a TAKER needs real ask depth + fee", async () => {
-  const under: Row = { cond: "r4", token: "under", side: "Under", family: "TOTALS", type: "TOTAL", t10: [0.02, 0.51], t30: [0.02, 0.52] };
+  const under: Row = { cond: "r4", token: "under", side: "No", family: "MONEYLINE", type: "MONEYLINE", t10: [0.02, 0.51], t30: [0.02, 0.52] };
   const over: Row = { cond: "r4", token: "over", side: "Over", family: "TOTALS", type: "TOTAL", t10: [0.49, 0.98], t30: [0.48, 0.98] };
   const thin = { under: bookOf("under", [[0.02, 100]], [[0.51, 1], [0.70, 100]]), over: bookOf("over", [[0.49, 100]], [[0.98, 100]]) };
   const { event: noDepth } = await decide([under, over], { d: deps(thin) });
@@ -339,7 +339,7 @@ test("22: real rank-4 evidence: the bid-less Under (0.02/0.51) is never a MAKER;
   assert.equal(event.decision.action, "TAKER_FIRST", "ask 0.51 is in band, full stake + fee proven on the current ladder");
   assert.equal(event.decision.selected!.candidateIdentity.tokenId, "under");
   assert.ok(event.decision.selected!.taker.effectiveCost! <= 0.54);
-  assert.equal(event.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "over")!.taker.rejectReason, "FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10", "TOTALS Over is live-OFF (Founder); still evaluated for telemetry");
+  assert.equal(event.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "over")!.taker.rejectReason, "FOUNDER_MONEYLINE_ONLY_LIVE_2026_10_15", "TOTALS Over is live-OFF (Founder); still evaluated for telemetry");
 });
 
 // ── real decision path (runEventRebalance) ──────────────────────────────────
@@ -393,12 +393,12 @@ test("19-20: activation ON -> exactly one immutable Queue row freezing mode, tok
   assert.equal(result.queued_count, 1);
   assert.equal(repo.queueRows.length, 1);
   const row = repo.queueRows[0];
-  assert.deepEqual([row.condition_id, row.token_id, row.side], ["b-total", "b-token", "Yes"]);
+  assert.deepEqual([row.condition_id, row.token_id, row.side], ["b-money", "b-token", "Yes"]);
   assert.equal(row.selection_reason, "T10_ECONOMIC_ACTION_TAKER_FIRST_V1");
   const c = row.diagnostics.t10_economic_action_v1 as Record<string, any>;
   assert.equal(c.execution_mode, "TAKER_FIRST");
   assert.equal(c.price_authority_version, "T10_CURRENT_BOOK_EXECUTION_AUTHORITY_V1");
-  assert.equal(c.price_authority_observation_id, "T10_CURRENT_BOOK:b-total:b-token:Yes:2026-07-19T18:46:30.000Z", "current execution book lineage, never a T30 key");
+  assert.equal(c.price_authority_observation_id, "T10_CURRENT_BOOK:b-money:b-token:Yes:2026-07-19T18:46:30.000Z", "current execution book lineage, never a T30 key");
   assert.deepEqual(c.t30_telemetry_v1, { observation_key: "T30_BOOK:T_MINUS_30-run:b-token:Yes", LIVE_AUTHORITY: false }, "T30 survives as telemetry only");
   assert.equal(c.p_buy_max, 0.555, "TAKER ceiling = hard cap");
   assert.equal(c.token_id, "b-token");
@@ -959,8 +959,8 @@ test("T30 REMOVED (MAKER): missing / empty / unusable / unreadable T30 never blo
   }
 });
 
-test("EXAMPLE A (Sri Lanka - Mauritius pattern): TOTALS bid 0.54 / ask 0.69 / tick 0.01, no usable T30 -> MAKER_FIRST 0.54 through Queue and Ireland wire", async () => {
-  const SL: Row = { cond: "sl-total", token: "sl-token", family: "TOTALS", type: "TOTAL", t10: [0.54, 0.69], t30: null };
+test("EXAMPLE A (Sri Lanka - Mauritius pattern): MONEYLINE bid 0.54 / ask 0.69 / tick 0.01, no usable T30 -> MAKER_FIRST 0.54 through Queue and Ireland wire", async () => {
+  const SL: Row = { cond: "sl-money", token: "sl-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.54, 0.69], t30: null };
   const books = { ...LIVE, "sl-token": bookOf("sl-token", [[0.54, 100]], [[0.69, 100]], 0.01, 5) };
   const { result, repo, d } = await run(true, [SL], books);
   assert.equal(result.queued_count, 1);
@@ -974,7 +974,7 @@ test("EXAMPLE A (Sri Lanka - Mauritius pattern): TOTALS bid 0.54 / ask 0.69 / ti
   assert.equal(c.t30_telemetry_v1.observation_key, null);
   const audit = row.diagnostics.t10_support_audit_v1 as Record<string, any>;
   assert.equal(audit.maker.SUPPORT_PRICE, 0.54);
-  assert.ok(Math.abs(audit.maker.SUPPORT_DECIMAL_ODDS - 1.851852) < 1e-5, "decimal odds ~1.85185 inside TOTALS 1.85..2.00");
+  assert.ok(Math.abs(audit.maker.SUPPORT_DECIMAL_ODDS - 1.851852) < 1e-5, "decimal odds ~1.85185 inside MONEYLINE 1.70..2.00");
   assert.equal(audit.maker.SUPPORT_PRICE_IN_BAND, true);
   assert.equal(audit.taker.SUPPORT_PRICE_IN_BAND, false, "ask 0.69 is never bought");
   assert.deepEqual(d.calls.slice(0, 1), ["sl-token"], "exact token only");
@@ -1008,7 +1008,7 @@ test("TAKER fee evidence is fetched for a T30-less candidate and is still mandat
   assert.equal(none.event.decision.evaluations[0].taker.rejectReason, "TAKER_FEE_EVIDENCE_MISSING");
   assert.notEqual(none.event.decision.action, "TAKER_FIRST");
   const outside: string[] = [];
-  const SL: Row = { cond: "sl-total", token: "sl-token", family: "TOTALS", type: "TOTAL", t10: [0.54, 0.69], t30: null };
+  const SL: Row = { cond: "sl-money", token: "sl-token", family: "MONEYLINE", type: "MONEYLINE", t10: [0.54, 0.69], t30: null };
   await decide([SL], { d: deps({ ...LIVE, "sl-token": bookOf("sl-token", [[0.54, 100]], [[0.69, 100]]) }, (t) => { outside.push(t); return fee(t); }) });
   assert.deepEqual(outside, []);
 });
@@ -1229,8 +1229,8 @@ async function runLive(on: boolean, rows: Row[]) {
 test("SPREADS-FIRST-STARVATION OFF: SPREADS cannot win the live B choice and starve an allowed family", async () => {
   for (const [other, token] of [[TOT, "tot-token"], [ML, "ml-token"], [COR, "cor-token"]] as const) {
     const { queued, recorded, rows } = await runLive(false, [SP(), other]);
-    assert.deepEqual(queued, [token], `SPREADS + ${other.family} => live selects ${other.family}`);
-    assert.equal(rows[0].market_family, other.family);
+    assert.deepEqual(queued, other.family === "MONEYLINE" ? [token] : [], `SPREADS + ${other.family} => live selects ${other.family}`);
+    if (other.family === "MONEYLINE") assert.equal(rows[0].market_family, other.family);
     // Telemetry/research arm is unchanged: B still prefers SPREADS and records it.
     assert.equal(recorded.find((r) => r.variant === "B_FOUR_MARKET_PRIORITY_V1")!.selected, "sp-token", "telemetry B still sees SPREADS");
     assert.equal(recorded.find((r) => r.variant === "B_FOUR_MARKET_PRIORITY_V1")!.reason, "PRIORITY_SPREADS_IN_SUPPORT");
@@ -1238,7 +1238,7 @@ test("SPREADS-FIRST-STARVATION OFF: SPREADS cannot win the live B choice and sta
   const only = await runLive(false, [SP()]);
   assert.equal(only.queued.length, 0, "only SPREADS => Queue = 0");
   // Input order and the SPREADS exact-identity order never change the live pick.
-  assert.deepEqual((await runLive(false, [TOT, SP(), SP({ cond: "sp-spread-2", token: "sp-token-2" })])).queued, ["tot-token"]);
+  assert.deepEqual((await runLive(false, [TOT, SP(), SP({ cond: "sp-spread-2", token: "sp-token-2" })])).queued, []);
 });
 
 test("SPREADS-FIRST-STARVATION ON: SPREADS cannot compete economically against any live family", async () => {
@@ -1249,7 +1249,7 @@ test("SPREADS-FIRST-STARVATION ON: SPREADS cannot compete economically against a
     const u = universes([better, other]);
     const event = await decideT10EconomicEvent({ physicalEventId: EVENT, eventStartIso: KICKOFF, t10Universe: withCornersProof(u.t10),
       t30Universe: withCornersProof(u.t30), nowMs: NOW, exposureExists: false, deps: deps(books) });
-    assert.equal(event.decision.selected?.candidateIdentity.tokenId, token, `SPREADS + ${other.family}`);
+    assert.equal(event.decision.selected?.candidateIdentity.tokenId, other.family === "MONEYLINE" ? token : undefined, `SPREADS + ${other.family}`);
     const sp = event.decision.evaluations.find((e) => e.candidateIdentity.tokenId === "sp-token")!;
     assert.equal(sp.taker.eligible, false);
     assert.equal(sp.maker.eligible, false);
