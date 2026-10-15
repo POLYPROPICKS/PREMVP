@@ -13,7 +13,7 @@ const mkt = (cond: string, o: Record<string, unknown> = {}) => ({
 });
 
 type Dec = Record<string, any>;
-function fakeDb(decisions: Dec[], observations: Dec[] = [], opts: { reportTable?: boolean } = {}) {
+function fakeDb(decisions: Dec[], observations: Dec[] = [], opts: { reportTable?: boolean; boxB?: Dec[] } = {}) {
   const reports = new Map<string, Dec>();
   const mutations: string[] = [];
   const key = (r: Dec) => `${r.utc_day}|${r.report_version}`;
@@ -21,8 +21,8 @@ function fakeDb(decisions: Dec[], observations: Dec[] = [], opts: { reportTable?
     const f: { op: string; c: string; v: any }[] = [];
     let mode: "select" | "update" = "select", patch: Dec = {}, lim = Infinity, from = 0;
     const rows = () => {
-      let src: Dec[] = table === "research_inplay_paper_decisions" ? decisions : table === "research_inplay_core_path_observations" ? observations : [...reports.values()];
-      for (const x of f) src = src.filter((r) => x.op === "eq" ? r[x.c] === x.v : x.op === "gte" ? String(r[x.c]) >= String(x.v) : String(r[x.c]) < String(x.v));
+      let src: Dec[] = table === "research_inplay_paper_decisions" ? decisions : table === "research_inplay_core_path_observations" ? observations : table === "market_outcome_revisions" ? opts.boxB ?? [] : [...reports.values()];
+      for (const x of f) src = src.filter((r) => x.op === "in" ? x.v.includes(r[x.c]) : x.op === "eq" ? r[x.c] === x.v : x.op === "gte" ? String(r[x.c]) >= String(x.v) : String(r[x.c]) < String(x.v));
       return src;
     };
     const run = () => {
@@ -31,7 +31,7 @@ function fakeDb(decisions: Dec[], observations: Dec[] = [], opts: { reportTable?
       return { data: rows().slice(from, from + lim).map((r) => ({ ...r })), error: null };
     };
     const b: any = {
-      select: () => b, eq: (c: string, v: any) => (f.push({ op: "eq", c, v }), b), gte: (c: string, v: any) => (f.push({ op: "gte", c, v }), b), lt: (c: string, v: any) => (f.push({ op: "lt", c, v }), b),
+      select: () => b, in: (c: string, v: any[]) => (f.push({ op: "in", c, v }), b), eq: (c: string, v: any) => (f.push({ op: "eq", c, v }), b), gte: (c: string, v: any) => (f.push({ op: "gte", c, v }), b), lt: (c: string, v: any) => (f.push({ op: "lt", c, v }), b),
       or: () => b, order: () => b, limit: (n: number) => ((lim = n), Promise.resolve(run())), range: (a: number, z: number) => ((from = a), (lim = z - a + 1), Promise.resolve(run())),
       update: (p: Dec) => ((mode = "update"), (patch = p), b),
       upsert: (row: Dec) => {
@@ -123,28 +123,37 @@ test("a settled outcome never regresses to OPEN from a later partial provider re
   assert.equal(reports.get(k)!.settled_n, 1);
   const r = await runSettlementCycle(db, fetchOf({ "0xc2": mkt("0xc2", { closed: false }) }), { nowMs: NOW + MIN_REVISIT_MS });
   const row = reports.get(k)!;
-  assert.equal(r.ok, false); assert.equal(r.days[0].outcome, "REGRESSION_REFUSED");
+  assert.equal(r.ok, false); assert.equal(r.days.find((d) => d.day === "2026-10-10")!.outcome, "REGRESSION_REFUSED");
   assert.equal(row.settled_n, 1); assert.equal(row.win_n, 1); assert.equal(row.last_attempt_status, "REGRESSION_REFUSED"); assert.match(row.last_error, /SETTLED_REGRESSION_REFUSED:prev=1,new=0/);
 });
 
-test("UTC day boundaries: only completed days; decisions are bucketed by admission_observed_at half-open day", async () => {
-  assert.deepEqual(selectTargetDays({ nowMs: Date.parse("2026-10-11T00:00:00.000Z"), existing: [], reconcileDays: 1 }), ["2026-10-10"]);
-  assert.deepEqual(selectTargetDays({ nowMs: Date.parse("2026-10-10T23:59:59.999Z"), existing: [], reconcileDays: 1 }), ["2026-10-09"]);
+test("UTC day boundaries: the in-progress day is checked first; decisions are bucketed by admission_observed_at half-open day", async () => {
+  assert.deepEqual(selectTargetDays({ nowMs: Date.parse("2026-10-11T00:00:00.000Z"), existing: [], reconcileDays: 1 }), ["2026-10-11", "2026-10-10"]);
+  assert.deepEqual(selectTargetDays({ nowMs: Date.parse("2026-10-10T23:59:59.999Z"), existing: [], reconcileDays: 1 }), ["2026-10-10", "2026-10-09"]);
   const edge = [dec({ admission_observed_at: "2026-10-10T23:59:59.999Z" }), dec({ physical_event_id: "ev2", admission_observed_at: "2026-10-11T00:00:00.000Z" }), dec({ physical_event_id: "ev3", admission_observed_at: "2026-10-09T23:59:59.999Z" })];
   const { db, reports } = fakeDb(edge);
   await runSettlementCycle(db, fetchOf({ "0xc1": mkt("0xc1") }), { nowMs: NOW });
   assert.equal(reports.get(`2026-10-10|${REPORT_VERSION}`)!.bet_n, 1);
   assert.equal(reports.get(`2026-10-09|${REPORT_VERSION}`)!.bet_n, 1);
-  assert.equal(reports.has(`2026-10-11|${REPORT_VERSION}`), false); // the in-progress day is never reported
+  // the in-progress day is reported, but its decision (no scheduled start on record) is PENDING, never settled
+  const today = reports.get(`2026-10-11|${REPORT_VERSION}`)!;
+  assert.deepEqual([today.bet_n, today.settled_n, today.open_n, today.status], [1, 0, 1, "INCOMPLETE"]);
 });
 
 test("selectTargetDays: yesterday first, open reports revisited oldest-attempt first, resolved skipped, bounded", () => {
   const ex = (d: string, status: any, at: string | null): ExistingReport => ({ utc_day: d, status, settled_n: 0, attempts_n: 1, generated_at: at, first_generated_at: at, last_attempt_at: at });
   const old = "2026-10-11T01:00:00.000Z";
   const days = selectTargetDays({ nowMs: NOW, existing: [ex("2026-10-10", "PARTIALLY_SETTLED", old), ex("2026-10-09", "FULLY_RESOLVED", old), ex("2026-10-08", "PARTIALLY_SETTLED", "2026-10-10T01:00:00.000Z"), ex("2026-10-07", "FAILED", "2026-10-11T07:00:00.000Z"), ex("2026-09-01", "INCOMPLETE", null)] });
-  assert.deepEqual(days, ["2026-10-10", "2026-10-08", "2026-10-07"]); // cap 3; 10-09 resolved; 09-01 beyond lookback
+  assert.deepEqual(days, ["2026-10-11", "2026-10-10", "2026-10-08", "2026-10-07"]); // today + cap 3; 10-09 resolved; 09-01 beyond lookback
   assert.deepEqual(selectTargetDays({ nowMs: NOW, existing: [ex("2026-10-10", "INCOMPLETE", "2026-10-11T07:30:00.000Z")], maxDays: 3 }).includes("2026-10-10"), false); // recently attempted
-  assert.deepEqual(selectTargetDays({ nowMs: NOW, existing: [], maxDays: 10 }), ["2026-10-10", "2026-10-09", "2026-10-08"]);
+  assert.deepEqual(selectTargetDays({ nowMs: NOW, existing: [], maxDays: 10 }), ["2026-10-11", "2026-10-10", "2026-10-09", "2026-10-08"]);
+  // same-day cadence: the in-progress day is due again after the hourly cycle, not within a double fire; FULLY_RESOLVED mid-day is not final
+  const t = (status: any, at: string) => ({ ...ex("2026-10-11", status, at), generated_at: at });
+  assert.equal(selectTargetDays({ nowMs: NOW, existing: [t("PARTIALLY_SETTLED", "2026-10-11T07:00:00.000Z")] }).includes("2026-10-11"), true);
+  assert.equal(selectTargetDays({ nowMs: NOW, existing: [t("PARTIALLY_SETTLED", "2026-10-11T07:30:00.000Z")] }).includes("2026-10-11"), false);
+  assert.equal(selectTargetDays({ nowMs: NOW, existing: [t("FULLY_RESOLVED", "2026-10-11T06:00:00.000Z")] }).includes("2026-10-11"), true);
+  assert.equal(selectTargetDays({ nowMs: Date.parse("2026-10-12T08:00:00.000Z"), existing: [{ ...ex("2026-10-11", "FULLY_RESOLVED", "2026-10-11T06:00:00.000Z"), generated_at: "2026-10-11T06:00:00.000Z" }] }).includes("2026-10-11"), true); // generated before its day ended: re-settled once more
+  assert.equal(selectTargetDays({ nowMs: Date.parse("2026-10-12T08:00:00.000Z"), existing: [{ ...ex("2026-10-11", "FULLY_RESOLVED", "2026-10-12T00:30:00.000Z"), generated_at: "2026-10-12T00:30:00.000Z" }] }).includes("2026-10-11"), false);
   assert.equal(classifyReportStatus({ waiting_n: 1, bet_n: 1, settled_n: 1, open_n: 0 }), "INCOMPLETE");
   assert.equal(classifyReportStatus({ waiting_n: 0, bet_n: 0, settled_n: 0, open_n: 0 }), "FULLY_RESOLVED");
 });
@@ -206,4 +215,76 @@ test("schema: DBClone-only, additive/idempotent, PK on (utc_day, version), least
   const src = ["lib/research/inplayPaperSettlementCycle.ts", "scripts/research-inplay-paper-settlement-cycle.ts"].map((f) => readFileSync(f, "utf8")).join("\n").split("\n").filter((l) => !l.trim().startsWith("//")).join("\n");
   assert.match(src, /nppznoujvnyjargjkmnv/); assert.doesNotMatch(src, /nbnldzfsxffztsfrrxqy|ireland|placeOrder|SUPABASE_URL\b|SUPABASE_SERVICE_ROLE_KEY/i);
   assert.doesNotMatch(src, /from\(DECISION_TABLE\)|research_inplay_paper_decisions"\)\.(insert|update|upsert|delete)/);
+});
+
+// ───────────────────────────── same-day outcomes (Box B authority, start + 6h) ─────────────────────────────
+const T = (c: string) => c.toLowerCase();
+const rev = (cond: string, o: Dec = {}) => ({ condition_id: T(cond), revision_no: 1, outcome_status: "FINAL", winner_token_id: WIN, market_token_ids: [WIN, LOSE], ...o });
+const today = (o: Dec = {}) => dec({ admission_observed_at: "2026-10-11T01:00:00.000Z", event_start_iso: "2026-10-11T00:30:00.000Z", observed_at: "2026-10-11T01:00:00.000Z", ...o });
+const SD = `2026-10-11|${REPORT_VERSION}`;
+const noGamma = async () => { throw new Error("same-day settlement must not call the provider"); };
+
+test("same-day: eligible FINAL -> WIN/LOSS, VOID -> VOID; PENDING/CONFLICT/missing/pre-6h stay PENDING; no provider call", async () => {
+  const ds = [
+    today({ physical_event_id: "e1", condition_id: "0xw", token_id: WIN, entry_vwap: 0.4 }), today({ physical_event_id: "e2", condition_id: "0xl", token_id: LOSE }),
+    today({ physical_event_id: "e3", condition_id: "0xv", token_id: WIN }), today({ physical_event_id: "e4", condition_id: "0xp", token_id: WIN }),
+    today({ physical_event_id: "e5", condition_id: "0xc", token_id: WIN }), today({ physical_event_id: "e6", condition_id: "0xn", token_id: WIN }),
+    today({ physical_event_id: "e7", condition_id: "0xearly", token_id: WIN, event_start_iso: "2026-10-11T07:00:00.000Z" }), // start + 6h = 13:00 > 08:00
+    today({ physical_event_id: "e8", condition_id: "0xfam", token_id: "tok-other" }), // FINAL but token not in the Box B market
+  ];
+  const boxB = [rev("0xw"), rev("0xl"), rev("0xv", { outcome_status: "VOID", winner_token_id: null }), rev("0xp", { outcome_status: "PENDING", winner_token_id: null }),
+    rev("0xc", { outcome_status: "CONFLICT", winner_token_id: null }), rev("0xearly"), rev("0xfam")];
+  const { db, reports, mutations } = fakeDb(ds, [], { boxB });
+  const r = await runSettlementCycle(db, noGamma, { nowMs: NOW });
+  assert.equal(r.ok, true); assert.equal(r.gamma_requests, 0);
+  const row = reports.get(SD)!;
+  assert.deepEqual([row.bet_n, row.win_n, row.loss_n, row.void_n, row.settled_n, row.open_n, row.status], [8, 1, 1, 1, 3, 5, "PARTIALLY_SETTLED"]);
+  assert.equal(row.settled_gross_pnl_u, 0.5); // +1.5 -1 +0
+  assert.equal(row.summary.outcome_authority, "BOX_B_ONLY_SAME_DAY_START_PLUS_6H"); assert.equal(row.summary.pending_n, 5);
+  for (const k of ["BOX_B_PENDING", "BOX_B_CONFLICT", "BOX_B_NO_REVISION", "NOT_YET_ELIGIBLE_BEFORE_START_PLUS_6H", "BOX_B_TOKEN_NOT_IN_MARKET"]) assert.ok(Object.keys(row.summary.missing_outcome_reasons).some((x) => x.endsWith(`:${k}`)), k);
+  assert.ok(mutations.every((m) => m.endsWith(`:${REPORT_TABLE}`)));
+});
+
+test("same-day: PENDING is retried on the next hourly run and settles when Box B turns FINAL; same row, never regresses", async () => {
+  const boxB: Dec[] = [rev("0xw", { outcome_status: "PENDING", winner_token_id: null })];
+  const { db, reports } = fakeDb([today({ condition_id: "0xw" })], [], { boxB });
+  await runSettlementCycle(db, noGamma, { nowMs: NOW });
+  assert.deepEqual([reports.get(SD)!.settled_n, reports.get(SD)!.open_n], [0, 1]);
+  await runSettlementCycle(db, noGamma, { nowMs: NOW + 10 * 60_000 }); // double fire inside the revisit guard: untouched
+  assert.equal(reports.get(SD)!.attempts_n, 1);
+  boxB.push(rev("0xw", { revision_no: 2 }));
+  await runSettlementCycle(db, noGamma, { nowMs: NOW + 3600_000 });
+  const row = reports.get(SD)!;
+  assert.deepEqual([row.settled_n, row.win_n, row.status, row.attempts_n], [1, 1, "FULLY_RESOLVED", 2]);
+  // a decision admitted later the same day is still picked up even though the mid-day row was FULLY_RESOLVED
+  const ds2 = [today({ condition_id: "0xw" })], f = fakeDb(ds2, [], { boxB });
+  await runSettlementCycle(f.db, noGamma, { nowMs: NOW });
+  assert.equal(f.reports.get(SD)!.status, "FULLY_RESOLVED");
+  ds2.push(today({ physical_event_id: "ev9", condition_id: "0xnone", token_id: LOSE })); // not in Box B yet -> PENDING
+  await runSettlementCycle(f.db, noGamma, { nowMs: NOW + 3600_000 });
+  assert.deepEqual([f.reports.get(SD)!.bet_n, f.reports.get(SD)!.settled_n, f.reports.get(SD)!.open_n, f.reports.get(SD)!.status], [2, 1, 1, "PARTIALLY_SETTLED"]);
+});
+
+test("same-day: DELAYED_PAPER is never presented as prospective; LIVE_PROSPECTIVE is separated", async () => {
+  const ds = [today({ condition_id: "0xw" }), today({ physical_event_id: "e2", condition_id: "0xl", token_id: LOSE })];
+  const a = fakeDb(ds, [], { boxB: [rev("0xw"), rev("0xl")] });
+  await runSettlementCycle(a.db, noGamma, { nowMs: NOW });
+  const s1 = a.reports.get(SD)!.summary;
+  assert.deepEqual(s1.prospective_claim, { live_prospective_settled_n: 0, delayed_paper_settled_n: 2, claim: "NO_PROSPECTIVE_PROFITABILITY_CLAIM_DELAYED_OR_UNPROVEN_ONLY" });
+  assert.equal(a.reports.get(SD)!.missing_authority.snapshot_delayed_n, 2);
+  const b = fakeDb([today({ condition_id: "0xw", provenance_class: "LIVE_PROSPECTIVE" })], [], { boxB: [rev("0xw")] });
+  await runSettlementCycle(b.db, noGamma, { nowMs: NOW });
+  assert.equal(b.reports.get(SD)!.summary.prospective_claim.live_prospective_settled_n, 1);
+  assert.equal(b.reports.get(SD)!.summary.settlement_by_provenance.LIVE_PROSPECTIVE.settled_n, 1);
+});
+
+test("completed day: a terminal Box B revision overrides without a provider call; otherwise the existing provider path is unchanged", async () => {
+  const ds = [dec({ physical_event_id: "e1", condition_id: "0xw" }), dec({ physical_event_id: "e2", condition_id: "0xg", token_id: LOSE })];
+  const { db, reports } = fakeDb(ds, [], { boxB: [rev("0xw"), rev("0xg", { outcome_status: "PENDING", winner_token_id: null })] });
+  const asked: string[] = [];
+  await runSettlementCycle(db, async (id) => { asked.push(id); return mkt(id) as any; }, { nowMs: NOW });
+  assert.deepEqual(asked.filter((x) => x === "0xw"), []); assert.ok(asked.includes("0xg"));
+  const row = reports.get(`2026-10-10|${REPORT_VERSION}`)!;
+  assert.deepEqual([row.win_n, row.loss_n, row.settled_n], [1, 1, 2]);
+  assert.equal(row.summary.outcome_authority, "BOX_B_TERMINAL_THEN_PROVIDER_GAMMA");
 });

@@ -19,6 +19,8 @@ export const RECONCILE_DAYS = 3;
 export const MAX_DAYS_PER_RUN = 3;
 /** A non-FAILED, not fully resolved report is refreshed at most this often (yesterday included). */
 export const MIN_REVISIT_MS = 3 * 3_600_000;
+/** The in-progress UTC day is re-checked on every hourly run (cron is 0 * * * *); this only guards against a double fire. */
+export const SAME_DAY_MIN_REVISIT_MS = 45 * 60_000;
 export const MAX_GAMMA_REQUESTS_PER_RUN = 400;
 export const MAX_RUN_MS = 10 * 60_000;
 export const MAX_HIT_ROWS = 100;
@@ -40,22 +42,25 @@ export function classifyReportStatus(c: { waiting_n: number; bet_n: number; sett
 }
 
 /**
- * Pure. Which completed UTC days to settle in this run. Priority: (1) the most recently completed day, (2) previously
+ * Pure. Which UTC days to settle in this run. Priority: (1) the most recently completed day, (2) previously
  * reported days that are not FULLY_RESOLVED (longest since last attempt first), (3) the bounded recent reconciliation
- * window of days that have no report yet. Never the in-progress day, never beyond LOOKBACK_DAYS, at most `maxDays`.
+ * window of days that have no report yet; at most `maxDays` of those. The in-progress UTC day is additionally checked
+ * first (same-day outcomes, Box B authority, eligible from start + 6h). A FULLY_RESOLVED report only counts as final when it
+ * was generated after its day ended, so decisions admitted later in the same day are never missed.
  */
 export function selectTargetDays(input: { nowMs: number; existing: readonly ExistingReport[]; lookbackDays?: number; reconcileDays?: number; maxDays?: number; minRevisitMs?: number }): string[] {
   const { nowMs, existing } = input;
   const lookback = input.lookbackDays ?? LOOKBACK_DAYS, reconcile = input.reconcileDays ?? RECONCILE_DAYS, maxDays = input.maxDays ?? MAX_DAYS_PER_RUN, minRevisit = input.minRevisitMs ?? MIN_REVISIT_MS;
-  const yesterday = addDays(utcDayOf(nowMs), -1);
+  const today = utcDayOf(nowMs), yesterday = addDays(today, -1);
   const byDay = new Map(existing.map((r) => [r.utc_day, r]));
   const due = (d: string) => {
     const r = byDay.get(d);
     if (!r) return true;
-    if (r.status === "FULLY_RESOLVED") return false;
+    const generated = r.generated_at ? Date.parse(r.generated_at) : NaN;
+    if (r.status === "FULLY_RESOLVED" && Number.isFinite(generated) && generated >= Date.parse(`${addDays(d, 1)}T00:00:00Z`)) return false;
     if (r.status === "FAILED") return true; // retried on every scheduled run
     const last = r.last_attempt_at ? Date.parse(r.last_attempt_at) : NaN;
-    return !Number.isFinite(last) || nowMs - last >= minRevisit;
+    return !Number.isFinite(last) || nowMs - last >= (d === today ? SAME_DAY_MIN_REVISIT_MS : minRevisit);
   };
   const picked: string[] = [];
   if (due(yesterday)) picked.push(yesterday);
@@ -65,7 +70,8 @@ export function selectTargetDays(input: { nowMs: number; existing: readonly Exis
     .map((r) => r.utc_day);
   picked.push(...reopen);
   for (let i = 1; i < reconcile; i++) { const d = addDays(yesterday, -i); if (!byDay.has(d)) picked.push(d); }
-  return [...new Set(picked)].slice(0, maxDays);
+  const completed = [...new Set(picked)].slice(0, maxDays);
+  return due(today) ? [today, ...completed] : completed;
 }
 
 type DailyReport = ReturnType<typeof buildDailyReport>;
@@ -84,6 +90,15 @@ function executableHits(sell: readonly SellPathResult[]) {
 function dominantOpenReason(reasons: Record<string, number>): string | null {
   const top = Object.entries(reasons).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
   return top ? clip(top[0], 200) : null;
+}
+
+/** Delayed-paper outcomes are historical diagnostics: no prospective profitability claim without settled LIVE_PROSPECTIVE decisions. */
+export function prospectiveClaim(byProvenance: Record<string, { settled_n: number }>) {
+  const live = byProvenance["LIVE_PROSPECTIVE"]?.settled_n ?? 0;
+  return {
+    live_prospective_settled_n: live, delayed_paper_settled_n: byProvenance["DELAYED_PAPER"]?.settled_n ?? 0,
+    claim: live > 0 ? "LIVE_PROSPECTIVE_SETTLED_PRESENT_SEE_SETTLEMENT_BY_PROVENANCE" : "NO_PROSPECTIVE_PROFITABILITY_CLAIM_DELAYED_OR_UNPROVEN_ONLY",
+  };
 }
 
 export type ProviderStats = { calls: number; non_null: number; budget_exhausted: boolean };
@@ -107,6 +122,7 @@ export function buildReportRow(day: string, d: { decisions: readonly DecisionRow
       report: r.report, strategies: r.strategies, settlement: s, settlement_by_strategy: r.settlement_by_strategy, settlement_by_provenance: r.settlement_by_provenance,
       independence: r.independence, executable_exits: r.executable_exits, executable_hits: executableHits(r.sell_paths),
       missing_outcome_reasons: r.missing_outcome_reasons, provider: d.provider, disclaimer: r.disclaimer,
+      outcome_authority: r.outcome_authority, prospective_claim: prospectiveClaim(r.settlement_by_provenance), pending_n: s.open_n,
     },
     missing_authority: { ...r.missing_evidence, net_pnl_status: s.net_pnl_status, exit_fee_authority: "UNKNOWN_PROCEEDS_GROSS_OF_EXIT_FEE" },
     attempts_n: (prev?.attempts_n ?? 0) + 1, last_attempt_at: nowIso, last_attempt_status: "SUCCESS" as const, last_error: null as string | null,
@@ -161,7 +177,7 @@ export async function runSettlementCycle(db: SupabaseClient, fetchMarket: (condi
       const window = utcDayWindow(day);
       const decisions = await readDecisionRows(db, window);
       if (!decisions.length) { days.push({ day, outcome: "NO_DECISIONS" }); continue; }
-      const inputs = await collectInputs(db, budgeted, 4, window);
+      const inputs = await collectInputs(db, budgeted, 4, window, { boxB: true, sameDayNowMs: day === utcDayOf(nowMs) ? nowMs : undefined });
       const report = buildDailyReport({ window, decisions, ...inputs });
       // Provider fully unavailable: every lookup came back empty. Not a settlement result, a failure to retry.
       if (stats.calls > 0 && stats.non_null === 0) {
