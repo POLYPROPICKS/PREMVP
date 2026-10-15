@@ -26,6 +26,8 @@ export type FrozenBet = {
   entry_vwap: number | null; entry_quantity: number | null; entry_notional_usd: number | null;
   entry_fee_usd?: number | null; entry_fee_state?: string | null;
   observed_at: string | null; provenance_class: string | null; source_observation_id: string | null;
+  /** Scheduled match start (frozen decision column). Drives same-day outcome eligibility only. */
+  event_start_iso?: string | null;
 };
 
 export type SellObservation = {
@@ -90,16 +92,59 @@ function base(bet: FrozenBet, outcome: Outcome, reason: string, edge: MappingEdg
  * `conditionEvents` lists every physical event that frozen BETs attribute to that condition: more than one means the
  * game->market edge is ambiguous and the position stays OPEN. Never infers from price drift, titles or scores.
  */
-export function settlePosition(bet: FrozenBet, market: GammaMarket | null, conditionEvents: ReadonlySet<string>): PositionSettlement {
+function identityGuard(bet: FrozenBet, conditionEvents: ReadonlySet<string>): PositionSettlement | null {
   if (bet.market_family !== SUPPORTED_MARKET_FAMILY) return open(bet, `MARKET_FAMILY_${bet.market_family ?? "NULL"}_UNSUPPORTED`, "UNSUPPORTED_MARKET_FAMILY");
   if (!bet.condition_id || !bet.token_id) return open(bet, "NO_EXACT_IDENTITY", "DECISION_TO_TOKEN");
   if (!finite(bet.entry_vwap) || bet.entry_vwap <= 0 || bet.entry_vwap >= 1) return open(bet, "ENTRY_PRICE_INVALID", "ENTRY_PRICE_INVALID");
   if (conditionEvents.size > 1) return open(bet, "CONDITION_ATTRIBUTED_TO_MULTIPLE_PHYSICAL_EVENTS", "CONDITION_TO_GAME");
-  const s = classifySiblingSettlement({ conditionId: bet.condition_id, tokenId: bet.token_id, market });
+  return null;
+}
+
+export function settlePosition(bet: FrozenBet, market: GammaMarket | null, conditionEvents: ReadonlySet<string>): PositionSettlement {
+  const guarded = identityGuard(bet, conditionEvents);
+  if (guarded) return guarded;
+  const s = classifySiblingSettlement({ conditionId: bet.condition_id!, tokenId: bet.token_id!, market });
   const map: Partial<Record<SiblingSettlementState, Outcome>> = { SETTLED_WIN: "WIN", SETTLED_LOSS: "LOSS", VOID_PUSH: "VOID" };
   const outcome = map[s.state];
   if (outcome) return base(bet, outcome, s.reason, "NONE", s.winningTokenId);
   return open(bet, s.reason, EDGE_BY_SETTLEMENT[s.reason] ?? "TOKEN_TO_OUTCOME");
+}
+
+// ───────────────────────────── Box B outcome authority (same-day path) ─────────────────────────────
+/** Same-day outcomes are only checked this long after the scheduled match start. */
+export const SAME_DAY_ELIGIBLE_AFTER_START_MS = 6 * 3_600_000;
+/** Latest append-only revision of public.market_outcome_revisions for one condition id. */
+export type BoxBOutcome = { condition_id: string; revision_no: number; outcome_status: string; winner_token_id: string | null; market_token_ids: unknown };
+export const BOX_B_TABLE = "market_outcome_revisions";
+
+const boxBHasToken = (ids: unknown, token: string) => Array.isArray(ids) ? ids.map(String).includes(token) : !!ids && typeof ids === "object" && token in (ids as Record<string, unknown>);
+
+/** A terminal Box B row that can settle THIS token: FINAL needs winner and bet token inside the market token set; VOID needs the bet token inside it. */
+export function boxBSettles(box: BoxBOutcome | null | undefined, token: string): boolean {
+  if (box?.outcome_status === "FINAL") return !!box.winner_token_id && boxBHasToken(box.market_token_ids, box.winner_token_id) && boxBHasToken(box.market_token_ids, token);
+  if (box?.outcome_status === "VOID") return boxBHasToken(box.market_token_ids, token);
+  return false;
+}
+
+/**
+ * Exact condition_id + token_id settlement from the Box B authority. FINAL -> WIN/LOSS only when the bet token is a member of the
+ * Box B market token set; VOID -> VOID; PENDING / CONFLICT / LOOKUP_FAILED / missing -> OPEN (PENDING, retried by the next cycle).
+ * `sameDayNowMs` set (in-progress UTC day): a bet is eligible only from event_start + 6h, and there is no provider fallback.
+ * Unset (completed day): a usable terminal Box B row overrides, otherwise (including an unusable terminal row) the existing provider settlement stays authoritative.
+ */
+export function settlePositionBoxB(bet: FrozenBet, box: BoxBOutcome | null, market: GammaMarket | null, conditionEvents: ReadonlySet<string>, sameDayNowMs?: number): PositionSettlement {
+  const guarded = identityGuard(bet, conditionEvents);
+  if (guarded) return guarded;
+  if (sameDayNowMs !== undefined) {
+    const start = ms(bet.event_start_iso);
+    if (!Number.isFinite(start)) return open(bet, "EVENT_START_UNKNOWN", "TOKEN_TO_OUTCOME");
+    if (start + SAME_DAY_ELIGIBLE_AFTER_START_MS > sameDayNowMs) return open(bet, "NOT_YET_ELIGIBLE_BEFORE_START_PLUS_6H", "TOKEN_TO_OUTCOME");
+  }
+  const token = bet.token_id!;
+  if (boxBSettles(box, token)) return box!.outcome_status === "VOID" ? base(bet, "VOID", "BOX_B_VOID", "NONE", null) : base(bet, box!.winner_token_id === token ? "WIN" : "LOSS", "BOX_B_FINAL", "NONE", box!.winner_token_id);
+  if (sameDayNowMs === undefined) return settlePosition(bet, market, conditionEvents);
+  if (box?.outcome_status === "FINAL" || box?.outcome_status === "VOID") return open(bet, "BOX_B_TOKEN_NOT_IN_MARKET", "MARKET_TO_TOKEN");
+  return open(bet, box ? `BOX_B_${box.outcome_status}` : "BOX_B_NO_REVISION", box?.outcome_status === "CONFLICT" ? "MARKET_TO_CONDITION" : "TOKEN_TO_OUTCOME");
 }
 
 /** Idempotent: the same decision_id appearing twice (replay, overlapping pages) is counted once. */
@@ -290,7 +335,7 @@ export function utcDayWindow(day: string): UtcWindow {
   const from = new Date(`${day}T00:00:00.000Z`);
   return { from: from.toISOString(), to: new Date(from.getTime() + 86_400_000).toISOString() };
 }
-const BET_COLUMNS = "decision_id,strategy_id,physical_event_id,provider_game_id,condition_id,token_id,side,market_family,market_slug,entry_vwap,entry_quantity,entry_notional_usd,entry_fee_usd,entry_fee_state,observed_at,provenance_class,source_observation_id";
+const BET_COLUMNS = "decision_id,strategy_id,physical_event_id,provider_game_id,event_start_iso,condition_id,token_id,side,market_family,market_slug,entry_vwap,entry_quantity,entry_notional_usd,entry_fee_usd,entry_fee_state,observed_at,provenance_class,source_observation_id";
 const OBS_COLUMNS = "id,physical_event_id,condition_id,token_id,observed_at,event_live_status,orderbook_fetch_status,best_bid,mid_price,bid_depth_relevant_usd,full_stake_shares,full_stake_exit_vwap,full_stake_exit_fully_filled";
 
 function fail(stage: string, error: { message: string } | null) { if (error) throw new Error(`INPLAY_SETTLEMENT_${stage}:${error.message}`); }
@@ -306,10 +351,16 @@ function toObs(r: Record<string, unknown>): SellObservation {
 
 export type SettlementReport = ReturnType<typeof buildSettlementReport>;
 
-export function buildSettlementReport(input: { bets: readonly FrozenBet[]; markets: ReadonlyMap<string, GammaMarket | null>; observationsByDecision: ReadonlyMap<string, readonly SellObservation[]> }) {
+export type BoxBInput = { outcomes: ReadonlyMap<string, BoxBOutcome>; sameDayNowMs?: number };
+
+export function buildSettlementReport(input: { bets: readonly FrozenBet[]; markets: ReadonlyMap<string, GammaMarket | null>; observationsByDecision: ReadonlyMap<string, readonly SellObservation[]>; boxB?: BoxBInput }) {
   const bets = dedupeBets(input.bets);
   const index = conditionEventIndex(bets);
-  const positions = bets.map((b) => settlePosition(b, b.condition_id ? input.markets.get(b.condition_id.toLowerCase()) ?? null : null, index.get((b.condition_id ?? "").toLowerCase()) ?? new Set()));
+  const positions = bets.map((b) => {
+    const key = (b.condition_id ?? "").toLowerCase();
+    const market = b.condition_id ? input.markets.get(key) ?? null : null, events = index.get(key) ?? new Set<string>();
+    return input.boxB ? settlePositionBoxB(b, input.boxB.outcomes.get(key) ?? null, market, events, input.boxB.sameDayNowMs) : settlePosition(b, market, events);
+  });
   const sell = bets.map((b) => evaluateSellPath(b, input.observationsByDecision.get(b.decision_id) ?? []));
   const missing = positions.filter((p) => p.outcome === "OPEN");
   const reasons: Record<string, number> = {};
@@ -355,18 +406,45 @@ export async function readSubsequentObservations(db: SupabaseClient, bet: Frozen
   return out;
 }
 
-export async function collectInputs(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency: number, window: UtcWindow) {
+/** Latest Box B revision per condition id (read-only, bounded pages; no provider call). */
+export async function readBoxBOutcomes(db: SupabaseClient, keys: readonly string[]): Promise<Map<string, BoxBOutcome>> {
+  const out = new Map<string, BoxBOutcome>();
+  for (let i = 0; i < keys.length; i += 50) {
+    for (let from = 0; ; from += 1000) {
+      const q = await db.from(BOX_B_TABLE).select("condition_id,revision_no,outcome_status,winner_token_id,market_token_ids").in("condition_id", keys.slice(i, i + 50))
+        .order("condition_id", { ascending: true }).order("revision_no", { ascending: true }).range(from, from + 999);
+      fail("BOX_B_READ", q.error);
+      const page = (q.data ?? []) as unknown as BoxBOutcome[];
+      for (const r of page) { const prev = out.get(r.condition_id); if (!prev || Number(r.revision_no) >= Number(prev.revision_no)) out.set(r.condition_id, { ...r, revision_no: Number(r.revision_no) }); }
+      if (page.length < 1000) break;
+    }
+  }
+  return out;
+}
+
+export type CollectOptions = { boxB?: boolean; sameDayNowMs?: number };
+
+export async function collectInputs(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency: number, window: UtcWindow, opts: CollectOptions = {}) {
   const bets = dedupeBets(await readFrozenBets(db, window));
   const conditions = new Map<string, string>(); // lower-cased key -> provider-cased id, one provider lookup per condition
   for (const b of bets) if (b.condition_id && !conditions.has(b.condition_id.toLowerCase())) conditions.set(b.condition_id.toLowerCase(), b.condition_id);
   const markets = new Map<string, GammaMarket | null>();
-  const entries = [...conditions];
+  let boxB: BoxBInput | undefined;
+  if (opts.boxB) {
+    try { boxB = { outcomes: await readBoxBOutcomes(db, [...conditions.keys()]), sameDayNowMs: opts.sameDayNowMs }; } catch (e) {
+      // Box B is the only authority for the in-progress day (fail loudly); a completed day degrades to the provider-only path.
+      if (opts.sameDayNowMs !== undefined) throw e;
+    }
+  }
+  // In-progress day: Box B is the only authority (no provider call). Completed day: provider lookup unless Box B settles every bet of the condition.
+  const settledByBoxB = (k: string) => bets.filter((b) => (b.condition_id ?? "").toLowerCase() === k).every((b) => !!b.token_id && boxBSettles(boxB?.outcomes.get(k), b.token_id));
+  const entries = [...conditions].filter(([k]) => !(opts.sameDayNowMs !== undefined || settledByBoxB(k)));
   for (let i = 0; i < entries.length; i += concurrency)
     await Promise.all(entries.slice(i, i + concurrency).map(async ([key, id]) => { markets.set(key, (await fetchMarket(id)) ?? (await fetchMarket(id))); }));
   const observationsByDecision = new Map<string, SellObservation[]>();
   for (let i = 0; i < bets.length; i += concurrency)
     await Promise.all(bets.slice(i, i + concurrency).map(async (b) => { observationsByDecision.set(b.decision_id, await readSubsequentObservations(db, b)); }));
-  return { bets, markets, observationsByDecision };
+  return { bets, markets, observationsByDecision, boxB };
 }
 
 export async function runSettlementReport(db: SupabaseClient, fetchMarket: (conditionId: string) => Promise<GammaMarket | null>, concurrency = 4, window: UtcWindow = null) {
@@ -424,13 +502,14 @@ export function independenceBlock(positions: readonly PositionSettlement[]) {
   };
 }
 
-export function buildDailyReport(input: { window: UtcWindow; decisions: readonly DecisionRow[]; bets: readonly FrozenBet[]; markets: ReadonlyMap<string, GammaMarket | null>; observationsByDecision: ReadonlyMap<string, readonly SellObservation[]> }) {
+export function buildDailyReport(input: { window: UtcWindow; decisions: readonly DecisionRow[]; bets: readonly FrozenBet[]; markets: ReadonlyMap<string, GammaMarket | null>; observationsByDecision: ReadonlyMap<string, readonly SellObservation[]>; boxB?: BoxBInput }) {
   const bets = dedupeBets(input.bets);
-  const core = buildSettlementReport({ bets, markets: input.markets, observationsByDecision: input.observationsByDecision });
+  const core = buildSettlementReport({ bets, markets: input.markets, observationsByDecision: input.observationsByDecision, boxB: input.boxB });
   const sell = bets.map((b) => evaluateSellPath(b, input.observationsByDecision.get(b.decision_id) ?? []));
   return {
     report: "INPLAY_PAPER_DAILY_ECONOMICS_V1",
     utc_window_half_open_on_admission_observed_at: input.window ?? "ALL_FROZEN_DECISIONS_NO_DAY_FILTER",
+    outcome_authority: !input.boxB ? "PROVIDER_GAMMA_BY_CONDITION_ID_AND_EXACT_TOKEN" : input.boxB.sameDayNowMs !== undefined ? "BOX_B_ONLY_SAME_DAY_START_PLUS_6H" : "BOX_B_TERMINAL_THEN_PROVIDER_GAMMA",
     decision_timestamp_authority: "FROZEN_AT_AND_OBSERVED_AT_FROM_research_inplay_paper_decisions_IMMUTABLE",
     data_provenance: "DBClone nppznoujvnyjargjkmnv, research_inplay_paper_decisions + research_inplay_core_path_observations, provider settlement via existing resolver",
     strategies: strategyDecisionSummary(input.decisions),
