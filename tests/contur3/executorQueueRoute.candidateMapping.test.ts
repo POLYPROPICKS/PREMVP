@@ -31,7 +31,7 @@ function baseRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExecutio
     side: "Argentina",
     market_slug: "argentina-vs-egypt-moneyline",
     market_title: "argentina-vs-egypt-moneyline",
-    market_family: "allowed_fullmatch_moneyline",
+    market_family: "MONEYLINE",
     score: 80,
     coverage: 60,
     tier: "TIER1",

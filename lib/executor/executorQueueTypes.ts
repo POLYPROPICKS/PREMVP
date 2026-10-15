@@ -7,7 +7,7 @@
 // Pure types only — no DB client, no side effects.
 
 import type { QueueStatus } from "./executorCallbackContract";
-import { FOUNDER_TOTALS_OVER_LIVE_OFF, isFounderLiveOffTotalsOver, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
+import { FOUNDER_MONEYLINE_ONLY_LIVE, FOUNDER_TOTALS_OVER_LIVE_OFF, isFounderLiveOffTotalsOver, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
 export type { QueueStatus };
 
 export type ReservationStatus =
@@ -558,7 +558,7 @@ export function mapQueueRowToIrelandCandidate(
   const frozenMode = t10FrozenExecutionMode(row.diagnostics);
   let primaryMaker: Partial<IrelandQueueCandidate> | null = null;
   // LIVE_MONEY_FAMILY_AUTHORITY_V1: executor handoff never carries a non-live family (SPREADS), even on a pre-existing READY row.
-  if (isObservationOnlyMoneyFamily(row.market_family)) throw new QueueWireContractError("LIVE_MONEY_FAMILY_NOT_AUTHORIZED", row.id ?? null);
+  if (isObservationOnlyMoneyFamily(row.market_family)) throw new QueueWireContractError(FOUNDER_MONEYLINE_ONLY_LIVE, row.id ?? null);
   // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: a pre-existing, not-yet-executed READY TOTALS Over row is withheld from Ireland
   // (per-row wire rejection; the row, any fill, position and settlement are left untouched).
   if (isFounderLiveOffTotalsOver(row.market_family, row.side)) throw new QueueWireContractError(FOUNDER_TOTALS_OVER_LIVE_OFF, row.id ?? null);

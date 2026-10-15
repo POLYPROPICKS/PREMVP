@@ -5,11 +5,9 @@
 // obtain LIVE economic authority: economic selection, executable Queue admission, executor handoff and
 // MAKER_FALLBACK_1 exposure.
 //
-// SPREADS is deliberately absent from the live set (Founder decision: SPREADS = OFF for real money).
-export const LIVE_MONEY_FAMILIES: ReadonlySet<string> = new Set(["MONEYLINE", "TOTALS", "TOTAL_CORNERS"]);
-
-/** Every canonical family the B universe can classify; anything here that is not live is observation-only. */
-const B_UNIVERSE_FAMILIES: ReadonlySet<string> = new Set(["MONEYLINE", "SPREADS", "TOTALS", "TOTAL_CORNERS"]);
+// Founder decision 2026-10-15: only canonical MONEYLINE may receive NEW live authority.
+export const FOUNDER_MONEYLINE_ONLY_LIVE = "FOUNDER_MONEYLINE_ONLY_LIVE_2026_10_15" as const;
+export const LIVE_MONEY_FAMILIES: ReadonlySet<string> = new Set(["MONEYLINE"]);
 
 const norm = (family: string | null | undefined): string => (typeof family === "string" ? family.trim().toUpperCase() : "");
 
@@ -19,15 +17,14 @@ export function isLiveMoneyFamilyEligible(family: string | null | undefined): bo
 }
 
 /**
- * Queue-row edges (admission, executor handoff, fallback): true only for a canonical B-universe family that is
- * NOT live (SPREADS). Rows that carry no canonical family (manual / legacy writers) are outside this decision.
+ * Queue-row edges (admission, executor handoff, fallback): fail closed for every family outside
+ * the live set, including missing/unknown families on manual or legacy rows.
  */
 export function isObservationOnlyMoneyFamily(family: string | null | undefined): boolean {
-  const f = norm(family);
-  return B_UNIVERSE_FAMILIES.has(f) && !LIVE_MONEY_FAMILIES.has(f);
+  return !isLiveMoneyFamilyEligible(family);
 }
 
-export const LIVE_MONEY_FAMILY_NOT_AUTHORIZED = "LIVE_MONEY_FAMILY_NOT_AUTHORIZED" as const;
+export const LIVE_MONEY_FAMILY_NOT_AUTHORIZED = FOUNDER_MONEYLINE_ONLY_LIVE;
 
 /** Thrown at the executable Queue money boundary when an observation-only family row is attempted. */
 export class LiveMoneyFamilyNotAuthorizedError extends Error {

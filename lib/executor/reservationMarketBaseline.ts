@@ -6,7 +6,7 @@ import { computeMidPrice, computeSpread, computeSpreadBps, getBestBidAsk } from 
 import { GAMMA_GAME_EVENTS_LIMIT, fetchPolymarketEventById, fetchPolymarketEventsByGameId } from "../feed/polymarketClient";
 import type { PolymarketRawEvent } from "../feed/types";
 import { compareExactIdentity } from "./exactIdentityOrder";
-import { isFounderLiveOffTotalsOver, isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
+import { FOUNDER_MONEYLINE_ONLY_LIVE, isFounderLiveOffTotalsOver, isLiveMoneyFamilyEligible } from "./liveMoneyFamilyAuthority";
 import { physicalMatchId } from "./contractADecisions";
 import { CORNER_DERIVATIVE_RE } from "../contur3/taxonomy";
 
@@ -764,7 +764,9 @@ export async function captureReservationMarketObservation(
       condition_id: token.conditionId, token_id: token.tokenId, side: token.side, outcome: token.outcome,
       canonical_market_family: market.family, canonical_market_type: market.type,
       provider_market_type_raw: token.market.sports_market_type, market_slug: token.market.provider_market_slug,
-      live_policy_eligibility: null, live_policy_rejection_reason: null,
+      // Policy metadata only: retain every observation and all executable-book evidence.
+      live_policy_eligibility: isLiveMoneyFamilyEligible(market.family) ? null : false,
+      live_policy_rejection_reason: isLiveMoneyFamilyEligible(market.family) ? null : FOUNDER_MONEYLINE_ONLY_LIVE,
       best_bid: bestBid, best_ask: bestAsk, mid_price: computeMidPrice(book),
       bid_decimal_odds: bestBid && bestBid > 0 ? 1 / bestBid : null,
       ask_decimal_odds: bestAsk && bestAsk > 0 ? 1 / bestAsk : null,
@@ -1035,7 +1037,7 @@ function chooseBCandidate(
 
 /**
  * LIVE_MONEY_FAMILY_AUTHORITY_V1 -- released/OFF live choice. Same B priority walk and bands, but families that
- * may not carry live money (SPREADS) are removed BEFORE the choice, so they can never win and starve an allowed
+ * may not carry live money (all non-MONEYLINE families) are removed BEFORE the choice, so they can never win and starve an allowed
  * family. The telemetry/research decision (selectReservationT3AbDecisions) is unchanged and still sees SPREADS.
  */
 export function selectLiveMoneyBDecision(
@@ -1043,11 +1045,11 @@ export function selectLiveMoneyBDecision(
   telemetryB: ReservationStrategyDecisionInput,
 ): ReservationStrategyDecisionInput {
   const { bSelected, bReason } = chooseBCandidate(universe, hasT3Book, isLiveMoneyFamilyEligible,
-    // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: removed BEFORE the choice so it cannot win and starve a TOTALS Under sibling.
+    // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: removed BEFORE the choice so it cannot win and starve a MONEYLINE sibling.
     (row) => !isFounderLiveOffTotalsOver(row.canonical_market_family, row.side));
   return { ...telemetryB,
     selectedIdentity: bSelected ? { conditionId: bSelected.condition_id, tokenId: bSelected.token_id, side: bSelected.side } : null,
-    decisionReason: bReason };
+    decisionReason: !bSelected && universe.some(row => !isLiveMoneyFamilyEligible(row.canonical_market_family)) ? FOUNDER_MONEYLINE_ONLY_LIVE : bReason };
 }
 
 export function selectReservationT3AbDecisions(

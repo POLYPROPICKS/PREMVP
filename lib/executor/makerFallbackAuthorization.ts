@@ -26,7 +26,7 @@ import {
   t10FrozenExecutionMode,
   type EventExecutionQueueRow,
 } from "./executorQueueTypes";
-import { FOUNDER_TOTALS_OVER_LIVE_OFF, isFounderLiveOffTotalsOver, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
+import { FOUNDER_MONEYLINE_ONLY_LIVE, FOUNDER_TOTALS_OVER_LIVE_OFF, isFounderLiveOffTotalsOver, isObservationOnlyMoneyFamily } from "./liveMoneyFamilyAuthority";
 
 export const EXECUTION_ATTEMPTS_KEY = "execution_attempts_v1" as const;
 export const TAKER_ATTEMPT_1 = "TAKER_ATTEMPT_1" as const;
@@ -204,7 +204,7 @@ export type MakerBlockReason =
   | "IDENTITY_MISMATCH"
   | "DEADLINE_PASSED"
   | "PRIMARY_MAKER_ROW_NO_FALLBACK"
-  | "LIVE_MONEY_FAMILY_NOT_AUTHORIZED"
+  | typeof FOUNDER_MONEYLINE_ONLY_LIVE
   | typeof FOUNDER_TOTALS_OVER_LIVE_OFF;
 
 export interface MakerEligibilityInput {
@@ -274,7 +274,7 @@ export function evaluateMakerEligibility(input: MakerEligibilityInput): MakerEli
   if (deadline === null || nowMs >= Date.parse(deadline)) reasons.push("DEADLINE_PASSED");
   if (frozenMode === "INVALID" || frozenMode === "MAKER_FIRST") reasons.push("PRIMARY_MAKER_ROW_NO_FALLBACK");
   // LIVE_MONEY_FAMILY_AUTHORITY_V1: a non-live family (SPREADS) never opens fallback exposure.
-  if (isObservationOnlyMoneyFamily(queue.market_family)) reasons.push("LIVE_MONEY_FAMILY_NOT_AUTHORIZED");
+  if (isObservationOnlyMoneyFamily(queue.market_family)) reasons.push(FOUNDER_MONEYLINE_ONLY_LIVE);
   // FOUNDER_TOTALS_OVER_LIVE_OFF_2026_10_10: a TOTALS Over parent never opens a NEW fallback order.
   if (isFounderLiveOffTotalsOver(queue.market_family, queue.side)) reasons.push(FOUNDER_TOTALS_OVER_LIVE_OFF);
 
