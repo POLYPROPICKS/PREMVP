@@ -13,7 +13,7 @@ const mkt = (cond: string, o: Record<string, unknown> = {}) => ({
 });
 
 type Dec = Record<string, any>;
-function fakeDb(decisions: Dec[], observations: Dec[] = [], opts: { reportTable?: boolean; boxB?: Dec[] } = {}) {
+function fakeDb(decisions: Dec[], observations: Dec[] = [], opts: { reportTable?: boolean; boxB?: Dec[]; boxBError?: boolean } = {}) {
   const reports = new Map<string, Dec>();
   const mutations: string[] = [];
   const key = (r: Dec) => `${r.utc_day}|${r.report_version}`;
@@ -26,6 +26,7 @@ function fakeDb(decisions: Dec[], observations: Dec[] = [], opts: { reportTable?
       return src;
     };
     const run = () => {
+      if (table === "market_outcome_revisions" && opts.boxBError) return { data: null, error: { code: "42501", message: "permission denied" } };
       if (table === REPORT_TABLE && opts.reportTable === false) return { data: null, error: { code: "PGRST205", message: "Could not find the table" } };
       if (mode === "update") { for (const r of rows()) { Object.assign(r, patch); } mutations.push(`update:${table}`); return { data: null, error: null }; }
       return { data: rows().slice(from, from + lim).map((r) => ({ ...r })), error: null };
@@ -287,4 +288,24 @@ test("completed day: a terminal Box B revision overrides without a provider call
   const row = reports.get(`2026-10-10|${REPORT_VERSION}`)!;
   assert.deepEqual([row.win_n, row.loss_n, row.settled_n], [1, 1, 2]);
   assert.equal(row.summary.outcome_authority, "BOX_B_TERMINAL_THEN_PROVIDER_GAMMA");
+});
+
+test("Box B hardening: unusable terminal rows never settle same-day and fall back to the provider on completed days; read errors degrade completed days only", async () => {
+  const bad = (o: Dec) => rev("0xw", o);
+  for (const o of [{ winner_token_id: null }, { market_token_ids: null }, { market_token_ids: "x" }, { winner_token_id: "tok-elsewhere" }, { market_token_ids: [LOSE] }, { outcome_status: "VOID", winner_token_id: null, market_token_ids: [LOSE] }]) {
+    const sd = fakeDb([today({ condition_id: "0xw" })], [], { boxB: [bad(o)] });
+    await runSettlementCycle(sd.db, noGamma, { nowMs: NOW });
+    assert.deepEqual([sd.reports.get(SD)!.settled_n, sd.reports.get(SD)!.open_n], [0, 1], JSON.stringify(o));
+    const cd = fakeDb([dec({ condition_id: "0xw" })], [], { boxB: [bad(o)] });
+    const asked: string[] = [];
+    await runSettlementCycle(cd.db, async (id) => { asked.push(id); return mkt(id) as any; }, { nowMs: NOW });
+    assert.ok(asked.includes("0xw"), `provider fallback for ${JSON.stringify(o)}`);
+    assert.equal(cd.reports.get(`2026-10-10|${REPORT_VERSION}`)!.win_n, 1);
+  }
+  // Box B unreadable: completed day keeps the provider-only path; the in-progress day fails loudly (its only authority)
+  const e = fakeDb([dec(), today({ physical_event_id: "ev2", condition_id: "0xw" })], [], { boxBError: true });
+  const r = await runSettlementCycle(e.db, async (id) => mkt(id) as any, { nowMs: NOW });
+  assert.equal(e.reports.get(`2026-10-10|${REPORT_VERSION}`)!.summary.outcome_authority, "PROVIDER_GAMMA_BY_CONDITION_ID_AND_EXACT_TOKEN");
+  assert.equal(e.reports.get(`2026-10-10|${REPORT_VERSION}`)!.win_n, 1);
+  assert.equal(r.ok, false); assert.equal(r.days.find((d) => d.day === "2026-10-11")!.outcome, "FAILED"); assert.match(r.days.find((d) => d.day === "2026-10-11")!.error!, /BOX_B_READ/);
 });

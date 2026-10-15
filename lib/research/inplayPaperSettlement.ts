@@ -119,11 +119,18 @@ export const BOX_B_TABLE = "market_outcome_revisions";
 
 const boxBHasToken = (ids: unknown, token: string) => Array.isArray(ids) ? ids.map(String).includes(token) : !!ids && typeof ids === "object" && token in (ids as Record<string, unknown>);
 
+/** A terminal Box B row that can settle THIS token: FINAL needs winner and bet token inside the market token set; VOID needs the bet token inside it. */
+export function boxBSettles(box: BoxBOutcome | null | undefined, token: string): boolean {
+  if (box?.outcome_status === "FINAL") return !!box.winner_token_id && boxBHasToken(box.market_token_ids, box.winner_token_id) && boxBHasToken(box.market_token_ids, token);
+  if (box?.outcome_status === "VOID") return boxBHasToken(box.market_token_ids, token);
+  return false;
+}
+
 /**
  * Exact condition_id + token_id settlement from the Box B authority. FINAL -> WIN/LOSS only when the bet token is a member of the
  * Box B market token set; VOID -> VOID; PENDING / CONFLICT / LOOKUP_FAILED / missing -> OPEN (PENDING, retried by the next cycle).
  * `sameDayNowMs` set (in-progress UTC day): a bet is eligible only from event_start + 6h, and there is no provider fallback.
- * Unset (completed day): a terminal Box B row overrides, otherwise the existing provider settlement stays authoritative.
+ * Unset (completed day): a usable terminal Box B row overrides, otherwise (including an unusable terminal row) the existing provider settlement stays authoritative.
  */
 export function settlePositionBoxB(bet: FrozenBet, box: BoxBOutcome | null, market: GammaMarket | null, conditionEvents: ReadonlySet<string>, sameDayNowMs?: number): PositionSettlement {
   const guarded = identityGuard(bet, conditionEvents);
@@ -134,12 +141,9 @@ export function settlePositionBoxB(bet: FrozenBet, box: BoxBOutcome | null, mark
     if (start + SAME_DAY_ELIGIBLE_AFTER_START_MS > sameDayNowMs) return open(bet, "NOT_YET_ELIGIBLE_BEFORE_START_PLUS_6H", "TOKEN_TO_OUTCOME");
   }
   const token = bet.token_id!;
-  if (box?.outcome_status === "FINAL") {
-    if (!box.winner_token_id || !boxBHasToken(box.market_token_ids, token)) return open(bet, "BOX_B_TOKEN_NOT_IN_MARKET", "MARKET_TO_TOKEN");
-    return base(bet, box.winner_token_id === token ? "WIN" : "LOSS", "BOX_B_FINAL", "NONE", box.winner_token_id);
-  }
-  if (box?.outcome_status === "VOID") return base(bet, "VOID", "BOX_B_VOID", "NONE", null);
+  if (boxBSettles(box, token)) return box!.outcome_status === "VOID" ? base(bet, "VOID", "BOX_B_VOID", "NONE", null) : base(bet, box!.winner_token_id === token ? "WIN" : "LOSS", "BOX_B_FINAL", "NONE", box!.winner_token_id);
   if (sameDayNowMs === undefined) return settlePosition(bet, market, conditionEvents);
+  if (box?.outcome_status === "FINAL" || box?.outcome_status === "VOID") return open(bet, "BOX_B_TOKEN_NOT_IN_MARKET", "MARKET_TO_TOKEN");
   return open(bet, box ? `BOX_B_${box.outcome_status}` : "BOX_B_NO_REVISION", box?.outcome_status === "CONFLICT" ? "MARKET_TO_CONDITION" : "TOKEN_TO_OUTCOME");
 }
 
@@ -425,10 +429,16 @@ export async function collectInputs(db: SupabaseClient, fetchMarket: (conditionI
   const conditions = new Map<string, string>(); // lower-cased key -> provider-cased id, one provider lookup per condition
   for (const b of bets) if (b.condition_id && !conditions.has(b.condition_id.toLowerCase())) conditions.set(b.condition_id.toLowerCase(), b.condition_id);
   const markets = new Map<string, GammaMarket | null>();
-  const boxB: BoxBInput | undefined = opts.boxB ? { outcomes: await readBoxBOutcomes(db, [...conditions.keys()]), sameDayNowMs: opts.sameDayNowMs } : undefined;
-  // In-progress day: Box B is the only authority (no provider call). Completed day: provider lookup only where Box B is not terminal.
-  const terminal = (k: string) => ["FINAL", "VOID"].includes(boxB?.outcomes.get(k)?.outcome_status ?? "");
-  const entries = [...conditions].filter(([k]) => !(opts.sameDayNowMs !== undefined || terminal(k)));
+  let boxB: BoxBInput | undefined;
+  if (opts.boxB) {
+    try { boxB = { outcomes: await readBoxBOutcomes(db, [...conditions.keys()]), sameDayNowMs: opts.sameDayNowMs }; } catch (e) {
+      // Box B is the only authority for the in-progress day (fail loudly); a completed day degrades to the provider-only path.
+      if (opts.sameDayNowMs !== undefined) throw e;
+    }
+  }
+  // In-progress day: Box B is the only authority (no provider call). Completed day: provider lookup unless Box B settles every bet of the condition.
+  const settledByBoxB = (k: string) => bets.filter((b) => (b.condition_id ?? "").toLowerCase() === k).every((b) => !!b.token_id && boxBSettles(boxB?.outcomes.get(k), b.token_id));
+  const entries = [...conditions].filter(([k]) => !(opts.sameDayNowMs !== undefined || settledByBoxB(k)));
   for (let i = 0; i < entries.length; i += concurrency)
     await Promise.all(entries.slice(i, i + concurrency).map(async ([key, id]) => { markets.set(key, (await fetchMarket(id)) ?? (await fetchMarket(id))); }));
   const observationsByDecision = new Map<string, SellObservation[]>();
