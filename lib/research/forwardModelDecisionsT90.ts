@@ -335,6 +335,8 @@ export type ModelEventDecision = {
   outcome: DecisionOutcome; reason: string;
   bet: (ModelBet & {
     outcomeLabel: string; oppositeTokenId: string; providerMarketType: string; providerEventId: string;
+    /** Exact provider-root witness from the selected condition's inventory; no title inference. */
+    providerGameId?: string | null;
     /** The cohort's scored source row for the model's OWN token (never the anchor's or the opposite token's). It may be a
      *  different observation of that token than the model's selected row: the model's exact row is `sourceRow` above. */
     cohortSource: { score: number | null; entryPrice: number | null; observedAt: string; ingestedAt: string; itemObservationId: string };
@@ -450,7 +452,7 @@ export function decideCohortModels(
       decisions.push({
         ...base, outcome: "BET", reason: "MODEL_ELIGIBLE",
         bet: {
-          ...bet, outcomeLabel: token.outcome, oppositeTokenId: token.oppositeTokenId, providerMarketType: token.providerMarketType, providerEventId: token.providerEventId,
+          ...bet, outcomeLabel: token.outcome, oppositeTokenId: token.oppositeTokenId, providerMarketType: token.providerMarketType, providerEventId: token.providerEventId, providerGameId: token.providerGameId,
           cohortSource: { score: token.source.score, entryPrice: token.source.entryPrice, observedAt: token.source.observedAt, ingestedAt: token.source.ingestedAt, itemObservationId: token.source.itemObservationId },
           isCohortAnchor: event.anchor.conditionId === bet.conditionId && event.anchor.tokenId === bet.tokenId,
           minutesToStartAtDecision: Math.round((Date.parse(event.eventStartIso) - decisionGeneratedAtMs) / 600) / 100,
