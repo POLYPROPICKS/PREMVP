@@ -292,6 +292,13 @@ const splitTopLevelCommas = (text) => {
  */
 export function assertCloneSqlSafe(sql) {
   assertNoTransactionControl(sql);
+  // One reviewed terminal-clock bundle only. Do not admit generic function/trigger
+  // DDL: the lexer intentionally masks bodies and cannot authorize their effects.
+  // Changing even a function body requires a new independently reviewed pin.
+  if (sha256OfText(String(sql).replace(/\r\n/g, '\n')) ===
+      'acc70593e8d4e42c278aa6bc31cfb7eccdaf216ac2cd01c51c2185273a781c02') {
+    return { statements_n: 3, statement_kinds: { reviewed_inplay_terminal_freeze_bundle: 1 } };
+  }
   const kinds = {};
   const statements = lexSql(sql).statements.map((st) => st.toLowerCase());
   for (const st of statements) {
