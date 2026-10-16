@@ -18,11 +18,12 @@ export const SOURCE_VERSION = "INPLAY_CORE_PATH_V2";
  * INPLAY_CORE_PATH_V2 rows are the first walked against this cap; V1 rows were walked against 0.555.
  */
 export const INPLAY_RESEARCH_EXECUTION_PRICE_CAP = 0.99;
-export const MAX_DAILY_PHYSICAL_EVENTS = 100;
+import { INPLAY_COVERAGE_LIMITS } from "./inplayCoverageLimits";
+export const MAX_DAILY_PHYSICAL_EVENTS = INPLAY_COVERAGE_LIMITS.events;
 export const MAX_TRACKED_TOKENS_PER_EVENT = 16;
 export const MAX_PERSISTED_OBSERVATIONS_PER_EVENT = 192;
-export const MAX_TOTAL_ROWS_PER_DAY = 20000;
-export const MAX_INPLAY_LOGICAL_MB_PER_DAY = 20;
+export const MAX_TOTAL_ROWS_PER_DAY = INPLAY_COVERAGE_LIMITS.rows;
+export const MAX_INPLAY_LOGICAL_MB_PER_DAY = INPLAY_COVERAGE_LIMITS.logicalMb;
 export const PRODUCTION_RETENTION_HOURS = 48;
 export const HEARTBEAT_MS = 5 * 60_000;
 const SPORT_FAMILIES = new Set(["soccer", "tennis", "basketball", "baseball", "hockey", "cricket", "american-football"]);

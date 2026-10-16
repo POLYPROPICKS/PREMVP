@@ -1,6 +1,7 @@
 // Dedicated, research-only sports state listener. Run with: npx tsx scripts/research-inplay-core-path.ts
 import { createClient } from "@supabase/supabase-js";
 import { captureInplayCorePath, deriveStructuredState, STATE_MAX_AGE_MS, type SportsState } from "../lib/research/inplayCorePath";
+import { INPLAY_COVERAGE_LIMITS } from "../lib/research/inplayCoverageLimits";
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -26,7 +27,7 @@ function connect(): void {
       latest.set(state.gameId, raw as SportsState);
       receivedAt.set(state.gameId, Date.now());
       if (!pending.includes(state.gameId) && !processing.has(state.gameId)) pending.push(state.gameId);
-      if (latest.size > 100 || pending.length > 100) {
+      if (latest.size > INPLAY_COVERAGE_LIMITS.events || pending.length > INPLAY_COVERAGE_LIMITS.events) {
         const oldest = pending.shift();
         if (oldest) { latest.delete(oldest); receivedAt.delete(oldest); }
       }
