@@ -37,10 +37,11 @@ export default function SafeMatchesPanel() {
       <button onClick={() => setRefresh(n => n + 1)} disabled={busy}>Refresh</button>
     </div>
     <div role="status" aria-live="polite">{busy && !report ? "Reading SAFE ledger aggregate…" : error ||
-      `${report?.freshness} · checked ${report?.read_at} · snapshot refreshed ${report?.snapshot_refreshed_at ?? "UNKNOWN"} · latest decision date ${report?.latest_decision_date} (Minsk today ${report?.minsk_today})`}</div>
+      `${report?.freshness} · checked ${report?.read_at} · snapshot refreshed ${report?.snapshot_refreshed_at ?? "UNKNOWN"} (source: ${report?.snapshot_refresh_source}) · latest decision date ${report?.latest_decision_date} (Minsk today ${report?.minsk_today})`}</div>
     {report && <>
+      {report.snapshot_refresh_source === "row_updated_at_fallback" && <p role="alert">Refresh time uses the snapshot row's updated_at fallback; it may also change on a failed refresh and can overstate freshness.</p>}
       {report.freshness === "STALE" && <p role="alert">STALE: {report.behind_today ? "latest decision date is behind today; " : ""}the shadow snapshot is older than 2h or missing. Figures describe the stored ledger only.</p>}
-      <p>Window {report.window_from} … {report.window_to}: {report.overall.exposures} model exposures; last settlement check {report.last_settlement_check ?? "UNKNOWN"}; {report.rows_first_persistence_unknown} rows with unknown first-persistence time.</p>
+      <p>Window {report.window_from} … {report.window_to}: {report.overall.exposures} model exposures; last settlement check {report.last_settlement_check ?? "UNKNOWN"}; {report.rows_first_persistence_unknown} rows with unknown first-persistence time; {report.rows_without_selected_outcome} of {report.overall.exposures} rows have no persisted selected_outcome (human-readable side shown only when the ledger stores it).</p>
       <p style={{ opacity: 0.8 }}>{report.identity_caveat} Gross 1u P&amp;L uses persisted entry price on provider-settled WIN/LOSS only; UNQUERIED stays unresolved; fees and net are UNKNOWN.</p>
       <h2 style={{ fontSize: 18, marginTop: 16 }}>By decision date: exposures vs distinct physical-event keys</h2>
       <div style={{ overflowX: "auto" }}><table style={{ borderCollapse: "collapse" }}>
@@ -61,7 +62,7 @@ export default function SafeMatchesPanel() {
         <thead><tr>{["Date", "Event key", "Sport", "Event start", "Models", "Model / token / entry / result / P&L (u)"].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
         <tbody>{report.events.map(e => <tr key={`${e.decision_date}/${e.physical_event_key}`}>
           {[e.decision_date, e.physical_event_key, e.sport ?? "UNKNOWN", e.event_start ?? "UNKNOWN", e.model_count,
-            e.selections.map(s => `${s.model_id} · …${s.selected_token ?? "?"} · ${s.entry_price ?? "?"} · ${s.result} · ${u(s.gross_pnl_u)}`).join("  |  ")].map((v, i) => <td key={i} style={{ ...td, whiteSpace: i === 5 ? "normal" : "nowrap", maxWidth: i === 5 ? 700 : undefined }}>{v}</td>)}
+            e.selections.map(s => `${s.model_id} · ${s.selected_outcome ?? "SIDE NOT PERSISTED"} (token …${s.selected_token ?? "?"}) · ${s.entry_price ?? "?"} · ${s.result} · ${u(s.gross_pnl_u)}`).join("  |  ")].map((v, i) => <td key={i} style={{ ...td, whiteSpace: i === 5 ? "normal" : "nowrap", maxWidth: i === 5 ? 700 : undefined }}>{v}</td>)}
         </tr>)}</tbody></table></div>
       <p style={{ opacity: 0.8, marginTop: 8 }}>{report.provenance}</p>
     </>}

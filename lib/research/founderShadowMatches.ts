@@ -4,13 +4,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 // Never returns the ledger wholesale: per-day/per-model aggregates plus per-event rows for the newest days only.
 export const SAFE_MODEL_IDS = ["P50_52_SAFE", "PORTFOLIO_BROAD_SAFE", "QUALITY_FILL_A_SAFE", "QUALITY_FILL_D_SAFE", "TENNIS_P50_52_SAFE"] as const;
 export const SHADOW_TABLE = "prospective_selection_shadow_runtime";
-const PROJECTION = "model_id,decision_date,physical_event_key,sport_family,event_start,entry_price,selected_token_id,settlement_state,result,settlement_checked_at,first_persisted_at";
+const PROJECTION = "model_id,decision_date,physical_event_key,sport_family,event_start,entry_price,selected_token_id,selected_outcome,settlement_state,result,settlement_checked_at,first_persisted_at";
 const PAGE = 1000, ROW_CAP = 4000, MAX_DAYS = 14, EVENT_DAYS = 2;
 const HOUR = 3_600_000;
 
 export type ShadowRow = {
   model_id: string; decision_date: string; physical_event_key: string | null; sport_family: string | null; event_start: string | null;
-  entry_price: number | string | null; selected_token_id: string | null; settlement_state: string | null; result: string | null;
+  entry_price: number | string | null; selected_token_id: string | null; selected_outcome?: string | null; settlement_state: string | null; result: string | null;
   settlement_checked_at: string | null; first_persisted_at: string | null;
 };
 type Outcome = "WIN" | "LOSS" | "UNRESOLVED";
@@ -67,12 +67,14 @@ export function aggregateShadowMatches(rows: ShadowRow[]) {
       decision_date: date, physical_event_key: key, sport: rs[0].sport_family, event_start: rs[0].event_start,
       model_count: new Set(rs.map(r => r.model_id)).size,
       selections: rs.map(r => { const o = outcomeOf(r); return { model_id: r.model_id, selected_token: r.selected_token_id ? r.selected_token_id.slice(-8) : null,
+        selected_outcome: r.selected_outcome?.trim() ? r.selected_outcome.trim().slice(0, 80) : null,
         entry_price: r.entry_price === null || r.entry_price === "" || !Number.isFinite(Number(r.entry_price)) ? null : Number(r.entry_price), result: o, gross_pnl_u: grossPnlU(r.entry_price, o) }; }),
     })).sort((a, b) => b.model_count - a.model_count || a.physical_event_key.localeCompare(b.physical_event_key));
   });
   const checks = rows.map(r => r.settlement_checked_at).filter((v): v is string => !!v).sort();
   return { days, events, overall: tally(rows),
     last_settlement_check: checks.at(-1) ?? null,
+    rows_without_selected_outcome: rows.filter(r => !r.selected_outcome?.trim()).length,
     rows_first_persistence_unknown: rows.filter(r => !r.first_persisted_at).length };
 }
 

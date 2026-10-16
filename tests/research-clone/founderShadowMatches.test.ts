@@ -83,6 +83,11 @@ test("reader flags STALE for missing, future and old snapshots, validates range 
   assert.equal(ok.freshness, "CURRENT");
   assert.equal(ok.snapshot_refresh_source, "lastSuccessfulRefresh");
   assert.equal(ok.events[0].selections[0].entry_price, null);
+  assert.equal(ok.events[0].selections[0].selected_outcome, null);
+  assert.equal(ok.rows_without_selected_outcome, 1);
+  const named = await readFounderShadowMatches(fakeDb([row("P50_52_SAFE", "A", { selected_outcome: "  Home  " })], { lastSuccessfulRefresh: "2026-10-16T11:30:00Z" }), new URLSearchParams(), now);
+  assert.equal(named.events[0].selections[0].selected_outcome, "Home");
+  assert.equal(named.rows_without_selected_outcome, 0);
   for (const snap of [null, { lastSuccessfulRefresh: "2026-10-16T08:00:00Z" }, { lastSuccessfulRefresh: "2026-10-16T13:00:00Z" }])
     assert.equal((await readFounderShadowMatches(fakeDb(ledger, snap), new URLSearchParams(), now)).freshness, "STALE");
   const fb = await readFounderShadowMatches(fakeDb(ledger, { updated_at: "2026-10-16T11:30:00Z" }), new URLSearchParams(), now);
