@@ -1,0 +1,126 @@
+{
+  "schema_version": "1",
+  "completion_id": "EXECUTION_ECONOMICS_FORWARD_BUY_MINIMAL_PATCH_V2-20261016",
+  "task_id": "SAFE_FORWARD_BUY_MINIMAL_PATCH_V2",
+  "task_class": "R1_BOUNDED_CODE",
+  "risk_class": "R1_BOUNDED_CODE",
+  "executor": "claude_code_cloud",
+  "environment": "PREMVP cloud container; no DB access, no migration, no Railway, no real BET; public CLOB/Gamma read-only GET used once to inspect a live /book payload shape",
+  "repository": "POLYPROPICKS/PREMVP",
+  "branch": "claude/intelligent-euler-fbt9g2",
+  "base_sha": "8bb12edc9c8646cd94dbc26f29736e0d9c251d54",
+  "result_sha": "ff693d407da6f85965e4f4437c60662fb5c8278f",
+  "origin_main_sha": "3f439614b34c58f9dbfccfe3020036cd19747fa0",
+  "worktree_before": "clean",
+  "worktree_after": "clean",
+  "files_changed": [
+    "lib/modeling/forwardBuyAuthority.ts",
+    "scripts/modeling/forward-buy-gate.ts",
+    "scripts/modeling/live-shadow-cycle.ts",
+    "tests/modeling/forwardBuyAuthority.test.ts",
+    "package.json",
+    "modeling/evidence/forward-bet-ledger-v1/COMPLETION_ENVELOPE_FORWARD_BUY.json"
+  ],
+  "commands_run": [
+    {
+      "command": "node --import tsx --test tests/modeling/forwardBuyAuthority.test.ts",
+      "exit_code": 0,
+      "purpose": "14 focused BUY tests pass"
+    },
+    {
+      "command": "npm run test:modeling:forward-bet",
+      "exit_code": 0,
+      "purpose": "52/52 incl. #526 forward-bet suites"
+    },
+    {
+      "command": "node --import tsx --test tests/modeling/prospectiveSelectionShadow.test.ts tests/modeling/liveModelingDashboardProduction.test.ts tests/modeling/forwardBetSettlementAuthority.test.ts",
+      "exit_code": 0,
+      "purpose": "legacy + settlement-isolation regressions 21/21"
+    },
+    {
+      "command": "npm run control-plane:check",
+      "exit_code": 0,
+      "purpose": "control plane validate/test/snapshot/project-package PASS"
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.json (filtered to changed files)",
+      "exit_code": 0,
+      "purpose": "no type errors in changed files"
+    },
+    {
+      "command": "npm run build",
+      "exit_code": 1,
+      "purpose": "BASELINE ENV FAILURE: compile and TypeScript phases passed; page-data collection for /api/entitlement/check failed with Missing required environment variable SUPABASE_URL (route untouched; secrets are a hard stop)"
+    }
+  ],
+  "tests": [
+    {
+      "name": "forwardBuyAuthority (14)",
+      "result": "PASS",
+      "detail": "VWAP/fee/depth, time ordering, stale quote, identity mismatch incl. fail-closed book asset_id/market, insufficient depth, fee unknown/out-of-bounds, duplicate economic units, no VERIFIED promotion, bounded rejection diagnostics, persist-time freshness, DB payload shape, IO gate ordering"
+    },
+    {
+      "name": "test:modeling:forward-bet",
+      "result": "PASS",
+      "detail": "52/52"
+    },
+    {
+      "name": "npm run build",
+      "result": "FAIL",
+      "detail": "baseline environment: SUPABASE_URL missing in page-data collection; not caused by this change"
+    }
+  ],
+  "required_reviewers": [],
+  "invoked_reviewers": [
+    "contur-gate-reviewer"
+  ],
+  "reviewer_receipts": [],
+  "evidence": [
+    {
+      "id": "EV-BUY-1",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "business_result": true,
+      "statement": "A reviewable forward-only BUY path exists for QUALITY_FILL_D_SAFE and P50_52_SAFE: full-stake USD 2.50 CLOB ask VWAP, bounded token-specific fee, provider quote timestamp, decision after quote receipt, failed candidates get no row. Proven by unit tests only; no natural run.",
+      "ref": "tests/modeling/forwardBuyAuthority.test.ts"
+    },
+    {
+      "id": "EV-BUY-2",
+      "evidence_class": "SUPPORTED",
+      "statement": "Read-only contur-gate-reviewer pass covered the uncommitted working tree BEFORE fixes; it found no defect against the 8 claimed properties and ranked 8 gaps. Fixed after review: persist-time freshness, fail-closed book asset_id/market, min_order_size unknown, NaN observed_at, skew 2s, accurate accepted/persisted counts, added tests. The fixed head was not re-reviewed.",
+      "ref": null
+    },
+    {
+      "id": "EV-BUY-3",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Live CLOB /book payload carries market, asset_id, timestamp (ms), min_order_size='5' shares, tick_size. With USD 2.50, a fill above ask 0.50 buys <5 shares and is rejected BELOW_MIN_ORDER_SIZE; P50_52_SAFE (reference 0.50-0.52) will almost never pass.",
+      "ref": null
+    },
+    {
+      "id": "EV-BUY-4",
+      "evidence_class": "NOT_PROVEN",
+      "statement": "No natural forward BUY row, no DB insert, no net economics. Fee, shares, stake and depth are not columns of the immutable ledger; receipts live only in the mutable CURRENT snapshot payload.",
+      "ref": null
+    }
+  ],
+  "capability_changes": [],
+  "state_delta_proposal": null,
+  "runtime_changed": false,
+  "deployment_changed": false,
+  "database_changed": false,
+  "forbidden_actions_respected": true,
+  "verdict": "PASS",
+  "outcome_class": "TERMINAL_PASS",
+  "operator_actions": {
+    "start": 1,
+    "intermediate": 0,
+    "terminal_result": 1
+  },
+  "blockers": [
+    "FIRST: provider min_order_size=5 shares vs USD 2.50 stake (needs price<=0.50) rejects most P50_52_SAFE fills; Architect must decide stake sizing or marketable-order minimum evidence. Not decided or loosened here.",
+    "Durable receipt: fee, shares, stake, depth and digest have no immutable column (migration not authorized); needs an append-only BUY receipt table before net economics.",
+    "Stacked on open Draft PR #526 (not on main); merge order and Architect acceptance of #526 required.",
+    "Baseline build fails in this container on missing SUPABASE_URL (environment only).",
+    "PRE_START_AUTHORITATIVE and VERIFIED remain unreachable (no authoritative start or provider root game id); BUYs stay UNVERIFIED."
+  ],
+  "founder_action": "Review the Draft PR and decide the stake-sizing vs min_order_size question."
+}

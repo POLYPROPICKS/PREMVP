@@ -1,0 +1,405 @@
+{
+  "generatedAt": "2026-10-12T21:33:12.634Z",
+  "contractSchemaApplied": true,
+  "ledgerRowN": 2998,
+  "decisionRowN": 765,
+  "tenTracks": [
+    {
+      "canonicalId": "P50_52_SAFE",
+      "displayName": "Прематч · Цена 50–52¢",
+      "group": "PREMATCH",
+      "mode": "PREMATCH_FORWARD_BET_ENGINE",
+      "canEmitBet": true,
+      "independentGames": 0,
+      "bet": 0,
+      "wlvu": "0–0–0–0",
+      "timingProof": "авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 660",
+      "priceProof": "UNPROVEN",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "INSUFFICIENT (verified settled n=0)",
+      "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+    },
+    {
+      "canonicalId": "PORTFOLIO_BROAD_SAFE",
+      "displayName": "Прематч · Широкий портфель",
+      "group": "PREMATCH",
+      "mode": "PREMATCH_FORWARD_BET_ENGINE",
+      "canEmitBet": true,
+      "independentGames": 0,
+      "bet": 0,
+      "wlvu": "0–0–0–0",
+      "timingProof": "авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 660",
+      "priceProof": "UNPROVEN",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "INSUFFICIENT (verified settled n=0)",
+      "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+    },
+    {
+      "canonicalId": "QUALITY_FILL_A_SAFE",
+      "displayName": "Прематч · Сбалансированный",
+      "group": "PREMATCH",
+      "mode": "PREMATCH_FORWARD_BET_ENGINE",
+      "canEmitBet": true,
+      "independentGames": 0,
+      "bet": 0,
+      "wlvu": "0–0–0–0",
+      "timingProof": "авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 660",
+      "priceProof": "UNPROVEN",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "INSUFFICIENT (verified settled n=0)",
+      "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+    },
+    {
+      "canonicalId": "QUALITY_FILL_D_SAFE",
+      "displayName": "Прематч · Футбольный расширенный",
+      "group": "PREMATCH",
+      "mode": "PREMATCH_FORWARD_BET_ENGINE",
+      "canEmitBet": true,
+      "independentGames": 0,
+      "bet": 0,
+      "wlvu": "0–0–0–0",
+      "timingProof": "авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 660",
+      "priceProof": "UNPROVEN",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "INSUFFICIENT (verified settled n=0)",
+      "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+    },
+    {
+      "canonicalId": "TENNIS_P50_52_SAFE",
+      "displayName": "Прематч · Теннис 50–52¢",
+      "group": "PREMATCH",
+      "mode": "PREMATCH_FORWARD_BET_ENGINE",
+      "canEmitBet": true,
+      "independentGames": 0,
+      "bet": 0,
+      "wlvu": "0–0–0–0",
+      "timingProof": "авторитетно до старта: 0; до СТАРТА ПО РАСПИСАНИЮ (факт старта не подтверждён): 0; поздно/повтор: 0; без доказательства: 358",
+      "priceProof": "UNPROVEN",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "INSUFFICIENT (verified settled n=0)",
+      "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+    },
+    {
+      "canonicalId": "CONTROL_PRICE_BUCKET_A",
+      "displayName": "Лайв · Контроль 48–52¢",
+      "group": "LIVE_CONTROL",
+      "mode": "LIVE_DELAYED_PAPER",
+      "canEmitBet": true,
+      "independentGames": 62,
+      "bet": 62,
+      "wlvu": "UNPROVEN (результат не сохраняется в Ledger)",
+      "timingProof": "DELAYED_PAPER: 62; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
+      "priceProof": "исполнимый BUY VWAP полного стейка: 62/62",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "INSUFFICIENT (games n=62)",
+      "verdict": "DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE"
+    },
+    {
+      "canonicalId": "CONTROL_PRICE_BUCKET_B",
+      "displayName": "Лайв · Контроль 53–58¢",
+      "group": "LIVE_CONTROL",
+      "mode": "LIVE_DELAYED_PAPER",
+      "canEmitBet": true,
+      "independentGames": 66,
+      "bet": 66,
+      "wlvu": "UNPROVEN (результат не сохраняется в Ledger)",
+      "timingProof": "DELAYED_PAPER: 66; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
+      "priceProof": "исполнимый BUY VWAP полного стейка: 66/66",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "INSUFFICIENT (games n=66)",
+      "verdict": "DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE"
+    },
+    {
+      "canonicalId": "CONTROL_PRICE_BUCKET_C",
+      "displayName": "Лайв · Контроль 35–44¢",
+      "group": "LIVE_CONTROL",
+      "mode": "LIVE_DELAYED_PAPER",
+      "canEmitBet": true,
+      "independentGames": 125,
+      "bet": 125,
+      "wlvu": "UNPROVEN (результат не сохраняется в Ledger)",
+      "timingProof": "DELAYED_PAPER: 125; LIVE_PROSPECTIVE: 0; TIMING_UNPROVEN: 0",
+      "priceProof": "исполнимый BUY VWAP полного стейка: 125/125",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "SUFFICIENT_FOR_COMPARISON",
+      "verdict": "DELAYED_PAPER_ONLY_NOT_FORWARD_EVIDENCE"
+    },
+    {
+      "canonicalId": "VALUE_BACKED_TAIL_REPRICING",
+      "displayName": "Alpha 1 · Недооценённые исходы",
+      "group": "ALPHA",
+      "mode": "FACTS_ONLY",
+      "canEmitBet": false,
+      "independentGames": 0,
+      "bet": 0,
+      "wlvu": "n/a",
+      "timingProof": "n/a (facts-only)",
+      "priceProof": "n/a (facts-only)",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "n/a",
+      "verdict": "FACTS_ONLY_NO_BET"
+    },
+    {
+      "canonicalId": "STATEWISE_PAYOFF_ARBITRAGE",
+      "displayName": "Alpha 2 · Арбитраж связанных рынков",
+      "group": "ALPHA",
+      "mode": "FACTS_ONLY",
+      "canEmitBet": false,
+      "independentGames": 0,
+      "bet": 0,
+      "wlvu": "n/a",
+      "timingProof": "n/a (facts-only)",
+      "priceProof": "n/a (facts-only)",
+      "economics": "UNPROVEN/UNPROVEN/UNPROVEN",
+      "confidence": "n/a",
+      "verdict": "FACTS_ONLY_NO_BET"
+    }
+  ],
+  "table": [
+    {
+      "strategy": "P50_52_SAFE",
+      "historical": {
+        "bet": 630,
+        "wlvu": "400–198–0–32",
+        "originalWinPct": "66.9%",
+        "originalWinPctInterval95": "[63.0%, 70.5%]",
+        "independentProvenGames": 0,
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "verdict": "HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE"
+      },
+      "legacyForwardWithoutContract": {
+        "bet": 30,
+        "note": "DB-first persisted before the contract existed; timing and identity unproven"
+      },
+      "funnel": {
+        "recordedBet": 660,
+        "dbFirstPersisted": 30,
+        "scheduledOnlyPreMatch": 0,
+        "authoritativelyProvenPreMatchGames": 0,
+        "verifiedIndependentGames": 0,
+        "settled": {
+          "contractWlvu": "0–0–0–0",
+          "verifiedWlvu": "0–0–0–0"
+        },
+        "lateOrReplay": 0,
+        "timingUnproven": 0,
+        "unprovenLinks": {}
+      },
+      "forward": {
+        "independentProvenGames": 0,
+        "verifiedIndependentGames": 0,
+        "bet": 0,
+        "wlvu": "0–0–0–0",
+        "originalWinPct": "UNPROVEN",
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "semanticallyValidatedInterval95": "n=0",
+        "settlementOnlyWinPctUnverifiedScope": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "confidence": "INSUFFICIENT (verified settled n=0)",
+        "furtherGamesNeeded": 100,
+        "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+      }
+    },
+    {
+      "strategy": "PORTFOLIO_BROAD_SAFE",
+      "historical": {
+        "bet": 630,
+        "wlvu": "375–216–0–39",
+        "originalWinPct": "63.5%",
+        "originalWinPctInterval95": "[59.5%, 67.2%]",
+        "independentProvenGames": 0,
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "verdict": "HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE"
+      },
+      "legacyForwardWithoutContract": {
+        "bet": 30,
+        "note": "DB-first persisted before the contract existed; timing and identity unproven"
+      },
+      "funnel": {
+        "recordedBet": 660,
+        "dbFirstPersisted": 30,
+        "scheduledOnlyPreMatch": 0,
+        "authoritativelyProvenPreMatchGames": 0,
+        "verifiedIndependentGames": 0,
+        "settled": {
+          "contractWlvu": "0–0–0–0",
+          "verifiedWlvu": "0–0–0–0"
+        },
+        "lateOrReplay": 0,
+        "timingUnproven": 0,
+        "unprovenLinks": {}
+      },
+      "forward": {
+        "independentProvenGames": 0,
+        "verifiedIndependentGames": 0,
+        "bet": 0,
+        "wlvu": "0–0–0–0",
+        "originalWinPct": "UNPROVEN",
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "semanticallyValidatedInterval95": "n=0",
+        "settlementOnlyWinPctUnverifiedScope": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "confidence": "INSUFFICIENT (verified settled n=0)",
+        "furtherGamesNeeded": 100,
+        "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+      }
+    },
+    {
+      "strategy": "QUALITY_FILL_A_SAFE",
+      "historical": {
+        "bet": 630,
+        "wlvu": "398–203–0–29",
+        "originalWinPct": "66.2%",
+        "originalWinPctInterval95": "[62.3%, 69.9%]",
+        "independentProvenGames": 0,
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "verdict": "HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE"
+      },
+      "legacyForwardWithoutContract": {
+        "bet": 30,
+        "note": "DB-first persisted before the contract existed; timing and identity unproven"
+      },
+      "funnel": {
+        "recordedBet": 660,
+        "dbFirstPersisted": 30,
+        "scheduledOnlyPreMatch": 0,
+        "authoritativelyProvenPreMatchGames": 0,
+        "verifiedIndependentGames": 0,
+        "settled": {
+          "contractWlvu": "0–0–0–0",
+          "verifiedWlvu": "0–0–0–0"
+        },
+        "lateOrReplay": 0,
+        "timingUnproven": 0,
+        "unprovenLinks": {}
+      },
+      "forward": {
+        "independentProvenGames": 0,
+        "verifiedIndependentGames": 0,
+        "bet": 0,
+        "wlvu": "0–0–0–0",
+        "originalWinPct": "UNPROVEN",
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "semanticallyValidatedInterval95": "n=0",
+        "settlementOnlyWinPctUnverifiedScope": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "confidence": "INSUFFICIENT (verified settled n=0)",
+        "furtherGamesNeeded": 100,
+        "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+      }
+    },
+    {
+      "strategy": "QUALITY_FILL_D_SAFE",
+      "historical": {
+        "bet": 630,
+        "wlvu": "429–166–0–35",
+        "originalWinPct": "72.1%",
+        "originalWinPctInterval95": "[68.4%, 75.6%]",
+        "independentProvenGames": 0,
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "verdict": "HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE"
+      },
+      "legacyForwardWithoutContract": {
+        "bet": 30,
+        "note": "DB-first persisted before the contract existed; timing and identity unproven"
+      },
+      "funnel": {
+        "recordedBet": 660,
+        "dbFirstPersisted": 30,
+        "scheduledOnlyPreMatch": 0,
+        "authoritativelyProvenPreMatchGames": 0,
+        "verifiedIndependentGames": 0,
+        "settled": {
+          "contractWlvu": "0–0–0–0",
+          "verifiedWlvu": "0–0–0–0"
+        },
+        "lateOrReplay": 0,
+        "timingUnproven": 0,
+        "unprovenLinks": {}
+      },
+      "forward": {
+        "independentProvenGames": 0,
+        "verifiedIndependentGames": 0,
+        "bet": 0,
+        "wlvu": "0–0–0–0",
+        "originalWinPct": "UNPROVEN",
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "semanticallyValidatedInterval95": "n=0",
+        "settlementOnlyWinPctUnverifiedScope": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "confidence": "INSUFFICIENT (verified settled n=0)",
+        "furtherGamesNeeded": 100,
+        "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+      }
+    },
+    {
+      "strategy": "TENNIS_P50_52_SAFE",
+      "historical": {
+        "bet": 338,
+        "wlvu": "157–123–0–58",
+        "originalWinPct": "56.1%",
+        "originalWinPctInterval95": "[50.2%, 61.8%]",
+        "independentProvenGames": 0,
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "verdict": "HISTORICAL_REFERENCE_ONLY_NOT_FORWARD_EVIDENCE"
+      },
+      "legacyForwardWithoutContract": {
+        "bet": 20,
+        "note": "DB-first persisted before the contract existed; timing and identity unproven"
+      },
+      "funnel": {
+        "recordedBet": 358,
+        "dbFirstPersisted": 20,
+        "scheduledOnlyPreMatch": 0,
+        "authoritativelyProvenPreMatchGames": 0,
+        "verifiedIndependentGames": 0,
+        "settled": {
+          "contractWlvu": "0–0–0–0",
+          "verifiedWlvu": "0–0–0–0"
+        },
+        "lateOrReplay": 0,
+        "timingUnproven": 0,
+        "unprovenLinks": {}
+      },
+      "forward": {
+        "independentProvenGames": 0,
+        "verifiedIndependentGames": 0,
+        "bet": 0,
+        "wlvu": "0–0–0–0",
+        "originalWinPct": "UNPROVEN",
+        "semanticallyValidatedWinPct": "UNPROVEN",
+        "semanticallyValidatedInterval95": "n=0",
+        "settlementOnlyWinPctUnverifiedScope": "UNPROVEN",
+        "gross": "UNPROVEN",
+        "fees": "UNPROVEN",
+        "netRoi": "UNPROVEN",
+        "confidence": "INSUFFICIENT (verified settled n=0)",
+        "furtherGamesNeeded": 100,
+        "verdict": "NO_FORWARD_CONTRACT_BETS_YET"
+      }
+    }
+  ]
+}

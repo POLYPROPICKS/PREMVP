@@ -30,7 +30,8 @@ test("V4 selection read projection excludes settlement and outcome columns", () 
   assert.ok(projection, "the clone read must use one explicit column projection");
   const columns = projection.split(",");
   assert.equal(columns.includes("signal_result"), false);
-  assert.equal(columns.some((column) => /settlement|outcome|label/i.test(column)), false);
+  // selected_outcome is the pre-decision side of the market (required by the forward contract), not a result.
+  assert.equal(columns.filter((column) => column !== "selected_outcome").some((column) => /settlement|outcome|label/i.test(column)), false);
 });
 
 test("forward capital shadow carries locked principal without realized PnL or vault credit", () => {

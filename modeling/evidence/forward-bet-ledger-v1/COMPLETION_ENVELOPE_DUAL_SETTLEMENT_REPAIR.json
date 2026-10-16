@@ -1,0 +1,144 @@
+{
+  "schema_version": "1",
+  "completion_id": "MODELING_14_PR526_DUAL_SETTLEMENT_AUTHORITY_REPAIR-20261012",
+  "task_id": "MODELING_14_PR526_DUAL_SETTLEMENT_AUTHORITY_REPAIR",
+  "task_class": "R1_BOUNDED_CODE",
+  "risk_class": "R1_BOUNDED_CODE",
+  "executor": "claude_code_cloud",
+  "environment": "PREMVP-DB-CLONE (cloud container; clone REST read proven, clone DDL/management API not available)",
+  "repository": "POLYPROPICKS/PREMVP",
+  "branch": "claude/stoic-pasteur-c0r36x",
+  "base_sha": "2e0c6c4748b5b774b66d0a9cd64a2c5af1091801",
+  "result_sha": "f88a784bb77a9fe3f5e96d2c249d5fcb83924c05",
+  "origin_main_sha": "9564114f712debbe3459cd2022bf2c0b0fdc6da5",
+  "worktree_before": "clean",
+  "worktree_after": "clean",
+  "files_changed": [
+    "package.json",
+    "scripts/modeling/live-shadow-cycle.ts",
+    "tests/modeling/forwardBetSettlementAuthority.test.ts"
+  ],
+  "commands_run": [
+    {
+      "command": "npx tsx --test tests/modeling/forwardBetSettlementAuthority.test.ts (new code stashed)",
+      "exit_code": 1,
+      "purpose": "reproduction: 6 of 7 regression tests FAIL on the 2e0c6c4 code (Gamma assigns WIN/LOSS to contract rows; contract rows enter legacy replay)"
+    },
+    {
+      "command": "npm run test:modeling:forward-bet",
+      "exit_code": 0,
+      "purpose": "30 pass incl. 7 new dual-authority tests"
+    },
+    {
+      "command": "node --import tsx --test tests/modeling/liveModelingDashboardProduction.test.ts tests/research-clone/forwardBetPayloadCompat.test.ts",
+      "exit_code": 0,
+      "purpose": "existing legacy-settlement and payload regressions unchanged (0 fail)"
+    },
+    {
+      "command": "npm run control-plane:check",
+      "exit_code": 0,
+      "purpose": "validate, command bindings, tests, snapshot, project package PASS"
+    },
+    {
+      "command": "sha256sum ops/research-clone/migrations/20261012180000_virtual_bet_forward_contract_v1.sql",
+      "exit_code": 0,
+      "purpose": "e90a75c9023699441f10982466f03d9bd6c2d397e6c255ab48bef04e2694a3fe unchanged; embedded copy and handoff untouched"
+    },
+    {
+      "command": "npx tsc --noEmit; npx eslint scripts/modeling/live-shadow-cycle.ts; git diff --check",
+      "exit_code": 0,
+      "purpose": "no tsc errors in changed files; lint unchanged at 6 pre-existing any-errors"
+    },
+    {
+      "command": "npm run build (placeholder non-secret SUPABASE env)",
+      "exit_code": 0,
+      "purpose": "compile PASS"
+    },
+    {
+      "command": "npm run test:research-clone-forward-bet-pg",
+      "exit_code": 0,
+      "purpose": "15 SKIPPED here (no throwaway Postgres in this container); SQL is unchanged since the previous round where they passed 15/15"
+    }
+  ],
+  "tests": [
+    {
+      "name": "Gamma WIN never assigns a terminal result to a contract row; legacy rows on the same condition still resolve; repeated runs and input selection immutable",
+      "result": "PASS"
+    },
+    {
+      "name": "Gamma WIN vs independent CLOB UNKNOWN/LOSS: only the authority journal counts for contract rows",
+      "result": "PASS"
+    },
+    {
+      "name": "Legacy capital replay/tallies exclude contract rows; BET with missing price or UNKNOWN settlement still counted as selected",
+      "result": "PASS"
+    },
+    {
+      "name": "Legacy settlement writer refuses contract rows (defence in depth)",
+      "result": "PASS"
+    },
+    {
+      "name": "CEO report: ledger-side WIN on a contract row without independent terminal is not a win; Net ROI UNPROVEN",
+      "result": "PASS"
+    },
+    {
+      "name": "Postgres migration integrity tests re-run",
+      "result": "NOT_RUN",
+      "detail": "skipped locally; SQL byte-identical to the previously passing revision"
+    },
+    {
+      "name": "migration applied to DBClone / catalog verification",
+      "result": "NOT_RUN",
+      "detail": "not attempted; DBClone untouched"
+    },
+    {
+      "name": "natural forward BET and independent settlement on DBClone",
+      "result": "NOT_RUN",
+      "detail": "requires the migration; no new VERIFIED BET exists"
+    }
+  ],
+  "required_reviewers": [],
+  "invoked_reviewers": [],
+  "reviewer_receipts": [],
+  "evidence": [
+    {
+      "id": "EV-14-D1",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "BROKEN EDGE CONFIRMED at 2e0c6c4: scripts/modeling/live-shadow-cycle.ts resolveSelectedUnresolved(ledger) fed every UNQUERIED row, contract rows included, to the legacy Gamma resolveSignalOutcome and wrote WIN/LOSS; the contract columns are not covered by the choice-immutability trigger for settlement_state/result, so the write was accepted. replayCapital then used the contract row's reference entryPrice as a legacy capital entry, and stateCounts/modelDays/models counted that Gamma result. Reproduced by 6 failing tests on the old code."
+    },
+    {
+      "id": "EV-14-D2",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "FIX (application layer only): isForwardContractRow (any non-null contract_version, fail closed) excludes contract rows from resolveSelectedUnresolved, updateSettlements, replayCapital and the legacy W/L/UNQUERIED tallies. Contract settlement counts come only from readIndependentTerminals (virtual_bet_settlement_authority, TERMINAL rows), surfaced as forwardContract.independentSettlement and models[].forwardBet / modelDays[].forwardBet with W/L/VOID/UNKNOWN; economics stays netRoi=UNPROVEN, priceBasis=REFERENCE_ONLY. Selection counts still include every contract BET, including UNKNOWN or missing-price ones. Legacy rows keep Gamma settlement and capital replay unchanged."
+    },
+    {
+      "id": "EV-14-D3",
+      "evidence_class": "SUPPORTED",
+      "statement": "CEO report already sourced contract outcomes only from the authority journal; a regression test now proves a ledger-side WIN on a contract row is UNKNOWN without a terminal. Migration SQL, embedded copy, handoff checksum e90a75c9... unchanged; strategies, thresholds, historical rows and the Chloe Noel precedent untouched."
+    },
+    {
+      "id": "EV-14-D4",
+      "evidence_class": "NOT_PROVEN",
+      "statement": "Code PASS only. Migration still not applied to DBClone; no natural FORWARD_BET_V1 row, no authority row, no VERIFIED BET. Cycle-level behaviour against a live DBClone was not executed (no credentials requested); verified by unit tests with injected providers."
+    }
+  ],
+  "capability_changes": [],
+  "state_delta_proposal": null,
+  "runtime_changed": false,
+  "deployment_changed": false,
+  "database_changed": false,
+  "forbidden_actions_respected": true,
+  "verdict": "PASS",
+  "outcome_class": "TERMINAL_PASS",
+  "operator_actions": {
+    "start": 1,
+    "intermediate": 0,
+    "terminal_result": 1
+  },
+  "blockers": [
+    "Database deployment NOT_PROVEN: DBClone-only apply via an architect-verified official Supabase path, then catalog verification (forward-bet-post-deploy-verify.ts)",
+    "Natural forward runtime proof NOT_PROVEN until the migration is applied and the next shadow cycle runs",
+    "Postgres integrity tests not re-run in this container (SQL unchanged)"
+  ],
+  "founder_action": "None. Architect: accept PR #526 at the updated HEAD (migration sha256 e90a75c9023699441f10982466f03d9bd6c2d397e6c255ab48bef04e2694a3fe), then separately authorize the DBClone-only apply."
+}

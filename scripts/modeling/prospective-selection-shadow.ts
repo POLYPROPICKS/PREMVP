@@ -36,8 +36,11 @@ export type V4EvidenceRow = {
   market_type: string | null;
   event_title: string | null;
   market_question: string | null;
+  selected_outcome?: string | null;
   game_start_iso: string | null;
   data_coverage: number | string | null;
+  /** Present only when readV4DateRows is asked to pin an origin; the default projection is unchanged. */
+  source_kind?: string | null;
 };
 
 export type LedgerRow = {
@@ -96,14 +99,16 @@ function resolveClone() {
  * and all settlement columns. Complete 1,000-row pages are processed locally; no input rows
  * are printed or persisted, only the selected capped ledger and aggregate shadow states.
  */
-export async function readV4DateRows(db: ReturnType<typeof resolveClone>, date: string): Promise<V4EvidenceRow[]> {
+export async function readV4DateRows(db: ReturnType<typeof resolveClone>, date: string, options: { sourceKind?: string } = {}): Promise<V4EvidenceRow[]> {
   const from = utcStartOfMinskDate(date);
   const until = new Date(Date.parse(from) + 24 * 60 * 60_000).toISOString();
   const rows: V4EvidenceRow[] = [];
-  const columns = "observation_id,observed_at,item_observation_id,condition_id,selected_token_id,entry_price_num,pre_event_score_num,provider_event_id,provider_sport_family,market_type,event_title,market_question,game_start_iso,data_coverage";
+  const columns = "observation_id,observed_at,item_observation_id,condition_id,selected_token_id,entry_price_num,pre_event_score_num,provider_event_id,provider_sport_family,market_type,event_title,market_question,selected_outcome,game_start_iso,data_coverage";
+  const projection = options.sourceKind ? `${columns},source_kind` : columns;
   for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await db.from("research_evidence_page_rows")
-      .select(columns)
+    let query = db.from("research_evidence_page_rows").select(projection);
+    if (options.sourceKind) query = query.eq("source_kind", options.sourceKind);
+    const { data, error } = await query
       .gte("observed_at", from)
       .lt("observed_at", until)
       .order("observed_at", { ascending: true })
@@ -111,7 +116,7 @@ export async function readV4DateRows(db: ReturnType<typeof resolveClone>, date: 
       .order("item_observation_id", { ascending: true })
       .range(offset, offset + 999);
     if (error) throw new Error(`CLONE_V4_READ:${error.code ?? error.message}`);
-    const page = (data ?? []) as V4EvidenceRow[];
+    const page = (data ?? []) as unknown as V4EvidenceRow[];
     rows.push(...page);
     if (page.length < 1000) break;
   }

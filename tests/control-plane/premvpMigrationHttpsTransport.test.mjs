@@ -310,7 +310,7 @@ test('opted-in native apply sends bounded transaction-local timeouts before exac
 test('no generic SQL surface is exported from the transport', async () => {
   const api = fakeApi();
   const transport = transportFor(api);
-  assert.deepEqual(Object.keys(transport).sort(), ['applyCloneSql', 'applyNative', 'dryRunExactSql', 'projectRef', 'proveTransactionSemantics', 'readColumns', 'readLedger', 'readSchemaFingerprint', 'readShadowGuardCatalog', 'repairLedgerVersion']);
+  assert.deepEqual(Object.keys(transport).sort(), ['applyCloneSql', 'applyNative', 'dryRunExactSql', 'projectRef', 'proveTransactionSemantics', 'readColumns', 'readForwardBetCatalog', 'readLedger', 'readSchemaFingerprint', 'readShadowGuardCatalog', 'repairLedgerVersion']);
   const mod = await import('../../scripts/control-plane/lib/premvp-migration-https-transport.mjs');
   for (const name of Object.keys(mod)) assert.doesNotMatch(name, /^(run|exec|execute|query|sql)$/i);
 });

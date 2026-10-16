@@ -1,0 +1,167 @@
+{
+  "schema_version": "1",
+  "completion_id": "MODELING_14_PHASE1_RUNTIME_RELEASE_AND_PROOF-20261012",
+  "task_id": "MODELING_14_PHASE1_RUNTIME_RELEASE_AND_PROOF",
+  "task_class": "R1_BOUNDED_CODE",
+  "risk_class": "R1_BOUNDED_CODE",
+  "executor": "claude_code_cloud",
+  "environment": "PREMVP cloud container; DBClone nppznoujvnyjargjkmnv reachable only via REST service key (read + no-op privilege probes); no management token, no source (production) read credentials, Supabase MCP not bound to the clone",
+  "repository": "POLYPROPICKS/PREMVP",
+  "branch": "claude/stoic-pasteur-c0r36x",
+  "base_sha": "1db52754e49c421344b91cca536f5dd36329b705",
+  "result_sha": "fbb5075cbd57c9b08bc07d6422359ace98af7928",
+  "origin_main_sha": "9564114f712debbe3459cd2022bf2c0b0fdc6da5",
+  "worktree_before": "clean",
+  "worktree_after": "clean",
+  "files_changed": [
+    "ops/research-clone/migrations/20261012190000_virtual_bet_settlement_acl_hardening_v1.sql",
+    "scripts/control-plane/lib/premvp-clone-forward-bet-acl-migration.mjs",
+    "scripts/control-plane/apply-premvp-approved-migration.mjs",
+    "scripts/control-plane/forward-bet-deployment-handoff.mjs",
+    "modeling/evidence/forward-bet-ledger-v1/DEPLOYMENT_HANDOFF.json",
+    "scripts/modeling/virtual-bet-settlement-authority.ts",
+    "tests/control-plane/premvpCloneForwardBetAclMigration.test.mjs",
+    "tests/modeling/virtualBetSettlement.test.ts",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.json",
+    "modeling/evidence/forward-bet-ledger-v1/CEO_REPORT.md",
+    "modeling/evidence/forward-bet-ledger-v1/COMPLETION_ENVELOPE_PHASE1_RELEASE.json"
+  ],
+  "commands_run": [
+    {
+      "command": "node scripts/control-plane/execution-precheck.mjs --prepare --input <json>",
+      "exit_code": 0,
+      "purpose": "CONTINUE"
+    },
+    {
+      "command": "npx tsx scripts/modeling/forward-bet-post-deploy-verify.ts (live clone, read + no-op probes)",
+      "exit_code": 1,
+      "purpose": "EXPECTED FAIL before ACL migration: SETTLEMENT_UPDATE_REFUSED and SETTLEMENT_DELETE_REFUSED got code=none (204); other 6 checks PASS. This is the confirmed defect evidence, not a regression."
+    },
+    {
+      "command": "npm run modeling:forward-bet-ceo-report (live clone, read-only)",
+      "exit_code": 0,
+      "purpose": "CONTRACT_SCHEMA_APPLIED=true, ledger rows 2863, forward BET 0"
+    },
+    {
+      "command": "npm run test:modeling:forward-bet",
+      "exit_code": 0,
+      "purpose": "31/31"
+    },
+    {
+      "command": "node --test tests/control-plane/*.test.mjs",
+      "exit_code": 0,
+      "purpose": "447/447"
+    },
+    {
+      "command": "npm run control-plane:check",
+      "exit_code": 0,
+      "purpose": "PASS"
+    },
+    {
+      "command": "npx tsc --noEmit",
+      "exit_code": 2,
+      "purpose": "11 errors, identical count with and without this change (pre-existing in unrelated tests); none in changed files"
+    },
+    {
+      "command": "npm run build (placeholder non-secret env, repo precedent)",
+      "exit_code": 0,
+      "purpose": "PASS"
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "purpose": "clean"
+    }
+  ],
+  "tests": [
+    {
+      "name": "forward-bet modeling suite",
+      "result": "PASS",
+      "detail": "31/31 incl. new settlement-budget starvation test"
+    },
+    {
+      "name": "control-plane suite",
+      "result": "PASS",
+      "detail": "447/447 incl. 2 new ACL migration tests"
+    },
+    {
+      "name": "Postgres integrity tests (forwardBetLedgerPostgres)",
+      "result": "NOT_RUN",
+      "detail": "no throwaway Postgres in this container"
+    }
+  ],
+  "required_reviewers": [],
+  "invoked_reviewers": [
+    "independent general-purpose subagent (read-only adversarial review)"
+  ],
+  "reviewer_receipts": [],
+  "evidence": [
+    {
+      "id": "E1",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Live clone: contract columns and settlement table exist; ledger 2863 rows; 2858 historical rows without first_persisted_at; no contract field on historical rows; Chloe Noel precedent unchanged; FORWARD_BET_V1 rows = 0; settlement rows = 0."
+    },
+    {
+      "id": "E2",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Confirmed ACL defect: service_role no-op UPDATE and DELETE on virtual_bet_settlement_authority return 204 (privilege present) while the repo verifier requires 42501. Cause: 20261012180000 never revokes the Supabase default service_role privileges (unlike the ledger table). Row triggers still block real mutation; TRUNCATE privilege could not be probed over REST."
+    },
+    {
+      "id": "E3",
+      "evidence_class": "SUPPORTED",
+      "statement": "Fix prepared, not applied: separate exact-SQL migration 20261012190000 (sha256 74bee3d7c18eeca3d40d64be794d99695ab2fa4961ec7f85673352009abd7845), registered adapter mode --clone-forward-bet-settlement-acl with ledger baseline = applied ledger + 20261012180000 and catalog proof, handoff step. 20261012180000 is byte-identical and is never re-run."
+    },
+    {
+      "id": "E4",
+      "evidence_class": "SUPPORTED",
+      "statement": "Independent read-only review of 65ea197: NO_BLOCKING_DEFECT; contract rows cannot reach legacy Gamma resolver/capital/tallies; insert payload matches columns; production/Ireland/Queue/Reservation/scorer untouched. One MEDIUM (settlement budget starvation) FIXED in fbb5075 with a test. Not fixed, reported: LOW poison-row abort on non-23505 insert errors; LOW dashboard refresh chained after settlement script; LOW cross-date reselection guard also runs in legacy mode; LOW sport-family fallback mismatch in pre-filter key. Review SHA 65ea197 differs from result_sha: the delta (starvation fix, evidence refresh) was not re-reviewed."
+    },
+    {
+      "id": "E5",
+      "evidence_class": "SUPPORTED",
+      "statement": "T20 table has provider_game_id on all 2900 rows and provider_start_iso on 622 rows sourced from gamma_events_batch:startTime. That is a provider schedule field, not proof of actual start; not wired. Prematch evidence still has no root game id, so VERIFIED stays unreachable and rows are honestly UNVERIFIED."
+    },
+    {
+      "id": "E6",
+      "evidence_class": "NOT_PROVEN",
+      "statement": "No natural FORWARD_BET_V1 row and no independent settlement against a real provider response: the shadow cycle needs production source read credentials (SUPABASE_URL/SERVICE_ROLE_KEY) absent here, and the cycle was not run. No synthetic insert was made. Settlement checker was not run (0 forward BETs, so PENDING/terminal behavior proven only by unit tests).",
+      "business_result": false
+    },
+    {
+      "id": "E7",
+      "evidence_class": "NOT_PROVEN",
+      "statement": "Migration 20261012180000 single registration in the clone ledger cannot be read from this runtime (no management API); taken from the mission statement, not verified here."
+    },
+    {
+      "id": "E8",
+      "evidence_class": "SUPPORTED",
+      "statement": "CEO report regenerated from live clone with all ten tracks: prematch 5 tracks forward BET 0 (historical 630/630/630/630/338 reference-only), live controls A/B/C delayed paper 52/54/107, Alpha 1/2 facts-only canEmitBet=false. Net ROI UNPROVEN everywhere (no executable BUY quote)."
+    }
+  ],
+  "capability_changes": [
+    {
+      "executor_id": "claude_code_cloud",
+      "capability": "DBCLONE_DDL_VIA_REGISTERED_ADAPTER",
+      "new_verdict": "NOT_AVAILABLE"
+    },
+    {
+      "executor_id": "claude_code_cloud",
+      "capability": "GITHUB_PR_MERGE",
+      "new_verdict": "NOT_PROVEN"
+    }
+  ],
+  "state_delta_proposal": null,
+  "runtime_changed": false,
+  "deployment_changed": false,
+  "database_changed": false,
+  "forbidden_actions_respected": true,
+  "verdict": "WAIT",
+  "outcome_class": "EXTERNAL_WAIT",
+  "blockers": [
+    "ACL fix 20261012190000 not applied: registered DBClone adapter needs SUPABASE_ACCESS_TOKEN (management API) which this runtime does not hold; R1 also forbids DATABASE_WRITE",
+    "Natural FORWARD_BET_V1 and settlement proof: the shadow cycle needs production source read credentials that this runtime does not hold; run it from the runtime that already schedules modeling:shadow-cycle",
+    "Merge/release not performed: PR is draft, DEPLOY is NOT_AVAILABLE, GITHUB_PR_MERGE is NOT_PROVEN, and the clone post-deploy verifier is red until the ACL migration is applied"
+  ],
+  "founder_action": "none",
+  "execution_economics": null
+}
