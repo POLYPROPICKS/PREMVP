@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { isFounderModelingSession } from "@/lib/auth/founderModeling";
 import FounderAccessRequired from "./FounderAccessRequired";
-import { AlphaGuide, ControlsGuide, LevelLadder, LiveGuide, SafeGuide } from "./ModelingGuide";
+import { ControlsGuide, LevelLadder, LiveGuide, SafeGuide } from "./ModelingGuide";
 import ResearchPaperScorecard from "./ResearchPaperScorecard";
 import SafeMatchesPanel from "./SafeMatchesPanel";
 
@@ -24,21 +24,18 @@ export default async function FounderModelingPage() {
         <h1 style={{ fontSize: 26, margin: 0 }}>Founder Modeling — панель моделирования</h1>
         <nav aria-label="Разделы" style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8 }}>
           <a href="#safe" style={{ color: "#4fb0ff" }}>1. SAFE-модели</a>
-          <a href="#alpha" style={{ color: "#4fb0ff" }}>2. Альфа-направления</a>
-          <a href="#abc" style={{ color: "#4fb0ff" }}>3. Контроли A/B/C</a>
-          <a href="#live" style={{ color: "#4fb0ff" }}>4. Production LIVE</a>
+          <a href="#abc" style={{ color: "#4fb0ff" }}>2. Контроли A/B/C</a>
+          <a href="#live" style={{ color: "#4fb0ff" }}>3. Production LIVE</a>
         </nav>
       </header>
       <LevelLadder />
       <h2 id="safe" style={head}>1. SAFE-модели — исторические теневые модели (не торговля)</h2>
       <SafeGuide />
       <SafeMatchesPanel />
-      <h2 id="alpha" style={head}>2. Альфа-направления — только исследование</h2>
-      <AlphaGuide />
-      <h2 id="abc" style={head}>3. Виртуальные контроли A/B/C</h2>
+      <h2 id="abc" style={head}>2. Виртуальные контроли A/B/C</h2>
       <ControlsGuide />
       <ResearchPaperScorecard />
-      <h2 id="live" style={head}>4. Production LIVE</h2>
+      <h2 id="live" style={head}>3. Production LIVE</h2>
       <LiveGuide />
       <iframe
         src="/founder/modeling/assets/MODELING_DASHBOARD.html"

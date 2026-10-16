@@ -5,6 +5,8 @@ import { isFounderModelingSession } from "../../lib/auth/founderModeling";
 import { NextRequest } from "next/server";
 import { GET as assets } from "../../app/founder/modeling/assets/[...path]/route";
 import { GET as scorecard } from "../../app/api/founder/modeling/research/scorecard/route";
+import { GET as liveApi } from "../../app/api/founder/modeling/live/route";
+import { GET as shadowApi } from "../../app/api/founder/modeling/shadow/route";
 
 const now = Date.now();
 const payload = {checkoutSessionId:"founder_preview_internal",email:null,activePlan:"preview",accessUntil:new Date(now+86_400_000).toISOString(),issuedAt:now};
@@ -39,4 +41,18 @@ test("assets and API deny absent, expired and ordinary Premium sessions before a
   const req=new NextRequest("https://example.test/founder/modeling/assets/MODELING_DASHBOARD.html",{headers:{cookie:`ppp_session=${signPremiumSession(payload)}`}});
   const response=await assets(req,{params:Promise.resolve({path:["MODELING_DASHBOARD.html"]})});
   assert.equal(response.status,200);assert.match(await response.text(),/MODELING|Modeling/);
+});
+
+test("live and shadow telemetry APIs deny absent, ordinary Premium and expired sessions with no data",async()=>{
+  process.env.PPP_SESSION_SECRET="synthetic-test-secret-at-least-32-characters";
+  process.env.ENABLE_FOUNDER_PREMIUM_PREVIEW="true";
+  for(const token of [undefined,signPremiumSession({...payload,checkoutSessionId:"customer"}),signPremiumSession({...payload,accessUntil:new Date(now-1).toISOString()})]) {
+    const headers=token?{cookie:`ppp_session=${token}`} : undefined;
+    for(const [handler,url] of [[liveApi,"https://example.test/api/founder/modeling/live"],[shadowApi,"https://example.test/api/founder/modeling/shadow"]] as const) {
+      const response=await handler(new NextRequest(url,{headers}));
+      assert.equal(response.status,404);assert.match(response.headers.get("cache-control")!,/private, no-store/);
+      assert.equal(response.headers.get("vary"),"Cookie");
+      assert.deepEqual(await response.json(),{error:"not_found"});
+    }
+  }
 });
