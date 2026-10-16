@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isFounderModelingSession, PRIVATE_MODELING_HEADERS } from "@/lib/auth/founderModeling";
+import { PUBLIC_MODELING_ERROR_HEADERS, PUBLIC_MODELING_HEADERS } from "@/lib/auth/founderModeling";
 import { researchPaperClient } from "@/lib/research/founderPaperReader";
 import { readFounderShadowMatches } from "@/lib/research/founderShadowMatches";
 
@@ -13,16 +13,14 @@ const MESSAGES: Record<string,string> = {
   SHADOW_WINDOW_TOO_LARGE: "The requested window exceeds the bounded read limit. Choose fewer days.",
 };
 
+// Public, read-only SAFE shadow match statistics (issue #550): no session required.
 export async function GET(req: NextRequest) {
-  if (!isFounderModelingSession(req.cookies.get("ppp_session")?.value)) {
-    return NextResponse.json({error:"not_found"},{status:404,headers:PRIVATE_MODELING_HEADERS});
-  }
   try {
     const report = await readFounderShadowMatches(researchPaperClient(), req.nextUrl.searchParams);
-    return NextResponse.json(report,{headers:PRIVATE_MODELING_HEADERS});
+    return NextResponse.json(report,{headers:PUBLIC_MODELING_HEADERS});
   } catch (error) {
     const code = error instanceof Error && error.message in MESSAGES ? error.message : "RESEARCH_READ_UNAVAILABLE";
     return NextResponse.json({error:code,message:MESSAGES[code]??"Research reporting is unavailable. Retry later."},
-      {status:code==="INVALID_RANGE"?400:503,headers:PRIVATE_MODELING_HEADERS});
+      {status:code==="INVALID_RANGE"?400:503,headers:PUBLIC_MODELING_ERROR_HEADERS});
   }
 }

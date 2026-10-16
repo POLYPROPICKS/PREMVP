@@ -5,7 +5,6 @@ import { readFounderPaper } from "../../lib/research/founderPaperReader";
 import { buildPaperSnapshot } from "../../lib/research/paperScorecardSnapshot";
 import type { DecisionRow } from "../../lib/research/inplayPaperSettlement";
 import { NextRequest } from "next/server";
-import { signPremiumSession } from "../../lib/auth/premiumSession";
 import { GET } from "../../app/api/founder/modeling/research/scorecard/route";
 
 const now=Date.parse("2026-10-15T19:00:00.000Z");
@@ -60,19 +59,16 @@ test("reader reports stale attempts and incomplete current UTC day without fabri
   assert.doesNotMatch(JSON.stringify(current),/synthetic-game|synthetic-skip|decision_id|service_role|supabase/);
 });
 
-test("authenticated API returns private uncached refresh errors and sanitized incomplete-day statistics",async()=>{
-  const names=["PPP_SESSION_SECRET","ENABLE_FOUNDER_PREMIUM_PREVIEW","SUPABASE_CLONE_URL","SUPABASE_CLONE_SERVICE_ROLE_KEY"] as const;
+test("anonymous API returns no-store refresh errors, public-cacheable current statistics and sanitized incomplete-day data",async()=>{
+  const names=["SUPABASE_CLONE_URL","SUPABASE_CLONE_SERVICE_ROLE_KEY"] as const;
   const saved=names.map(name=>process.env[name]),originalFetch=globalThis.fetch;
   try {
-    process.env.PPP_SESSION_SECRET="synthetic-scorecard-secret-at-least-32-characters";
-    process.env.ENABLE_FOUNDER_PREMIUM_PREVIEW="true";
     process.env.SUPABASE_CLONE_URL="https://nppznoujvnyjargjkmnv.supabase.co";
     process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY="synthetic-key-never-sent-to-a-server";
     const issuedAt=Date.now(),at=new Date(issuedAt).toISOString(),day=at.slice(0,10);
     const fromDay=`${day}T00:00:00.000Z`,toDay=new Date(Date.parse(fromDay)+86_400_000).toISOString();
     const d={...decision,admission_observed_at:fromDay,created_at:fromDay};
     const live=buildPaperSnapshot([d],[],fromDay,toDay,at);
-    const token=signPremiumSession({checkoutSessionId:"founder_preview_internal",email:null,activePlan:"preview",issuedAt,accessUntil:new Date(issuedAt+86_400_000).toISOString()});
     for(const mode of ["missing","behind","stale","current"] as const) {
       globalThis.fetch=async(input,init)=>{
         const url=new URL(String(input));
@@ -85,10 +81,10 @@ test("authenticated API returns private uncached refresh errors and sanitized in
           [{utc_day:day,generated_at:at,status:"INCOMPLETE",last_attempt_status:mode==="stale"?"FAILED":"SUCCESS",scorecard:mode==="missing"?null:live}];
         return new Response(JSON.stringify(data),{headers:{"content-type":"application/json"}});
       };
-      const response=await GET(new NextRequest("https://example.test/api/founder/modeling/research/scorecard",{headers:{cookie:`ppp_session=${token}`}}));
+      const response=await GET(new NextRequest("https://example.test/api/founder/modeling/research/scorecard"));
       assert.equal(response.status,mode==="missing"||mode==="behind"?503:200);
-      assert.match(response.headers.get("cache-control")!,/private, no-store/);
-      assert.equal(response.headers.get("vary"),"Cookie");
+      assert.match(response.headers.get("cache-control")!,response.status===200?/public/:/no-store/);
+      assert.equal(response.headers.get("vary"),null);
       const body=await response.json();
       assert.equal(body.cacheStatus,"bypassed");
       if(mode==="missing")assert.equal(body.error,"REPORT_REFRESH_REQUIRED");

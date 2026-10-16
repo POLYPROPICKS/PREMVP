@@ -1,25 +1,13 @@
-import { verifyPremiumSession } from "./premiumSession";
-import { FOUNDER_PREVIEW_SESSION_ID } from "@/app/api/auth/founder-premium-preview/route";
+// /founder/modeling is a permanent PUBLIC, read-only dashboard (Founder decision, issue #550): no login, token
+// or cookie. It exposes aggregate analytics only; premium, payment and every other API keep their own auth.
+const ROBOTS = "noindex, nofollow";
 
-// Same sentinel issued by the existing Founder Preview flow. Premium entitlement is insufficient.
-const DAY_MS = 24 * 60 * 60 * 1000;
+export const PUBLIC_MODELING_HEADERS = {
+  "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=120",
+  "X-Robots-Tag": ROBOTS,
+};
 
-export function isFounderModelingSession(token: string | undefined, now = Date.now()): boolean {
-  if (!token || token.length > 8192 || !/^[A-Za-z0-9_-]+\.[a-f0-9]{64}$/.test(token) || process.env.ENABLE_FOUNDER_PREMIUM_PREVIEW !== "true") return false;
-  try {
-    const session = verifyPremiumSession(token);
-    const until = typeof session.accessUntil === "string" ? Date.parse(session.accessUntil) : NaN;
-    return session.checkoutSessionId === FOUNDER_PREVIEW_SESSION_ID
-      && Number.isFinite(session.issuedAt) && session.issuedAt <= now
-      && now - session.issuedAt < DAY_MS
-      && Number.isFinite(until) && until > now && until <= session.issuedAt + DAY_MS;
-  } catch {
-    return false;
-  }
-}
-
-export const PRIVATE_MODELING_HEADERS = {
-  "Cache-Control": "private, no-store, max-age=0",
-  "Vary": "Cookie",
-  "X-Robots-Tag": "noindex, nofollow",
+export const PUBLIC_MODELING_ERROR_HEADERS = {
+  "Cache-Control": "no-store, max-age=0",
+  "X-Robots-Tag": ROBOTS,
 };

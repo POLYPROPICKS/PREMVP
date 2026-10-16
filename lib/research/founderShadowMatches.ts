@@ -111,6 +111,6 @@ export async function readFounderShadowMatches(db: SupabaseClient, params: URLSe
     freshness: ageMs === null || ageMs < 0 || ageMs > 2 * HOUR || latestDate < today ? "STALE" : "CURRENT",
     snapshot_refreshed_at: refreshedAt, snapshot_refresh_source: refreshSource, snapshot_age_seconds: ageMs === null ? null : Math.max(0, Math.floor(ageMs / 1000)),
     model_ids: SAFE_MODEL_IDS, ...agg,
-    provenance: "DBClone nppznoujvnyjargjkmnv prospective_selection_shadow_runtime LEDGER rows; SAFE shadow selections, not Production LIVE, not A/B/C paper.",
+    provenance: "Research DBClone prospective_selection_shadow_runtime LEDGER rows; SAFE shadow selections, not Production LIVE, not A/B/C paper.",
     identity_caveat: "physical_event_key is the ledger's persisted event grouping key, not a verified provider-root identity." };
 }

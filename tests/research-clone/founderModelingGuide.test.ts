@@ -10,7 +10,6 @@ import { SOCCER_FAMILY as SOCCER } from "../../lib/modeling/research-engine/mode
 import { SAFE_MODEL_IDS } from "../../lib/research/founderShadowMatches";
 import { ALPHA_GUIDE, CONTROL_GUIDE, SAFE_MODEL_GUIDE, modelLabelRu } from "../../lib/research/founderModelingGuide";
 import { AlphaGuide, ControlsGuide, LevelLadder, LiveGuide, SafeGuide } from "../../app/founder/modeling/ModelingGuide";
-import FounderAccessRequired from "../../app/founder/modeling/FounderAccessRequired";
 
 type Tier = (e: { entryPrice: number; sportFamily: string; scoreLevel: number | null }) => boolean;
 const hit = (tier: Tier, entryPrice: number, sportFamily: string, scoreLevel: number | null = null) => tier({ entryPrice, sportFamily, scoreLevel });
@@ -65,10 +64,4 @@ test("rendered page sections are distinct, Russian and make no trading or ROI cl
     "Переоценка дешёвых исходов по ходу матча", "Структурный арбитраж связанных контрактов", "NOT_READY", "SCOPED_NO_GO", "canEmitBet=false", "selection-before-settlement", "cap 30",
     "Исполнимого права на покупку (BUY)", "Production LIVE", "Контроль A", "Контроль C"]) assert.ok(html.includes(must), must);
   assert.doesNotMatch(html, /ROI:\s*\d|P&amp;L:\s*[-+]?\d|гарантир|прибыльн/i);
-});
-
-test("access page explains the legitimate login without secrets, identities or configuration", () => {
-  const html = renderToStaticMarkup(createElement(FounderAccessRequired));
-  assert.match(html, /Нужен вход основателя/); assert.match(html, /Premium не равен доступу основателя/);
-  assert.doesNotMatch(html, /token=|@|ENABLE_FOUNDER|FOUNDER_PREMIUM_PREVIEW_TOKEN|PPP_SESSION_SECRET|supabase|strategy_totals/i);
 });

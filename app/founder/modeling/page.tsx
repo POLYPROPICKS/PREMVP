@@ -1,7 +1,4 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
-import { isFounderModelingSession } from "@/lib/auth/founderModeling";
-import FounderAccessRequired from "./FounderAccessRequired";
 import { ControlsGuide, LevelLadder, LiveGuide, SafeGuide } from "./ModelingGuide";
 import ResearchPaperScorecard from "./ResearchPaperScorecard";
 import SafeMatchesPanel from "./SafeMatchesPanel";
@@ -15,9 +12,8 @@ export const metadata: Metadata = {
 
 const head = { background: "#1b2837", color: "#e9eef5", padding: "12px 24px", margin: 0, fontSize: 20, borderTop: "2px solid #4fb0ff" } as const;
 
-export default async function FounderModelingPage() {
-  // Access still requires the signed Founder Preview session; without it the page only explains the legitimate login path.
-  if (!isFounderModelingSession((await cookies()).get("ppp_session")?.value)) return <FounderAccessRequired />;
+export default function FounderModelingPage() {
+  // Permanent public read-only dashboard (issue #550): no session, token or cookie. Aggregate analytics only.
   return (
     <div>
       <header style={{ background: "#0d141c", color: "#e9eef5", padding: "16px 24px" }}>
