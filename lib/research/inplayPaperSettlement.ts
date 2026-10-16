@@ -452,11 +452,12 @@ export async function runSettlementReport(db: SupabaseClient, fetchMarket: (cond
 }
 
 // ───────────────────────────── daily A/B/C report ─────────────────────────────
-export type DecisionRow = { decision_id: string; strategy_id: string; status: string; physical_event_id: string; provenance_class: string | null; admission_observed_at: string | null };
+export type DecisionRow = { decision_id: string; strategy_id: string; status: string; physical_event_id: string; provenance_class: string | null; admission_observed_at: string | null;
+  strategy_version?: string; provider_sport_family?: string | null; market_family?: string | null; market_scope?: string | null; frozen_db_at?: string | null; created_at?: string };
 export const STRATEGY_BANDS: Record<string, string> = {
   CONTROL_PRICE_BUCKET_A: "0.48-0.52", CONTROL_PRICE_BUCKET_B: "0.53-0.58", CONTROL_PRICE_BUCKET_C: "0.35-0.44",
 };
-const DECISION_COLUMNS = "decision_id,strategy_id,status,physical_event_id,provenance_class,admission_observed_at";
+const DECISION_COLUMNS = "decision_id,strategy_id,strategy_version,status,physical_event_id,provenance_class,admission_observed_at,provider_sport_family,market_family,market_scope,frozen_db_at,created_at";
 
 /** Frozen decision counts per strategy. Counted per decision row; physical games are the independent unit. Read-only, aggregated in-process. */
 export function strategyDecisionSummary(rows: readonly DecisionRow[]) {

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile } from "fs/promises";
 import path from "path";
+import { isFounderModelingSession, PRIVATE_MODELING_HEADERS } from "@/lib/auth/founderModeling";
+
+export const dynamic = "force-dynamic";
 
 const ALLOWED_FILES: Record<string, string> = {
   "MODELING_DASHBOARD.html": "text/html; charset=utf-8",
@@ -14,9 +17,12 @@ const ALLOWED_FILES: Record<string, string> = {
 const ASSET_DIR = path.join(process.cwd(), "modeling", "evidence", "modeling-dashboard-v1");
 
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> }
 ) {
+  if (!isFounderModelingSession(req.cookies.get("ppp_session")?.value)) {
+    return new NextResponse("Not found", { status: 404, headers: PRIVATE_MODELING_HEADERS });
+  }
   const { path: segments } = await params;
   const fileName = segments?.[0];
 
@@ -31,7 +37,7 @@ export async function GET(
     const contents = await readFile(filePath);
     return new NextResponse(contents, {
       status: 200,
-      headers: { "Content-Type": contentType },
+      headers: { ...PRIVATE_MODELING_HEADERS, "Content-Type": contentType },
     });
   } catch {
     return new NextResponse("Not found", { status: 404 });
