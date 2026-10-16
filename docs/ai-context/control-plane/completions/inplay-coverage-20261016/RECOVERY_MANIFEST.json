@@ -1,0 +1,169 @@
+{
+  "recovery": "PR545_MIGRATION_GATE_RECOVERY",
+  "starting_sha": "e1a3c2dbae8edfbac2c212c7e8a109ea819b154c",
+  "recovered_n": 10,
+  "history_mutated": false,
+  "restored": [
+    {
+      "version": "20261010093458",
+      "name": "research_inplay_state_fields_v2",
+      "file": "supabase/migrations/20261010093458_research_inplay_state_fields_v2.sql",
+      "sql_sha256": "961bd48975fe0af1736563cff9bd9f01241340dd59eccf45b93cdecf9ca8340c",
+      "bytes": 962,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": {
+        "commit": "d1cd86bfa6f7b150f02d5084aebb9076915a42a0",
+        "path": "supabase/migrations/20261010100000_research_inplay_state_fields_v2.sql",
+        "note": "Applied payload omits only double quotes inside two descriptive column comments; preserved exactly as released."
+      },
+      "comparison": {
+        "exact_trim": false,
+        "normalized": false
+      },
+      "replay": false
+    },
+    {
+      "version": "20261010174103",
+      "name": "t20_candidate_rpc_single_detoast_v1",
+      "file": "supabase/migrations/20261010174103_t20_candidate_rpc_single_detoast_v1.sql",
+      "sql_sha256": "859633fb6efb8b1ef49a4a0cab785a622fbff079140ddfad91f77e5bd4c09879",
+      "bytes": 5366,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": {
+        "commit": "f75bab316ed7ffe6fe05da0659309cbb55d148c8",
+        "path": "supabase/migrations/20261010120000_t20_candidate_rpc_single_detoast_v1.sql"
+      },
+      "comparison": {
+        "exact_trim": true,
+        "normalized": true
+      },
+      "replay": false
+    },
+    {
+      "version": "20261010174205",
+      "name": "restore_t20_candidate_rpc_previous_after_perf_regression",
+      "file": "supabase/migrations/20261010174205_restore_t20_candidate_rpc_previous_after_perf_regression.sql",
+      "sql_sha256": "abb8b2a6052686297427f5232b07cf5e128b3d6b25fb9819b3fcff33c647d299",
+      "bytes": 4445,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": null,
+      "comparison": null,
+      "replay": false
+    },
+    {
+      "version": "20261011121404",
+      "name": "t20_index_async_transport_pg_cron_enable_v1",
+      "file": "supabase/migrations/20261011121404_t20_index_async_transport_pg_cron_enable_v1.sql",
+      "sql_sha256": "f77a502784a7a31e36544e818b1b3650aee2cede358c33175455ba83c2ba739c",
+      "bytes": 39,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": null,
+      "comparison": null,
+      "replay": false
+    },
+    {
+      "version": "20261011121730",
+      "name": "t20_maintenance_postgres_timeout_temporary_v1",
+      "file": "supabase/migrations/20261011121730_t20_maintenance_postgres_timeout_temporary_v1.sql",
+      "sql_sha256": "f7412ccfa20ca016c2473a89f7e7c3dd0c2f0f6687ae2701e434b97f92b95133",
+      "bytes": 52,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": null,
+      "comparison": null,
+      "replay": false
+    },
+    {
+      "version": "20261011121919",
+      "name": "t20_maintenance_postgres_timeout_restore_v1",
+      "file": "supabase/migrations/20261011121919_t20_maintenance_postgres_timeout_restore_v1.sql",
+      "sql_sha256": "7c8a9c3a7996ad81cfac76ee7da9776f045633a6a14541d8e7f63e1eafc5d6ae",
+      "bytes": 44,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": null,
+      "comparison": null,
+      "replay": false
+    },
+    {
+      "version": "20261011123157",
+      "name": "t20_index_async_transport_pg_cron_restore_v1",
+      "file": "supabase/migrations/20261011123157_t20_index_async_transport_pg_cron_restore_v1.sql",
+      "sql_sha256": "fef629abc632d195ae154aeebb657c6ebcd47a8b1b44a1bf31cd248f980453b9",
+      "bytes": 33,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": null,
+      "comparison": null,
+      "replay": false
+    },
+    {
+      "version": "20261011173725",
+      "name": "research_inplay_orderbook_timing_v3",
+      "file": "supabase/migrations/20261011173725_research_inplay_orderbook_timing_v3.sql",
+      "sql_sha256": "3e15c33bec89f1d7d6e654a744b62a63cd0d06b39114008a77d0c6dc9fc5fb28",
+      "bytes": 1780,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": {
+        "commit": "c2799eb5f98af5b16d6dbf82b01221745abe6188",
+        "path": "supabase/migrations/20261011120000_research_inplay_orderbook_timing_v3.sql"
+      },
+      "comparison": {
+        "exact_trim": false,
+        "normalized": true
+      },
+      "replay": false
+    },
+    {
+      "version": "20261012081351",
+      "name": "precontract_t20_provider_start_lineage_v1",
+      "file": "supabase/migrations/20261012081351_precontract_t20_provider_start_lineage_v1.sql",
+      "sql_sha256": "3527047f8814cc8446ad05f719d7d0e956ab15e4ff178858a637b5592f46244c",
+      "bytes": 1786,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": {
+        "commit": "9d5e50407846db7db5ce225877fce4c89c23d242",
+        "path": "supabase/migrations/20261012090000_precontract_t20_provider_start_lineage_v1.sql"
+      },
+      "comparison": {
+        "exact_trim": true,
+        "normalized": true
+      },
+      "replay": false
+    },
+    {
+      "version": "20261012091633",
+      "name": "research_inplay_executable_state_v4",
+      "file": "supabase/migrations/20261012091633_research_inplay_executable_state_v4.sql",
+      "sql_sha256": "3236fd42d2ba6fc39990ead8a9e68a2f4934eb3370c5e6f5f40c7921a01dc157",
+      "bytes": 3432,
+      "source": "native_applied_migration_payload",
+      "project_ref": "nbnldzfsxffztsfrrxqy",
+      "native_get_and_projected_ledger_identical": true,
+      "git_source": {
+        "commit": "4870d08f7707446a00ed81baf89ee756a6742265",
+        "path": "supabase/migrations/20261012120000_research_inplay_executable_state_v4.sql"
+      },
+      "comparison": {
+        "exact_trim": true,
+        "normalized": true
+      },
+      "replay": false
+    }
+  ]
+}
