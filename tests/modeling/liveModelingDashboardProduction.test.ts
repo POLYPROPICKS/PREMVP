@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { test } from "node:test";
+import { NextRequest } from "next/server";
+
+import { signPremiumSession } from "../../lib/auth/premiumSession";
 
 import { GET as getDashboardAsset } from "../../app/founder/modeling/assets/[...path]/route";
 import { deriveRequiredSelectionDates, persistRuntimeSnapshot, resolveSelectedUnresolved } from "../../scripts/modeling/live-shadow-cycle";
@@ -9,8 +12,13 @@ import { deriveRequiredSelectionDates, persistRuntimeSnapshot, resolveSelectedUn
 const root = process.cwd();
 
 test("asset route serves both CAPITAL data files with JavaScript content type", async () => {
+  process.env.PPP_SESSION_SECRET = "synthetic-test-secret-at-least-32-characters";
+  process.env.ENABLE_FOUNDER_PREMIUM_PREVIEW = "true";
+  const issuedAt = Date.now();
+  const token = signPremiumSession({ checkoutSessionId: "founder_preview_internal", email: null, activePlan: "preview", accessUntil: new Date(issuedAt + 86_400_000).toISOString(), issuedAt });
   for (const file of ["CAPITAL_MODELING_DATA.js", "FORWARD_SHADOW_DATA.js"]) {
-    const response = await getDashboardAsset({} as any, { params: Promise.resolve({ path: [file] }) });
+    const req = new NextRequest(`https://example.test/founder/modeling/assets/${file}`, { headers: { cookie: `ppp_session=${token}` } });
+    const response = await getDashboardAsset(req, { params: Promise.resolve({ path: [file] }) });
     assert.equal(response.status, 200, file);
     assert.match(response.headers.get("content-type") ?? "", /application\/javascript/);
     assert((await response.arrayBuffer()).byteLength > 0);
