@@ -80,8 +80,8 @@ test("landmarks are sparse with deterministic reason priority", () => {
   assert.equal(decidePersistenceReason({ ...base, state: { ...live, eventLiveStatus: "FINAL" } }), "FINAL_STATE");
 });
 
-test("all four hard counters and 20 MB bound are enforced by locked writer", () => {
-  assert.deepEqual([MAX_DAILY_PHYSICAL_EVENTS, MAX_TRACKED_TOKENS_PER_EVENT, MAX_PERSISTED_OBSERVATIONS_PER_EVENT, MAX_TOTAL_ROWS_PER_DAY, MAX_INPLAY_LOGICAL_MB_PER_DAY, PRODUCTION_RETENTION_HOURS], [100,16,192,20000,20,48]);
+test("historical stage-100 writer retains all guards; active stage is 200", () => {
+  assert.deepEqual([MAX_DAILY_PHYSICAL_EVENTS, MAX_TRACKED_TOKENS_PER_EVENT, MAX_PERSISTED_OBSERVATIONS_PER_EVENT, MAX_TOTAL_ROWS_PER_DAY, MAX_INPLAY_LOGICAL_MB_PER_DAY, PRODUCTION_RETENTION_HOURS], [200,16,192,40000,40,48]);
   assert.match(migration, /pg_advisory_xact_lock/);
   assert.match(migration, /v_events >= 100/);
   assert.match(migration, /v_tokens >= 16/);
@@ -459,7 +459,7 @@ test("quote synchronization is never claimed without per-leg acquisition timing;
   assert.equal(assessLinkedQuoteSynchronization([1000, undefined, 1500], 10_000), "UNPROVEN");
   assert.equal(assessLinkedQuoteSynchronization([1000, 90_000], 10_000), "UNPROVEN");
   assert.equal(assessLinkedQuoteSynchronization([1000, 1500], 10_000), "BOUNDED");
-  assert.deepEqual([MAX_DAILY_PHYSICAL_EVENTS, MAX_TRACKED_TOKENS_PER_EVENT, MAX_PERSISTED_OBSERVATIONS_PER_EVENT, MAX_TOTAL_ROWS_PER_DAY], [100, 16, 192, 20000]);
+  assert.deepEqual([MAX_DAILY_PHYSICAL_EVENTS, MAX_TRACKED_TOKENS_PER_EVENT, MAX_PERSISTED_OBSERVATIONS_PER_EVENT, MAX_TOTAL_ROWS_PER_DAY], [200, 16, 192, 40000]);
   assert.match(collector, /const markets = selectCoreCaptureMarkets\(universe\.markets, events, family\);/);
   assert.match(collector, /const observedAt = new Date\(nowMs\)\.toISOString\(\);/);   // one poll-cycle instant, not a per-leg time
   assert.doesNotMatch(collector, /synchron\w*\s*[:=]\s*["']?(BOUNDED|PROVEN)/i);

@@ -1,0 +1,37 @@
+{
+  "ok": true,
+  "migration_file": "supabase/migrations/20261016071238_research_inplay_coverage_200_v1.sql",
+  "direct_path_unavailable": true,
+  "direct_path_failure": "{\"_tag\":\"Error\",\"error\":{\"code\":\"DbConnectError\",\"message\":\"failed to connect to postgres: failed to connect to `host=db.nbnldzfsxffztsfrrxqy.supabase.co user=postgres database=postgres`: Connection t...",
+  "mode": "dry_run",
+  "transport": "SUPABASE_MANAGEMENT_API_HTTPS_V1",
+  "project_ref": "nbnldzfsxffztsfrrxqy",
+  "target_migration": "20261016071238_research_inplay_coverage_200_v1.sql",
+  "target_version": "20261016071238",
+  "target_sha256": "4a20b8eaac9739858bbef1c5794961f1016bcd26869dbe8f30d8c64fd8a50535",
+  "ledger_before_n": 40,
+  "target_not_in_ledger": true,
+  "exactly_one_pending_is_target": true,
+  "dry_run": {
+    "transaction_semantics_proven": true,
+    "executed_exact_sql_sha256": "4a20b8eaac9739858bbef1c5794961f1016bcd26869dbe8f30d8c64fd8a50535",
+    "script_completed": true,
+    "schema_fingerprint_before": "422ed8acc9c653a8c807a2eacd15cb45",
+    "schema_fingerprint_after": "422ed8acc9c653a8c807a2eacd15cb45",
+    "schema_unchanged": true,
+    "ledger_unchanged": true
+  },
+  "applied": false,
+  "native_endpoint_used": false,
+  "ledger_repair_used": false,
+  "ledger_version_repaired": false,
+  "historical_migration_replayed": false,
+  "include_all_used": false,
+  "env_bridge": {
+    "platform": "win32",
+    "bridged_from_persistent_user_env": [],
+    "still_missing_after_bridge": [
+      "SUPABASE_DB_URL"
+    ]
+  }
+}

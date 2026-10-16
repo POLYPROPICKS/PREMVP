@@ -1,0 +1,150 @@
+[
+  {
+    "project_id": "nbnldzfsxffztsfrrxqy",
+    "days": [
+      {
+        "max_at": "2026-10-15T17:06:41.672+00:00",
+        "sports": 5,
+        "markets": 233,
+        "matches": 100,
+        "utc_day": "2026-10-15",
+        "observations": 7127,
+        "content_digest": "c7baa713511775e601118bcdb071773e"
+      },
+      {
+        "max_at": "2026-10-16T07:29:47.047+00:00",
+        "sports": 6,
+        "markets": 82,
+        "matches": 29,
+        "utc_day": "2026-10-16",
+        "observations": 4396,
+        "content_digest": "99c3a0b477be28628a5e20484b6082bd"
+      }
+    ],
+    "cutoff": "2026-10-16T07:30:00Z",
+    "over_16": 0,
+    "over_192": 0,
+    "duplicates": 0,
+    "writer_cap": "100",
+    "measured_at": "2026-10-16T07:48:31.056808+00:00",
+    "inplay_columns": [
+      {
+        "name": "state_clock_seconds_elapsed",
+        "type": "integer"
+      },
+      {
+        "name": "state_received_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "orderbook_fetch_started_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "orderbook_fetch_completed_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "orderbook_provider_timestamp_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "executable_full_stake_state",
+        "type": "text"
+      },
+      {
+        "name": "taker_fee_state",
+        "type": "text"
+      },
+      {
+        "name": "taker_fee_reason",
+        "type": "text"
+      },
+      {
+        "name": "quote_cycle_legs",
+        "type": "smallint"
+      },
+      {
+        "name": "quote_cycle_span_ms",
+        "type": "integer"
+      }
+    ],
+    "pg_cron_installed": false,
+    "t20_body_normalized_md5": "5ca57828ba488bdeb40aa1d452806003",
+    "postgres_timeout_overrides": 0
+  },
+  {
+    "project_id": "nppznoujvnyjargjkmnv",
+    "days": [
+      {
+        "max_at": "2026-10-15T17:06:41.672+00:00",
+        "sports": 5,
+        "markets": 233,
+        "matches": 100,
+        "utc_day": "2026-10-15",
+        "observations": 7127,
+        "content_digest": "c7baa713511775e601118bcdb071773e"
+      },
+      {
+        "max_at": "2026-10-16T07:02:17.027+00:00",
+        "sports": 6,
+        "markets": 82,
+        "matches": 29,
+        "utc_day": "2026-10-16",
+        "observations": 4286,
+        "content_digest": "e700d9c1be2ab625af02e7ee948ea861"
+      }
+    ],
+    "cutoff": "2026-10-16T07:30:00Z",
+    "over_16": 0,
+    "over_192": 0,
+    "duplicates": 0,
+    "writer_cap": null,
+    "measured_at": "2026-10-16T07:48:37.024397+00:00",
+    "inplay_columns": [
+      {
+        "name": "state_clock_seconds_elapsed",
+        "type": "integer"
+      },
+      {
+        "name": "state_received_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "orderbook_fetch_started_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "orderbook_fetch_completed_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "orderbook_provider_timestamp_at",
+        "type": "timestamp with time zone"
+      },
+      {
+        "name": "executable_full_stake_state",
+        "type": "text"
+      },
+      {
+        "name": "taker_fee_state",
+        "type": "text"
+      },
+      {
+        "name": "taker_fee_reason",
+        "type": "text"
+      },
+      {
+        "name": "quote_cycle_legs",
+        "type": "smallint"
+      },
+      {
+        "name": "quote_cycle_span_ms",
+        "type": "integer"
+      }
+    ],
+    "pg_cron_installed": false,
+    "t20_body_normalized_md5": null,
+    "postgres_timeout_overrides": 0
+  }
+]

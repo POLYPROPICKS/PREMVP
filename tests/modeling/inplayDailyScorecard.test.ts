@@ -81,9 +81,9 @@ test("5 soccer TOTAL_CORNERS aggregate => SOCCER_CORNERS_STATE PROVEN; tennis co
   assert.equal(c.SOCCER_TOTAL_CORNERS_EVENT_N, 3);
   assert.equal(buildCoverage(agg([{ sport: "tennis", market: "TOTAL_CORNERS" }])).SOCCER_CORNERS_STATE, "NO_SAMPLE");
   assert.equal(buildCoverage(agg([{ sport: "soccer", market: "MONEYLINE" }])).SOCCER_CORNERS_STATE, "NO_SAMPLE");
-  // classifier/test readiness cannot feed a state: the module imports only the probes
+  // classifier/test readiness cannot feed a state: only probes and pure budget constants are imported.
   const imports = [...readFileSync(MODULE, "utf8").matchAll(/^import .* from "([^"]+)";$/gm)].map((m) => m[1]);
-  assert.deepEqual(imports, ["./inplayShadowProbes"]);
+  assert.deepEqual(imports, ["./inplayShadowProbes", "../../research/inplayCoverageLimits"]);
 });
 
 test("6 clone lag > 90m => STALE; <= 90 FRESH; no production read => UNKNOWN", () => {
@@ -174,7 +174,7 @@ test("11 no path can request more than 200 raw observation rows", () => {
 });
 
 test("12 storage hard caps unchanged and pinned to the collector", () => {
-  assert.deepEqual({ ...HARD_CAPS }, { mb_per_day: 20, rows_per_day: 20000, events_per_day: 100, rows_per_event: 192, tokens_per_event: 16, retention_hours: 48 });
+  assert.deepEqual({ ...HARD_CAPS }, { mb_per_day: 40, rows_per_day: 40000, events_per_day: 200, rows_per_event: 192, tokens_per_event: 16, retention_hours: 48 });
   assert.equal(HARD_CAPS.mb_per_day, MAX_INPLAY_LOGICAL_MB_PER_DAY);
   assert.equal(HARD_CAPS.rows_per_day, MAX_TOTAL_ROWS_PER_DAY);
   assert.equal(HARD_CAPS.events_per_day, MAX_DAILY_PHYSICAL_EVENTS);
@@ -188,7 +188,7 @@ test("12 storage hard caps unchanged and pinned to the collector", () => {
   assert.equal(pass.ESTIMATED_MB_DAY, 1);
   assert.equal(pass.ESTIMATE_LABEL, "OBSERVED_24H");
   assert.equal(pass.STORAGE_BUDGET_STATE, "PASS");
-  assert.equal(storageObservability({ ...base, eventsLast24h: 60 }).STORAGE_BUDGET_STATE, "WARN");
+  assert.equal(storageObservability({ ...base, eventsLast24h: 120 }).STORAGE_BUDGET_STATE, "WARN");
   assert.equal(storageObservability({ ...base, maxRowsPerEvent24h: 193 }).STORAGE_BUDGET_STATE, "FAIL");
   assert.equal(storageObservability({ ...base, spanHours24h: 3 }).ESTIMATE_LABEL, "EARLY_ESTIMATE");
   assert.equal(storageObservability({ ...base, relationBytes: null }).ESTIMATED_MB_DAY, null); // unavailable bytes are never faked

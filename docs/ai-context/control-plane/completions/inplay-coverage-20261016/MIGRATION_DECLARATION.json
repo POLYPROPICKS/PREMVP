@@ -1,0 +1,12 @@
+{
+  "mode": "PREMVP_APPLICATION_SCHEMA_MIGRATION_V1",
+  "migration_files": [
+    "supabase/migrations/20261016071238_research_inplay_coverage_200_v1.sql"
+  ],
+  "safety_class": "ADDITIVE_COMPATIBLE",
+  "direct_raw_mutation": false,
+  "rollback_strategy": "COMPATIBILITY_RETAINED",
+  "target_only": true,
+  "target_sha256": "4a20b8eaac9739858bbef1c5794961f1016bcd26869dbe8f30d8c64fd8a50535",
+  "project_ref": "nbnldzfsxffztsfrrxqy"
+}

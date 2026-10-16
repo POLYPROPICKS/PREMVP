@@ -1,0 +1,1 @@
+ALTER ROLE postgres SET statement_timeout = '20min';

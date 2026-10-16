@@ -4,6 +4,7 @@
 // AGGREGATE_FIRST: coverage, freshness and 3-day readiness come from ONE server-side read-only aggregate statement
 // (COUNT / COUNT DISTINCT / MIN / MAX / GROUP BY); no history of raw rows is ever pulled into the process.
 import { runInplayShadowProbes, type InplayObservation } from "./inplayShadowProbes";
+import { INPLAY_COVERAGE_LIMITS } from "../../research/inplayCoverageLimits";
 
 export const SCORECARD_TASK = "DAILY_INPLAY_COVERAGE_SCORECARD_V1";
 export const MINSK_UTC_OFFSET_HOURS = 3; // Europe/Minsk is fixed UTC+3 (no DST since 2011)
@@ -17,7 +18,7 @@ export const THREE_DAY_GATE_DAYS = 3;
 export const EARLY_ESTIMATE_HOURS = 6;
 /** Contractual collector caps. Mirrors lib/research/inplayCorePath.ts; a test pins the two together. Never edited here. */
 export const HARD_CAPS = Object.freeze({
-  mb_per_day: 20, rows_per_day: 20_000, events_per_day: 100, rows_per_event: 192, tokens_per_event: 16, retention_hours: 48,
+  mb_per_day: INPLAY_COVERAGE_LIMITS.logicalMb, rows_per_day: INPLAY_COVERAGE_LIMITS.rows, events_per_day: INPLAY_COVERAGE_LIMITS.events, rows_per_event: 192, tokens_per_event: 16, retention_hours: 48,
 });
 export const STORAGE_WARN_FRACTION = 0.5;
 /** The retention window governs PRODUCTION (source) only. DBClone is the long-term research authority. */

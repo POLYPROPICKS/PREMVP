@@ -1,3 +1,4 @@
+import { INPLAY_SYNC_MAX_PAGES } from "../lib/research/inplayCoverageLimits";
 import { createClient } from "@supabase/supabase-js";
 import { pathToFileURL } from "node:url";
 import {
@@ -846,7 +847,7 @@ async function syncTable(
   const beforeQueueChildWrite = spec.table === "event_execution_queue"
     ? (rows: SyncRow[]) => repairQueueReservationParents(target, source, rows)
     : undefined;
-  const append = await runAppendSync(spec.fields, spec.telemetry ? TELEMETRY_MAX_PAGES : MAX_APPEND_PAGES, {
+  const append = await runAppendSync(spec.fields, spec.table === "research_inplay_core_path_observations" ? INPLAY_SYNC_MAX_PAGES : spec.telemetry ? TELEMETRY_MAX_PAGES : MAX_APPEND_PAGES, {
     sourceMaxWatermark: () => maxWatermark(source, spec),
     targetMaxWatermark: () => maxWatermark(target, spec),
     readCheckpoint: () => readCheckpoint(target, spec, checkpointSource(spec)),
