@@ -6,7 +6,7 @@ import type { readFounderPaper } from "@/lib/research/founderPaperReader";
 type Report = Awaited<ReturnType<typeof readFounderPaper>>;
 const views = ["strategy_totals","strategy_sport","strategy_market","strategy_sport_market"] as const;
 const names = ["All strategies","Strategy × sport","Strategy × market","Strategy × sport × market"];
-const label = (id:string) => ({CONTROL_PRICE_BUCKET_A:"CONTROL A",CONTROL_PRICE_BUCKET_B:"CONTROL B",CONTROL_PRICE_BUCKET_C:"CONTROL C",VALUE_BACKED_TAIL_REPRICING:"Value-Backed Tail Repricing",STATEWISE_PAYOFF_ARBITRAGE:"Structural Payoff Arbitrage"}[id]??id);
+const label = (id:string) => ({CONTROL_PRICE_BUCKET_A:"Контроль A (CONTROL A)",CONTROL_PRICE_BUCKET_B:"Контроль B (CONTROL B)",CONTROL_PRICE_BUCKET_C:"Контроль C (CONTROL C)",VALUE_BACKED_TAIL_REPRICING:"Переоценка дешёвых исходов (Value-Backed Tail Repricing)",STATEWISE_PAYOFF_ARBITRAGE:"Структурный арбитраж (Structural Payoff Arbitrage)"}[id]??id);
 const percent = (n:number|null) => n===null?"UNKNOWN":`${(n*100).toFixed(2)}%`;
 
 export default function ResearchPaperScorecard() {
@@ -22,7 +22,7 @@ export default function ResearchPaperScorecard() {
       try {
         const res = await fetch(`/api/founder/modeling/research/scorecard?${params}`,{cache:"no-store",signal:controller.signal});
         const data = await res.json();
-        if (!res.ok) throw Error(res.status===404?"Founder Preview session required or expired.":data.message??"Research reporting unavailable.");
+        if (!res.ok) throw Error(res.status===404?"Нужна действующая Founder-сессия (Founder Preview): войдите по личной ссылке владельца и обновите страницу.":data.message??"Research reporting unavailable.");
         setReport(data);
       } catch(e) { if(!controller.signal.aborted) setError(e instanceof Error?e.message:"Research reporting unavailable."); }
       finally { if(!controller.signal.aborted) setBusy(false); }
@@ -32,8 +32,8 @@ export default function ResearchPaperScorecard() {
     return ()=>{controller.abort();clearInterval(timer);};
   },[range,from,to,refresh]);
   return <section aria-label="Research Paper Scorecard" style={{background:"#101720",color:"#e9eef5",padding:24,fontSize:14}}>
-    <h1 style={{fontSize:24,marginBottom:12}}>Research Paper Scorecard</h1>
-    <p>Virtual 1u paper positions. Legacy historical modeling and Production LIVE remain below.</p>
+    <h3 style={{fontSize:20,marginBottom:12}}>Бумажные позиции A/B/C (Research Paper Scorecard)</h3>
+    <p>Виртуальные бумажные позиции по 1u — не реальные деньги. Историческое моделирование и Production LIVE показаны ниже отдельным разделом. Альфа-направления в этой таблице всегда без сделок (NOT_READY / SCOPED_NO_GO).</p>
     <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"16px 0"}}>
       <label>UTC period <select value={range} onChange={e=>setRange(e.target.value)} style={{color:"#111",background:"#fff"}}>
         <option value="all">All available A/B/C dates</option><option value="7">7D</option><option value="14">14D</option><option value="30">30D</option><option value="custom">Custom (max 366 days)</option>
@@ -56,7 +56,7 @@ export default function ResearchPaperScorecard() {
       <details><summary>Outcome and economics semantics</summary><p>BET = WIN + LOSS + VOID + PENDING. Win rate excludes VOID and pending; gross ROI uses settled 1u stakes including VOID. DB-clock verification authenticates persistence, not profitability. DELAYED_PAPER stays separate from LIVE_PROSPECTIVE. Six hours after scheduled start permits an outcome check; it does not guarantee resolution. Completed days use canonical Box B terminal precedence and Gamma fallback. Unresolved positions remain PENDING.</p></details>
     </>}
     {!report && <p>CONTROL A / CONTROL B / CONTROL C: performance unavailable until authoritative reports load.</p>}
-    <p>Value-Backed Tail Repricing — NOT_READY · Structural Payoff Arbitrage — SCOPED_NO_GO. No fabricated alpha P&amp;L.</p>
+    <p>Переоценка дешёвых исходов (Value-Backed Tail Repricing) — NOT_READY · Структурный арбитраж (Structural Payoff Arbitrage) — SCOPED_NO_GO. Прибыль альфа-направлений не выдумывается (No fabricated alpha P&amp;L).</p>
     <p>Execution &amp; Optimal Exit Authority — shared economics / data-quality status. Net fees: UNKNOWN.</p>
   </section>;
 }
