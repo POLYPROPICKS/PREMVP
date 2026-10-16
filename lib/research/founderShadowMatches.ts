@@ -67,7 +67,7 @@ export function aggregateShadowMatches(rows: ShadowRow[]) {
       decision_date: date, physical_event_key: key, sport: rs[0].sport_family, event_start: rs[0].event_start,
       model_count: new Set(rs.map(r => r.model_id)).size,
       selections: rs.map(r => { const o = outcomeOf(r); return { model_id: r.model_id, selected_token: r.selected_token_id ? r.selected_token_id.slice(-8) : null,
-        entry_price: Number.isFinite(Number(r.entry_price)) ? Number(r.entry_price) : null, result: o, gross_pnl_u: grossPnlU(r.entry_price, o) }; }),
+        entry_price: r.entry_price === null || r.entry_price === "" || !Number.isFinite(Number(r.entry_price)) ? null : Number(r.entry_price), result: o, gross_pnl_u: grossPnlU(r.entry_price, o) }; }),
     })).sort((a, b) => b.model_count - a.model_count || a.physical_event_key.localeCompare(b.physical_event_key));
   });
   const checks = rows.map(r => r.settlement_checked_at).filter((v): v is string => !!v).sort();
@@ -100,13 +100,14 @@ export async function readFounderShadowMatches(db: SupabaseClient, params: URLSe
   if (snap.error) throw Error("RESEARCH_READ_UNAVAILABLE");
   const snapRow = snap.data?.[0] as unknown as { updated_at?: string; lastSuccessfulRefresh?: string } | undefined;
   const refreshedAt = snapRow?.lastSuccessfulRefresh ?? snapRow?.updated_at ?? null;
+  const refreshSource = snapRow?.lastSuccessfulRefresh ? "lastSuccessfulRefresh" : snapRow?.updated_at ? "row_updated_at_fallback" : "none";
   const ageMs = refreshedAt && Number.isFinite(Date.parse(refreshedAt)) ? now - Date.parse(refreshedAt) : null;
   const agg = aggregateShadowMatches(rows);
   const today = minskDate(now);
   return { read_at: readAt, window_days: requested, window_from: from, window_to: latestDate, latest_decision_date: latestDate,
     minsk_today: today, behind_today: latestDate < today,
-    freshness: ageMs === null || ageMs > 2 * HOUR || latestDate < today ? "STALE" : "CURRENT",
-    snapshot_refreshed_at: refreshedAt, snapshot_age_seconds: ageMs === null ? null : Math.max(0, Math.floor(ageMs / 1000)),
+    freshness: ageMs === null || ageMs < 0 || ageMs > 2 * HOUR || latestDate < today ? "STALE" : "CURRENT",
+    snapshot_refreshed_at: refreshedAt, snapshot_refresh_source: refreshSource, snapshot_age_seconds: ageMs === null ? null : Math.max(0, Math.floor(ageMs / 1000)),
     model_ids: SAFE_MODEL_IDS, ...agg,
     provenance: "DBClone nppznoujvnyjargjkmnv prospective_selection_shadow_runtime LEDGER rows; SAFE shadow selections, not Production LIVE, not A/B/C paper.",
     identity_caveat: "physical_event_key is the ledger's persisted event grouping key, not a verified provider-root identity." };

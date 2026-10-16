@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
-import { aggregateShadowMatches, grossPnlU, minskDate, SAFE_MODEL_IDS, type ShadowRow } from "../../lib/research/founderShadowMatches";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { aggregateShadowMatches, grossPnlU, minskDate, readFounderShadowMatches, SAFE_MODEL_IDS, type ShadowRow } from "../../lib/research/founderShadowMatches";
 import { signPremiumSession } from "../../lib/auth/premiumSession";
 import { GET } from "../../app/api/founder/modeling/research/shadow-matches/route";
 
@@ -55,4 +56,40 @@ test("API denies absent and non-Founder sessions before any research read", asyn
     const req = new NextRequest("http://localhost/api/founder/modeling/research/shadow-matches", cookie ? { headers: { cookie: `ppp_session=${cookie}` } } : undefined);
     assert.equal((await GET(req)).status, 404);
   }
+});
+
+function fakeDb(ledger: ShadowRow[], snapshot: Record<string, unknown> | null) {
+  return { from() {
+    let kind = "", head = false;
+    const q: any = {
+      select(cols: string) { head = cols.startsWith("updated_at"); return q; },
+      eq(c: string, v: string) { if (c === "row_kind") kind = v; return q; },
+      gte() { return q; }, lte() { return q; }, order() { return q; }, limit() { return q; },
+      range(a: number, b: number) { return q.then0(ledger.slice(a, b + 1)); },
+      then0(d: unknown) { return Promise.resolve({ data: d, error: null }); },
+      then(res: (v: unknown) => unknown, rej: (r: unknown) => unknown) {
+        const data = head ? (snapshot ? [snapshot] : []) : [{ decision_date: "2026-10-16" }];
+        return Promise.resolve({ data, error: null }).then(res, rej);
+      },
+    };
+    return q;
+  } } as unknown as SupabaseClient;
+}
+
+test("reader flags STALE for missing, future and old snapshots, validates range and marks fallback", async () => {
+  const now = Date.parse("2026-10-16T12:00:00Z");
+  const ledger = [row("P50_52_SAFE", "A", { entry_price: null })];
+  const ok = await readFounderShadowMatches(fakeDb(ledger, { lastSuccessfulRefresh: "2026-10-16T11:30:00Z" }), new URLSearchParams(), now);
+  assert.equal(ok.freshness, "CURRENT");
+  assert.equal(ok.snapshot_refresh_source, "lastSuccessfulRefresh");
+  assert.equal(ok.events[0].selections[0].entry_price, null);
+  for (const snap of [null, { lastSuccessfulRefresh: "2026-10-16T08:00:00Z" }, { lastSuccessfulRefresh: "2026-10-16T13:00:00Z" }])
+    assert.equal((await readFounderShadowMatches(fakeDb(ledger, snap), new URLSearchParams(), now)).freshness, "STALE");
+  const fb = await readFounderShadowMatches(fakeDb(ledger, { updated_at: "2026-10-16T11:30:00Z" }), new URLSearchParams(), now);
+  assert.equal(fb.snapshot_refresh_source, "row_updated_at_fallback");
+  const behind = await readFounderShadowMatches(fakeDb(ledger, { lastSuccessfulRefresh: "2026-10-17T11:59:00Z" }), new URLSearchParams(), Date.parse("2026-10-17T12:00:00Z"));
+  assert.equal(behind.freshness, "STALE");
+  for (const days of ["0", "15", "x"]) await assert.rejects(readFounderShadowMatches(fakeDb(ledger, null), new URLSearchParams({ days }), now), /INVALID_RANGE/);
+  const big = Array.from({ length: 4001 }, (_, i) => row("P50_52_SAFE", `K${i}`));
+  await assert.rejects(readFounderShadowMatches(fakeDb(big, null), new URLSearchParams(), now), /SHADOW_WINDOW_TOO_LARGE/);
 });
