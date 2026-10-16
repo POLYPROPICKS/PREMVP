@@ -2,7 +2,7 @@
  * Forward virtual-BUY authority (FORWARD_BUY_V1) for QUALITY_FILL_D_SAFE and P50_52_SAFE.
  *
  * Pure, side-effect-free. It decides whether an already-selected SAFE candidate gets an EXECUTABLE virtual BUY and, when
- * it does, produces the exact receipt and the contract columns that the database freezes at first insert. It never
+ * it does, produces a provisional receipt and contract columns. Persistence is blocked until an immutable receipt store exists. It never
  * selects, re-ranks or re-prices a candidate: the SAFE selection (and its original observation time) is an input.
  *
  * A candidate that fails any rule here yields a rejection and NO contract row; it therefore never enters forward-contract
@@ -49,7 +49,8 @@ export type BuyRejectReason =
   | "BOOK_UNAVAILABLE" | "MIN_ORDER_SIZE_UNKNOWN" | "STALE_AT_PERSIST" | "QUOTE_RECEIPT_MISSING" | "QUOTE_PROVIDER_TIME_MISSING" | "QUOTE_PROVIDER_TIME_IN_FUTURE" | "STALE_QUOTE"
   | "QUOTE_BEFORE_SELECTION" | "DECISION_BEFORE_QUOTE" | "DECISION_TOO_LONG_AFTER_QUOTE" | "START_NOT_AFTER_DECISION"
   | "REFERENCE_PRICE_INVALID" | "NO_ASKS" | "INSUFFICIENT_DEPTH" | "BELOW_MIN_ORDER_SIZE" | "PRICE_MOVED_AGAINST_REFERENCE" | "VWAP_OUT_OF_RANGE"
-  | "FEE_UNKNOWN" | "FEE_OUT_OF_BOUNDS" | "FEE_SOURCE_MISMATCH" | "FEE_STALE" | "FEE_AFTER_DECISION";
+  | "FEE_UNKNOWN" | "FEE_OUT_OF_BOUNDS" | "FEE_SOURCE_MISMATCH" | "FEE_STALE" | "FEE_AFTER_DECISION"
+  | "IMMUTABLE_RECEIPT_REQUIRED";
 
 export type BuyDiagnostics = Partial<Record<
   "model" | "conditionId" | "selectedTokenId" | "economicUnitKey" | "referencePrice" | "bestAsk" | "depthAvailableUsd" | "neededUsd"
@@ -344,6 +345,23 @@ export function summarizeRejections(rejections: readonly BuyRejection[], sampleL
   const byReason: Record<string, number> = {};
   for (const rejection of rejections) byReason[rejection.reason] = (byReason[rejection.reason] ?? 0) + 1;
   return { total: rejections.length, byReason, samples: rejections.slice(0, sampleLimit) };
+}
+
+/** CURRENT is diagnostic only. No schema or insert/read-back coincidence can stand in for an immutable receipt. */
+export function summarizeForwardBuyCycle(evaluatedN: number, receipts: readonly ForwardBuyReceipt[], rejections: readonly BuyRejection[]) {
+  return {
+    stakeLedger: FORWARD_BUY_STAKE_LEDGER,
+    stakeUsd: FORWARD_BUY_STAKE_USD,
+    evaluatedN,
+    passedEvaluationN: receipts.length,
+    persistedN: 0,
+    executableBuyN: 0,
+    receiptAuthority: "UNPROVEN_IMMUTABLE_RECEIPT_REQUIRED" as const,
+    rejections: summarizeRejections(rejections),
+    // Preserve the old authoritative-receipts field as empty for readers; quotes are explicitly provisional and bounded.
+    receipts: [],
+    diagnosticQuoteReceipts: receipts.slice(0, 20),
+  };
 }
 
 /**

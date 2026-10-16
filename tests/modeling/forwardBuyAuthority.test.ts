@@ -14,12 +14,14 @@ import {
   MAX_QUOTE_AGE_AT_PERSIST_MS,
   MAX_PROVIDER_QUOTE_AGE_MS,
   summarizeRejections,
+  summarizeForwardBuyCycle,
   type BuyFeeAuthority,
   type BuyQuote,
 } from "../../lib/modeling/forwardBuyAuthority";
 import { acquireAndEvaluateBuy, resolveForwardBuy, type BuyIO } from "../../scripts/modeling/forward-buy-gate";
-import { isForwardContractRow, runtimeRow, toDatabaseLedger } from "../../scripts/modeling/live-shadow-cycle";
+import { forwardContractSummary, insertChoices, isForwardContractRow, runtimeRow, toDatabaseLedger } from "../../scripts/modeling/live-shadow-cycle";
 import type { V4EvidenceRow } from "../../scripts/modeling/prospective-selection-shadow";
+import { buildCeoRows, type LedgerLine } from "../../scripts/modeling/forward-bet-ceo-report";
 
 const T0 = Date.parse("2026-10-17T10:00:00.000Z");
 const CONDITION = "0xcondition1";
@@ -162,6 +164,72 @@ test("database payload for a BUY row carries the executable columns and none of 
   assert.equal(payload.candidate_identity, candidate.candidateIdentity);
   assert.equal(payload.decision_timestamp, candidate.decisionTimestamp, "SAFE selection time column is the original observation");
   for (const key of ["verification_status", "timing_class", "contract_status", "timing_detail", "first_persisted_at", "observation_lag_seconds"]) assert.equal(key in payload, false, key);
+});
+
+test("a concurrent same-key same-VWAP row cannot authorize a BUY without an immutable receipt", async () => {
+  const evaluated = run();
+  assert.equal(evaluated.ok, true);
+  if (!evaluated.ok) return;
+  const row = runtimeRow("P50_52_SAFE", "2026-10-17", candidate, source as V4EvidenceRow, { scoreLevel: 1, dataCoverage: 1 }, evaluated.columns.decision_generated_at, evaluated.columns);
+  const payload = toDatabaseLedger(row);
+  // Another writer already owns this key/price, but with a different quote/decision.
+  const winner: Record<string, unknown> = { ...payload, executable_quote_at: new Date(T0 - 500).toISOString(), decision_generated_at: new Date(T0 - 400).toISOString() };
+  assert.equal(winner.row_key, payload.row_key);
+  assert.equal(winner.executable_buy_price, evaluated.receipt.vwap);
+  assert.notEqual(winner.executable_quote_at, evaluated.receipt.quote.receivedAt);
+  let writes = 0;
+  const db = { from: () => ({ upsert: () => {
+    writes++;
+    return { select: async () => ({ data: [], error: null }) }; // ignored row-key conflict
+  } }) } as any;
+  await assert.rejects(insertChoices(db, [payload]), /FORWARD_BUY_IMMUTABLE_RECEIPT_REQUIRED/);
+  assert.equal(writes, 0, "a mutable CURRENT receipt must never enable a BUY ledger write");
+});
+
+test("an executable BUY mixed with legacy rows fails before any database write", async () => {
+  let calls = 0;
+  const db = { from: () => { calls++; throw Error("must not reach database"); } } as any;
+  await assert.rejects(insertChoices(db, [
+    { row_key: "legacy" },
+    { row_key: "buy", contract_version: "FORWARD_BET_V1", executable_buy_price: 0.5 },
+  ]), /FORWARD_BUY_IMMUTABLE_RECEIPT_REQUIRED/);
+  assert.equal(calls, 0);
+});
+
+test("passing quote diagnostics never become persisted or executable BUY authority in CURRENT", () => {
+  const evaluated = run();
+  assert.equal(evaluated.ok, true);
+  if (!evaluated.ok) return;
+  const summary = summarizeForwardBuyCycle(25, Array.from({ length: 25 }, () => evaluated.receipt), []);
+  assert.equal(summary.passedEvaluationN, 25);
+  assert.equal(summary.persistedN, 0);
+  assert.equal(summary.executableBuyN, 0);
+  assert.equal(summary.receiptAuthority, "UNPROVEN_IMMUTABLE_RECEIPT_REQUIRED");
+  assert.deepEqual(summary.receipts, []);
+  assert.equal(summary.diagnosticQuoteReceipts.length, 20);
+});
+
+test("a stored executable-price column cannot regain authority through the contract-summary fallback", () => {
+  const summary = forwardContractSummary([
+    { row_key: "old-buy", row_kind: "LEDGER", contract_version: "FORWARD_BET_V1", executable_buy_price: 0.5 } as any,
+  ], true, 0);
+  assert.equal(summary.executableAuthorityN, 0);
+  assert.equal(summary.executablePriceObservationN, 1);
+  assert.equal(summary.executableAuthorityStatus, "UNPROVEN_IMMUTABLE_RECEIPT_REQUIRED");
+  assert.equal(summary.economics.netRoi, "UNPROVEN");
+});
+
+test("the CEO report cannot promote price-only rows to executable economics through its fallback", () => {
+  const row: LedgerLine = {
+    row_key: "old-buy", model_id: "P50_52_SAFE", physical_event_key: "fixture", canonical_game_key: "game:fixture",
+    settlement_state: null, first_persisted_at: new Date(T0).toISOString(), contract_version: "FORWARD_BET_V1",
+    contract_status: "COMPLETE", timing_class: "PRE_START_AUTHORITATIVE", verification_status: "VERIFIED",
+    game_identity_basis: "PROVIDER_ROOT_CONFIRMED", executable_buy_price: 0.5, executable_price_authority: "CLOB_DEPTH_VWAP",
+  };
+  const summary = buildCeoRows([row], [{ bet_row_key: row.row_key, outcome: "WIN" }]).find((r) => r.strategy === row.model_id)!;
+  assert.equal(summary.forward.gross, "UNPROVEN");
+  assert.equal(summary.forward.fees, "UNPROVEN");
+  assert.equal(summary.forward.netRoi, "UNPROVEN");
 });
 
 test("insufficient depth is never a partial BUY; minimum order size is enforced", () => {
