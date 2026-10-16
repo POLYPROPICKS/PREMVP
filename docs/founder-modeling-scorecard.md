@@ -2,7 +2,7 @@
 
 The existing `/founder/modeling` page contains a Research Paper section above its unchanged legacy dashboard iframe. Production LIVE readers, historical assets and frozen evidence are unchanged.
 
-The page, asset route and `/api/founder/modeling/research/scorecard` require the existing signed `ppp_session` Founder Preview identity. Ordinary Premium entitlement is insufficient. The existing preview feature flag must be enabled, expiration must be present and valid, and the signed session cannot exceed 24 hours. Responses are private and uncached. No credentials are passed to the browser.
+As of 2026-10-16 (Founder decision, issue #550) the page, the asset route, `/api/founder/modeling/research/{scorecard,shadow-matches}`, `/api/founder/modeling/live` and `/api/founder/modeling/shadow` are PUBLIC and read-only: no login, token or cookie. Only aggregate analytics are served; the LIVE view is passed through `lib/modeling/publicLiveSanitizer.ts`, which removes wallet balances, the production project ref and account/order/exchange identifiers. No credentials are passed to the browser. Premium, payment and all other APIs keep their own auth.
 
 ## Existing pipeline integration
 

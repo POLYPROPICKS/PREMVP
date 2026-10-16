@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { aggregateShadowMatches, grossPnlU, minskDate, readFounderShadowMatches, SAFE_MODEL_IDS, type ShadowRow } from "../../lib/research/founderShadowMatches";
-import { signPremiumSession } from "../../lib/auth/premiumSession";
 import { GET } from "../../app/api/founder/modeling/research/shadow-matches/route";
 
 const row = (model_id: string, key: string | null, over: Partial<ShadowRow> = {}): ShadowRow => ({
@@ -47,15 +46,14 @@ test("event rows only cover the newest two days and Minsk date is UTC+3", () => 
   assert.equal(minskDate(Date.parse("2026-10-15T21:30:00Z")), "2026-10-16");
 });
 
-test("API denies absent and non-Founder sessions before any research read", async () => {
-  process.env.PPP_SESSION_SECRET = "synthetic-test-secret-at-least-32-characters";
-  process.env.ENABLE_FOUNDER_PREMIUM_PREVIEW = "true";
+test("API is anonymous and public: without research credentials it answers an honest no-store 503, never an auth 404", async () => {
+  delete process.env.PPP_SESSION_SECRET; delete process.env.ENABLE_FOUNDER_PREMIUM_PREVIEW;
   delete process.env.SUPABASE_CLONE_URL; delete process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
-  const ordinary = signPremiumSession({ checkoutSessionId: "customer", email: null, activePlan: "preview", accessUntil: new Date(Date.now() + 86_400_000).toISOString(), issuedAt: Date.now() });
-  for (const cookie of [undefined, ordinary]) {
-    const req = new NextRequest("http://localhost/api/founder/modeling/research/shadow-matches", cookie ? { headers: { cookie: `ppp_session=${cookie}` } } : undefined);
-    assert.equal((await GET(req)).status, 404);
-  }
+  const res = await GET(new NextRequest("http://localhost/api/founder/modeling/research/shadow-matches"));
+  assert.equal(res.status, 503);
+  assert.match(res.headers.get("cache-control")!, /no-store/);
+  assert.equal(res.headers.get("vary"), null);
+  assert.notEqual((await res.json()).error, "not_found");
 });
 
 function fakeDb(ledger: ShadowRow[], snapshot: Record<string, unknown> | null) {

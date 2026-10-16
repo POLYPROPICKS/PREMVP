@@ -470,8 +470,6 @@
   var liveModel = models[meta.livePolicyModel];
   var todayLive = LIVE && LIVE.today ? LIVE.today : null;
   var latestLiveDay = LIVE && LIVE.days && LIVE.days.length ? LIVE.days[LIVE.days.length - 1] : null;
-  var walletNow = todayLive && todayLive.wallet && todayLive.wallet.status === "OK" ? todayLive.wallet : null;
-  var walletAgeNow = walletNow ? walletAgeMinutes(walletNow.observedAt) : null;
   var kpis = [
     ["Canonical period", meta.frozenPeriodStart + " → " + meta.frozenPeriodEnd],
     ["Preferred (research)", meta.preferredModel],
@@ -483,7 +481,7 @@
     ["Today queue", todayLive ? fmtN(todayLive.queue.total) : "—"],
     ["Today orders", todayLive ? fmtN(todayLive.orders.total) : "—"],
     ["Today stake", todayLive && todayLive.orders.submittedStakeUsd != null ? "$" + todayLive.orders.submittedStakeUsd.toFixed(2) : "—"],
-    ["Last observed wallet", walletNow ? "$" + walletNow.spendableUsd.toFixed(2) + " (" + fmtAge(walletAgeNow) + ")" : "—", "muted"],
+    ["Wallet balance", "not published (public view)", "muted"],
     ["Last plan date", latestLiveDay ? latestLiveDay.minskDate : (LIVE ? "PENDING" : "NOT_REFRESHED_YET"), "muted"],
   ];
   document.getElementById("kpis").innerHTML = kpis.map(function (k) {
@@ -646,11 +644,8 @@
     }
     function arrow() { return '<div class="funnel-arrow">→</div>'; }
 
-    var res = today.reservations, q = today.queue, ord = today.orders, w = today.wallet;
+    var res = today.reservations, q = today.queue, ord = today.orders;
     var reservationDisplay = res && res.total != null ? (res.total > 0 ? fmtN(res.total) : "NOT RUN YET") : "—";
-    var wallet = w && w.status === "OK" ? w : null;
-    var ageMins = wallet ? walletAgeMinutes(wallet.observedAt) : null;
-    var stale = ageMins != null && ageMins > 30;
 
     var html = '<div class="note">Calendar day: <b>' + esc(today.minskDate) + '</b> (Minsk) — real-time activity, shown even when today\'s own Reservation has not run yet.</div>';
     if (LIVE && LIVE.staticFallback) html = '<div class="banner">STATIC FALLBACK / LAST OBSERVED AT ' + esc(LIVE.lastObservedAt || "UNKNOWN") + ' — request-time production read unavailable: ' + esc(LIVE.staticFallbackReason || "UNKNOWN") + '.</div>' + html;
@@ -659,21 +654,10 @@
       card("Current calendar-day Queue", fmtN(q.total)) +
       card("Bets today", fmtN(ord.total)) +
       card("Submitted stake today", ord.submittedStakeUsd != null ? "$" + ord.submittedStakeUsd.toFixed(2) : "—") +
-      card("Last observed spendable wallet", wallet ? "$" + wallet.spendableUsd.toFixed(2) : "—", stale ? "warn" : "good") +
-      card("Wallet observed at", fmtMinskTime(wallet ? wallet.observedAt : null), "muted") +
+      card("Wallet balance", "not published (public view)", "muted") +
       '</div>';
 
-    if (wallet) {
-      html += '<div class="note">Wallet freshness: <b>' + esc(fmtAge(ageMins)) + '</b> &middot; lifecycle: <code>' + esc(wallet.lifecyclePoint || "UNKNOWN") + '</code>' +
-        (wallet.collateralUsd != null ? ' &middot; collateral: $' + wallet.collateralUsd.toFixed(2) : '') + '</div>';
-      if (stale) {
-        html += '<div class="banner">STALE OBSERVATION — last wallet read is ' + esc(fmtAge(ageMins)) + '. This is the LAST OBSERVED balance, not guaranteed real-time current cash. Never treat legacy bankroll_state as current wallet.</div>';
-      } else {
-        html += '<div class="note">This is the LAST OBSERVED balance from an accepted executor callback, not guaranteed real-time current cash.</div>';
-      }
-    } else {
-      html += '<div class="banner">No wallet observation available yet — never falling back to legacy bankroll_state as current wallet.</div>';
-    }
+    html += '<div class="note">Public read-only view: only aggregate counts and stakes are shown. Wallet balances, accounts and order identifiers are intentionally not published.</div>';
 
     html += '<h3 style="margin-top:14px">CURRENT QUEUE (calendar-day, bounded by created_at within today\'s Minsk day)</h3>';
     html += '<div class="funnel" style="margin-top:10px">' +
@@ -736,7 +720,7 @@
     html += '<div class="note">Current policy: <b>' + esc(meta.livePolicyModel) + '</b></div>';
     if ((!LIVE || LIVE.status === "STOPPED") && !day) {
       html += '<div class="banner">' + esc((LIVE && LIVE.stopReason) || "LIVE_RUNTIME_DATA.js has not been generated yet") +
-        '. Run <code>npm run research-live:modeling-dashboard-refresh</code> from an environment with approved production SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (must resolve to project ref <code>nbnldzfsxffztsfrrxqy</code>) to populate this panel. Fail-closed by design — never silently falls back to another project, including the research clone.</div>';
+        '. The production LIVE aggregate is not currently available; nothing is estimated or substituted. Fail-closed by design.</div>';
       document.getElementById("liveFunnel").innerHTML = html;
       document.getElementById("liveSettled").innerHTML = '<div class="banner">PENDING / NOT SETTLED — no live plan-date captured yet.</div>';
       document.getElementById("liveTelemetry").innerHTML = '<div class="note">No calendar-day telemetry captured yet.</div>';
@@ -751,12 +735,12 @@
     var currentMinskDate = day.currentMinskDate || LIVE.currentMinskDate;
     var isStale = currentMinskDate && day.minskDate < currentMinskDate;
     if (isStale || day.isLatestAvailablePlanForToday === false) {
-      html += '<div class="note">This is the last PLAN with a Reservation, not today\'s activity — see TODAY (Section B) above for real-time Sep' + esc((currentMinskDate || "").slice(8, 10)) + ' calendar-day activity.</div>';
+      html += '<div class="note">This is the last PLAN with a Reservation, not today\'s activity — see TODAY (Section B) above for real-time ' + esc(currentMinskDate || "calendar-day") + ' activity.</div>';
     }
     html += concentrationBanner(day);
     var prov = day.provenance;
     html += '<div class="note">Plan date: <b>' + esc(day.minskDate) + '</b>' +
-      (prov ? ' &middot; source: <b>' + esc(prov.source) + '</b> &middot; production ref: <code>' + esc(prov.productionProjectRef) + '</code> &middot; production writes: ' + prov.productionWrites : '') +
+      (prov ? ' &middot; source: <b>' + esc(prov.source) + '</b> &middot; production writes: ' + prov.productionWrites : '') +
       ' &middot; generated ' + esc(day.generatedAt) + '</div>';
     html += '<h3 style="margin-top:14px">PLAN FUNNEL — ' + esc(day.minskDate) + '</h3>';
     html += '<div class="funnel" style="margin-top:10px">' +
