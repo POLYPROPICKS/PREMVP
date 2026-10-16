@@ -7,6 +7,7 @@ import { buildPrincipalRecoveryStageA } from "@/lib/modeling/dynamicPrincipalRec
 import { stableHash } from "@/lib/modeling/scientificCapitalArchitecture";
 import { resolveSignalOutcome, type GammaMarket } from "@/lib/feed/resolveSignalOutcome";
 import { buildForwardBetColumns, canonicalGame, CLONE_ORIGIN_SOURCE_KIND, evaluateTemporalEligibility, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isAuthoritativePreMatch, isScheduledOnlyPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
+import { summarizeForwardBuyCycle, type BuyRejection, type ForwardBuyColumns, type ForwardBuyReceipt, isForwardBuyModel } from "@/lib/modeling/forwardBuyAuthority";
 import { syncResearchEvidencePage } from "../research-clone-daily-sync";
 import {
   CAP,
@@ -16,6 +17,7 @@ import {
   type LedgerRow,
   type V4EvidenceRow,
 } from "./prospective-selection-shadow";
+import { acquireAndEvaluateBuy, resolveForwardBuy } from "./forward-buy-gate";
 
 const PRODUCTION_REF = "nbnldzfsxffztsfrrxqy";
 const CLONE_REF = "nppznoujvnyjargjkmnv";
@@ -43,7 +45,7 @@ type RuntimeLedgerRow = LedgerRow & {
   game_identity_basis?: string | null;
   scope_basis?: string | null;
   canonical_game_key?: string | null;
-  forward?: ForwardBetColumns | null;
+  forward?: ForwardBetColumns | ForwardBuyColumns | null;
 };
 
 type GammaBatchResult = {
@@ -198,9 +200,9 @@ function identityFor(row: V4EvidenceRow): string {
   return `${row.condition_id}::${row.selected_token_id}::${row.observed_at}`;
 }
 
-export function runtimeRow(model: (typeof MODEL_IDS)[number], date: string, candidate: any, source: V4EvidenceRow, metadata: { scoreLevel: number; dataCoverage: number }, decisionGeneratedAt: string | null = null): RuntimeLedgerRow {
+export function runtimeRow(model: (typeof MODEL_IDS)[number], date: string, candidate: any, source: V4EvidenceRow, metadata: { scoreLevel: number; dataCoverage: number }, decisionGeneratedAt: string | null = null, buyColumns: ForwardBuyColumns | null = null): RuntimeLedgerRow {
   return {
-    forward: decisionGeneratedAt ? buildForwardBetColumns({ model, source, candidate, decisionGeneratedAt }) : null,
+    forward: buyColumns ?? (decisionGeneratedAt ? buildForwardBetColumns({ model, source, candidate, decisionGeneratedAt }) : null),
     row_key: `LEDGER:${model}:${candidate.candidateIdentity}`,
     row_kind: "LEDGER",
     model,
@@ -292,6 +294,8 @@ export async function persistRuntimeSnapshot(db: SupabaseClient, snapshot: Recor
  * rejected by the database and counted rather than aborting the other bets.
  */
 export async function insertChoices(db: SupabaseClient, rows: readonly Record<string, unknown>[]): Promise<{ insertedContractN: number; duplicateEconomicUnitN: number }> {
+  // Fail before ANY write, including a legacy batch. There is no immutable BUY receipt transaction in this schema.
+  if (rows.some((row) => row.executable_buy_price != null)) throw new Error("FORWARD_BUY_IMMUTABLE_RECEIPT_REQUIRED");
   const legacy = rows.filter((row) => row.contract_version === undefined);
   const contract = rows.filter((row) => row.contract_version === FORWARD_BET_CONTRACT_VERSION);
   for (let from = 0; from < legacy.length; from += 500) {
@@ -510,7 +514,10 @@ export function forwardContractSummary(ledger: readonly RuntimeLedgerRow[], sche
     verifiedBetN: contractRows.filter((row) => row.verification_status === "VERIFIED").length,
     verificationStatusCounts: count("verification_status"),
     gameIdentityBasisCounts: count("game_identity_basis"),
-    executableAuthorityN: contractRows.filter((row) => (row as unknown as Record<string, unknown>).executable_buy_price !== null && (row as unknown as Record<string, unknown>).executable_buy_price !== undefined).length,
+    // A stored price is only an observation; this schema has no immutable complete BUY receipt authority.
+    executablePriceObservationN: contractRows.filter((row) => (row as unknown as Record<string, unknown>).executable_buy_price !== null && (row as unknown as Record<string, unknown>).executable_buy_price !== undefined).length,
+    executableAuthorityN: 0,
+    executableAuthorityStatus: "UNPROVEN_IMMUTABLE_RECEIPT_REQUIRED",
     duplicateEconomicUnitBlockedN,
     // Terminal results come only from the independent CLOB journal; the ledger's legacy settlement columns are not read.
     independentSettlement: { source: "virtual_bet_settlement_authority", ...independentSettlementCounts(contractRows, terminals) },
@@ -538,7 +545,9 @@ async function main(): Promise<void> {
     if (sync.APPEND_PENDING) throw new Error("V4_EVIDENCE_SYNC_PENDING");
   }
 
+  const forwardBuy = resolveForwardBuy(process.argv.slice(2), origin);
   const forwardSchema = await probeForwardContractSchema(clone);
+  if (forwardBuy && !forwardSchema) throw new Error("FORWARD_BUY_REQUIRES_FORWARD_CONTRACT_SCHEMA");
   // Never write legacy-shaped rows labelled as fresh forward evidence.
   if (cloneOrigin && !forwardSchema) throw new Error("CLONE_ORIGIN_REQUIRES_FORWARD_CONTRACT_SCHEMA");
   const temporalGate: Record<string, { read: number; eligible: number; rejected: Record<string, number>; decisionAt: string }> = {};
@@ -546,6 +555,9 @@ async function main(): Promise<void> {
   const existing = new Set(ledger.map((row) => row.row_key));
   const additions: RuntimeLedgerRow[] = [];
   let blockedDuplicateUnits = 0;
+  const buyReceipts: ForwardBuyReceipt[] = [];
+  const buyRejections: BuyRejection[] = [];
+  let buyEvaluatedN = 0;
   const selectionSummaries: Record<string, Array<{ model: string; selected: number; football: number; tennis: number; other: number }>> = {};
   for (const date of dates) {
     let evidenceRows = await readV4DateRows(clone, date, cloneOrigin ? { sourceKind: CLONE_ORIGIN_SOURCE_KIND } : {});
@@ -576,6 +588,18 @@ async function main(): Promise<void> {
         const sourceRow = byIdentity.get(candidate.candidateIdentity);
         const feature = metadata.get(candidate.candidateIdentity);
         if (!sourceRow || !feature) throw new Error("SELECTED_SOURCE_IDENTITY_MISSING");
+        if (forwardBuy && isForwardBuyModel(model)) {
+          // Executable BUY authority: a failed candidate gets no row at all, so it never enters forward-contract classification.
+          const heldUnits = new Set<string>([...ledger, ...additions].filter((held) => held.model_id === model).map((held) => held.canonical_game_key ?? held.forward?.canonical_game_key ?? "").filter((key) => key.length > 0));
+          buyEvaluatedN += 1;
+          const evaluation = await acquireAndEvaluateBuy({ model, source: sourceRow, candidate, heldEconomicUnits: heldUnits });
+          if (!evaluation.ok) { buyRejections.push(evaluation.rejection); continue; }
+          buyReceipts.push(evaluation.receipt);
+          // A passing quote is not persisted execution evidence. No BUY row is written until an immutable receipt
+          // and its exact ledger identity can be committed atomically by a separately reviewed database mechanism.
+          buyRejections.push({ reason: "IMMUTABLE_RECEIPT_REQUIRED", diagnostics: { model, economicUnitKey: evaluation.receipt.economicUnitKey } });
+          continue;
+        }
         const row = runtimeRow(model, date, candidate, sourceRow, feature, forwardSchema ? new Date().toISOString() : null);
         additions.push(row);
         existing.add(row.row_key);
@@ -587,6 +611,7 @@ async function main(): Promise<void> {
       selectionSummaries[date].push({ model, selected: currentRows.length, football, tennis, other: currentRows.length - football - tennis });
     }
   }
+  const buySummary = summarizeForwardBuyCycle(buyEvaluatedN, buyReceipts, buyRejections);
   const insertion = await insertChoices(clone, additions.map(toDatabaseLedger));
   // Read the database-authored insert time and any concurrent winner of an ignored replay.
   ledger = await readAllLedger(clone, forwardSchema);
@@ -647,6 +672,7 @@ async function main(): Promise<void> {
       historicalUnproven: ledger.filter((row) => !row.first_persisted_at).length,
     },
     forwardContract: forwardContractSummary(ledger, forwardSchema, blockedDuplicateUnits + insertion.duplicateEconomicUnitN, terminals),
+    ...(forwardBuy ? { forwardBuy: buySummary } : {}),
     modelDays: MODEL_IDS.flatMap((model) => [...new Set(ledger.filter((row) => row.model_id === model).map((row) => row.decision_date))].sort().map((date) => {
       const rows = ledger.filter((row) => row.model_id === model && row.decision_date === date);
       return { model, date, selected: rows.length, uniqueGames: new Set(rows.map((row) => row.physicalEventKey)).size,
@@ -686,6 +712,7 @@ async function main(): Promise<void> {
     settlementConditionsQueried: settlement.queriedConditionN,
     forwardContractSchemaApplied: forwardSchema,
     contractRowsInserted: insertion.insertedContractN,
+    forwardBuy: forwardBuy ? { evaluatedN: buySummary.evaluatedN, passedEvaluationN: buySummary.passedEvaluationN, persistedN: buySummary.persistedN, executableBuyN: buySummary.executableBuyN, receiptAuthority: buySummary.receiptAuthority, rejectedN: buyRejections.length } : undefined,
     duplicateEconomicUnitBlocked: blockedDuplicateUnits + insertion.duplicateEconomicUnitN,
     gammaCallsWereSelectedOnly: true,
     productionMoneyWrites: 0,

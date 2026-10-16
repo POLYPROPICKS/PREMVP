@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { FORWARD_BET_CONTRACT_VERSION, hasExecutableAuthority, isAuthoritativePreMatch, isScheduledOnlyPreMatch } from "@/lib/modeling/forwardBetContract";
+import { FORWARD_BET_CONTRACT_VERSION, isAuthoritativePreMatch, isScheduledOnlyPreMatch } from "@/lib/modeling/forwardBetContract";
 import { buildTrackRegistry, type TrackInfo } from "@/lib/research/strategyTrackLabels";
 import { MODEL_IDS } from "./prospective-selection-shadow";
 
@@ -66,8 +66,8 @@ export function buildCeoRows(ledger: readonly LedgerLine[], terminals: readonly 
     const allSettlement = wlvu(forward);
     const verifiedSettlement = wlvu(verified);
     const verifiedDecided = verifiedSettlement.w + verifiedSettlement.l;
-    const executable = forward.filter(hasExecutableAuthority).length;
-    const economics = verified.length > 0 && executable === forward.length ? "REQUIRES_EXECUTABLE_PNL_RUN" : UNPROVEN;
+    // Timing/identity verification and a stored price do not establish immutable BUY receipt economics.
+    const economics = UNPROVEN;
     const unprovenLinks = forward.reduce<Record<string, number>>((acc, r) => {
       const status = r.verification_status ?? "UNVERIFIED:contract_incomplete";
       if (status === "VERIFIED") return acc;
