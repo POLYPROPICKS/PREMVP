@@ -7,6 +7,7 @@ const DROP_KEY = new RegExp([
   "projectref", "^ref$", "secret", "token", "credential", "password", "apikey", "api_key", "servicerole", "service_role",
   "idempotency", "exchange", "clob_?order_?id", "order_?id", "reservation_?id", "queue_?id", "account", "address", "email",
   "path", "url", "host", "operator",
+  "balance", "bankroll", "^cash", "funds", "equity", "usdc", "funder", "signer", "maker", "owner", "error",
 ].join("|"), "i");
 const DROP_ID_SUFFIX = /^ids?$|[a-z0-9](Id|Ids|_id|_ids)$/;
 const DROP_VALUE = new RegExp([
@@ -17,16 +18,20 @@ const DROP_VALUE = new RegExp([
   "nbnldzfsxffztsfrrxqy", // production project ref, wherever it appears in free text
 ].join("|"));
 
-function safeValue(v: unknown): boolean {
-  return typeof v !== "string" || !DROP_VALUE.test(v);
+// Free-text notes written on read failures embed raw driver errors; only static explanatory notes are published.
+const RAW_ERROR_TEXT = /fail|error|exception|econn|timeout|denied|invalid/i;
+
+function safeValue(v: unknown, key?: string): boolean {
+  if (typeof v !== "string") return true;
+  return !DROP_VALUE.test(v) && !(key === "note" && RAW_ERROR_TEXT.test(v));
 }
 
 function clean(node: unknown): unknown {
-  if (Array.isArray(node)) return node.filter(safeValue).map(clean);
+  if (Array.isArray(node)) return node.filter(v => safeValue(v)).map(clean);
   if (node && typeof node === "object") {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
-      if (DROP_KEY.test(key) || DROP_ID_SUFFIX.test(key) || !safeValue(value)) continue;
+      if (DROP_KEY.test(key) || DROP_ID_SUFFIX.test(key) || !safeValue(value, key)) continue;
       out[key] = clean(value);
     }
     return out;

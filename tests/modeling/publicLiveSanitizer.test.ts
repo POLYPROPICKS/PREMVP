@@ -47,3 +47,13 @@ test("unparseable LIVE asset fails closed to a STOPPED artifact", () => {
   const out = sanitizePublicLiveAsset("garbage", now);
   assert.match(out, /LIVE_SNAPSHOT_UNREADABLE/);
 });
+
+test("generic money/ownership keys and raw error text are dropped (review hardening)", () => {
+  const out = sanitizePublicLive({
+    status: "OK", GENERATED_AT: "2026-10-16T11:30:00.000Z",
+    today: { balanceUsd: 1, bankroll: 2, cash: 3, funds: 4, equity: 5, usdc: 6, funder: "a", signer: "b", maker: "c", owner: "d", orders: { total: 2 }, error: "ECONNREFUSED 10.0.0.5:5432" },
+    days: [{ planFunnel: { settled: { note: "bet_execution_ledger read failed: ECONNREFUSED 10.0.0.5", count: 0 } } }],
+  }, now);
+  assert.deepEqual(Object.keys(out.today as object), ["orders"]);
+  assert.deepEqual((out.days as any[])[0].planFunnel.settled, { count: 0 });
+});
