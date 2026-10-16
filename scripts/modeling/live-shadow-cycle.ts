@@ -7,6 +7,7 @@ import { buildPrincipalRecoveryStageA } from "@/lib/modeling/dynamicPrincipalRec
 import { stableHash } from "@/lib/modeling/scientificCapitalArchitecture";
 import { resolveSignalOutcome, type GammaMarket } from "@/lib/feed/resolveSignalOutcome";
 import { buildForwardBetColumns, canonicalGame, CLONE_ORIGIN_SOURCE_KIND, evaluateTemporalEligibility, excludeExistingEconomicUnits, FORWARD_BET_CONTRACT_VERSION, isAuthoritativePreMatch, isScheduledOnlyPreMatch, type ForwardBetColumns } from "@/lib/modeling/forwardBetContract";
+import { FORWARD_BUY_STAKE_LEDGER, FORWARD_BUY_STAKE_USD, checkBuyPersistFreshness, summarizeRejections, type BuyRejection, type ForwardBuyColumns, type ForwardBuyReceipt, isForwardBuyModel } from "@/lib/modeling/forwardBuyAuthority";
 import { syncResearchEvidencePage } from "../research-clone-daily-sync";
 import {
   CAP,
@@ -16,6 +17,7 @@ import {
   type LedgerRow,
   type V4EvidenceRow,
 } from "./prospective-selection-shadow";
+import { acquireAndEvaluateBuy, resolveForwardBuy } from "./forward-buy-gate";
 
 const PRODUCTION_REF = "nbnldzfsxffztsfrrxqy";
 const CLONE_REF = "nppznoujvnyjargjkmnv";
@@ -43,7 +45,7 @@ type RuntimeLedgerRow = LedgerRow & {
   game_identity_basis?: string | null;
   scope_basis?: string | null;
   canonical_game_key?: string | null;
-  forward?: ForwardBetColumns | null;
+  forward?: ForwardBetColumns | ForwardBuyColumns | null;
 };
 
 type GammaBatchResult = {
@@ -198,9 +200,9 @@ function identityFor(row: V4EvidenceRow): string {
   return `${row.condition_id}::${row.selected_token_id}::${row.observed_at}`;
 }
 
-export function runtimeRow(model: (typeof MODEL_IDS)[number], date: string, candidate: any, source: V4EvidenceRow, metadata: { scoreLevel: number; dataCoverage: number }, decisionGeneratedAt: string | null = null): RuntimeLedgerRow {
+export function runtimeRow(model: (typeof MODEL_IDS)[number], date: string, candidate: any, source: V4EvidenceRow, metadata: { scoreLevel: number; dataCoverage: number }, decisionGeneratedAt: string | null = null, buyColumns: ForwardBuyColumns | null = null): RuntimeLedgerRow {
   return {
-    forward: decisionGeneratedAt ? buildForwardBetColumns({ model, source, candidate, decisionGeneratedAt }) : null,
+    forward: buyColumns ?? (decisionGeneratedAt ? buildForwardBetColumns({ model, source, candidate, decisionGeneratedAt }) : null),
     row_key: `LEDGER:${model}:${candidate.candidateIdentity}`,
     row_kind: "LEDGER",
     model,
@@ -538,7 +540,9 @@ async function main(): Promise<void> {
     if (sync.APPEND_PENDING) throw new Error("V4_EVIDENCE_SYNC_PENDING");
   }
 
+  const forwardBuy = resolveForwardBuy(process.argv.slice(2), origin);
   const forwardSchema = await probeForwardContractSchema(clone);
+  if (forwardBuy && !forwardSchema) throw new Error("FORWARD_BUY_REQUIRES_FORWARD_CONTRACT_SCHEMA");
   // Never write legacy-shaped rows labelled as fresh forward evidence.
   if (cloneOrigin && !forwardSchema) throw new Error("CLONE_ORIGIN_REQUIRES_FORWARD_CONTRACT_SCHEMA");
   const temporalGate: Record<string, { read: number; eligible: number; rejected: Record<string, number>; decisionAt: string }> = {};
@@ -546,6 +550,9 @@ async function main(): Promise<void> {
   const existing = new Set(ledger.map((row) => row.row_key));
   const additions: RuntimeLedgerRow[] = [];
   let blockedDuplicateUnits = 0;
+  const buyReceipts: ForwardBuyReceipt[] = [];
+  const buyRejections: BuyRejection[] = [];
+  let buyEvaluatedN = 0;
   const selectionSummaries: Record<string, Array<{ model: string; selected: number; football: number; tennis: number; other: number }>> = {};
   for (const date of dates) {
     let evidenceRows = await readV4DateRows(clone, date, cloneOrigin ? { sourceKind: CLONE_ORIGIN_SOURCE_KIND } : {});
@@ -576,7 +583,17 @@ async function main(): Promise<void> {
         const sourceRow = byIdentity.get(candidate.candidateIdentity);
         const feature = metadata.get(candidate.candidateIdentity);
         if (!sourceRow || !feature) throw new Error("SELECTED_SOURCE_IDENTITY_MISSING");
-        const row = runtimeRow(model, date, candidate, sourceRow, feature, forwardSchema ? new Date().toISOString() : null);
+        let buyColumns: ForwardBuyColumns | null = null;
+        if (forwardBuy && isForwardBuyModel(model)) {
+          // Executable BUY authority: a failed candidate gets no row at all, so it never enters forward-contract classification.
+          const heldUnits = new Set<string>([...ledger, ...additions].filter((held) => held.model_id === model).map((held) => held.canonical_game_key ?? held.forward?.canonical_game_key ?? "").filter((key) => key.length > 0));
+          buyEvaluatedN += 1;
+          const evaluation = await acquireAndEvaluateBuy({ model, source: sourceRow, candidate, heldEconomicUnits: heldUnits });
+          if (!evaluation.ok) { buyRejections.push(evaluation.rejection); continue; }
+          buyReceipts.push(evaluation.receipt);
+          buyColumns = evaluation.columns;
+        }
+        const row = runtimeRow(model, date, candidate, sourceRow, feature, forwardSchema ? new Date().toISOString() : null, buyColumns);
         additions.push(row);
         existing.add(row.row_key);
       }
@@ -587,9 +604,28 @@ async function main(): Promise<void> {
       selectionSummaries[date].push({ model, selected: currentRows.length, football, tennis, other: currentRows.length - football - tennis });
     }
   }
+  if (forwardBuy) {
+    // Rows go in as a batch after a network loop: re-check quote age and start lead at hand-off; a stale BUY gets no row.
+    const handOffMs = Date.now();
+    for (let i = additions.length - 1; i >= 0; i -= 1) {
+      const forward = additions[i].forward;
+      if (!forward || forward.executable_buy_price === null || forward.executable_quote_at === null) continue;
+      const stale = checkBuyPersistFreshness({ executable_quote_at: forward.executable_quote_at, scheduled_start_at: forward.scheduled_start_at }, handOffMs);
+      if (!stale) continue;
+      buyRejections.push(stale);
+      existing.delete(additions[i].row_key);
+      additions.splice(i, 1);
+    }
+  }
   const insertion = await insertChoices(clone, additions.map(toDatabaseLedger));
   // Read the database-authored insert time and any concurrent winner of an ignored replay.
   ledger = await readAllLedger(clone, forwardSchema);
+  // Only receipts whose row really exists in the database with the same executable price count as accepted.
+  const persistedKeys = new Map(ledger.map((row) => [row.row_key, row]));
+  const persistedReceipts = buyReceipts.filter((receipt) => {
+    const row = persistedKeys.get(`LEDGER:${receipt.model}:${receipt.conditionId}::${receipt.selectedTokenId}::${receipt.selectionObservedAt}`);
+    return row !== undefined && Number(row.forward?.executable_buy_price ?? (row as { executable_buy_price?: unknown }).executable_buy_price) === receipt.vwap;
+  });
 
   // Clone-origin leaves the historical Gamma corpus untouched; contract rows are settled only by the CLOB journal.
   const settlement = cloneOrigin
@@ -647,6 +683,7 @@ async function main(): Promise<void> {
       historicalUnproven: ledger.filter((row) => !row.first_persisted_at).length,
     },
     forwardContract: forwardContractSummary(ledger, forwardSchema, blockedDuplicateUnits + insertion.duplicateEconomicUnitN, terminals),
+    ...(forwardBuy ? { forwardBuy: { stakeLedger: FORWARD_BUY_STAKE_LEDGER, stakeUsd: FORWARD_BUY_STAKE_USD, evaluatedN: buyEvaluatedN, passedEvaluationN: buyReceipts.length, persistedN: persistedReceipts.length, rejections: summarizeRejections(buyRejections), receipts: persistedReceipts } } : {}),
     modelDays: MODEL_IDS.flatMap((model) => [...new Set(ledger.filter((row) => row.model_id === model).map((row) => row.decision_date))].sort().map((date) => {
       const rows = ledger.filter((row) => row.model_id === model && row.decision_date === date);
       return { model, date, selected: rows.length, uniqueGames: new Set(rows.map((row) => row.physicalEventKey)).size,
@@ -686,6 +723,7 @@ async function main(): Promise<void> {
     settlementConditionsQueried: settlement.queriedConditionN,
     forwardContractSchemaApplied: forwardSchema,
     contractRowsInserted: insertion.insertedContractN,
+    forwardBuy: forwardBuy ? { evaluatedN: buyEvaluatedN, passedEvaluationN: buyReceipts.length, persistedN: persistedReceipts.length, rejectedN: buyRejections.length } : undefined,
     duplicateEconomicUnitBlocked: blockedDuplicateUnits + insertion.duplicateEconomicUnitN,
     gammaCallsWereSelectedOnly: true,
     productionMoneyWrites: 0,
