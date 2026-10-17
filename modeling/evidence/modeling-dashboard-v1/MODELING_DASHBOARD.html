@@ -386,6 +386,39 @@
   function fmtCapitalUsd(v) { return v === null || v === undefined ? "—" : "$" + v.toFixed(2); }
   function fmtCapitalRange(range) { return fmtCapitalUsd(range.min) + " – " + fmtCapitalUsd(range.max); }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  // LIVE_SETTLEMENT_RENDER_START
+  function renderLiveSettlement(s) {
+    if (s.status === "MEASUREMENT_MISSING") {
+      return '<div class="banner">Settlement status: <b>MEASUREMENT MISSING</b> — current net P&amp;L unavailable.</div>';
+    }
+    if (s.status === "PENDING_NOT_SETTLED" || s.status === "NO_PLAN_LINKED_CLOB_ORDERS") {
+      return '<div class="banner">Settlement status: <b>PENDING / NOT SETTLED</b> — ' + esc(s.note) + '</div>';
+    }
+    var hasCoverage = Number.isInteger(s.settled_n) && s.settled_n > 0 &&
+      Number.isInteger(s.known_net_n) && s.known_net_n >= 0 &&
+      Number.isInteger(s.net_unknown_n) && s.net_unknown_n >= 0 &&
+      s.known_net_n + s.net_unknown_n === s.settled_n &&
+      Number.isInteger(s.fee_unreported_n) && s.fee_unreported_n >= 0 && s.fee_unreported_n <= s.net_unknown_n;
+    if (!hasCoverage) {
+      return '<div class="banner"><b>UNKNOWN LEGACY COVERAGE</b> — settled N: ' + fmtN(s.count) +
+        '. Complete realized net P&amp;L unavailable; this snapshot has no verified net coverage.</div>';
+    }
+    var complete = s.net_coverage_status === "COMPLETE" && s.known_net_n === s.settled_n &&
+      Number.isFinite(s.realized_pnl_usd) && s.realized_pnl_usd === s.known_net_pnl_usd;
+    var label = complete ? "COMPLETE" : s.known_net_n > 0 ? "PARTIAL" : "NO NET EVIDENCE";
+    var result = '<div class="banner"><b>' + label + ' ' + s.known_net_n + '/' + s.settled_n + '</b></div>' +
+      '<div class="note">Settled N: <b>' + s.settled_n + '</b> · Known-net N: <b>' + s.known_net_n +
+      '</b> · Net-unknown N: <b>' + s.net_unknown_n + '</b> · Fee-unreported N: <b>' + s.fee_unreported_n + '</b></div>';
+    if (complete) {
+      result += '<div class="note">Complete realized net P&amp;L: <b>' + fmtUsd(s.realized_pnl_usd) + '</b></div>';
+    } else {
+      result += '<div class="note">Known net subtotal (partial): <b>' +
+        (s.known_net_n > 0 && Number.isFinite(s.known_net_pnl_usd) ? fmtUsd(s.known_net_pnl_usd) : "UNAVAILABLE") +
+        '</b> · Complete realized net P&amp;L unavailable.</div>';
+    }
+    return result + '<div class="note">' + esc(s.note) + '</div>';
+  }
+  // LIVE_SETTLEMENT_RENDER_END
   function walletAgeMinutes(observedAt) { return observedAt ? Math.round((Date.now() - Date.parse(observedAt)) / 60000) : null; }
   function fmtAge(mins) { if (mins == null) return "—"; if (mins < 1) return "just now"; if (mins < 60) return mins + "m ago"; return Math.floor(mins / 60) + "h " + (mins % 60) + "m ago"; }
   function fmtMinskTime(iso) {
@@ -768,15 +801,7 @@
       '</div>';
     document.getElementById("liveFunnel").innerHTML = html;
 
-    var settledHtml;
-    if (pf.settled.status === "AVAILABLE") {
-      settledHtml = '<div class="note">Settled N (settled_at IS NOT NULL, joined via plan-linked clob_order_id → exchange_order_id): <b>' + fmtN(pf.settled.count) + '</b> (source: ' + esc(pf.settled.source) + ')</div>' +
-        '<div class="note">Realized live P&amp;L (sum real_pnl, matched settled rows only): <b>' + (pf.settled.realized_pnl_usd != null ? fmtUsd(pf.settled.realized_pnl_usd) : "PENDING") + '</b></div>' +
-        '<div class="note">' + esc(pf.settled.note) + '</div>';
-    } else {
-      settledHtml = '<div class="banner">Settlement status: <b>PENDING / NOT SETTLED</b> — ' + esc(pf.settled.note) + '</div>';
-    }
-    document.getElementById("liveSettled").innerHTML = settledHtml;
+    document.getElementById("liveSettled").innerHTML = renderLiveSettlement(pf.settled);
 
     var telemetryHtml = '<div class="banner">This is calendar-day executor activity for ' + esc(day.minskDate) + ' (created_at within the Minsk day) — <b>' + esc(ct.label.replace(/_/g, " ")) + '</b>. One calendar-day executor event does not necessarily map to this plan\'s own queue path; never substitute these figures for the PLAN FUNNEL above.</div>' +
       '<div class="funnel">' +
