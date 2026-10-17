@@ -18,7 +18,8 @@
  *      the PLAN, never to whichever wall-clock day settled_at happens to fall
  *      on (a Sep21 order settling Sep22 stays attributed to the Sep21 plan).
  *      settled_n = count(settled_at IS NOT NULL) over those matched rows only;
- *      realized P&L = sum(real_pnl) over the same matched+settled rows only.
+ *      complete realized net P&L is available only when every settled row has known net;
+ *      otherwise the known-net subtotal is explicitly partial, never a zero-filled total.
  *
  * SEPARATE TELEMETRY: the same day-scoped executor_order_events read (bounded
  * by created_at within the Minsk calendar day, since order events carry no
@@ -189,7 +190,67 @@ function aggregateOrders(rows: OrderRow[], sportBucketOf: ((r: OrderRow) => Spor
   };
 }
 
-async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string, currentMinskDate: string) {
+type SettlementLedgerRow = {
+  exchange_order_id: string;
+  settled_at: string | null;
+  real_pnl: number | null;
+  fee_status: string | null;
+};
+
+type SettlementSummary = {
+  status: "PENDING_NOT_SETTLED" | "AVAILABLE" | "MEASUREMENT_MISSING" | "NO_PLAN_LINKED_CLOB_ORDERS";
+  count: number | null;
+  settled_n: number | null;
+  known_net_n: number | null;
+  net_unknown_n: number | null;
+  fee_unreported_n: number | null;
+  other_net_unknown_n: number | null;
+  known_net_pnl_usd: number | null;
+  realized_pnl_usd: number | null;
+  net_coverage_status: "COMPLETE" | "PARTIAL" | "NONE" | "PENDING_NOT_SETTLED" | "MEASUREMENT_MISSING";
+  source: string | null;
+  note: string;
+};
+
+/** Stored net values are evidence; missing money is never zero. Fee cause requires an explicit stored status. */
+export function aggregateSettledCoverage(rows: SettlementLedgerRow[]): SettlementSummary {
+  const settled = rows.filter(r => r.settled_at != null);
+  const hasNet = (r: SettlementLedgerRow) => typeof r.real_pnl === "number" && Number.isFinite(r.real_pnl);
+  const known = settled.filter(hasNet);
+  const missing = settled.filter(r => !hasNet(r));
+  const feeUnreported = missing.filter(r => r.fee_status === "NOT_REPORTED").length;
+  const subtotal = known.length > 0
+    ? Math.round(known.reduce((sum, r) => sum + r.real_pnl!, 0) * 1_000_000) / 1_000_000
+    : null;
+  const complete = settled.length > 0 && known.length === settled.length;
+  return {
+    status: settled.length > 0 ? "AVAILABLE" : "PENDING_NOT_SETTLED",
+    count: settled.length,
+    settled_n: settled.length,
+    known_net_n: known.length,
+    net_unknown_n: missing.length,
+    fee_unreported_n: feeUnreported,
+    other_net_unknown_n: missing.length - feeUnreported,
+    known_net_pnl_usd: subtotal,
+    realized_pnl_usd: complete ? subtotal : null,
+    net_coverage_status: complete ? "COMPLETE" : known.length > 0 ? "PARTIAL" : settled.length > 0 ? "NONE" : "PENDING_NOT_SETTLED",
+    source: settled.length > 0 ? "bet_execution_ledger (plan-linked settled rows)" : null,
+    note: settled.length > 0
+      ? "Known net covers only rows with stored net PnL; unknown net is excluded, never treated as zero."
+      : "No settled rows among this plan's linked orders; realized net PnL is not available.",
+  };
+}
+
+function unavailableSettlement(status: "MEASUREMENT_MISSING" | "NO_PLAN_LINKED_CLOB_ORDERS", note: string): SettlementSummary {
+  const empty = aggregateSettledCoverage([]);
+  if (status === "NO_PLAN_LINKED_CLOB_ORDERS") return { ...empty, status, note };
+  return {
+    ...empty, status, count: null, settled_n: null, known_net_n: null, net_unknown_n: null,
+    fee_unreported_n: null, other_net_unknown_n: null, net_coverage_status: "MEASUREMENT_MISSING", note,
+  };
+}
+
+export async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string, currentMinskDate: string) {
   // ── Stage 1: Reservations scoped by plan_date_minsk (the plan authority), never game_start_iso. ──
   const reservationRows = await selectRows<{ id: string; status: string; sport: string | null; league: string | null }>(
     db, "night_event_reservations", "id,status,sport,league", (q) => q.eq("plan_date_minsk", minskDate),
@@ -270,36 +331,19 @@ async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string, c
   // ── Stage 4: Settlement traced from PLAN-LINKED clob_order_id -> ledger.exchange_order_id.
   // Never scoped by settled_at wall-clock day -- a Sep21 order settling Sep22 stays this plan's. ──
   const planLinkedClobIds = planLinkedRows.map((r) => r.clob_order_id).filter((id): id is string => !!id);
-  let settled: { status: "PENDING_NOT_SETTLED" | "AVAILABLE" | "MEASUREMENT_MISSING" | "NO_PLAN_LINKED_CLOB_ORDERS"; count: number | null; realized_pnl_usd: number | null; source: string | null; note: string };
+  let settled: SettlementSummary;
   if (!orderRows.ok || queue.status === "MEASUREMENT_MISSING") {
-    settled = { status: "MEASUREMENT_MISSING", count: null, realized_pnl_usd: null, source: null, note: "Plan-linked order evidence unavailable -- cannot trace settlement." };
+    settled = unavailableSettlement("MEASUREMENT_MISSING", "Plan-linked order evidence unavailable -- cannot trace settlement.");
   } else if (planLinkedClobIds.length === 0) {
-    settled = { status: "NO_PLAN_LINKED_CLOB_ORDERS", count: 0, realized_pnl_usd: null, source: null, note: "No plan-linked CLOB order ids to join against bet_execution_ledger.exchange_order_id." };
+    settled = unavailableSettlement("NO_PLAN_LINKED_CLOB_ORDERS", "No plan-linked orders to trace settlement.");
   } else {
-    const ledgerRows = await selectRows<{ exchange_order_id: string; settled_at: string | null; real_pnl: number | null }>(
-      db, "bet_execution_ledger", "exchange_order_id,settled_at,real_pnl", (q) => q.in("exchange_order_id", planLinkedClobIds),
+    const ledgerRows = await selectRows<SettlementLedgerRow>(
+      db, "bet_execution_ledger", "exchange_order_id,settled_at,real_pnl,fee_status:raw_order->settlement_v1->reconciliation->>fee_status", (q) => q.in("exchange_order_id", planLinkedClobIds),
     );
     if (!ledgerRows.ok) {
-      settled = { status: "MEASUREMENT_MISSING", count: null, realized_pnl_usd: null, source: null, note: `bet_execution_ledger read failed: ${ledgerRows.error}` };
+      settled = unavailableSettlement("MEASUREMENT_MISSING", "Ledger settlement measurement unavailable.");
     } else {
-      const settledMatched = ledgerRows.rows.filter((r) => r.settled_at != null);
-      if (settledMatched.length > 0) {
-        settled = {
-          status: "AVAILABLE",
-          count: settledMatched.length,
-          realized_pnl_usd: Math.round(settledMatched.reduce((s, r) => s + (r.real_pnl ?? 0), 0) * 100) / 100,
-          source: "bet_execution_ledger (exchange_order_id = plan-linked clob_order_id, settled_at IS NOT NULL)",
-          note: "Authoritative settled rows joined from this plan's own CLOB order ids -- never scoped by settlement wall-clock day.",
-        };
-      } else {
-        settled = {
-          status: "PENDING_NOT_SETTLED",
-          count: 0,
-          realized_pnl_usd: null,
-          source: null,
-          note: "0 bet_execution_ledger rows with settled_at IS NOT NULL among this plan's linked CLOB order ids -- never inferring realized P&L from potential payout, accepted_open, or gross_profit_if_win.",
-        };
-      }
+      settled = aggregateSettledCoverage(ledgerRows.rows);
     }
   }
 
